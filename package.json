@@ -1,0 +1,16 @@
+{
+  "name": "expresso-v4",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Expresso V4 — Brazilian Government M365 equivalent",
+  "scripts": {
+    "dev": "pnpm -F expresso-web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

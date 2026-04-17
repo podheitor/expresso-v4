@@ -1,0 +1,40 @@
+[package]
+name = "expresso-notifications"
+version = "0.1.0"
+edition = "2021"
+description = "Push notifications (Web Push, email alerts)"
+
+[[bin]]
+name = "expresso-notifications"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace deps
+tokio = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+prometheus = { workspace = true }
+reqwest = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+
+
+# Internal libs
+expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
+expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
+
+[dev-dependencies]
+tokio-test = "0.4"

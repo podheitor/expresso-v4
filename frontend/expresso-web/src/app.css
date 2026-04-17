@@ -1,0 +1,20 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+    /* Expresso design tokens */
+    --color-brand:      #1B4D8E;   /* azul governo BR */
+    --color-brand-dark: #0E3060;
+    --color-accent:     #00A651;   /* verde gov.br */
+    --color-surface:    #F4F6F9;
+    --color-foreground: #1A1D23;
+    --radius-md:        6px;
+    --shadow-sm:        0 1px 3px rgba(0,0,0,.08);
+}
+
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: var(--color-surface);
+    color: var(--color-foreground);
+}

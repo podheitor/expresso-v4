@@ -1,0 +1,27 @@
+[package]
+name = "expresso-crypto"
+version = "0.1.0"
+edition = "2021"
+description = "Cryptographic primitives, key management"
+
+[lib]
+name = "expresso_crypto"
+
+[dependencies]
+# Workspace deps
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+async-trait = { workspace = true }
+ring = { workspace = true }
+age = { workspace = true }
+argon2 = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"

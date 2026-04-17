@@ -1,0 +1,24 @@
+[package]
+name = "expresso-mail-parser"
+version = "0.1.0"
+edition = "2021"
+description = "MIME/email parsing and rendering"
+
+[lib]
+name = "expresso_mail_parser"
+
+[dependencies]
+# Workspace deps
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+async-trait = { workspace = true }
+mail-parser = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"

@@ -1,0 +1,35 @@
+# Rust
+target/
+Cargo.lock
+*.pdb
+
+# Node
+node_modules/
+.pnpm-store/
+dist/
+.svelte-kit/
+build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Secrets
+*.key
+*.pem
+*.p12

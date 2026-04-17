@@ -1,0 +1,26 @@
+[package]
+name = "expresso-core"
+version = "0.1.0"
+edition = "2021"
+description = "Shared types, config, DB pool, errors"
+
+[lib]
+name = "expresso_core"
+
+[dependencies]
+# Workspace deps
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+time = { workspace = true }
+async-trait = { workspace = true }
+sqlx = { workspace = true }
+deadpool-redis = { workspace = true }
+config = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
