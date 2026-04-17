@@ -8,19 +8,25 @@ description = "Shared types, config, DB pool, errors"
 name = "expresso_core"
 
 [dependencies]
-# Workspace deps
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-time = { workspace = true }
-async-trait = { workspace = true }
-sqlx = { workspace = true }
+tokio        = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+tracing      = { workspace = true }
+tracing-subscriber    = { workspace = true }
+opentelemetry         = { workspace = true }
+opentelemetry-otlp    = { workspace = true }
+opentelemetry_sdk     = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+anyhow       = { workspace = true }
+thiserror    = { workspace = true }
+uuid         = { workspace = true }
+time         = { workspace = true }
+async-trait  = { workspace = true }
+sqlx         = { workspace = true }
 deadpool-redis = { workspace = true }
-config = { workspace = true }
+config       = { workspace = true }
+prometheus   = { workspace = true }
+once_cell    = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"
