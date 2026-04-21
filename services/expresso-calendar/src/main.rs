@@ -1,6 +1,7 @@
 //! expresso-calendar service entrypoint
 
 mod api;
+mod caldav;
 mod domain;
 mod error;
 mod state;

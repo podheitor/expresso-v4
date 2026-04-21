@@ -214,4 +214,130 @@ impl<'a> EventRepo<'a> {
         Ok(())
     }
 
+    /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
+    pub async fn replace_by_uid(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        raw: &str,
+    ) -> Result<Event> {
+        let parsed = ical::parse_vevent(raw)?;
+        let etag   = ical::compute_etag(raw);
+
+        let row = sqlx::query_as::<_, Event>(
+            r#"
+            INSERT INTO calendar_events
+                (tenant_id, calendar_id, uid, etag, ical_raw, summary, description,
+                 location, dtstart, dtend, rrule, status, sequence, organizer_email)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            ON CONFLICT (calendar_id, uid) DO UPDATE SET
+                etag            = EXCLUDED.etag,
+                ical_raw        = EXCLUDED.ical_raw,
+                summary         = EXCLUDED.summary,
+                description     = EXCLUDED.description,
+                location        = EXCLUDED.location,
+                dtstart         = EXCLUDED.dtstart,
+                dtend           = EXCLUDED.dtend,
+                rrule           = EXCLUDED.rrule,
+                status          = EXCLUDED.status,
+                sequence        = calendar_events.sequence + 1,
+                organizer_email = EXCLUDED.organizer_email
+            RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                      description, location, dtstart, dtend, rrule, status,
+                      sequence, organizer_email, created_at, updated_at
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(&parsed.uid)
+        .bind(&etag)
+        .bind(raw)
+        .bind(&parsed.summary)
+        .bind(&parsed.description)
+        .bind(&parsed.location)
+        .bind(parsed.dtstart)
+        .bind(parsed.dtend)
+        .bind(&parsed.rrule)
+        .bind(&parsed.status)
+        .bind(parsed.sequence)
+        .bind(&parsed.organizer_email)
+        .fetch_one(self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Fetch event by (calendar_id, uid) — CalDAV URI mapping.
+    pub async fn get_by_uid(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        uid: &str,
+    ) -> Result<Event> {
+        sqlx::query_as::<_, Event>(
+            r#"
+            SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                   description, location, dtstart, dtend, rrule, status,
+                   sequence, organizer_email, created_at, updated_at
+              FROM calendar_events
+             WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(uid)
+        .fetch_optional(self.pool)
+        .await?
+        .ok_or_else(|| CalendarError::BadRequest(format!("event uid not found: {uid}")))
+    }
+
+    /// Fetch multiple events by UIDs (CalDAV calendar-multiget REPORT).
+    pub async fn list_by_uids(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        uids: &[String],
+    ) -> Result<Vec<Event>> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<_, Event>(
+            r#"
+            SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                   description, location, dtstart, dtend, rrule, status,
+                   sequence, organizer_email, created_at, updated_at
+              FROM calendar_events
+             WHERE tenant_id = $1 AND calendar_id = $2 AND uid = ANY($3)
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(uids)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Delete by (calendar_id, uid) — CalDAV DELETE on event URI.
+    pub async fn delete_by_uid(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        uid: &str,
+    ) -> Result<()> {
+        let res = sqlx::query(
+            r#"DELETE FROM calendar_events
+                WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(uid)
+        .execute(self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(CalendarError::BadRequest(format!("event uid not found: {uid}")));
+        }
+        Ok(())
+    }
+
 }

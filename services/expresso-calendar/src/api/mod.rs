@@ -15,6 +15,7 @@ pub fn router(state: AppState) -> Router {
         .merge(health::routes())
         .merge(calendars::routes())
         .merge(events::routes())
+        .merge(crate::caldav::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
