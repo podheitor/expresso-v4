@@ -1,0 +1,39 @@
+services:
+  expresso-chat:
+    image: expresso-chat:latest
+    container_name: expresso-chat
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      SERVER__HOST: 0.0.0.0
+      SERVER__PORT: 8010
+      TELEMETRY__LOG_FILTER: info
+      AUTH__OIDC_ISSUER: "http://192.168.15.125:8080/realms/expresso"
+      AUTH__OIDC_AUDIENCE: "expresso-web"
+      DATABASE__URL: "postgres://expresso:Expr3ss0_DB_2026!@192.168.15.123:5432/expresso"
+      MATRIX__HS_URL: "http://expresso-synapse:8008"
+      MATRIX__SERVER_NAME: "expresso.local"
+      MATRIX__AS_TOKEN: "1f0418701f01656111f9b45131b8d1f67cada69457b1e17787ebc4fd5341dfd4"
+      MATRIX__ADMIN_TOKEN: "syt_YWRtaW4_CtgBGXWZIuTiGBUBQYWJ_0LtFVH"
+    ports:
+      - "8010:8010"
+
+  expresso-meet:
+    image: expresso-meet:latest
+    container_name: expresso-meet
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      SERVER__HOST: 0.0.0.0
+      SERVER__PORT: 8011
+      TELEMETRY__LOG_FILTER: info
+      AUTH__OIDC_ISSUER: "http://192.168.15.125:8080/realms/expresso"
+      AUTH__OIDC_AUDIENCE: "expresso-web"
+      DATABASE__URL: "postgres://expresso:Expr3ss0_DB_2026!@192.168.15.123:5432/expresso"
+      JITSI__APP_ID: "expresso"
+      JITSI__APP_SECRET: "0b0884b3ede4f4a76596194c7eec58e3ca01b1de7b786cf603caff7864fb417f"
+      JITSI__DOMAIN: "meet.expresso.local"
+      JITSI__ROOM_PREFIX: "exp-"
+      JITSI__JWT_TTL_SECS: "3600"
+    ports:
+      - "8011:8011"
