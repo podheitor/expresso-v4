@@ -114,11 +114,39 @@ impl MatrixClient {
             .map_err(|e| ChatError::Matrix(format!("decode: {e}")))
     }
 
+    /// Ensure AS-scope user exists on HS. Idempotent → tolerates M_USER_IN_USE.
+    /// Synapse requires AS to pre-register users within its exclusive namespace
+    /// before impersonation (?user_id=…) via CS API works.
+    async fn ensure_registered(&self, mxid: &str) -> Result<()> {
+        let localpart = mxid.trim_start_matches('@')
+            .split(':').next()
+            .ok_or_else(|| ChatError::Matrix(format!("bad mxid: {mxid}")))?;
+        let url = format!(
+            "{}/_matrix/client/v3/register",
+            self.cfg.hs_url.trim_end_matches('/')
+        );
+        let body = json!({
+            "type":     "m.login.application_service",
+            "username": localpart,
+        });
+        let resp = self.http.post(&url)
+            .bearer_auth(self.as_token()?)
+            .json(&body)
+            .send().await
+            .map_err(|e| ChatError::Matrix(format!("register failed: {e}")))?;
+        let status = resp.status();
+        if status.is_success() { return Ok(()); }
+        let text = resp.text().await.unwrap_or_default();
+        if text.contains("M_USER_IN_USE") { return Ok(()); }
+        Err(ChatError::Matrix(format!("register HS {}: {}", status, text)))
+    }
+
     pub async fn create_room(
         &self,
         acting_as: &str,
         req: &CreateRoomRequest<'_>,
     ) -> Result<CreateRoomResponse> {
+        self.ensure_registered(acting_as).await?;
         let url = self.cs_url("/createRoom", acting_as)?;
         let body = json!({
             "name":   req.name,
@@ -135,6 +163,7 @@ impl MatrixClient {
         room_id: &str,
         mxid_to_invite: &str,
     ) -> Result<()> {
+        self.ensure_registered(acting_as).await?;
         let path = format!("/rooms/{}/invite", urlencode(room_id));
         let url = self.cs_url(&path, acting_as)?;
         let body = json!({ "user_id": mxid_to_invite });
@@ -155,6 +184,7 @@ impl MatrixClient {
         room_id: &str,
         body: &str,
     ) -> Result<String> {
+        self.ensure_registered(acting_as).await?;
         let txn = Uuid::new_v4();
         let path = format!("/rooms/{}/send/m.room.message/{}", urlencode(room_id), txn);
         let url = self.cs_url(&path, acting_as)?;
@@ -171,6 +201,7 @@ impl MatrixClient {
         room_id: &str,
         limit: u32,
     ) -> Result<Value> {
+        self.ensure_registered(acting_as).await?;
         let path = format!("/rooms/{}/messages", urlencode(room_id));
         let mut url = self.cs_url(&path, acting_as)?;
         url.query_pairs_mut()
