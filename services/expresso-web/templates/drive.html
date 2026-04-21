@@ -4,11 +4,26 @@
 {% block body %}
 <section class="page">
   <header class="page-header">
-    <h1>Meu Drive</h1>
-    <form class="upload-form" method="post" action="#" enctype="multipart/form-data">
-      <input type="file" name="file" disabled>
-      <button class="btn" type="button" disabled title="em breve">+ Upload (em breve)</button>
-    </form>
+    <div>
+      <h1>Meu Drive</h1>
+      {% match quota %}{% when Some with (q) %}
+        <div class="quota-bar" title="Uso {{ q.used_human() }} / {{ q.max_human() }}">
+          <div class="quota-fill" style="width: {{ q.percent() }}%"></div>
+          <span class="quota-label">{{ q.used_human() }} de {{ q.max_human() }} ({{ q.percent() }}%)</span>
+        </div>
+      {% when None %}
+      {% endmatch %}
+    </div>
+    <div class="page-header-actions">
+      <a class="btn btn-ghost" href="/drive/trash">🗑 Lixeira</a>
+      <form class="upload-form" method="post"
+            action="/drive/upload{% match parent_id %}{% when Some with (p) %}?parent_id={{ p }}{% when None %}{% endmatch %}"
+            enctype="multipart/form-data">
+        <input type="hidden" name="parent_id" value="{% match parent_id %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}">
+        <input type="file" name="file" required>
+        <button class="btn btn-primary" type="submit">Enviar</button>
+      </form>
+    </div>
   </header>
 
   {% if files.is_empty() %}
@@ -16,7 +31,7 @@
   {% else %}
   <table class="data-table">
     <thead>
-      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Modificado</th></tr>
+      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Modificado</th><th>Ações</th></tr>
     </thead>
     <tbody>
       {% for f in files %}
@@ -31,6 +46,15 @@
         </td>
         <td class="mono">{{ f.size_human() }}</td>
         <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+        <td class="row-actions">
+          {% if f.is_folder() == false %}
+            <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
+          {% endif %}
+          <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Mover p/ lixeira"
+                    onclick="return confirm('Mover para lixeira?')">🗑</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

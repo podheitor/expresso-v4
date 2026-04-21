@@ -250,3 +250,30 @@ section.page { /* keep */ }
 .contacts-books li a:hover { background: #f1f5f9; }
 .contacts-books li a.active { background: #e0ecff; font-weight: 600; color: var(--color-brand-2); }
 .contacts-main { overflow: hidden; }
+
+/* ─── Drive extras ────────────────────────────────────────────────────────── */
+.page-header-actions { display: flex; gap: .5rem; align-items: center; }
+.btn-sm { padding: .25rem .5rem; font-size: .8rem; line-height: 1; }
+.row-actions { display: flex; gap: .25rem; justify-content: flex-end; }
+.upload-form { display: flex; gap: .5rem; align-items: center; }
+.upload-form input[type="file"] { max-width: 220px; font-size: .85rem; }
+.quota-bar {
+  position: relative; display: block; width: 300px;
+  height: 16px; background: #e2e8f0; border-radius: 8px; overflow: hidden;
+  margin-top: .4rem;
+}
+.quota-fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #2563eb, #1e3a5f);
+  transition: width .3s;
+}
+.quota-label {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: .72rem; color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4); font-weight: 600;
+}
+.mono  { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+.muted { color: var(--color-muted); }
+.link  { color: var(--color-brand-2); text-decoration: none; }
+.link:hover { text-decoration: underline; }
+.empty-state { padding: 3rem; text-align: center; color: var(--color-muted); border: 2px dashed var(--color-border); border-radius: var(--radius-md); }

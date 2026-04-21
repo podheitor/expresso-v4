@@ -1,10 +1,11 @@
 //! HTTP routes — SSR pages.
 
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -14,8 +15,8 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, Folder, LoginTpl, MailListTpl, Me, MeTpl,
-        MessageDetail, MessageListItem, SecurityTpl, DriveTpl, CalendarTpl, ContactsTpl,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, MailListTpl, Me, MeTpl,
+        MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
 };
@@ -29,7 +30,12 @@ pub fn router(state: AppState) -> Router {
         .route("/me/security",   get(security_page))
         .route("/mail",          get(mail_page))
         .route("/mail/:id",      get(mail_detail_page))
-        .route("/drive",         get(drive_page))
+        .route("/drive",            get(drive_page))
+        .route("/drive/trash",      get(drive_trash_page))
+        .route("/drive/upload",     post(drive_upload_action))
+        .route("/drive/:id/trash",  post(drive_trash_action))
+        .route("/drive/:id/restore",post(drive_restore_action))
+        .route("/drive/:id/purge",  post(drive_purge_action))
         .route("/calendar",      get(calendar_page))
         .route("/contacts",      get(contacts_page))
         .with_state(state)
@@ -180,10 +186,94 @@ async fn drive_page(
     let files = get_json::<Vec<DriveFile>>(
         &st, &st.backends.drive, &path, &headers, Some((&t, &u)),
     ).await?.unwrap_or_default();
+    let quota = get_json::<DriveQuota>(
+        &st, &st.backends.drive, "/api/v1/drive/quota", &headers, Some((&t, &u)),
+    ).await?;
 
     Ok(askama_axum::IntoResponse::into_response(DriveTpl {
-        me, parent_id: q.parent_id, files,
+        me, parent_id: q.parent_id, files, quota,
     }))
+}
+
+async fn drive_trash_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let files = get_json::<Vec<DriveFile>>(
+        &st, &st.backends.drive, "/api/v1/drive/trash", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(DriveTrashTpl { me, files }))
+}
+
+#[derive(Deserialize)]
+struct UploadQuery { parent_id: Option<String> }
+
+async fn drive_upload_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<UploadQuery>, body: Bytes,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let ct = headers.get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_string();
+    let _ = crate::upstream::post_body(
+        &st, &st.backends.drive, "/api/v1/drive/files",
+        &headers, Some((&t, &u)), body, &ct,
+    ).await?;
+    let back = match &q.parent_id {
+        Some(p) if !p.is_empty() => format!("/drive?parent_id={}", utf8_percent_encode(p, NON_ALPHANUMERIC)),
+        _ => "/drive".into(),
+    };
+    Ok(Redirect::to(&back).into_response())
+}
+
+async fn drive_trash_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri, Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = crate::upstream::delete_at(
+        &st, &st.backends.drive, &format!("/api/v1/drive/files/{id}"),
+        &headers, Some((&t, &u)),
+    ).await?;
+    Ok(Redirect::to("/drive").into_response())
+}
+
+async fn drive_restore_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri, Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = crate::upstream::post_empty(
+        &st, &st.backends.drive, &format!("/api/v1/drive/files/{id}/restore"),
+        &headers, Some((&t, &u)),
+    ).await?;
+    Ok(Redirect::to("/drive/trash").into_response())
+}
+
+async fn drive_purge_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri, Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = crate::upstream::delete_at(
+        &st, &st.backends.drive, &format!("/api/v1/drive/files/{id}?permanent=true"),
+        &headers, Some((&t, &u)),
+    ).await?;
+    Ok(Redirect::to("/drive/trash").into_response())
 }
 
 // ─── /calendar ───────────────────────────────────────────────────────────────

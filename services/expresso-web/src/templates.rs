@@ -138,6 +138,7 @@ pub struct DriveFile {
     #[serde(default)] pub parent_id:  Option<String>,
     #[serde(default)] pub sha256:     Option<String>,
     #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)] pub deleted_at: Option<String>,
 }
 
 impl DriveFile {
@@ -155,12 +156,43 @@ impl DriveFile {
     }
 }
 
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub struct DriveQuota {
+    pub max_bytes:  i64,
+    pub used_bytes: i64,
+}
+
+impl DriveQuota {
+    pub fn percent(&self) -> i64 {
+        if self.max_bytes == 0 { return 0; }
+        (self.used_bytes * 100 / self.max_bytes).clamp(0, 100)
+    }
+    pub fn used_human(&self)  -> String { human_size(self.used_bytes) }
+    pub fn max_human(&self)   -> String { human_size(self.max_bytes)  }
+}
+
+fn human_size(n: i64) -> String {
+    let b = n as f64;
+    if b < 1024.0              { format!("{b:.0} B")          }
+    else if b < 1_048_576.0    { format!("{:.1} KB", b/1024.0)         }
+    else if b < 1_073_741_824.0{ format!("{:.1} MB", b/1_048_576.0)    }
+    else                       { format!("{:.2} GB", b/1_073_741_824.0)}
+}
+
 #[derive(Template)]
 #[template(path = "drive.html")]
 pub struct DriveTpl {
     pub me:         Me,
     pub parent_id:  Option<String>,
     pub files:      Vec<DriveFile>,
+    pub quota:      Option<DriveQuota>,
+}
+
+#[derive(Template)]
+#[template(path = "drive_trash.html")]
+pub struct DriveTrashTpl {
+    pub me:    Me,
+    pub files: Vec<DriveFile>,
 }
 
 // ─── Calendar ────────────────────────────────────────────────────────────────
