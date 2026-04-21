@@ -27,6 +27,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/mkdir",          post(mkdir))
         .route("/api/v1/drive/files/:id",            get(download).delete(delete))
         .route("/api/v1/drive/files/:id/metadata",   get(metadata))
+        .route("/api/v1/drive/files/:id/restore",    post(restore))
+        .route("/api/v1/drive/trash",                get(trash))
 }
 
 #[derive(Debug, Deserialize)]
@@ -175,15 +177,67 @@ async fn download(
     Ok((StatusCode::OK, headers, bytes).into_response())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeleteQuery {
+    #[serde(default)]
+    pub permanent: bool,
+}
+
 async fn delete(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
+    Query(q):     Query<DeleteQuery>,
 ) -> Result<StatusCode> {
-    let pool    = state.db_or_unavailable()?;
-    let removed = FileRepo::new(pool).soft_delete(ctx.tenant_id, id).await?;
+    let pool = state.db_or_unavailable()?;
+    let repo = FileRepo::new(pool);
+    if q.permanent {
+        // Purge → delete blob on disk + row. Row must already be in trash.
+        let key = repo.purge(ctx.tenant_id, id).await?;
+        let Some(key) = key else { return Err(DriveError::NotFound(id)); };
+        if !key.is_empty() {
+            let path = state.data_root().join(&key);
+            if let Err(e) = fs::remove_file(&path).await {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!(target: "audit",
+                        event = "drive.purge.blob_unlink_failed",
+                        file_id = %id, error = %e);
+                }
+            }
+        }
+        tracing::info!(target: "audit",
+            event = "drive.file.purge",
+            tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    let removed = repo.soft_delete(ctx.tenant_id, id).await?;
     if removed == 0 { return Err(DriveError::NotFound(id)); }
+    tracing::info!(target: "audit",
+        event = "drive.file.trash",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn restore(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool = state.db_or_unavailable()?;
+    let row  = FileRepo::new(pool).restore(ctx.tenant_id, id).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.restore",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
+    Ok(Json(row))
+}
+
+async fn trash(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<DriveFile>>> {
+    let pool = state.db_or_unavailable()?;
+    let rows = FileRepo::new(pool).list_trash(ctx.tenant_id).await?;
+    Ok(Json(rows))
 }
 
 fn sanitize_name(raw: &str) -> Result<String> {
