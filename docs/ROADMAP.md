@@ -69,14 +69,14 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] Inbox rules UI (Sieve)
 - [x] Pesquisa de e-mail (Tantivy) — expresso-search + mail ingest integration
 - [x] Anexos — attachment list/download API (MIME parsing via mail-parser) + S3 client lib
-- [ ] Out-of-office (Sieve Vacation)
-- [ ] Catálogo de endereços (GAL) com autocomplete
+- [x] Out-of-office (Sieve Vacation) — /api/v1/mail/vacation PUT/GET; user_vacation table; sieve gerado server-side (integração c/ delivery loop pendente)
+- [x] Catálogo de endereços (GAL) com autocomplete — /api/v1/gal/search (diretório + contatos do usuário via ILIKE)
 
 ### Sprint 7 (Semanas 13–14): Auth + gov.br
 - [x] Keycloak setup + realm config (deploy/keycloak/seed-realm.sh)
 - [ ] gov.br OIDC adapter (sso.acesso.gov.br) — stub em services/expresso-auth/src/oidc/govbr.rs (constants + LOA parser); federation mapper + cpf_hash table pendentes
 - [x] OIDC RP backend (expresso-auth: PKCE+/auth/me) + SPA cookie-session wiring (frontend/expresso-web: /login, /me, layout guard, vite proxy)
-- [x] MFA TOTP (Keycloak CONFIGURE_TOTP required action habilitado); WebAuthn pendente
+- [x] MFA: TOTP + WebAuthn (Keycloak required actions + realm WebAuthnPolicy ES256/RS256; /auth/me expõe mfa.totp/webauthn/acr/amr via RFC 8176)
 - [x] RBAC: realm roles SuperAdmin/TenantAdmin/User/Readonly + AuthContext::has_any_role helper
 - [x] Audit log de autenticação (tracing target="audit" JSON: login.start, login.success, token.refreshed, logout, login.rate_limited) + rate-limit /auth/login (20 req/60s)
 

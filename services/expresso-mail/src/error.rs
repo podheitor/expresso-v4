@@ -28,6 +28,12 @@ pub enum MailError {
 
     #[error("forbidden")]
     Forbidden,
+
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
+    #[error("database error: {0}")]
+    Database(#[from] sqlx::Error),
 }
 
 pub type Result<T> = std::result::Result<T, MailError>;
@@ -46,6 +52,9 @@ impl IntoResponse for MailError {
             }
             MailError::InvalidMessage(m) => {
                 (StatusCode::BAD_REQUEST, "invalid_message", m.clone())
+            }
+            MailError::BadRequest(m) => {
+                (StatusCode::BAD_REQUEST, "bad_request", m.clone())
             }
             _ => {
                 tracing::error!(error = %self, "internal mail error");

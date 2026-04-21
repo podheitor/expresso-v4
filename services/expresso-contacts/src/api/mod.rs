@@ -3,6 +3,7 @@
 pub mod context;
 mod addressbooks;
 mod contacts;
+mod gal;
 mod health;
 
 use axum::Router;
@@ -15,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         .merge(health::routes())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
+        .merge(gal::routes())
         .merge(crate::carddav::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
