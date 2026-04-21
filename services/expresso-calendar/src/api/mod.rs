@@ -5,6 +5,7 @@ mod calendars;
 mod events;
 mod health;
 mod scheduling;
+mod sharing;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -17,6 +18,7 @@ pub fn router(state: AppState) -> Router {
         .merge(calendars::routes())
         .merge(events::routes())
         .merge(scheduling::routes())
+        .merge(sharing::routes())
         .merge(crate::caldav::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
