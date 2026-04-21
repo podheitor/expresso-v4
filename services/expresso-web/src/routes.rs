@@ -2,7 +2,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{Path, Query, State, Form},
     http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, MailListTpl, Me, MeTpl,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, MailComposeTpl, MailListTpl, Me, MeTpl,
         MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
@@ -30,6 +30,7 @@ pub fn router(state: AppState) -> Router {
         .route("/me/security",   get(security_page))
         .route("/mail",          get(mail_page))
         .route("/mail/:id",      get(mail_detail_page))
+        .route("/mail/compose",  get(mail_compose_page).post(mail_compose_action))
         .route("/drive",            get(drive_page))
         .route("/drive/trash",      get(drive_trash_page))
         .route("/drive/upload",     post(drive_upload_action))
@@ -321,4 +322,73 @@ async fn contacts_page(
     Ok(askama_axum::IntoResponse::into_response(ContactsTpl {
         me, books, selected_book, contacts,
     }))
+}
+
+
+// ─── /mail/compose ───────────────────────────────────────────────────────────
+
+async fn mail_compose_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(MailComposeTpl { me, error: None }.into_response())
+}
+
+#[derive(Deserialize)]
+struct ComposeForm {
+    from:      String,
+    to:        String,
+    #[serde(default)] cc: String,
+    subject:   String,
+    body_text: String,
+}
+
+#[derive(serde::Serialize)]
+struct SendPayload {
+    from:      String,
+    to:        Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cc:        Vec<String>,
+    subject:   String,
+    body_text: String,
+}
+
+fn split_addrs(s: &str) -> Vec<String> {
+    s.split(|c: char| c == ',' || c == ';')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+async fn mail_compose_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<ComposeForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let to = split_addrs(&f.to);
+    if to.is_empty() {
+        return Ok(MailComposeTpl { me, error: Some("Informe ao menos um destinatário.".into()) }
+            .into_response());
+    }
+    let payload = SendPayload {
+        from: f.from, to, cc: split_addrs(&f.cc),
+        subject: f.subject, body_text: f.body_text,
+    };
+    let status = crate::upstream::post_json(
+        &st, &st.backends.mail, "/api/v1/mail/send",
+        &headers, Some((&t, &u)), &payload,
+    ).await?;
+    if (200..300).contains(&(status as u16)) {
+        Ok(Redirect::to("/mail").into_response())
+    } else {
+        Ok(MailComposeTpl {
+            me,
+            error: Some(format!("Falha ao enviar (HTTP {status}).")),
+        }.into_response())
+    }
 }

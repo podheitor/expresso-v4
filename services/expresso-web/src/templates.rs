@@ -125,6 +125,13 @@ pub struct MailListTpl {
     pub selected_id: Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "mail_compose.html")]
+pub struct MailComposeTpl {
+    pub me:    Me,
+    pub error: Option<String>,
+}
+
 
 // ─── Drive ───────────────────────────────────────────────────────────────────
 

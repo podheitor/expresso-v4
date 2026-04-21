@@ -277,3 +277,15 @@ section.page { /* keep */ }
 .link  { color: var(--color-brand-2); text-decoration: none; }
 .link:hover { text-decoration: underline; }
 .empty-state { padding: 3rem; text-align: center; color: var(--color-muted); border: 2px dashed var(--color-border); border-radius: var(--radius-md); }
+
+/* ─── Compose form ────────────────────────────────────────────────────────── */
+.compose-form { display: flex; flex-direction: column; gap: .75rem; max-width: 720px; }
+.compose-form label { display: flex; flex-direction: column; gap: .25rem; font-size: .85rem; color: var(--color-muted); }
+.compose-form input, .compose-form textarea {
+  padding: .5rem .75rem; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); font: inherit;
+}
+.compose-form textarea { resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.form-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.alert { padding: .75rem 1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; }
+.alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }

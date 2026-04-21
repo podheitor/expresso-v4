@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Nova mensagem · Expresso{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="page-header">
+    <h1>Nova mensagem</h1>
+    <a class="btn btn-ghost" href="/mail">← Caixa de entrada</a>
+  </header>
+
+  {% match error %}{% when Some with (e) %}
+    <div class="alert alert-error">{{ e }}</div>
+  {% when None %}
+  {% endmatch %}
+
+  <form method="post" action="/mail/compose" class="compose-form">
+    <label>
+      <span>De</span>
+      <input type="email" name="from" value="{{ me.email }}" readonly>
+    </label>
+    <label>
+      <span>Para</span>
+      <input type="text" name="to" required placeholder="destinatario@dominio.gov.br (separe por vírgula)">
+    </label>
+    <label>
+      <span>Cc</span>
+      <input type="text" name="cc" placeholder="opcional">
+    </label>
+    <label>
+      <span>Assunto</span>
+      <input type="text" name="subject" required>
+    </label>
+    <label>
+      <span>Mensagem</span>
+      <textarea name="body_text" rows="12" required></textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Enviar</button>
+      <a href="/mail" class="btn btn-ghost">Cancelar</a>
+    </div>
+  </form>
+</section>
+{% endblock %}
