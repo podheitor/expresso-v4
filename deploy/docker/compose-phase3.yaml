@@ -1,0 +1,110 @@
+services:
+  expresso-calendar:
+    image: expresso-calendar:latest
+    container_name: expresso-calendar
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8002
+    ports:
+      - "8002:8002"
+
+  expresso-contacts:
+    image: expresso-contacts:latest
+    container_name: expresso-contacts
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8003
+    ports:
+      - "8003:8003"
+
+  expresso-drive:
+    image: expresso-drive:latest
+    container_name: expresso-drive
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8004
+    ports:
+      - "8004:8004"
+
+  expresso-flows:
+    image: expresso-flows:latest
+    container_name: expresso-flows
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8005
+    ports:
+      - "8005:8005"
+
+  expresso-notifications:
+    image: expresso-notifications:latest
+    container_name: expresso-notifications
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8006
+    ports:
+      - "8006:8006"
+
+  expresso-search:
+    image: expresso-search:latest
+    container_name: expresso-search
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8007
+    ports:
+      - "8007:8007"
+
+  expresso-wopi:
+    image: expresso-wopi:latest
+    container_name: expresso-wopi
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8008
+    ports:
+      - "8008:8008"
+
+  expresso-compliance:
+    image: expresso-compliance:latest
+    container_name: expresso-compliance
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8009
+    ports:
+      - "8009:8009"
+
+  expresso-auth:
+    image: expresso-auth:latest
+    container_name: expresso-auth
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8100
+    ports:
+      - "8100:8100"
+
+  expresso-admin:
+    image: expresso-admin:latest
+    container_name: expresso-admin
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8101
+    ports:
+      - "8101:8101"

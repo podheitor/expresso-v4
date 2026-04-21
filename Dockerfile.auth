@@ -1,0 +1,40 @@
+# Stage 1: Builder — compile expresso-auth
+FROM rust:latest AS builder
+
+WORKDIR /workspace
+
+# Install build deps
+RUN apt-get update && apt-get install -y \
+    pkg-config libssl-dev libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy all Cargo manifests preserving structure
+COPY Cargo.toml Cargo.lock ./
+COPY services/ services/
+COPY libs/ libs/
+COPY migrations/ migrations/
+
+# Pre-fetch dependencies (cached unless Cargo.toml changes)
+RUN cargo fetch
+
+# Build only expresso-auth in release mode
+RUN cargo build --release --package expresso-auth
+
+# Stage 2: Runtime — minimal image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates libssl3 libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r expresso && useradd -r -g expresso expresso
+
+WORKDIR /app
+
+COPY --from=builder /workspace/target/release/expresso-auth /app/expresso-auth
+
+USER expresso
+
+EXPOSE 8000
+
+ENTRYPOINT ["/app/expresso-auth"]
