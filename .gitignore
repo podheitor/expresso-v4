@@ -34,3 +34,6 @@ logs/
 *.pem
 *.p12
 CONNECTIONS.md
+
+# AI tooling cache (empty marker file)
+.codex
