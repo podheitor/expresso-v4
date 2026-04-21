@@ -122,3 +122,14 @@ services:
       # MATRIX__AS_TOKEN, MATRIX__ADMIN_TOKEN injected via env file at deploy.
     ports:
       - "8010:8010"
+
+  expresso-meet:
+    image: expresso-meet:latest
+    container_name: expresso-meet
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: 8011
+    ports:
+      - "8011:8011"

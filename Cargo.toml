@@ -4,6 +4,7 @@ members = [
     # Services
     "services/expresso-mail",
     "services/expresso-chat",
+    "services/expresso-meet",
     "services/expresso-calendar",
     "services/expresso-contacts",
     "services/expresso-drive",
