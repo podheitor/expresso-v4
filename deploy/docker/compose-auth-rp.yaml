@@ -1,0 +1,15 @@
+services:
+  expresso-auth:
+    image: expresso-auth:latest
+    container_name: expresso-auth-rp
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      HOST: 0.0.0.0
+      PORT: "8012"
+      AUTH_RP__ISSUER: "http://192.168.15.125:8080/realms/expresso"
+      AUTH_RP__CLIENT_ID: "expresso-web"
+      AUTH_RP__REDIRECT_URI: "http://localhost:8012/auth/callback"
+      AUTH_RP__POST_LOGOUT_REDIRECT_URI: "http://localhost:8012/"
+    ports:
+      - "8012:8012"

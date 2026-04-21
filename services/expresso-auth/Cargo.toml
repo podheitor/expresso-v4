@@ -2,14 +2,13 @@
 name = "expresso-auth"
 version = "0.1.0"
 edition = "2021"
-description = "Keycloak companion + gov.br OIDC adapter"
+description = "OIDC Relying Party — authorization_code+PKCE flow against Keycloak"
 
 [[bin]]
 name = "expresso-auth"
 path = "src/main.rs"
 
 [dependencies]
-# Workspace deps
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
@@ -18,24 +17,23 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-opentelemetry = { workspace = true }
-opentelemetry-otlp = { workspace = true }
-opentelemetry_sdk = { workspace = true }
-tracing-opentelemetry = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 time = { workspace = true }
-prometheus = { workspace = true }
 reqwest = { workspace = true }
-async-trait = { workspace = true }
-futures = { workspace = true }
 jsonwebtoken = { workspace = true }
-x509-parser = { workspace = true }
 
-# Internal libs
-expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
-expresso-crypto = { path = "../../libs/expresso-crypto", package = "expresso-crypto" }
+# Crypto / encoding for PKCE + state
+base64 = "0.22"
+rand = "0.8"
+sha2 = "0.10"
+url = "2"
+serde_urlencoded = "0.7"
+
+# Internal
+expresso-core         = { path = "../../libs/expresso-core" }
+expresso-auth-client  = { path = "../../libs/expresso-auth-client" }
 
 [dev-dependencies]
-tokio-test = "0.4"
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
