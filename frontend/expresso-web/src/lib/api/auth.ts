@@ -1,6 +1,13 @@
 // Auth REST client — talks to expresso-auth-rp via dev proxy.
 // Session is cookie-based (httpOnly expresso_at). Frontend never sees JWT.
 
+export interface MfaInfo {
+  totp:     boolean;
+  webauthn: boolean;
+  amr:      string[];
+  acr?:     string | null;
+}
+
 export interface MeResponse {
   user_id:       string;
   tenant_id:     string;
@@ -8,6 +15,7 @@ export interface MeResponse {
   display_name:  string | null;
   roles:         string[];
   expires_at:    number;
+  mfa?:          MfaInfo;
 }
 
 export const authApi = {

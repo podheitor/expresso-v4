@@ -26,5 +26,8 @@
     >
       Sair
     </button>
+    <p class="mt-6 text-sm">
+      <a class="text-blue-600 underline" href="/me/security">Gerenciar segurança / MFA</a>
+    </p>
   {/if}
 </section>
