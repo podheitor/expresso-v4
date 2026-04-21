@@ -95,8 +95,8 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 
 ### Sprint 10–11 (Semanas 5–8): CardDAV + UI Calendar
 - [ ] CardDAV server (RFC 6352) em Rust
-- [ ] vCard 4.0 import/export
-- [ ] Sincronização GAL → contatos pessoais
+- [x] vCard 4.0 import/export — GET /api/v1/addressbooks/:id/export.vcf (text/vcard download), POST /api/v1/addressbooks/:id/import (batch vCard upsert via replace_by_uid)
+- [x] Sincronização GAL → contatos pessoais — POST /api/v1/gal/save (user_id ou email → personal addressbook, UID estável dir:<user_id>, idempotente; auto-cria addressbook "Pessoal" se ausente)
 - [ ] UI: calendar view (mês/semana/dia/agenda)
 - [ ] UI: criar/editar/excluir eventos com convites
 - [ ] Email de convite (iTIP, RFC 5546)

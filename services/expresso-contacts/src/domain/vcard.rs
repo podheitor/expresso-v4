@@ -94,6 +94,76 @@ fn unfold(raw: &str) -> String {
     out
 }
 
+/// Split a file containing multiple BEGIN:VCARD..END:VCARD blocks into
+/// individual vCard strings (each with its own BEGIN/END). Non-card content
+/// is ignored. Returns empty vec when no blocks found.
+pub fn split_vcards(raw: &str) -> Vec<String> {
+    let unfolded = unfold(raw);
+    let mut out: Vec<String> = Vec::new();
+    let mut buf: Option<Vec<String>> = None;
+    for line in unfolded.lines() {
+        let trimmed = line.trim_end_matches('\r');
+        if trimmed.eq_ignore_ascii_case("BEGIN:VCARD") {
+            buf = Some(vec![trimmed.to_owned()]);
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("END:VCARD") {
+            if let Some(mut b) = buf.take() {
+                b.push(trimmed.to_owned());
+                out.push(b.join("\r\n") + "\r\n");
+            }
+            continue;
+        }
+        if let Some(b) = buf.as_mut() { b.push(trimmed.to_owned()); }
+    }
+    out
+}
+
+/// Concatenate multiple vCard bodies into a single file for export. Each
+/// input is expected to be a full VCARD (already contains BEGIN/END).
+pub fn concat_vcards(cards: &[String]) -> String {
+    let mut s = String::with_capacity(cards.iter().map(|c| c.len()).sum::<usize>() + 64);
+    for c in cards {
+        s.push_str(c);
+        if !c.ends_with('\n') { s.push_str("\r\n"); }
+    }
+    s
+}
+
+/// Build a minimal vCard 4.0 from discrete fields. Used by GAL→contatos sync
+/// to materialize a directory user into the caller's addressbook without
+/// requiring a raw vCard payload. Values are newline/semicolon-stripped to
+/// avoid property injection.
+pub fn build_vcard(
+    uid: &str,
+    full_name: &str,
+    family_name: Option<&str>,
+    given_name:  Option<&str>,
+    email: Option<&str>,
+    organization: Option<&str>,
+) -> String {
+    fn escape(v: &str) -> String {
+        v.replace('\r', " ").replace('\n', " ").replace(';', ",")
+    }
+    let fn_v  = escape(full_name);
+    let uid_v = escape(uid);
+    let n_v = format!(
+        "{};{};;;",
+        family_name.map(escape).unwrap_or_default(),
+        given_name.map(escape).unwrap_or_default()
+    );
+    let mut s = String::new();
+    s.push_str("BEGIN:VCARD\r\n");
+    s.push_str("VERSION:4.0\r\n");
+    s.push_str(&format!("UID:{uid_v}\r\n"));
+    s.push_str(&format!("FN:{fn_v}\r\n"));
+    s.push_str(&format!("N:{n_v}\r\n"));
+    if let Some(o) = organization { s.push_str(&format!("ORG:{}\r\n", escape(o))); }
+    if let Some(e) = email        { s.push_str(&format!("EMAIL;TYPE=INTERNET:{}\r\n", escape(e))); }
+    s.push_str("END:VCARD\r\n");
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

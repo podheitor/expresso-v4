@@ -26,6 +26,14 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/addressbooks/:book_id/contacts/:id",
             get(get_one).put(update).delete(delete),
         )
+        .route(
+            "/api/v1/addressbooks/:book_id/export.vcf",
+            get(export_vcf),
+        )
+        .route(
+            "/api/v1/addressbooks/:book_id/import",
+            post(import_vcf),
+        )
 }
 
 async fn create(
@@ -96,4 +104,63 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     ContactRepo::new(pool).delete(ctx.tenant_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+
+/// GET /api/v1/addressbooks/:book_id/export.vcf — concat of all contacts'
+/// raw vCards as a single text/vcard download.
+async fn export_vcf(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(book_id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::domain::vcard;
+    let pool  = state.db_or_unavailable()?;
+    let cs    = ContactRepo::new(pool).list(ctx.tenant_id, book_id).await?;
+    let cards: Vec<String> = cs.into_iter().map(|c| c.vcard_raw).collect();
+    let body = vcard::concat_vcards(&cards);
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/vcard; charset=utf-8")
+        .header(header::CONTENT_DISPOSITION, "attachment; filename=\"addressbook.vcf\"")
+        .body(Body::from(body))
+        .unwrap())
+}
+
+/// POST /api/v1/addressbooks/:book_id/import — body is a file with 1..N
+/// BEGIN:VCARD..END:VCARD blocks. Each is upserted by UID. Returns summary.
+async fn import_vcf(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(book_id): Path<Uuid>,
+    raw: String,
+) -> Result<Response> {
+    use crate::domain::vcard;
+    if raw.trim().is_empty() {
+        return Err(crate::error::ContactsError::InvalidVCard("empty body".into()));
+    }
+    let blocks = vcard::split_vcards(&raw);
+    if blocks.is_empty() {
+        return Err(crate::error::ContactsError::InvalidVCard("no VCARD blocks found".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = ContactRepo::new(pool);
+    let mut imported = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+    for (idx, block) in blocks.iter().enumerate() {
+        match repo.replace_by_uid(ctx.tenant_id, book_id, block).await {
+            Ok(_)  => imported += 1,
+            Err(e) => errors.push(format!("vcard[{idx}]: {e}")),
+        }
+    }
+    let body = serde_json::json!({
+        "imported": imported,
+        "failed":   errors.len(),
+        "errors":   errors,
+    });
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap())
 }
