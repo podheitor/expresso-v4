@@ -88,6 +88,38 @@ impl<'a> CalendarRepo<'a> {
         Ok(row)
     }
 
+
+    /// Insert calendar honoring caller-supplied UUID (CalDAV MKCALENDAR).
+    pub async fn create_with_id(
+        &self,
+        id: Uuid,
+        tenant_id: Uuid,
+        owner_user_id: Uuid,
+        input: &NewCalendar,
+    ) -> Result<Calendar> {
+        let row = sqlx::query_as::<_, Calendar>(
+            r#"
+            INSERT INTO calendars
+                (id, tenant_id, owner_user_id, name, description, color, timezone, is_default)
+            VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'America/Sao_Paulo'), $8)
+            RETURNING id, tenant_id, owner_user_id, name, description, color,
+                      timezone, ctag, is_default, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .bind(owner_user_id)
+        .bind(&input.name)
+        .bind(&input.description)
+        .bind(&input.color)
+        .bind(&input.timezone)
+        .bind(input.is_default)
+        .fetch_one(self.pool)
+        .await
+        .map_err(CalendarError::from)?;
+        Ok(row)
+    }
+
     /// List all calendars a user owns in this tenant.
     pub async fn list_for_owner(
         &self,

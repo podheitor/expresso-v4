@@ -73,6 +73,33 @@ impl<'a> AddressbookRepo<'a> {
         Ok(row)
     }
 
+
+    /// Insere addressbook honrando UUID fornecido (CardDAV MKCOL).
+    pub async fn create_with_id(
+        &self,
+        id: Uuid,
+        tenant_id: Uuid,
+        owner_user_id: Uuid,
+        input: NewAddressbook,
+    ) -> Result<Addressbook> {
+        let row = sqlx::query_as::<_, Addressbook>(
+            r#"
+            INSERT INTO addressbooks (id, tenant_id, owner_user_id, name, description, is_default)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(tenant_id)
+        .bind(owner_user_id)
+        .bind(input.name)
+        .bind(input.description)
+        .bind(input.is_default)
+        .fetch_one(self.pool)
+        .await?;
+        Ok(row)
+    }
+
     pub async fn list_for_owner(&self, tenant_id: Uuid, owner: Uuid) -> Result<Vec<Addressbook>> {
         let rows = sqlx::query_as::<_, Addressbook>(
             r#"SELECT * FROM addressbooks

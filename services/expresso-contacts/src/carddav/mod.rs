@@ -4,6 +4,7 @@
 //! on the request method (incl. non-standard PROPFIND / REPORT verbs).
 
 mod auth;
+mod mkcol;
 mod propfind;
 mod report;
 mod resource;
@@ -69,7 +70,8 @@ async fn dispatch(
             let depth = propfind::parse_depth(&headers);
             propfind::handle(state, principal, &path, depth, &body_str).await
         }
- "REPORT" => report::handle(state, principal, &path, &body_str).await,
+ "MKCOL" => Ok(mkcol::handle(state, principal, &path, &body_str).await),
+        "REPORT" => report::handle(state, principal, &path, &body_str).await,
  "GET"    => resource::get(state, principal, &path).await,
  "PUT"    => resource::put(state, principal, &path, body_str).await,
  "DELETE" => resource::delete(state, principal, &path).await,
@@ -112,7 +114,7 @@ fn payload_too_large() -> Response {
 fn method_not_allowed(m: &str) -> Response {
     Response::builder()
         .status(StatusCode::METHOD_NOT_ALLOWED)
-        .header("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT")
+        .header("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT, MKCOL")
         .body(Body::from(format!("method not allowed: {m}")))
         .unwrap()
 }
