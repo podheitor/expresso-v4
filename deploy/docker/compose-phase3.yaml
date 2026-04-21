@@ -108,3 +108,17 @@ services:
       PORT: 8101
     ports:
       - "8101:8101"
+
+  expresso-chat:
+    image: expresso-chat:latest
+    container_name: expresso-chat
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      SERVER__HOST: 0.0.0.0
+      SERVER__PORT: 8010
+      TELEMETRY__LOG_FILTER: info
+      # DATABASE__URL, MATRIX__HS_URL, MATRIX__SERVER_NAME,
+      # MATRIX__AS_TOKEN, MATRIX__ADMIN_TOKEN injected via env file at deploy.
+    ports:
+      - "8010:8010"

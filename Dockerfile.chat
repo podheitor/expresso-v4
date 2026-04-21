@@ -31,10 +31,10 @@ RUN groupadd -r expresso && useradd -r -g expresso expresso
 
 WORKDIR /app
 
-COPY --from=builder /workspace/target/release/expresso_chat /app/expresso_chat
+COPY --from=builder /workspace/target/release/expresso-chat /app/expresso-chat
 
 USER expresso
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/expresso_chat"]
+ENTRYPOINT ["/app/expresso-chat"]
