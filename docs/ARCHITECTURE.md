@@ -2,6 +2,9 @@
 
 > Stack tecnológico definitivo para a suite colaborativa governamental brasileira
 
+> Importante (17 de abril de 2026): este documento descreve a arquitetura alvo.
+> Nem todos os componentes listados abaixo ja estao implementados no codigo atual.
+
 ## Sistema Operacional
 
 **Debian 13 "Trixie"** — escolha definitiva para todos os ambientes  
@@ -41,21 +44,23 @@
 
 ## Microserviços — Definição
 
-| Serviço | Função | Porta | Dependências |
-|---------|--------|-------|-------------|
-| `expresso-mail` | SMTP/IMAP server + webmail API | 25, 587, 993, 8001 | PostgreSQL, Redis, MinIO, NATS |
-| `expresso-calendar` | CalDAV server + meeting mgmt | 8002 | PostgreSQL, Redis |
-| `expresso-contacts` | CardDAV + LDAP gateway | 8003, 389 | PostgreSQL |
-| `expresso-drive` | WebDAV + file sync API | 8004 | PostgreSQL, MinIO |
-| `expresso-wopi` | WOPI bridge para LibreOffice Online | 8005 | expresso-drive |
-| `expresso-chat` | Matrix homeserver (Conduit/Conduwuit) | 8006, 8448 | PostgreSQL, Redis |
-| `expresso-meet` | WebRTC SFU (mediasoup) | 8007, 10000-20000 UDP | Redis, NATS |
-| `expresso-auth` | Keycloak companion + gov.br adapter | 8080 | PostgreSQL, Redis |
-| `expresso-admin` | Admin API + tenant management | 8008 | PostgreSQL, all services |
-| `expresso-compliance` | Audit, eDiscovery, DLP, Labels | 8009 | PostgreSQL, MinIO |
-| `expresso-search` | Full-text search (Tantivy) | 8010 | OpenSearch, NATS |
-| `expresso-flows` | Workflow engine (webhooks + triggers) | 8011 | PostgreSQL, NATS |
-| `expresso-notifications` | Push notifications (Web Push, email) | 8012 | Redis, NATS |
+> A tabela abaixo separa arquitetura alvo de status atual do repositorio (17/04/2026).
+
+| Serviço | Função (alvo) | Portas (alvo) | Estado no repo (17/04/2026) | Observação atual |
+|---------|----------------|---------------|-------------------------------|------------------|
+| `expresso-mail` | SMTP/IMAP server + webmail API | 25, 587, 993, 8001 | Parcialmente implementado | HTTP API em `/api/v1`, SMTP mínimo em 25, IMAP stub em 143; 587/993 ainda nao implementados |
+| `expresso-calendar` | CalDAV server + meeting mgmt | 8002 | Scaffold | HTTP bootstrap + `/health` + `/ready`; CalDAV/meeting API ainda TODO |
+| `expresso-contacts` | CardDAV + LDAP gateway | 8003, 389 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-drive` | WebDAV + file sync API | 8004 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-wopi` | WOPI bridge para LibreOffice Online | 8005 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-chat` | Matrix homeserver (Conduit/Conduwuit) | 8006, 8448 | Planejado | diretorio existe, sem crate no workspace |
+| `expresso-meet` | WebRTC SFU (mediasoup) | 8007, 10000-20000 UDP | Planejado | diretorio existe, sem crate no workspace |
+| `expresso-auth` | Keycloak companion + gov.br adapter | 8080 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-admin` | Admin API + tenant management | 8008 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-compliance` | Audit, eDiscovery, DLP, Labels | 8009 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-search` | Full-text search (Tantivy) | 8010 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-flows` | Workflow engine (webhooks + triggers) | 8011 | Scaffold | crate existe, `main.rs` ainda TODO |
+| `expresso-notifications` | Push notifications (Web Push, email) | 8012 | Scaffold | crate existe, `main.rs` ainda TODO |
 
 ## Bibliotecas Rust Principais
 

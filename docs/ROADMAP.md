@@ -2,6 +2,10 @@
 
 > Roadmap incremental de desenvolvimento por fases e sprints
 
+> Status tracking atualizado em 20 de abril de 2026 para refletir o estado validado no workspace.
+> `Baseline validada` = crate compila + smoke test HTTP executado no ambiente local.
+> Itens podem estar em estado "scaffold/placeholder" mesmo quando marcados como concluidos.
+
 ## Visão de Fases
 
 | Fase | Módulos | Duração | Entregável |
@@ -16,33 +20,55 @@
 
 ---
 
+## Status Atual dos Serviços (Repositorio em 20/04/2026)
+
+Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validada` = crate sobe e respondeu a smoke test HTTP; `Scaffold` = crate/entrypoint existe, mas ainda placeholder; `Planejado` = sem crate funcional no workspace.
+
+| Serviço | Status | Evidência no repo |
+|---------|--------|-------------------|
+| `expresso-mail` | Implementado (parcial) | HTTP API + SMTP + IMAP core (CAPABILITY, LOGIN, LIST, SELECT, FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP) |
+| `expresso-calendar` | Baseline validada | `GET /health`=200 + `GET /ready`=503 sem DB; bootstrap degradado |
+| `expresso-contacts` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-drive` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-wopi` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-auth` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-admin` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-compliance` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-search` | Implementado (parcial) | Tantivy full-text index/search API + integração com mail ingest |
+| `expresso-flows` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-notifications` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-chat` | Planejado | pasta existe, sem crate no workspace |
+| `expresso-meet` | Planejado | pasta existe, sem crate no workspace |
+
+---
+
 ## Fase 1 — Expresso Mail MVP (14 semanas)
 
 ### Sprint 1–2 (Semanas 1–4): Infraestrutura Base
-- [ ] Monorepo scaffold (Cargo workspace + pnpm workspace)
+- [x] Monorepo scaffold (Cargo workspace + pnpm workspace)
 - [ ] Dockerfile para Debian 13 base image
-- [ ] Docker Compose: PostgreSQL 16, Redis 7, MinIO
-- [ ] Migration engine (sqlx migrations)
-- [ ] Schema inicial: tenants, users, mailboxes, messages
-- [ ] CI/CD pipeline (GitHub Actions ou Gitea CI)
-- [ ] Observabilidade inicial: tracing + Prometheus
+- [x] Docker Compose: PostgreSQL 16, Redis 7, MinIO
+- [x] Migration engine (sqlx migrations)
+- [x] Schema inicial: tenants, users, mailboxes, messages
+- [x] CI/CD pipeline (GitHub Actions ou Gitea CI)
+- [x] Observabilidade inicial: tracing + Prometheus
 
 ### Sprint 3–4 (Semanas 5–8): SMTP + IMAP Server
 - [ ] SMTP server (porta 25 + 587 STARTTLS) em Rust
-- [ ] IMAP4rev2 server (porta 993 IMAPS) em Rust
+- [x] IMAP4rev1 core commands (CAPABILITY, LOGIN, LIST, SELECT, FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP) — imap-codec
 - [ ] Sieve filters básicos (entrega, pasta, rejeitar)
 - [ ] Anti-spam: Rspamd integration
 - [ ] Anti-malware: ClamAV integration
 - [ ] DKIM signing automático por domínio
 - [ ] SPF + DMARC validation na entrada
-- [ ] Armazenamento de mensagens no MinIO
+- [x] Armazenamento de mensagens no MinIO — S3 ObjectStore + fallback FS
 
 ### Sprint 5–6 (Semanas 9–12): WebMail (SvelteKit)
 - [ ] UI SvelteKit: lista de e-mails, leitura, composição
 - [ ] Thread view (conversas agrupadas)
 - [ ] Inbox rules UI (Sieve)
-- [ ] Pesquisa de e-mail (Tantivy)
-- [ ] Anexos (upload MinIO, download, preview)
+- [x] Pesquisa de e-mail (Tantivy) — expresso-search + mail ingest integration
+- [x] Anexos — attachment list/download API (MIME parsing via mail-parser) + S3 client lib
 - [ ] Out-of-office (Sieve Vacation)
 - [ ] Catálogo de endereços (GAL) com autocomplete
 

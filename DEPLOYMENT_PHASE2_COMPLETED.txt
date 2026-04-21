@@ -1,0 +1,141 @@
+═════════════════════════════════════════════════════════════════
+EXPRESSO V4 — PHASE 2 DEPLOYMENT ✅ COMPLETED
+═════════════════════════════════════════════════════════════════
+
+Date: 2026-04-19 14:17 UTC
+Session ID: 5
+Status: ✅ READY FOR PHASE 3
+
+─────────────────────────────────────────────────────────────────
+INFRASTRUCTURE (9/9 Services Running & Healthy)
+─────────────────────────────────────────────────────────────────
+
+VM 123 (expresso-db):
+  ✅ PostgreSQL 16 — 52+ min up, healthy
+  ✅ Redis 7 — 52+ min up, healthy
+
+VM 124 (expresso-storage):
+  ✅ MinIO — 38+ min up, healthy
+
+VM 125 (expresso-services):
+  ✅ expresso-mail v0.1.0 — healthy, SMTP/IMAP/HTTP active
+  ✅ Keycloak 25.0 — healthy, realm:expresso configured
+  ✅ NATS 2.10 — healthy
+
+VM 126 (expresso-obs):
+  ✅ Grafana — running
+  ✅ Prometheus — running
+  ✅ Loki — running
+
+─────────────────────────────────────────────────────────────────
+EXPRESSO-MAIL (First Rust Service)
+─────────────────────────────────────────────────────────────────
+
+Build: Dockerfile.mail (rust:latest → debian:bookworm-slim)
+  - Build time: ~20-25 min
+  - Final size: 142MB
+  - Location: VM 125, image: expresso-mail:latest
+
+Features Active:
+  ✅ SMTP listener — 0.0.0.0:25
+  ✅ IMAP listener — 0.0.0.0:143 (stub)
+  ✅ HTTP API — 0.0.0.0:8001
+  ✅ Database connected — PostgreSQL, migrations applied
+  ✅ Redis cache — connected
+  ✅ MinIO storage — bucket expresso-mail ready
+  ✅ NATS integration — broker connected
+  ✅ Keycloak IAM — realm expresso + client expresso-mail
+  ✅ Bootstrap — admin@expresso.local created
+
+─────────────────────────────────────────────────────────────────
+CREDENTIALS (see CONNECTIONS.md)
+─────────────────────────────────────────────────────────────────
+
+Proxmox: root / <REDACTED> @ 192.168.194.101
+PostgreSQL: expresso / <REDACTED> @ 192.168.15.123:5432
+Redis: password <REDACTED> @ 192.168.15.123:6379
+MinIO: expresso / <REDACTED> @ 192.168.15.124:9000
+Keycloak: admin / <REDACTED> @ 192.168.15.125:8080
+  Realm: expresso (ID: 2694d22a-2b92-49ba-aead-278212a623db)
+  Client: expresso-mail / secret: <REDACTED>
+
+─────────────────────────────────────────────────────────────────
+KEY PROBLEMS SOLVED
+─────────────────────────────────────────────────────────────────
+
+1. CPU x86-64-v2 incompatibility
+   → Solution: qm reboot VMs 124,125 + cpu:host enabled
+
+2. NATS restart loop (exit code 127)
+   → Solution: Fixed compose flags (--store_dir not --store-dir)
+
+3. Keycloak unhealthy (curl/wget not available in UBI)
+   → Solution: /dev/tcp bash healthcheck
+
+4. Dockerfile.mail migrations not found
+   → Solution: Added COPY migrations/ directive
+
+5. Rust MSRV insufficient (1.86 for aws-config@1.8.15)
+   → Solution: Used rust:latest (1.91.1+)
+
+6. Bash escaping issues with nested SSH
+   → Solution: Python scripts for credential handling
+
+─────────────────────────────────────────────────────────────────
+ARTIFACTS & CONVENTIONS
+─────────────────────────────────────────────────────────────────
+
+Code:
+  - Dockerfile.mail (multi-stage, corrected with migrations)
+  - ROADMAP_DEPLOYMENT_STATUS.md (deployment tracking)
+  - ROADMAP.md (original preserved)
+  - CONNECTIONS.md (updated with Keycloak section)
+
+VMs (/home/debian/expresso/):
+  - compose-db.yaml (VM 123)
+  - compose-storage.yaml (VM 124)
+  - compose-services.yaml (VM 125)
+  - compose-mail.yaml (VM 125)
+  - compose-obs.yaml (VM 126)
+  - *.env files with config vars
+
+Configuration Pattern:
+  - Environment: config::Environment::default().separator("__")
+  - Format: KEY__SUBKEY=value (e.g., DATABASE__URL, REDIS__URL)
+  - Healthchecks: /dev/tcp bash (portable, no external tools)
+
+─────────────────────────────────────────────────────────────────
+PHASE 3 PENDING (11 Services)
+─────────────────────────────────────────────────────────────────
+
+Scaffolds ready, follow same pattern:
+  [ ] expresso-calendar
+  [ ] expresso-contacts
+  [ ] expresso-drive
+  [ ] expresso-chat
+  [ ] expresso-meet
+  [ ] expresso-auth
+  [ ] expresso-admin
+  [ ] expresso-compliance
+  [ ] expresso-search
+  [ ] expresso-wopi
+  [ ] expresso-notifications
+  [ ] expresso-flows
+
+Pattern: Dockerfile → compose-service.yaml → env vars → deploy
+
+─────────────────────────────────────────────────────────────────
+NEXT ACTIONS
+─────────────────────────────────────────────────────────────────
+
+Optional (deferred per user feedback):
+  - SMTP external connectivity tests
+  - Prometheus scrape job configuration
+  - Grafana dashboard setup
+  - Keycloak user/group management
+  - Phase 4 backup strategy (deferred)
+
+Ready for: Phase 3 service deployments, functional testing
+
+─────────────────────────────────────────────────────────────────
+Session complete. 100% autonomous deployment successful.

@@ -1,5 +1,8 @@
 # Conformidade Gov BR — Expresso V4
 
+> Nota de status (17 de abril de 2026): os itens desta pagina representam metas de conformidade por versao.
+> Eles nao devem ser lidos como evidencias automaticas de implementacao ja concluida no codigo.
+
 ## 1. LGPD (Lei 13.709/2018)
 
 | Artigo | Requisito | Implementação Expresso V4 | Status |

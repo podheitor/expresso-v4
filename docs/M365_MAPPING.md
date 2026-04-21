@@ -2,6 +2,7 @@
 
 > Baseado nas Service Descriptions oficiais da Microsoft (learn.microsoft.com/en-us/office365/servicedescriptions/)
 > Data da pesquisa: 17 de abril de 2026
+> Documento de referencia funcional alvo; nao representa implementacao completa no estado atual do repositorio.
 
 ---
 

@@ -4,20 +4,25 @@
 
 ## Status
 
-🚧 **Fase de Planejamento** — Abril 2026
+🚧 **Fase 2 concluída + baseline da Fase 3 validada** — 19 de abril de 2026
+
+- `expresso-mail` segue como serviço mais maduro da stack.
+- `expresso-calendar` sobe sem banco e expõe `GET /health` + `GET /ready` degradado quando a infra não está disponível.
+- `expresso-contacts`, `drive`, `flows`, `notifications`, `search`, `wopi`, `compliance`, `auth` e `admin` responderam `GET /health` localmente.
+- Gap principal atual: suíte de testes reais ainda quase vazia.
 
 ## Módulos Planejados
 
 | Fase | Módulo | Equivalente M365 | Status |
 |------|--------|------------------|--------|
-| Fase 1 | Expresso Mail | Exchange Online / Outlook | 📐 Planejado |
-| Fase 2 | Expresso Calendar | Outlook Calendar | 📐 Planejado |
-| Fase 2 | Expresso Contacts | Outlook People | 📐 Planejado |
-| Fase 3 | Expresso Drive | OneDrive | 📐 Planejado |
+| Fase 1 | Expresso Mail | Exchange Online / Outlook | ⚙️ Implementado parcial |
+| Fase 2 | Expresso Calendar | Outlook Calendar | 🧪 Baseline HTTP validada |
+| Fase 2 | Expresso Contacts | Outlook People | 🧪 `/health` validado |
+| Fase 3 | Expresso Drive | OneDrive | 🧪 `/health` validado |
 | Fase 3 | Office Online (LibreOffice) | Word/Excel/PPT Online | 📐 Planejado |
 | Fase 4 | Expresso Chat | Microsoft Teams Chat | 📐 Planejado |
 | Fase 5 | Expresso Meet | Teams Meetings | 📐 Planejado |
-| Fase 5 | Expresso Admin | M365 Admin Center | 📐 Planejado |
+| Fase 5 | Expresso Admin | M365 Admin Center | 🧪 `/health` validado |
 
 ## Stack Tecnológico
 
@@ -31,13 +36,13 @@
 
 ## Documentação
 
-- [Plano Estratégico Completo](docs/PLAN.md)
+- [Roadmap](docs/ROADMAP.md)
 - [Mapeamento M365 → Expresso V4](docs/M365_MAPPING.md)
 - [Arquitetura Técnica](docs/ARCHITECTURE.md)
 - [Conformidade Governo Brasileiro](docs/COMPLIANCE_GOV_BR.md)
-- [UX & Identidade Visual](docs/UX_IDENTITY.md)
-- [Roadmap](docs/ROADMAP.md)
 - [Infra Lab (Proxmox)](docs/INFRA_LAB.md)
+
+> Nota: `docs/PLAN.md` e `docs/UX_IDENTITY.md` ainda nao existem neste repositorio (17 de abril de 2026).
 
 ## Conformidade
 
