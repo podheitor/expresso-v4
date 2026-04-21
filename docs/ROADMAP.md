@@ -74,11 +74,11 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 
 ### Sprint 7 (Semanas 13–14): Auth + gov.br
 - [x] Keycloak setup + realm config (deploy/keycloak/seed-realm.sh)
-- [ ] gov.br OIDC adapter (sso.acesso.gov.br)
+- [ ] gov.br OIDC adapter (sso.acesso.gov.br) — stub em services/expresso-auth/src/oidc/govbr.rs (constants + LOA parser); federation mapper + cpf_hash table pendentes
 - [x] OIDC RP backend (expresso-auth: PKCE+/auth/me) + SPA cookie-session wiring (frontend/expresso-web: /login, /me, layout guard, vite proxy)
-- [ ] MFA: TOTP + WebAuthn
-- [ ] RBAC: SuperAdmin, TenantAdmin, User, Readonly
-- [ ] Audit log de autenticação
+- [x] MFA TOTP (Keycloak CONFIGURE_TOTP required action habilitado); WebAuthn pendente
+- [x] RBAC: realm roles SuperAdmin/TenantAdmin/User/Readonly + AuthContext::has_any_role helper
+- [x] Audit log de autenticação (tracing target="audit" JSON: login.start, login.success, token.refreshed, logout, login.rate_limited) + rate-limit /auth/login (20 req/60s)
 
 ---
 
