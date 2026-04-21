@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, VersionRepo},
+    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, QuotaRepo, VersionRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -31,6 +31,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version))
         .route("/api/v1/drive/trash",                       get(trash))
+        .route("/api/v1/drive/quota",                       get(quota))
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +114,13 @@ async fn upload(
 
     let bytes = data.ok_or(DriveError::BadRequest("missing file part".into()))?;
     let fname = sanitize_name(&name.unwrap_or_default())?;
+
+    // Quota enforcement — rejeita antes de tocar o disco.
+    let quota = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
+    if !quota.fits(bytes.len() as i64) {
+        return Err(DriveError::QuotaExceeded);
+    }
+
 
     // Hash + persist blob. storage_key = random UUID → evita colisão
     // cross-tenant e mantém layout on-disk flat.
@@ -328,4 +336,13 @@ fn sanitize_name(raw: &str) -> Result<String> {
         return Err(DriveError::BadRequest("name too long".into()));
     }
     Ok(s.to_string())
+}
+
+async fn quota(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<crate::domain::Quota>> {
+    let pool = state.db_or_unavailable()?;
+    let q    = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
+    Ok(Json(q))
 }

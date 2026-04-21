@@ -33,6 +33,9 @@ pub enum DriveError {
 
     #[error("forbidden")]
     Forbidden,
+
+    #[error("quota exceeded")]
+    QuotaExceeded,
 }
 
 impl IntoResponse for DriveError {
@@ -43,6 +46,7 @@ impl IntoResponse for DriveError {
             Self::Conflict(_)         => StatusCode::CONFLICT,
             Self::BadRequest(_)       => StatusCode::BAD_REQUEST,
             Self::Forbidden           => StatusCode::FORBIDDEN,
+            Self::QuotaExceeded      => StatusCode::INSUFFICIENT_STORAGE,
             Self::Io(_) | Self::Database(_) | Self::Core(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let body = Json(json!({"error": self.to_string()}));
