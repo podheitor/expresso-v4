@@ -33,9 +33,13 @@ futures = { workspace = true }
 lettre = { workspace = true }
 mail-parser = { workspace = true }
 mail-builder = { workspace = true }
+mail-auth = { workspace = true }
+sieve-rs  = { workspace = true }
+rustls-pki-types = { workspace = true }
 imap-codec = { workspace = true }
 imap-types = { workspace = true }
 tantivy = { workspace = true }
+chrono = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }

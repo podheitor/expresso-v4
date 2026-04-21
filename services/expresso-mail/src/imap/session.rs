@@ -1,0 +1,606 @@
+//! IMAP session state machine — one per TCP connection.
+//! Handles core IMAP4rev1 commands: CAPABILITY, LOGIN, LIST, SELECT,
+//! FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP.
+
+use std::num::NonZeroU32;
+
+use imap_codec::{
+    CommandCodec, GreetingCodec, ResponseCodec,
+    decode::{CommandDecodeError, Decoder},
+    encode::Encoder,
+    imap_types::{
+        command::{Command, CommandBody},
+        core::{AString, IString, NString, Tag, Text, Vec1},
+        fetch::{MacroOrMessageDataItemNames, MessageDataItem},
+        flag::{Flag, FlagFetch},
+        mailbox::Mailbox as ImapMailbox,
+        response::{
+            Bye, Code, Data, Greeting, Response, Status, StatusBody,
+            StatusKind, Tagged,
+        },
+        IntoStatic,
+    },
+};
+use sqlx::Row;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tracing::{debug, warn};
+use uuid::Uuid;
+
+use crate::state::AppState;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionState {
+    NotAuthenticated,
+    Authenticated,
+    Selected,
+}
+
+struct SelectedMailbox {
+    mailbox_id: Uuid,
+    exists: u32,
+}
+
+pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
+    let (mut reader, mut writer) = stream.into_split();
+    let cmd_codec = CommandCodec::default();
+    let resp_codec = ResponseCodec::default();
+    let greet_codec = GreetingCodec::default();
+
+    // Send greeting via GreetingCodec
+    let greeting = Greeting::ok(None, "Expresso IMAP4rev1 ready")
+        .expect("valid greeting text");
+    writer
+        .write_all(&greet_codec.encode(&greeting).dump())
+        .await?;
+
+    let mut sess = SessionState::NotAuthenticated;
+    let mut user_id: Option<Uuid> = None;
+    let mut tenant_id: Option<Uuid> = None;
+    let mut selected: Option<SelectedMailbox> = None;
+    let mut buf = Vec::with_capacity(64 * 1024);
+
+    let mut tmp = [0u8; 4096];
+    loop {
+        let n = reader.read(&mut tmp).await?;
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&tmp[..n]);
+
+        loop {
+            match cmd_codec.decode(&buf) {
+                Ok((remaining, cmd)) => {
+                    let consumed = buf.len() - remaining.len();
+                    let cmd = cmd.into_static();
+                    let tag_s = cmd.tag.as_ref().to_owned();
+                    buf.drain(..consumed);
+
+                    debug!(tag = %tag_s, cmd = ?cmd.body.name(), "imap ←");
+
+                    let responses = dispatch(
+                        &state, &cmd, &mut sess, &mut user_id, &mut tenant_id, &mut selected,
+                    )
+                    .await;
+
+                    for resp in &responses {
+                        writer.write_all(&resp_codec.encode(resp).dump()).await?;
+                    }
+
+                    if matches!(cmd.body, CommandBody::Logout) {
+                        return Ok(());
+                    }
+                }
+                Err(CommandDecodeError::Incomplete) => break,
+                Err(CommandDecodeError::LiteralFound { length, .. }) => {
+                    // Accept literal continuation
+                    let cont = format!("+ Ready for {} bytes\r\n", length);
+                    writer.write_all(cont.as_bytes()).await?;
+                    // Keep reading — literal data will be appended to buf
+                    break;
+                }
+                Err(CommandDecodeError::Failed) => {
+                    writer.write_all(b"* BAD parse error\r\n").await?;
+                    buf.clear();
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ─── Dispatch ────────────────────────────────────────────────────────────────
+
+async fn dispatch(
+    state: &AppState,
+    cmd: &Command<'static>,
+    sess: &mut SessionState,
+    user_id: &mut Option<Uuid>,
+    tenant_id: &mut Option<Uuid>,
+    selected: &mut Option<SelectedMailbox>,
+) -> Vec<Response<'static>> {
+    let tag = cmd.tag.clone();
+    match &cmd.body {
+        CommandBody::Capability => cmd_capability(tag),
+        CommandBody::Noop => vec![ok_tagged(tag, None, "NOOP completed")],
+        CommandBody::Logout => cmd_logout(tag),
+        CommandBody::Login { username, password } => {
+            let user = astring_to_string(username);
+            let pass = astring_to_string(password.declassify());
+            cmd_login(state, tag, &user, &pass, sess, user_id, tenant_id).await
+        }
+        CommandBody::List {
+            reference,
+            mailbox_wildcard: _,
+        } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_list(state, tag, reference, user_id.unwrap()).await
+        }
+        CommandBody::Select { mailbox, .. } | CommandBody::Examine { mailbox, .. } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_select(state, tag, mailbox, user_id.unwrap(), sess, selected).await
+        }
+        CommandBody::Fetch {
+            sequence_set,
+            macro_or_item_names,
+            ..
+        } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_fetch(state, tag, sequence_set, macro_or_item_names, selected.as_ref().unwrap()).await
+        }
+        CommandBody::Store {
+            sequence_set,
+            kind,
+            response: _,
+            flags,
+            ..
+        } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_store(state, tag, sequence_set, kind, flags, selected.as_ref().unwrap()).await
+        }
+        CommandBody::Close => {
+            *selected = None;
+            if *sess == SessionState::Selected {
+                *sess = SessionState::Authenticated;
+            }
+            vec![ok_tagged(tag, None, "CLOSE completed")]
+        }
+        CommandBody::Expunge => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_expunge(state, tag, selected.as_ref().unwrap()).await
+        }
+        _ => {
+            let msg = format!("{} not implemented", cmd.body.name());
+            vec![bad_tagged(tag, &msg)]
+        }
+    }
+}
+
+// ─── Command handlers ───────────────────────────────────────────────────────
+
+fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
+    let caps = Vec1::try_from(vec![imap_codec::imap_types::response::Capability::Imap4Rev1]).unwrap();
+    vec![
+        Response::Data(Data::Capability(caps)),
+        ok_tagged(tag, None, "CAPABILITY completed"),
+    ]
+}
+
+fn cmd_logout(tag: Tag<'static>) -> Vec<Response<'static>> {
+    vec![
+        Response::Status(Status::Bye(Bye {
+            code: None,
+            text: Text::try_from("server logging out").unwrap(),
+        })),
+        ok_tagged(tag, None, "LOGOUT completed"),
+    ]
+}
+
+async fn cmd_login(
+    state: &AppState,
+    tag: Tag<'static>,
+    user: &str,
+    pass: &str,
+    sess: &mut SessionState,
+    user_id: &mut Option<Uuid>,
+    tenant_id: &mut Option<Uuid>,
+) -> Vec<Response<'static>> {
+    let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT id, tenant_id FROM users WHERE lower(email) = lower($1) AND password_hash = crypt($2, password_hash) LIMIT 1",
+    )
+    .bind(user)
+    .bind(pass)
+    .fetch_optional(state.db())
+    .await
+    .ok()
+    .flatten();
+
+    match row {
+        Some((uid, tid)) => {
+            *sess = SessionState::Authenticated;
+            *user_id = Some(uid);
+            *tenant_id = Some(tid);
+            vec![ok_tagged(tag, None, "LOGIN completed")]
+        }
+        None => {
+            warn!(user = %user, "IMAP login failed");
+            vec![no_tagged(tag, "LOGIN failed")]
+        }
+    }
+}
+
+async fn cmd_list(
+    state: &AppState,
+    tag: Tag<'static>,
+    _reference: &ImapMailbox<'_>,
+    uid: Uuid,
+) -> Vec<Response<'static>> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT folder_name, special_use FROM mailboxes WHERE user_id = $1 ORDER BY folder_name",
+    )
+    .bind(uid)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
+    for (name, _special_use) in &rows {
+        let mailbox = ImapMailbox::try_from(name.to_owned())
+            .unwrap_or_else(|_| ImapMailbox::Inbox);
+        out.push(Response::Data(Data::List {
+            items: vec![],
+            delimiter: Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
+            mailbox,
+        }));
+
+
+
+
+
+
+
+    }
+    out.push(ok_tagged(tag, None, "LIST completed"));
+    out
+}
+
+async fn cmd_select(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    uid: Uuid,
+    sess: &mut SessionState,
+    selected: &mut Option<SelectedMailbox>,
+) -> Vec<Response<'static>> {
+    let mbox_name = mailbox_to_string(mailbox);
+
+    let row: Option<(Uuid, i64)> = sqlx::query_as(
+        "SELECT id, (SELECT COUNT(*) FROM messages WHERE mailbox_id = mailboxes.id) FROM mailboxes WHERE user_id = $1 AND folder_name = $2",
+    )
+    .bind(uid)
+    .bind(&mbox_name)
+    .fetch_optional(state.db())
+    .await
+    .ok()
+    .flatten();
+
+    match row {
+        Some((mailbox_id, count)) => {
+            let exists = count as u32;
+            *sess = SessionState::Selected;
+            *selected = Some(SelectedMailbox { mailbox_id, exists });
+
+            vec![
+                Response::Data(Data::Flags(vec![
+                    Flag::Seen,
+                    Flag::Answered,
+                    Flag::Flagged,
+                    Flag::Deleted,
+                    Flag::Draft,
+                ])),
+                Response::Data(Data::Exists(exists)),
+                Response::Data(Data::Recent(0)),
+                ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"),
+            ]
+        }
+        None => vec![no_tagged(tag, "mailbox not found")],
+    }
+}
+
+async fn cmd_fetch(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    macro_or: &MacroOrMessageDataItemNames<'_>,
+    sel: &SelectedMailbox,
+) -> Vec<Response<'static>> {
+    let (start, end) = sequence_range(sequence_set, sel.exists);
+
+    let rows = sqlx::query(
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+         uid, subject, from_addr, from_name, date, flags, size_bytes \
+         FROM messages WHERE mailbox_id = $1 \
+         ORDER BY received_at ASC OFFSET $2 LIMIT $3",
+    )
+    .bind(sel.mailbox_id)
+    .bind((start - 1) as i64)
+    .bind((end - start + 1) as i64)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    let w_flags = wants(macro_or, "FLAGS");
+    let w_envelope = wants(macro_or, "ENVELOPE");
+    let w_size = wants(macro_or, "RFC822.SIZE");
+    let w_uid = wants(macro_or, "UID");
+
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
+    for row in &rows {
+        let seq_num: i64 = row.get("seq");
+        let seq = NonZeroU32::new(seq_num as u32).unwrap_or(NonZeroU32::MIN);
+        let mut items: Vec<MessageDataItem<'static>> = Vec::new();
+
+        if w_uid {
+            let uid_val: i64 = row.get("uid");
+            items.push(MessageDataItem::Uid(
+                NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN),
+            ));
+        }
+        if w_flags {
+            let flags_val: Vec<String> = row.get("flags");
+            let flags: Vec<FlagFetch<'static>> = flags_val
+                .iter()
+                .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
+                .collect();
+            items.push(MessageDataItem::Flags(flags));
+        }
+        if w_size {
+            let sz: i32 = row.get("size_bytes");
+            items.push(MessageDataItem::Rfc822Size(sz as u32));
+        }
+        if w_envelope {
+            let subject: Option<String> = row.get("subject");
+            let from_addr: Option<String> = row.get("from_addr");
+            let from_name: Option<String> = row.get("from_name");
+            items.push(MessageDataItem::Envelope(build_envelope(
+                subject.as_deref(),
+                from_addr.as_deref(),
+                from_name.as_deref(),
+            )));
+        }
+
+        if let Ok(v) = Vec1::try_from(items) {
+            out.push(Response::Data(Data::Fetch { seq, items: v }));
+        }
+    }
+
+    out.push(ok_tagged(tag, None, "FETCH completed"));
+    out
+}
+
+async fn cmd_store(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    kind: &imap_codec::imap_types::flag::StoreType,
+    flags: &[Flag<'_>],
+    sel: &SelectedMailbox,
+) -> Vec<Response<'static>> {
+    let (start, end) = sequence_range(sequence_set, sel.exists);
+    let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
+
+    let sql = match kind {
+        imap_codec::imap_types::flag::StoreType::Add => {
+            "UPDATE messages SET flags = array_cat(flags, $1::text[]) WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+        }
+        imap_codec::imap_types::flag::StoreType::Remove => {
+            "UPDATE messages SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+        }
+        imap_codec::imap_types::flag::StoreType::Replace => {
+            "UPDATE messages SET flags = $1::text[] WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+        }
+    };
+
+    let _ = sqlx::query(sql)
+        .bind(&flag_strs)
+        .bind(sel.mailbox_id)
+        .bind(start as i64)
+        .bind(end as i64)
+        .execute(state.db())
+        .await;
+
+    vec![ok_tagged(tag, None, "STORE completed")]
+}
+
+async fn cmd_expunge(
+    state: &AppState,
+    tag: Tag<'static>,
+    sel: &SelectedMailbox,
+) -> Vec<Response<'static>> {
+    let _ = sqlx::query(
+        "DELETE FROM messages WHERE mailbox_id = $1 AND '\\Deleted' = ANY(flags)",
+    )
+    .bind(sel.mailbox_id)
+    .execute(state.db())
+    .await;
+
+    vec![ok_tagged(tag, None, "EXPUNGE completed")]
+}
+
+// ─── Response helpers ────────────────────────────────────────────────────────
+
+fn ok_tagged(tag: Tag<'static>, code: Option<Code<'static>>, text: &str) -> Response<'static> {
+    Response::Status(Status::Tagged(Tagged {
+        tag,
+        body: StatusBody {
+            kind: StatusKind::Ok,
+            code,
+            text: Text::try_from(text.to_owned()).unwrap(),
+        },
+    }))
+}
+
+fn no_tagged(tag: Tag<'static>, text: &str) -> Response<'static> {
+    Response::Status(Status::Tagged(Tagged {
+        tag,
+        body: StatusBody {
+            kind: StatusKind::No,
+            code: None,
+            text: Text::try_from(text.to_owned()).unwrap(),
+        },
+    }))
+}
+
+fn bad_tagged(tag: Tag<'static>, text: &str) -> Response<'static> {
+    Response::Status(Status::Tagged(Tagged {
+        tag,
+        body: StatusBody {
+            kind: StatusKind::Bad,
+            code: None,
+            text: Text::try_from(text.to_owned()).unwrap(),
+        },
+    }))
+}
+
+// ─── Utility ─────────────────────────────────────────────────────────────────
+
+fn astring_to_string(a: &AString<'_>) -> String {
+    match a {
+        AString::Atom(atom) => atom.inner().to_string(),
+        AString::String(istring) => match istring {
+            IString::Literal(lit) => String::from_utf8_lossy(lit.as_ref()).to_string(),
+            IString::Quoted(q) => q.inner().to_string(),
+        },
+    }
+}
+
+fn mailbox_to_string(m: &ImapMailbox<'_>) -> String {
+    match m {
+        ImapMailbox::Inbox => "INBOX".to_owned(),
+        ImapMailbox::Other(other) => {
+            String::from_utf8_lossy(other.as_ref()).to_string()
+        }
+    }
+}
+
+fn flag_to_str(f: &Flag<'_>) -> &'static str {
+    match f {
+        Flag::Seen => "\\Seen",
+        Flag::Answered => "\\Answered",
+        Flag::Flagged => "\\Flagged",
+        Flag::Deleted => "\\Deleted",
+        Flag::Draft => "\\Draft",
+        _ => "\\Seen",
+    }
+}
+
+fn parse_flag(s: &str) -> Option<Flag<'static>> {
+    match s {
+        "\\Seen" => Some(Flag::Seen),
+        "\\Answered" => Some(Flag::Answered),
+        "\\Flagged" => Some(Flag::Flagged),
+        "\\Deleted" => Some(Flag::Deleted),
+        "\\Draft" => Some(Flag::Draft),
+        _ => None,
+    }
+}
+
+fn sequence_range(
+    seq_set: &imap_codec::imap_types::sequence::SequenceSet,
+    exists: u32,
+) -> (u32, u32) {
+    let mut start = 1u32;
+    let mut end = exists;
+
+    for seq in seq_set.0.as_ref() {
+        match seq {
+            imap_codec::imap_types::sequence::Sequence::Single(val) => {
+                let n = seq_or_uid_val(val, exists);
+                start = n;
+                end = n;
+            }
+            imap_codec::imap_types::sequence::Sequence::Range(from, to) => {
+                start = seq_or_uid_val(from, exists);
+                end = seq_or_uid_val(to, exists);
+            }
+        }
+    }
+    (start.max(1), end.min(exists).max(start))
+}
+
+fn seq_or_uid_val(val: &imap_codec::imap_types::sequence::SeqOrUid, exists: u32) -> u32 {
+    match val {
+        imap_codec::imap_types::sequence::SeqOrUid::Value(n) => n.get(),
+        imap_codec::imap_types::sequence::SeqOrUid::Asterisk => exists,
+    }
+}
+
+fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
+    use imap_codec::imap_types::fetch::Macro;
+    match macro_or {
+        MacroOrMessageDataItemNames::Macro(m) => match m {
+            Macro::All => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
+            Macro::Fast => matches!(name, "FLAGS" | "RFC822.SIZE" | "INTERNALDATE"),
+            Macro::Full => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY"),
+            _ => false,
+        },
+        MacroOrMessageDataItemNames::MessageDataItemNames(items) => {
+            items.iter().any(|item| format!("{:?}", item).to_uppercase().contains(name))
+        }
+    }
+}
+
+fn build_envelope(
+    subject: Option<&str>,
+    from_addr: Option<&str>,
+    from_name: Option<&str>,
+) -> imap_codec::imap_types::envelope::Envelope<'static> {
+    use imap_codec::imap_types::envelope::{Address, Envelope};
+
+    let subject_ns = subject
+        .and_then(|s| NString::try_from(s.to_owned()).ok())
+        .unwrap_or(NString(None));
+
+    let from = from_addr.map(|addr| {
+        let (local, domain) = addr.split_once('@').unwrap_or((addr, ""));
+        Address {
+            name: from_name
+                .and_then(|n| NString::try_from(n.to_owned()).ok())
+                .unwrap_or(NString(None)),
+            adl: NString(None),
+            mailbox: NString::try_from(local.to_owned())
+                .ok()
+                .unwrap_or(NString(None)),
+            host: NString::try_from(domain.to_owned())
+                .ok()
+                .unwrap_or(NString(None)),
+        }
+    });
+
+    let from_list = from.into_iter().collect::<Vec<_>>();
+
+    Envelope {
+        date: NString(None),
+        subject: subject_ns,
+        from: from_list.clone(),
+        sender: from_list.clone(),
+        reply_to: from_list.clone(),
+        to: vec![],
+        cc: vec![],
+        bcc: vec![],
+        in_reply_to: NString(None),
+        message_id: NString(None),
+    }
+}

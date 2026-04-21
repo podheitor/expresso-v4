@@ -65,8 +65,8 @@ pub async fn send_message(
     }
     .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
 
-    let smtp_host = &state.cfg().mail_server.domain;
-    let smtp_port = state.cfg().mail_server.smtp_port;
+    let smtp_host = &state.cfg().mail_server.relay_host;
+    let smtp_port = state.cfg().mail_server.relay_port;
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
         .port(smtp_port)

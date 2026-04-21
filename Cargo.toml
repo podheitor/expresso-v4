@@ -66,6 +66,9 @@ sha2         = "0.10"
 lettre       = { version = "0.11", features = ["tokio1-native-tls", "smtp-transport", "pool", "builder"] }
 mail-parser  = "0.9"
 mail-builder  = "0.3"
+mail-auth     = "0.8"
+sieve-rs      = "0.7"
+rustls-pki-types = { version = "1", features = ["std"] }
 
 # IMAP
 imap-codec   = { version = "2.0.0-alpha.7" }

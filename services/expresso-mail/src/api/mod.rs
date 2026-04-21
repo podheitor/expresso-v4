@@ -4,6 +4,7 @@ pub mod health;
 pub mod folders;
 pub mod messages;
 pub mod compose;
+pub mod attachments;
 
 use axum::Router;
 use tower_http::{
@@ -34,4 +35,5 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(folders::routes())
         .merge(messages::routes())
         .merge(compose::routes())
+        .merge(attachments::routes())
 }
