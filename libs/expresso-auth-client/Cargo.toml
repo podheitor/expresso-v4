@@ -2,24 +2,25 @@
 name = "expresso-auth-client"
 version = "0.1.0"
 edition = "2021"
-description = "JWT validation, OIDC client, session management"
+description = "JWT validation (Keycloak OIDC), AuthContext, axum extractor"
 
 [lib]
 name = "expresso_auth_client"
 
 [dependencies]
-# Workspace deps
-tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-anyhow = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-time = { workspace = true }
-async-trait = { workspace = true }
+tokio        = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+tracing      = { workspace = true }
+anyhow       = { workspace = true }
+thiserror    = { workspace = true }
+uuid         = { workspace = true }
+time         = { workspace = true }
+async-trait  = { workspace = true }
 jsonwebtoken = { workspace = true }
-reqwest = { workspace = true }
+reqwest      = { workspace = true }
+axum         = { workspace = true }
+arc-swap     = "1"
 
 [dev-dependencies]
 tokio-test = "0.4"
