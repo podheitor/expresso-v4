@@ -1,52 +1,93 @@
 //! expresso-contacts service entrypoint
 
+mod api;
+mod carddav;
+mod domain;
+mod error;
+mod state;
+
 use std::{env, net::SocketAddr};
 
-use axum::{routing::get, Json, Router};
-use serde_json::{json, Value};
-use tracing::info;
+use tracing::{info, warn};
 
-const SERVICE: &str = "expresso-contacts";
+use expresso_core::{create_db_pool, init_tracing};
+use expresso_core::config::{DatabaseConfig, TelemetryConfig};
+use state::AppState;
+
+const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8003;
+const DEFAULT_DB_MAX_CONNECTIONS: u32 = 20;
+const DEFAULT_DB_MIN_CONNECTIONS: u32 = 2;
+const DEFAULT_DB_ACQUIRE_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_OTLP_ENDPOINT: &str = "http://localhost:4317";
+const DEFAULT_LOG_FILTER: &str = "info";
 
-async fn health() -> Json<Value> {
-    Json(json!({"service": SERVICE, "status": "ok"}))
+fn env_string(key: &str) -> Option<String> {
+    env::var(key).ok().filter(|value| !value.trim().is_empty())
 }
 
-async fn ready() -> Json<Value> {
-    Json(json!({"ready": true}))
+fn env_u16(key: &str, default: u16) -> u16 {
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+fn env_u32(key: &str, default: u32) -> u32 {
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+fn env_u64(key: &str, default: u64) -> u64 {
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
+fn env_bool(key: &str, default: bool) -> bool {
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
 
 fn resolve_addr() -> anyhow::Result<SocketAddr> {
-    let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port = env::var("PORT")
-        .ok()
-        .and_then(|v| v.parse::<u16>().ok())
-        .unwrap_or(DEFAULT_PORT);
-
-    let addr = format!("{}:{}", host, port)
+    let host = env_string("SERVER__HOST").unwrap_or_else(|| DEFAULT_HOST.to_string());
+    let port = env_u16("SERVER__PORT", DEFAULT_PORT);
+    format!("{}:{}", host, port)
         .parse::<SocketAddr>()
-        .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("invalid bind address: {}", e))
+}
 
-    Ok(addr)
+fn resolve_telemetry() -> TelemetryConfig {
+    TelemetryConfig {
+        otlp_endpoint: env_string("TELEMETRY__OTLP_ENDPOINT")
+            .unwrap_or_else(|| DEFAULT_OTLP_ENDPOINT.to_string()),
+        log_json: env_bool("TELEMETRY__LOG_JSON", false),
+        log_filter: env_string("TELEMETRY__LOG_FILTER")
+            .unwrap_or_else(|| DEFAULT_LOG_FILTER.to_string()),
+    }
+}
+
+fn resolve_database_config() -> Option<DatabaseConfig> {
+    let url = env_string("DATABASE__URL")?;
+    Some(DatabaseConfig {
+        url,
+        max_connections: env_u32("DATABASE__MAX_CONNECTIONS", DEFAULT_DB_MAX_CONNECTIONS),
+        min_connections: env_u32("DATABASE__MIN_CONNECTIONS", DEFAULT_DB_MIN_CONNECTIONS),
+        acquire_timeout_secs: env_u64("DATABASE__ACQUIRE_TIMEOUT_SECS", DEFAULT_DB_ACQUIRE_TIMEOUT_SECS),
+    })
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .json()
-        .init();
+    let telemetry = resolve_telemetry();
+    init_tracing(&telemetry);
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .route("/ready", get(ready));
-    let addr = resolve_addr()?;
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!(version = env!("CARGO_PKG_VERSION"), "expresso-contacts starting");
 
-    info!(service = SERVICE, %addr, "listening");
+    let db = match resolve_database_config() {
+        Some(cfg) => match create_db_pool(&cfg).await {
+            Ok(pool) => Some(pool),
+            Err(e) => { warn!(error = %e, "database unavailable; readiness degraded"); None }
+        },
+        None => { warn!("database config missing; readiness degraded"); None }
+    };
 
+    let http_addr = resolve_addr()?;
+    let state = AppState::new(db);
+    let app = api::router(state);
+    let listener = tokio::net::TcpListener::bind(http_addr).await?;
+
+    info!(addr = %http_addr, "HTTP API listening");
     axum::serve(listener, app).await?;
-
     Ok(())
 }
