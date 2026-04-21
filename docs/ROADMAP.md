@@ -89,9 +89,9 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] Calendário pessoal: CRUD events
 - [ ] Recurrence rules (RFC 5545 RRULE)
 - [ ] Salas de reunião (resource mailboxes)
-- [ ] Scheduling: free/busy lookup (RFC 6638)
+- [x] Scheduling: free/busy lookup (RFC 6638) — GET /api/v1/scheduling/freebusy (multi-attendee, 370d window cap, RLS-safe tenant+email join)
 - [ ] Calendário compartilhado
-- [ ] iCal export/import
+- [x] iCal export/import — GET /api/v1/calendars/:id/export.ics (VCALENDAR download), POST /api/v1/calendars/:id/import (batch VEVENT upsert with per-event error capture)
 
 ### Sprint 10–11 (Semanas 5–8): CardDAV + UI Calendar
 - [ ] CardDAV server (RFC 6352) em Rust

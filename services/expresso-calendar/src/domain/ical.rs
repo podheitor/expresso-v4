@@ -181,6 +181,74 @@ fn date_time_fmt() -> Vec<time::format_description::FormatItem<'static>> {
     time::format_description::parse("[year][month][day]T[hour][minute][second]").unwrap()
 }
 
+/// Split a multi-event VCALENDAR into individual VEVENT blocks, each wrapped
+/// in a minimal VCALENDAR container so existing single-event parsers/repo
+/// methods work unchanged. Non-VEVENT components (VTIMEZONE, VTODO, …) are
+/// dropped. Returns empty vec when no VEVENT blocks found.
+pub fn split_vcalendar_to_events(raw: &str) -> Vec<String> {
+    let lines = unfold_lines(raw);
+    let mut out: Vec<String> = Vec::new();
+    let mut current: Option<Vec<String>> = None;
+
+    for line in lines {
+        let trimmed = line.trim_end_matches('\r');
+        let upper = trimmed.to_ascii_uppercase();
+        if upper == "BEGIN:VEVENT" {
+            current = Some(vec![trimmed.to_owned()]);
+            continue;
+        }
+        if upper == "END:VEVENT" {
+            if let Some(mut buf) = current.take() {
+                buf.push(trimmed.to_owned());
+                let body = buf.join("\r\n");
+                out.push(format!(
+                    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//Import//EN\r\n{body}\r\nEND:VCALENDAR\r\n"
+                ));
+            }
+            continue;
+        }
+        if let Some(buf) = current.as_mut() {
+            buf.push(trimmed.to_owned());
+        }
+    }
+    out
+}
+
+/// Extract the VEVENT block (inclusive BEGIN/END) from a VCALENDAR payload.
+/// Returns None when no VEVENT is present.
+pub fn extract_vevent_block(raw: &str) -> Option<String> {
+    let lines = unfold_lines(raw);
+    let mut buf: Vec<String> = Vec::new();
+    let mut in_ev = false;
+    for line in lines {
+        let trimmed = line.trim_end_matches('\r');
+        let upper = trimmed.to_ascii_uppercase();
+        if upper == "BEGIN:VEVENT" {
+            in_ev = true;
+        }
+        if in_ev {
+            buf.push(trimmed.to_owned());
+        }
+        if upper == "END:VEVENT" {
+            break;
+        }
+    }
+    if buf.is_empty() { None } else { Some(buf.join("\r\n")) }
+}
+
+/// Build a single VCALENDAR payload wrapping multiple VEVENT blocks (for export).
+/// Each `vevent_block` must already be the inclusive BEGIN:VEVENT..END:VEVENT
+/// form (use `extract_vevent_block` per stored event).
+pub fn wrap_vcalendar(vevent_blocks: &[String]) -> String {
+    let mut s = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//Export//EN\r\nCALSCALE:GREGORIAN\r\n");
+    for b in vevent_blocks {
+        s.push_str(b);
+        if !b.ends_with("\r\n") { s.push_str("\r\n"); }
+    }
+    s.push_str("END:VCALENDAR\r\n");
+    s
+}
+
 // ─── tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

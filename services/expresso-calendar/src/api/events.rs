@@ -24,6 +24,14 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/export.ics",
+            get(export_ics),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/import",
+            post(import_ics),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -97,4 +105,77 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     EventRepo::new(pool).delete(ctx.tenant_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+
+/// GET /api/v1/calendars/:cal_id/export.ics — returns all events as a single
+/// VCALENDAR (text/calendar). Unauthenticated CalDAV clients can also fetch
+/// raw calendar via CalDAV REPORT; this endpoint is for simple downloads.
+async fn export_ics(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+) -> Result<Response> {
+    use crate::domain::ical;
+
+    let pool = state.db_or_unavailable()?;
+    let events = EventRepo::new(pool)
+        .list(ctx.tenant_id, cal_id, &crate::domain::EventQuery::default())
+        .await?;
+
+    let blocks: Vec<String> = events
+        .iter()
+        .filter_map(|e| ical::extract_vevent_block(&e.ical_raw))
+        .collect();
+    let body = ical::wrap_vcalendar(&blocks);
+
+    let mut resp = (StatusCode::OK, body).into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/calendar; charset=utf-8"),
+    );
+    resp.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"calendar.ics\""),
+    );
+    Ok(resp)
+}
+
+/// POST /api/v1/calendars/:cal_id/import — accepts a VCALENDAR body with one
+/// or more VEVENTs. Each VEVENT is upserted individually. Returns a summary
+/// `{"imported": N, "failed": M, "errors": [..]}`. 4xx errors per-event are
+/// captured but don't abort the batch.
+async fn import_ics(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    raw: String,
+) -> Result<Response> {
+    use crate::domain::ical;
+
+    if raw.trim().is_empty() {
+        return Err(CalendarError::BadRequest("empty body".into()));
+    }
+    let blocks = ical::split_vcalendar_to_events(&raw);
+    if blocks.is_empty() {
+        return Err(CalendarError::BadRequest("no VEVENT blocks found in payload".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = EventRepo::new(pool);
+
+    let mut imported: usize = 0;
+    let mut errors: Vec<String> = Vec::new();
+    for (idx, block) in blocks.iter().enumerate() {
+        match repo.create(ctx.tenant_id, cal_id, block).await {
+            Ok(_) => imported += 1,
+            Err(e) => errors.push(format!("event[{idx}]: {e}")),
+        }
+    }
+
+    let body = serde_json::json!({
+        "imported": imported,
+        "failed":   errors.len(),
+        "errors":   errors,
+    });
+    Ok((StatusCode::OK, Json(body)).into_response())
 }
