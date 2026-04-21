@@ -23,6 +23,8 @@ fn base(sub: &str, tenant: Option<&str>) -> RawClaims {
         },
         acr:                None,
         amr:                None,
+        govbr_cpf_hash: None,
+        govbr_confiabilidades: None,
     }
 }
 

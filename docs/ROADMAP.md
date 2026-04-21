@@ -74,7 +74,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 
 ### Sprint 7 (Semanas 13–14): Auth + gov.br
 - [x] Keycloak setup + realm config (deploy/keycloak/seed-realm.sh)
-- [ ] gov.br OIDC adapter (sso.acesso.gov.br) — stub em services/expresso-auth/src/oidc/govbr.rs (constants + LOA parser); federation mapper + cpf_hash table pendentes
+- [x] gov.br OIDC adapter (sso.acesso.gov.br) — Keycloak external IdP (seed-realm §10, condicional GOVBR_CLIENT_ID/SECRET), IdP mappers sub→govbr_cpf_hash + confiabilidades, claims propagados p/ access_token, GovbrFederation::from_ctx extrai metadata, audit log auth.federation.govbr no callback, migration govbr_user_map (provisioning admin segue pendente)
 - [x] OIDC RP backend (expresso-auth: PKCE+/auth/me) + SPA cookie-session wiring (frontend/expresso-web: /login, /me, layout guard, vite proxy)
 - [x] MFA: TOTP + WebAuthn (Keycloak required actions + realm WebAuthnPolicy ES256/RS256; /auth/me expõe mfa.totp/webauthn/acr/amr via RFC 8176)
 - [x] RBAC: realm roles SuperAdmin/TenantAdmin/User/Readonly + AuthContext::has_any_role helper

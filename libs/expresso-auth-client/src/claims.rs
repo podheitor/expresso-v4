@@ -37,6 +37,12 @@ pub struct RawClaims {
     /// Authentication Methods References (RFC 8176). e.g. ["pwd","otp"], ["pwd","hwk"].
     #[serde(default)]
     pub amr:       Option<Vec<String>>,
+    /// gov.br federated identity — CPF hash (set by KC IdP mapper).
+    #[serde(default)]
+    pub govbr_cpf_hash: Option<String>,
+    /// gov.br "Selos de Confiabilidade" list (e.g. ["cadastro-basico","biometria"]).
+    #[serde(default)]
+    pub govbr_confiabilidades: Option<Vec<String>>,
 }
 
 /// `aud` can be a single string or an array per RFC 7519 §4.1.3.
@@ -83,6 +89,10 @@ pub struct AuthContext {
     pub acr:          Option<String>,
     /// Raw AMR list from IdP (RFC 8176).
     pub amr:          Vec<String>,
+    /// gov.br CPF hash when federated via gov.br IdP.
+    pub govbr_cpf_hash: Option<String>,
+    /// gov.br confiabilidades list (empty when not federated via gov.br).
+    pub govbr_confiabilidades: Vec<String>,
 }
 
 impl AuthContext {
@@ -125,6 +135,8 @@ impl AuthContext {
             roles, expires_at: raw.exp,
             acr: raw.acr,
             amr: raw.amr.unwrap_or_default(),
+            govbr_cpf_hash: raw.govbr_cpf_hash,
+            govbr_confiabilidades: raw.govbr_confiabilidades.unwrap_or_default(),
         })
     }
 }
@@ -143,6 +155,8 @@ mod tests {
             expires_at:   0,
             acr:          None,
             amr:          Vec::new(),
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: Vec::new(),
         }
     }
 

@@ -93,6 +93,21 @@ pub async fn callback(
         "user logged in via OIDC"
     );
 
+    // gov.br federation: emit structured audit event. cpf_hash is logged only
+    // as a short prefix to avoid propagating the full hash through log sinks.
+    if let Some(fed) = crate::oidc::govbr::GovbrFederation::from_ctx(&ctx) {
+        tracing::info!(
+            target: "audit",
+            event = "auth.federation.govbr",
+            user_id = %ctx.user_id,
+            tenant_id = %ctx.tenant_id,
+            cpf_hash_prefix = %fed.cpf_hash_short(),
+            assurance = ?fed.assurance.map(|a| a.as_str()),
+            confiabilidades_count = fed.confiabilidades.len(),
+            "user federated via gov.br"
+        );
+    }
+
     // Decide response mode
     let json_mode = q.mode.as_deref() == Some("json")
         || headers.get(ACCEPT)

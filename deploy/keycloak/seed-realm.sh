@@ -103,4 +103,59 @@ curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-a
 curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM" \
   -d '{"webAuthnPolicyRpEntityName":"Expresso","webAuthnPolicySignatureAlgorithms":["ES256","RS256"],"webAuthnPolicyUserVerificationRequirement":"preferred","webAuthnPolicyAttestationConveyancePreference":"not specified"}'
 
+# 10. gov.br external IdP — only when GOVBR_CLIENT_ID+GOVBR_CLIENT_SECRET provided.
+# Configures OIDC broker pointing to staging or prod (GOVBR_ISSUER env).
+if [[ -n "${GOVBR_CLIENT_ID:-}" && -n "${GOVBR_CLIENT_SECRET:-}" ]]; then
+  GB_ISSUER="${GOVBR_ISSUER:-https://sso.staging.acesso.gov.br}"
+  GB_IDP=$(cat <<JSON
+{"alias":"govbr","displayName":"gov.br","providerId":"oidc","enabled":true,
+ "trustEmail":true,"storeToken":false,"addReadTokenRoleOnCreate":false,"firstBrokerLoginFlowAlias":"first broker login",
+ "config":{
+   "clientId":"$GOVBR_CLIENT_ID","clientSecret":"$GOVBR_CLIENT_SECRET",
+   "authorizationUrl":"$GB_ISSUER/authorize","tokenUrl":"$GB_ISSUER/token",
+   "userInfoUrl":"$GB_ISSUER/userinfo","jwksUrl":"$GB_ISSUER/jwk",
+   "issuer":"$GB_ISSUER","defaultScope":"openid email profile govbr_confiabilidades",
+   "validateSignature":"true","useJwksUrl":"true","pkceEnabled":"true","pkceMethod":"S256",
+   "syncMode":"FORCE","clientAuthMethod":"client_secret_post"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances" -d "$GB_IDP" ||     curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/identity-provider/instances/govbr" -d "$GB_IDP" || true
+
+  # Mapper: gov.br sub (hashed CPF) → user attribute + access_token claim.
+  CPF_MAPPER=$(cat <<JSON
+{"name":"govbr-cpf-hash","identityProviderAlias":"govbr","identityProviderMapper":"oidc-user-attribute-idp-mapper",
+ "config":{"claim":"sub","user.attribute":"govbr_cpf_hash","syncMode":"FORCE"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances/govbr/mappers" -d "$CPF_MAPPER" || true
+
+  # Mapper: gov.br confiabilidades claim → attribute (JSON array preserved).
+  CONF_MAPPER=$(cat <<JSON
+{"name":"govbr-confiabilidades","identityProviderAlias":"govbr","identityProviderMapper":"oidc-user-attribute-idp-mapper",
+ "config":{"claim":"amr","user.attribute":"govbr_confiabilidades","syncMode":"FORCE"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/identity-provider/instances/govbr/mappers" -d "$CONF_MAPPER" || true
+
+  # Client protocol mappers: copy user attributes into access_token.
+  GB_CPF_CLAIM=$(cat <<JSON
+{"name":"claim-govbr-cpf-hash","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper",
+ "config":{"user.attribute":"govbr_cpf_hash","claim.name":"govbr_cpf_hash","jsonType.label":"String",
+           "access.token.claim":"true","id.token.claim":"false","userinfo.token.claim":"true"}}
+JSON
+  )
+  GB_CONF_CLAIM=$(cat <<JSON
+{"name":"claim-govbr-confiabilidades","protocol":"openid-connect","protocolMapper":"oidc-usermodel-attribute-mapper",
+ "config":{"user.attribute":"govbr_confiabilidades","claim.name":"govbr_confiabilidades","jsonType.label":"String",
+           "multivalued":"true","access.token.claim":"true","id.token.claim":"false","userinfo.token.claim":"true"}}
+JSON
+  )
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/clients/$CUID/protocol-mappers/models" -d "$GB_CPF_CLAIM"  || true
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/clients/$CUID/protocol-mappers/models" -d "$GB_CONF_CLAIM" || true
+
+  echo "OK: gov.br IdP seeded (issuer=$GB_ISSUER)"
+else
+  echo "SKIP: gov.br IdP (set GOVBR_CLIENT_ID/GOVBR_CLIENT_SECRET to enable)"
+fi
+
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"
