@@ -78,4 +78,21 @@ JSON
 )
 curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users" -d "$ALICE_JSON" || true
 
+
+# 6. realm roles for RBAC
+for role in SuperAdmin TenantAdmin User Readonly; do
+  curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/roles" \
+    -d "{\"name\":\"$role\",\"description\":\"Expresso $role role\"}" || true
+done
+
+# 7. assign User role to alice
+ALICE_ID=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/users?username=alice" | python3 -c 'import sys,json;print(json.load(sys.stdin)[0]["id"])')
+USER_ROLE=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/roles/User")
+curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users/$ALICE_ID/role-mappings/realm" \
+  -d "[$USER_ROLE]" || true
+
+# 8. enable TOTP required action (operator-driven, ≠ default)
+curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/CONFIGURE_TOTP" \
+  -d '{"alias":"CONFIGURE_TOTP","name":"Configure OTP","providerId":"CONFIGURE_TOTP","enabled":true,"defaultAction":false,"priority":10,"config":{}}'
+
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"

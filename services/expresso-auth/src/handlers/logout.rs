@@ -45,5 +45,6 @@ pub async fn logout(
         format!("{ACCESS_TOKEN_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0").parse().unwrap());
     h.append(SET_COOKIE,
         "expresso_rt=; HttpOnly; Path=/auth/refresh; SameSite=Lax; Max-Age=0".parse().unwrap());
+    tracing::info!(target: "audit", event = "auth.logout", "user logged out");
     Ok(resp)
 }

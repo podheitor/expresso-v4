@@ -47,5 +47,11 @@ pub async fn login(
         .append_pair("code_challenge",        &challenge)
         .append_pair("code_challenge_method", "S256");
 
+    tracing::info!(
+        target: "audit",
+        event = "auth.login.start",
+        state = %state_tok,
+        "login initiated"
+    );
     Ok(Redirect::to(url.as_str()))
 }

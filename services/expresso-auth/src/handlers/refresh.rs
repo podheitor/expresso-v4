@@ -53,6 +53,12 @@ pub async fn refresh(
     let tokens: TokenResponse = resp.json().await
         .map_err(|e| RpError::Refresh(e.to_string()))?;
 
+    tracing::info!(
+        target: "audit",
+        event = "auth.token.refreshed",
+        "access token refreshed"
+    );
+
     let mut resp = (StatusCode::OK, Json(&tokens)).into_response();
     let secure = std::env::var("AUTH_RP__COOKIE_SECURE").ok().as_deref() == Some("1");
     let sec    = if secure { "; Secure" } else { "" };

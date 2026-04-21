@@ -9,6 +9,7 @@
 //!   GET  /health /ready  → liveness/readiness
 
 mod config;
+mod ratelimit;
 mod error;
 mod handlers;
 mod oidc;
@@ -80,10 +81,15 @@ async fn main() -> anyhow::Result<()> {
         pending: Mutex::new(HashMap::new()),
     });
 
+    let login_limiter = std::sync::Arc::new(
+        ratelimit::RateLimiter::new(std::time::Duration::from_secs(60), 20)
+    );
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready",  get(ready))
-        .route("/auth/login",    get(handlers::login::login))
+        .route("/auth/login",    get(handlers::login::login)
+            .layer(axum::middleware::from_fn_with_state(login_limiter.clone(), ratelimit::rate_limit_mw)))
         .route("/auth/callback", get(handlers::callback::callback))
         .route("/auth/refresh",  post(handlers::refresh::refresh))
         .route("/auth/logout",   get(handlers::logout::logout))
@@ -95,6 +101,6 @@ async fn main() -> anyhow::Result<()> {
     let addr = resolve_addr()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(service = SERVICE, %addr, "listening");
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
     Ok(())
 }

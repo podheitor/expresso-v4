@@ -82,7 +82,16 @@ pub async fn callback(
         .map_err(|e| RpError::TokenExchange(e.to_string()))?;
 
     // Defense-in-depth: ensure the IdP issued a token we can validate.
-    let _ctx = app.validator.validate(&tokens.access_token).await?;
+    let ctx = app.validator.validate(&tokens.access_token).await?;
+
+    tracing::info!(
+        target: "audit",
+        event = "auth.login.success",
+        user_id = %ctx.user_id,
+        tenant_id = %ctx.tenant_id,
+        email = %ctx.email,
+        "user logged in via OIDC"
+    );
 
     // Decide response mode
     let json_mode = q.mode.as_deref() == Some("json")
