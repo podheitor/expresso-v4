@@ -24,6 +24,8 @@ time               = { workspace = true }
 sha2               = { workspace = true }
 sqlx               = { workspace = true }
 futures            = { workspace = true }
+rand               = { workspace = true }
+base64             = { workspace = true }
 
 expresso-core        = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
