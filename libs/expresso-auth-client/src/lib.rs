@@ -11,7 +11,7 @@ mod claims;
 mod error;
 mod validator;
 
-pub use axum_ext::{Authenticated, AuthRejection};
+pub use axum_ext::{Authenticated, AuthRejection, ACCESS_TOKEN_COOKIE};
 pub use claims::{AuthContext, RawClaims, AudClaim, RolesBlock};
 pub use error::{AuthError, Result};
 pub use validator::{OidcConfig, OidcValidator};

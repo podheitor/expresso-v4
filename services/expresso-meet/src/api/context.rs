@@ -13,14 +13,14 @@ use std::sync::Arc;
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    http::{header::{HeaderMap, AUTHORIZATION}, request::Parts, StatusCode},
+    http::{header::{HeaderMap, AUTHORIZATION, COOKIE}, request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use expresso_auth_client::{AuthError, OidcValidator};
+use expresso_auth_client::{AuthError, OidcValidator, ACCESS_TOKEN_COOKIE};
 
 pub const H_TENANT: &str = "x-tenant-id";
 pub const H_USER:   &str = "x-user-id";
@@ -41,7 +41,15 @@ impl<S: Send + Sync> FromRequestParts<S> for RequestCtx {
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         if let Some(validator) = parts.extensions.get::<Arc<OidcValidator>>().cloned() {
-            let token = bearer_token(&parts.headers).ok_or(CtxError::MissingBearer)?;
+            let token_owned;
+            let token: &str = if let Some(t) = bearer_token(&parts.headers) {
+                t
+            } else if let Some(t) = cookie_token(&parts.headers, ACCESS_TOKEN_COOKIE) {
+                token_owned = t;
+                token_owned.as_str()
+            } else {
+                return Err(CtxError::MissingBearer);
+            };
             let ctx = validator.validate(token).await.map_err(CtxError::from)?;
             return Ok(Self {
                 tenant_id:    ctx.tenant_id,
@@ -77,6 +85,23 @@ fn bearer_token(h: &HeaderMap) -> Option<&str> {
     let rest = raw.strip_prefix("Bearer ").or_else(|| raw.strip_prefix("bearer "))?;
     let t = rest.trim();
     if t.is_empty() { None } else { Some(t) }
+}
+
+
+fn cookie_token(h: &HeaderMap, name: &str) -> Option<String> {
+    for hv in h.get_all(COOKIE).iter() {
+        let s = match hv.to_str() { Ok(v) => v, Err(_) => continue };
+        for pair in s.split(';') {
+            let pair = pair.trim();
+            if let Some((k, v)) = pair.split_once('=') {
+                if k.trim() == name {
+                    let v = v.trim();
+                    if !v.is_empty() { return Some(v.to_string()); }
+                }
+            }
+        }
+    }
+    None
 }
 
 #[derive(Debug)]
