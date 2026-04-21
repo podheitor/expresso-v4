@@ -36,4 +36,5 @@ tantivy = { workspace = true }
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 
 [dev-dependencies]
+tempfile = "3"
 tokio-test = "0.4"
