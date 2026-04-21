@@ -99,8 +99,8 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [x] Sincronização GAL → contatos pessoais — POST /api/v1/gal/save (user_id ou email → personal addressbook, UID estável dir:<user_id>, idempotente; auto-cria addressbook "Pessoal" se ausente)
 - [ ] UI: calendar view (mês/semana/dia/agenda)
 - [ ] UI: criar/editar/excluir eventos com convites
-- [ ] Email de convite (iTIP, RFC 5546)
-- [ ] RSVP handling (accept/decline/tentative)
+- [x] Email de convite (iTIP, RFC 5546)
+- [x] RSVP handling (accept/decline/tentative)
 
 ---
 

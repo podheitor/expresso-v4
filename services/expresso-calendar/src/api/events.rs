@@ -32,6 +32,18 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/import",
             post(import_ics),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
+            get(itip_request),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/rsvp",
+            post(rsvp),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/attendees",
+            get(list_attendees),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -177,5 +189,83 @@ async fn import_ics(
         "failed":   errors.len(),
         "errors":   errors,
     });
+    Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+
+/// GET /api/v1/calendars/:cal_id/events/:id/itip/request.ics — returns the
+/// event wrapped with METHOD:REQUEST for SMTP invitation attachment.
+async fn itip_request(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_cal, id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    use crate::domain::itip;
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let ics = itip::build_request(&ev.ical_raw)?;
+    let mut resp = (StatusCode::OK, ics).into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/calendar; method=REQUEST; charset=utf-8"),
+    );
+    resp.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"invite.ics\""),
+    );
+    Ok(resp)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RsvpBody {
+    email:    String,
+    partstat: String,
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/rsvp — apply a PARTSTAT to an
+/// attendee inside the stored VEVENT. Returns {event, reply_ics} where
+/// reply_ics is a METHOD:REPLY VCALENDAR to send back to the organizer.
+async fn rsvp(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_cal, id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<RsvpBody>,
+) -> Result<Response> {
+    use crate::domain::itip;
+    if body.email.trim().is_empty() {
+        return Err(CalendarError::BadRequest("`email` required".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = EventRepo::new(pool);
+    let ev = repo.get(ctx.tenant_id, id).await?;
+
+    let new_raw = itip::apply_rsvp(&ev.ical_raw, &body.email, &body.partstat)?;
+    let reply   = itip::build_reply(&new_raw, &body.email, &body.partstat)?;
+    let updated = repo.update(ctx.tenant_id, id, &new_raw).await?;
+
+    let out = serde_json::json!({
+        "event":     updated,
+        "reply_ics": reply,
+    });
+    Ok((StatusCode::OK, Json(out)).into_response())
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/attendees — parsed attendee list.
+async fn list_attendees(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((_cal, id)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    use crate::domain::itip;
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let atts = itip::parse_attendees(&ev.ical_raw);
+    let body: Vec<_> = atts.into_iter().map(|a| serde_json::json!({
+        "email":    a.email,
+        "cn":       a.cn,
+        "role":     a.role,
+        "partstat": a.partstat,
+        "rsvp":     a.rsvp,
+    })).collect();
     Ok((StatusCode::OK, Json(body)).into_response())
 }
