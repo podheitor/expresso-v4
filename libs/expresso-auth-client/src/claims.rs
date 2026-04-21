@@ -80,6 +80,11 @@ impl AuthContext {
         self.roles.iter().any(|r| r == needle)
     }
 
+    /// True if `self.roles` contains at least one of `needles`.
+    pub fn has_any_role(&self, needles: &[&str]) -> bool {
+        needles.iter().any(|n| self.has_role(n))
+    }
+
     /// Build an `AuthContext` from raw claims. `primary_audience` is the
     /// client_id registered in Keycloak — used to pick the right
     /// `resource_access.<aud>.roles` bucket.
@@ -109,5 +114,46 @@ impl AuthContext {
             user_id, tenant_id, email, display_name,
             roles, expires_at: raw.exp,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ctx(roles: &[&str]) -> AuthContext {
+        AuthContext {
+            user_id:      Uuid::nil(),
+            tenant_id:    Uuid::nil(),
+            email:        "x@y".into(),
+            display_name: "x".into(),
+            roles:        roles.iter().map(|r| r.to_string()).collect(),
+            expires_at:   0,
+        }
+    }
+
+    #[test]
+    fn has_role_matches_exact() {
+        let c = ctx(&["admin", "user"]);
+        assert!(c.has_role("admin"));
+        assert!(c.has_role("user"));
+        assert!(!c.has_role("Admin"));
+        assert!(!c.has_role("missing"));
+    }
+
+    #[test]
+    fn has_any_role_matches_one_of() {
+        let c = ctx(&["user"]);
+        assert!(c.has_any_role(&["admin", "user"]));
+        assert!(c.has_any_role(&["user"]));
+        assert!(!c.has_any_role(&["admin", "super"]));
+        assert!(!c.has_any_role(&[]));
+    }
+
+    #[test]
+    fn has_any_role_empty_roles_never_matches() {
+        let c = ctx(&[]);
+        assert!(!c.has_any_role(&["admin"]));
+        assert!(!c.has_role("admin"));
     }
 }
