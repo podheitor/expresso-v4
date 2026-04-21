@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Versões · {{ file.name }} · Drive{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="page-header">
+    <div>
+      <h1>Versões</h1>
+      <p class="muted mono">{{ file.name }}</p>
+    </div>
+    <a class="btn btn-ghost" href="/drive">← Drive</a>
+  </header>
+
+  {% if versions.is_empty() %}
+    <div class="empty-state">Nenhuma versão arquivada. Uploads subsequentes do mesmo nome geram versões.</div>
+  {% else %}
+  <table class="data-table">
+    <thead>
+      <tr><th>v</th><th>Tamanho</th><th>Tipo</th><th>Criada</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+      {% for v in versions %}
+      <tr>
+        <td class="mono">v{{ v.version_no }}</td>
+        <td class="mono">{{ v.size_human() }}</td>
+        <td class="mono muted">{% match v.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}—{% endmatch %}</td>
+        <td class="mono muted">{% match v.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+        <td class="row-actions">
+          <a class="btn btn-ghost btn-sm"
+             href="/api/v1/drive/files/{{ file.id }}/versions/{{ v.version_no }}"
+             title="Baixar versão">↓</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

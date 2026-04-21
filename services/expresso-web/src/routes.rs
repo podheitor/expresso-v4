@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, MailComposeTpl, MailListTpl, Me, MeTpl, ShareRow,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, ShareRow, VersionRow,
         MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
@@ -39,6 +39,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/purge",  post(drive_purge_action))
         .route("/drive/:id/share",  get(drive_share_page).post(drive_share_create))
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
+        .route("/drive/:id/versions", get(drive_versions_page))
         .route("/calendar",      get(calendar_page))
         .route("/contacts",      get(contacts_page))
         .with_state(state)
@@ -485,4 +486,31 @@ async fn drive_share_revoke(
         &headers, Some((&t, &u)),
     ).await?;
     Ok(Redirect::to(&format!("/drive/{id}/share")).into_response())
+}
+
+
+// ─── /drive/:id/versions ─────────────────────────────────────────────────────
+
+async fn drive_versions_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let file: DriveFile = match get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/metadata"),
+        &headers, Some((&t, &u)),
+    ).await? {
+        Some(f) => f,
+        None => return Ok(login_redirect(&uri).into_response()),
+    };
+    let versions: Vec<VersionRow> = get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/versions"),
+        &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    Ok(DriveVersionsTpl { me, file, versions }.into_response())
 }

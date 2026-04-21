@@ -278,3 +278,25 @@ pub struct DriveShareTpl {
     pub new_token: Option<String>,
 }
 
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct VersionRow {
+    pub id:         String,
+    pub version_no: i32,
+    pub size_bytes: i64,
+    #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)] pub mime_type:  Option<String>,
+}
+
+impl VersionRow {
+    pub fn size_human(&self) -> String { human_size(self.size_bytes) }
+}
+
+#[derive(Template)]
+#[template(path = "drive_versions.html")]
+pub struct DriveVersionsTpl {
+    pub me:       Me,
+    pub file:     DriveFile,
+    pub versions: Vec<VersionRow>,
+}
+
