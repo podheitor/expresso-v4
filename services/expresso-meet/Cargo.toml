@@ -24,7 +24,8 @@ time                = { workspace = true }
 sqlx                = { workspace = true }
 jsonwebtoken        = { workspace = true }
 
-expresso-core = { path = "../../libs/expresso-core" }
+expresso-core        = { path = "../../libs/expresso-core" }
+expresso-auth-client = { path = "../../libs/expresso-auth-client" }
 
 [dev-dependencies]
 tokio-test = "0.4"

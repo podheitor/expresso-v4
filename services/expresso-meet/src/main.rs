@@ -10,9 +10,11 @@ mod error;
 mod jitsi;
 mod state;
 
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, sync::Arc};
 
-use tracing::{info, warn};
+use tracing::{error, info, warn};
+
+use expresso_auth_client::{OidcConfig, OidcValidator};
 
 use expresso_core::{config::{DatabaseConfig, TelemetryConfig}, create_db_pool, init_tracing};
 use state::AppState;
@@ -78,6 +80,19 @@ fn resolve_jitsi_config() -> Option<jitsi::JitsiConfig> {
     })
 }
 
+
+/// Build an `OidcValidator` from env. Returns `None` when the issuer/audience
+/// pair is unset (service runs in dev-header-auth mode with a loud warning).
+async fn resolve_oidc() -> Option<Arc<OidcValidator>> {
+    let issuer   = env_string("AUTH__OIDC_ISSUER")?;
+    let audience = env_string("AUTH__OIDC_AUDIENCE")?;
+    let cfg = OidcConfig::new(issuer.clone(), audience.clone());
+    match OidcValidator::new(cfg).await {
+        Ok(v)  => { info!(%issuer, %audience, "OIDC validator ready"); Some(Arc::new(v)) }
+        Err(e) => { error!(error = %e, %issuer, "OIDC validator init failed — falling back to header auth (INSECURE)"); None }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let telemetry = resolve_telemetry();
@@ -98,9 +113,13 @@ async fn main() -> anyhow::Result<()> {
         warn!("jitsi config missing (JITSI__APP_ID + JITSI__APP_SECRET + JITSI__DOMAIN); meeting routes degraded");
     }
 
+    let oidc = resolve_oidc().await;
+    if oidc.is_none() {
+        warn!("AUTH__OIDC_ISSUER / AUTH__OIDC_AUDIENCE unset — auth in DEV header-mode (INSECURE)");
+    }
     let http_addr = resolve_addr()?;
     let state = AppState::new(db, jitsi);
-    let app = api::router(state);
+    let app = api::router(state, oidc);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");
