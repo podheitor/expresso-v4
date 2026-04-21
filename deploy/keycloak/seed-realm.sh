@@ -91,8 +91,16 @@ USER_ROLE=$(curl -sf "${H[@]}" "$KC_URL/admin/realms/$REALM/roles/User")
 curl -sf "${H[@]}" -X POST "$KC_URL/admin/realms/$REALM/users/$ALICE_ID/role-mappings/realm" \
   -d "[$USER_ROLE]" || true
 
-# 8. enable TOTP required action (operator-driven, ≠ default)
+# 8. enable MFA required actions (operator-driven, ≠ default) — TOTP + WebAuthn
 curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/CONFIGURE_TOTP" \
   -d '{"alias":"CONFIGURE_TOTP","name":"Configure OTP","providerId":"CONFIGURE_TOTP","enabled":true,"defaultAction":false,"priority":10,"config":{}}'
+curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/webauthn-register" \
+  -d '{"alias":"webauthn-register","name":"Webauthn Register","providerId":"webauthn-register","enabled":true,"defaultAction":false,"priority":20,"config":{}}'
+curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM/authentication/required-actions/webauthn-register-passwordless" \
+  -d '{"alias":"webauthn-register-passwordless","name":"Webauthn Register Passwordless","providerId":"webauthn-register-passwordless","enabled":true,"defaultAction":false,"priority":30,"config":{}}'
+
+# 9. realm-level WebAuthn policy (rpName, algorithms)
+curl -sf "${H[@]}" -X PUT "$KC_URL/admin/realms/$REALM" \
+  -d '{"webAuthnPolicyRpEntityName":"Expresso","webAuthnPolicySignatureAlgorithms":["ES256","RS256"],"webAuthnPolicyUserVerificationRequirement":"preferred","webAuthnPolicyAttestationConveyancePreference":"not specified"}'
 
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"

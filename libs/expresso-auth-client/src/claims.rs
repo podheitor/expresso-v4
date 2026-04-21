@@ -31,6 +31,12 @@ pub struct RawClaims {
     pub realm_access: Option<RolesBlock>,
     #[serde(default)]
     pub resource_access: HashMap<String, RolesBlock>,
+    /// Authentication Context Class Reference (OIDC §2). e.g. "1", "urn:govbr:loa:ouro".
+    #[serde(default)]
+    pub acr:       Option<String>,
+    /// Authentication Methods References (RFC 8176). e.g. ["pwd","otp"], ["pwd","hwk"].
+    #[serde(default)]
+    pub amr:       Option<Vec<String>>,
 }
 
 /// `aud` can be a single string or an array per RFC 7519 §4.1.3.
@@ -73,6 +79,10 @@ pub struct AuthContext {
     pub display_name: String,
     pub roles:        Vec<String>,
     pub expires_at:   i64,
+    /// Raw ACR string from IdP (OIDC §2).
+    pub acr:          Option<String>,
+    /// Raw AMR list from IdP (RFC 8176).
+    pub amr:          Vec<String>,
 }
 
 impl AuthContext {
@@ -113,6 +123,8 @@ impl AuthContext {
         Ok(Self {
             user_id, tenant_id, email, display_name,
             roles, expires_at: raw.exp,
+            acr: raw.acr,
+            amr: raw.amr.unwrap_or_default(),
         })
     }
 }
@@ -129,6 +141,8 @@ mod tests {
             display_name: "x".into(),
             roles:        roles.iter().map(|r| r.to_string()).collect(),
             expires_at:   0,
+            acr:          None,
+            amr:          Vec::new(),
         }
     }
 

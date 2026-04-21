@@ -21,6 +21,8 @@ fn base(sub: &str, tenant: Option<&str>) -> RawClaims {
             m.insert("other-client".into(), RolesBlock { roles: vec!["leaked".into()] });
             m
         },
+        acr:                None,
+        amr:                None,
     }
 }
 
