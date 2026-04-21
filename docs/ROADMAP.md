@@ -87,7 +87,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 ### Sprint 8–9 (Semanas 1–4): CalDAV
 - [ ] CalDAV server (RFC 4791) em Rust
 - [ ] Calendário pessoal: CRUD events
-- [ ] Recurrence rules (RFC 5545 RRULE)
+- [x] Recurrence rules (RFC 5545 RRULE — subset DAILY/WEEKLY/MONTHLY/YEARLY + BYDAY/COUNT/UNTIL/INTERVAL)
 - [ ] Salas de reunião (resource mailboxes)
 - [x] Scheduling: free/busy lookup (RFC 6638) — GET /api/v1/scheduling/freebusy (multi-attendee, 370d window cap, RLS-safe tenant+email join)
 - [ ] Calendário compartilhado

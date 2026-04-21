@@ -29,6 +29,7 @@ struct BusyRow {
     email:   String,
     dtstart: OffsetDateTime,
     dtend:   Option<OffsetDateTime>,
+    rrule:   Option<String>,
 }
 
 pub struct FreeBusyRepo<'a> {
@@ -75,7 +76,8 @@ impl<'a> FreeBusyRepo<'a> {
             r#"
             SELECT lower(u.email) AS email,
                    e.dtstart      AS dtstart,
-                   e.dtend        AS dtend
+                   e.dtend        AS dtend,
+                   e.rrule        AS rrule
               FROM calendar_events e
               JOIN calendars       c ON c.id            = e.calendar_id
               JOIN users           u ON u.id            = c.owner_user_id
@@ -96,14 +98,32 @@ impl<'a> FreeBusyRepo<'a> {
         .await?;
 
         for r in rows {
-            // Clamp interval to [from, to] window.
-            let start = if r.dtstart < from { from } else { r.dtstart };
-            let end_raw = r.dtend.unwrap_or(r.dtstart);
-            let end = if end_raw > to { to } else { end_raw };
-            if end <= start {
-                continue;
+            // Base duration from master VEVENT.
+            let base_end = r.dtend.unwrap_or(r.dtstart);
+            let duration = base_end - r.dtstart;
+
+            // Try RRULE expansion; if rule missing or unparsable, fall back
+            // to single-instance clamping. RRULE expander enforces its own
+            // iteration cap (MAX_ITER=1000).
+            let intervals: Vec<(time::OffsetDateTime, time::OffsetDateTime)> = match r.rrule.as_deref() {
+                Some(raw) => match super::rrule::Rrule::parse(raw) {
+                    Some(rule) => rule.expand(r.dtstart, duration, from, to),
+                    None       => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
+                        .into_iter().collect(),
+                },
+                None => super::rrule::single_instance(r.dtstart, r.dtend, from, to)
+                    .into_iter().collect(),
+            };
+
+            let bucket = out.entry(r.email).or_default();
+            for (s, e) in intervals {
+                // Final clamp (expander may emit slightly wider end).
+                let start = if s < from { from } else { s };
+                let end   = if e > to   { to }   else { e };
+                if end > start {
+                    bucket.push(BusyInterval { start, end });
+                }
             }
-            out.entry(r.email).or_default().push(BusyInterval { start, end });
         }
 
         // Sort each attendee's intervals by start for stable output.
