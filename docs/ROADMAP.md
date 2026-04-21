@@ -110,11 +110,11 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] WebDAV server (RFC 4918) em Rust
 - [x] Drive REST API scaffold (files CRUD + upload/download + soft-delete, migração drive_files com RLS)
 - [ ] Upload tus.io resumable (arquivos grandes)
-- [ ] Versionamento de arquivos
-- [ ] Compartilhamento de links (JWT assinado, TTL)
-- [ ] Quotas por usuário (enforcement DB + storage)
-- [ ] Lixeira + restauração
-- [ ] Audit log de acessos a arquivos
+- [x] Versionamento de arquivos — drive_file_versions (RLS) + auto-archive on overwrite; GET /drive/files/:id/versions + /:v download
+- [x] Compartilhamento de links (token 32B base64url + sha256 persistido, TTL default 7d/max 30d, revoke por id, público /drive/share/:token)
+- [x] Quotas por tenant — drive_quotas + fn drive_quota_used (soma files vivos + versões); default 10 GB; enforce no upload (507)
+- [x] Lixeira + restauração — GET /drive/trash, POST /drive/files/:id/restore, DELETE ?permanent=true (purge blob+row)
+- [x] Audit log de acessos — target='audit' em upload/version/download/share/trash/restore/purge
 
 ### Sprint 15–17 (Semanas 7–12): LibreOffice Online
 - [ ] Deploy LibreOffice Online upstream (não Collabora CODE)
