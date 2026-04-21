@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Entrar · Expresso{% endblock %}
+{% block body %}
+<section class="card auth-card">
+  <h1>Entrar no Expresso</h1>
+  <p class="muted">Autenticação via provedor OIDC.</p>
+  {% match error %}{% when Some with (e) %}<p class="err">{{ e }}</p>{% when None %}{% endmatch %}
+  <a class="btn btn-primary block" href="{{ login_url }}">Entrar com Keycloak</a>
+</section>
+{% endblock %}

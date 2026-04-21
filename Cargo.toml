@@ -13,6 +13,7 @@ members = [
     "services/expresso-compliance",
     "services/expresso-search",
     "services/expresso-wopi",
+    "services/expresso-web",
     "services/expresso-notifications",
     "services/expresso-flows",
     # Libraries

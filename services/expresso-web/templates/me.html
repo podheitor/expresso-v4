@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Minha sessão · Expresso{% endblock %}
+{% block body %}
+<section class="card stack">
+  <h1>Sessão atual</h1>
+  <dl class="kv">
+    <dt>Usuário</dt>        <dd>{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}—{% endmatch %}</dd>
+    <dt>Email</dt>          <dd>{{ me.email }}</dd>
+    <dt>User ID</dt>        <dd class="mono">{{ me.user_id }}</dd>
+    <dt>Tenant</dt>         <dd class="mono">{{ me.tenant_id }}</dd>
+    <dt>Roles</dt>          <dd>{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
+    <dt>Expira (epoch)</dt> <dd>{{ me.expires_at }}</dd>
+  </dl>
+  <div class="row">
+    <a class="btn" href="/me/security">Gerenciar segurança / MFA</a>
+    <a class="btn btn-ghost" href="{{ logout_url }}">Sair</a>
+  </div>
+</section>
+{% endblock %}

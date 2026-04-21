@@ -1,0 +1,192 @@
+/* Expresso Web · minimal design tokens */
+:root {
+  --color-bg:       #f5f7fa;
+  --color-surface:  #ffffff;
+  --color-border:   #e2e8f0;
+  --color-text:     #0f172a;
+  --color-muted:    #64748b;
+  --color-brand:    #1e3a5f;
+  --color-brand-2:  #2c5282;
+  --color-accent:   #2563eb;
+  --color-accent-h: #1d4ed8;
+  --color-ok:       #15803d;
+  --color-err:      #b91c1c;
+  --radius-md:      8px;
+  --radius-sm:      6px;
+  --shadow-sm:      0 1px 2px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.08);
+  --font-sans:      system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono:      ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2 { margin: 0 0 .5rem; font-weight: 600; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.125rem; }
+.muted  { color: var(--color-muted); }
+.mono   { font-family: var(--font-mono); font-size: .875rem; }
+.ok     { color: var(--color-ok); font-weight: 600; }
+.err    { color: var(--color-err); }
+.link   { color: var(--color-accent); text-decoration: underline; }
+.link:hover { color: var(--color-accent-h); }
+.link-sm{ color: inherit; opacity: .8; text-decoration: none; font-size: .875rem; }
+.link-sm:hover { opacity: 1; }
+.stack > * + * { margin-top: 1rem; }
+.row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+.block { display: block; }
+
+.card {
+  max-width: 44rem;
+  margin: 3rem auto;
+  padding: 1.5rem 1.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.auth-card { max-width: 24rem; margin-top: 6rem; text-align: center; }
+.auth-card h1 { font-size: 1.375rem; }
+
+.subcard {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fbfdff;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 1rem;
+  row-gap: .4rem;
+  font-size: .9rem;
+  margin: 0;
+}
+.kv dt { color: var(--color-muted); font-weight: 500; }
+.kv dd { margin: 0; }
+
+.btn {
+  display: inline-block;
+  padding: .55rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--color-text);
+  font-weight: 500;
+  font-size: .9rem;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .1s, border-color .1s;
+}
+.btn:hover { background: #f1f5f9; }
+.btn-primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+.btn-primary:hover { background: var(--color-accent-h); border-color: var(--color-accent-h); }
+.btn-ghost   { background: transparent; }
+
+/* ─── Mail shell (two-pane) ───────────────────────────────────────────── */
+.mail-shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  height: 100vh;
+  background: var(--color-surface);
+  overflow: hidden;
+}
+.sidebar {
+  display: flex; flex-direction: column;
+  background: var(--color-brand);
+  color: #fff; overflow-y: auto;
+}
+.sidebar-header {
+  padding: 1rem 1.25rem .5rem;
+  font-weight: 700; font-size: 1.05rem;
+  border-bottom: 1px solid rgba(255,255,255,.15);
+}
+.folder-list { flex: 1; padding: .5rem 0; display: flex; flex-direction: column; }
+.folder-item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .55rem 1.25rem;
+  color: rgba(255,255,255,.82);
+  text-decoration: none;
+  font-size: .875rem;
+  transition: background .1s;
+}
+.folder-item:hover       { background: rgba(255,255,255,.1); color: #fff; }
+.folder-item.active      { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+.folder-icon { font-size: 1rem; flex-shrink: 0; }
+.folder-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge {
+  background: var(--color-accent);
+  color: #fff; border-radius: 999px;
+  padding: 1px 7px; font-size: .75rem; font-weight: 700;
+}
+.sidebar-footer {
+  padding: .75rem 1.25rem;
+  border-top: 1px solid rgba(255,255,255,.12);
+  font-size: .8rem;
+  color: rgba(255,255,255,.75);
+}
+
+.mail-main {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+.msg-list {
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.list-toolbar {
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  display: flex; justify-content: space-between; align-items: center;
+  background: #fafbfc;
+}
+.folder-title { font-size: 1rem; font-weight: 600; margin: 0; }
+.msg-rows { list-style: none; margin: 0; padding: 0; }
+.msg-row {
+  display: block;
+  padding: .7rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+  color: var(--color-text);
+  transition: background .1s;
+}
+.msg-row:hover           { background: #f1f5f9; }
+.msg-row.selected        { background: #e0ecff; }
+.msg-row.unread          { font-weight: 600; }
+.msg-row.unread .msg-subject { color: var(--color-brand-2); }
+.msg-meta {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: .825rem; color: var(--color-muted); margin-bottom: 2px;
+}
+.msg-from    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.msg-date    { flex-shrink: 0; margin-left: .5rem; }
+.msg-subject { font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-preview { font-size: .8rem; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+
+.msg-detail { overflow-y: auto; padding: 1.25rem 1.5rem; }
+.detail-header { border-bottom: 1px solid var(--color-border); padding-bottom: .75rem; margin-bottom: 1rem; }
+.detail-header h2 { font-size: 1.25rem; }
+.detail-from  { font-size: .9rem; }
+.detail-date  { font-size: .8rem; margin-top: .25rem; }
+.detail-body  { font-size: .9rem; }
+.body-text    { white-space: pre-wrap; font-family: var(--font-sans); font-size: .9rem; margin: 0; }
+.empty-state  { padding: 2rem; text-align: center; color: var(--color-muted); font-size: .9rem; }
+.error-banner { background: #fef2f2; border: 1px solid #fecaca; color: var(--color-err); padding: .5rem .75rem; border-radius: var(--radius-sm); margin: .5rem 1rem; font-size: .85rem; }
+
+@media (max-width: 900px) {
+  .mail-main { grid-template-columns: 1fr; }
+  .mail-shell { grid-template-columns: 64px 1fr; }
+  .folder-name, .sidebar-header .app-name, .sidebar-footer { display: none; }
+  .folder-item { justify-content: center; padding: .6rem .25rem; }
+}

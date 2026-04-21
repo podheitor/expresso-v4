@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ selected }} · Expresso Mail{% endblock %}
+{% block body %}
+<div class="mail-shell">
+  <aside class="sidebar">
+    <header class="sidebar-header">
+      <span class="app-name">✉ Expresso Mail</span>
+    </header>
+
+    <nav class="folder-list" aria-label="Pastas">
+      {% for f in folders %}
+      <a class="folder-item{% if selected.as_str() == f.name.as_str() %} active{% endif %}"
+         href="/mail?folder={{ f.name }}">
+        <span class="folder-icon">{{ f.icon() }}</span>
+        <span class="folder-name">{{ f.name }}</span>
+        {% if f.unseen_count > 0 %}
+          <span class="badge">{{ f.unseen_count }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="link-sm" href="/me">👤 {{ me.email }}</a>
+    </div>
+  </aside>
+
+  <main class="mail-main">
+    <section class="msg-list" aria-label="Mensagens">
+      <div class="list-toolbar">
+        <h1 class="folder-title">{{ selected }}</h1>
+      </div>
+
+      {% if messages.is_empty() %}
+        <div class="empty-state">Nenhuma mensagem</div>
+      {% else %}
+      <ul class="msg-rows">
+        {% for msg in messages %}
+        <li>
+          <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
+             href="/mail/{{ msg.id }}?folder={{ selected }}">
+            <div class="msg-meta">
+              <span class="msg-from">{{ msg.from_display() }}</span>
+              <span class="msg-date">{{ msg.date_display() }}</span>
+            </div>
+            <div class="msg-subject">{{ msg.subject_display() }}</div>
+            {% if !msg.preview_display().is_empty() %}
+              <div class="msg-preview">{{ msg.preview_display() }}</div>
+            {% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+
+    <section class="msg-detail" aria-label="Mensagem">
+      {% match detail %}
+      {% when Some with (d) %}
+        <header class="detail-header">
+          <h2>{% match d.subject %}{% when Some with (s) %}{{ s }}{% when None %}(sem assunto){% endmatch %}</h2>
+          <div class="detail-from">
+            <strong>{% match d.from_name %}{% when Some with (n) %}{{ n }}{% when None %}{% match d.from_addr %}{% when Some with (a) %}{{ a }}{% when None %}—{% endmatch %}{% endmatch %}</strong>
+            {% match d.from_addr %}{% when Some with (a) %}<span class="mono muted"> &lt;{{ a }}&gt;</span>{% when None %}{% endmatch %}
+          </div>
+          <div class="detail-date muted">{% match d.date %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}</div>
+        </header>
+        <article class="detail-body">
+          {% match d.body_text %}
+            {% when Some with (t) %}<pre class="body-text">{{ t }}</pre>
+            {% when None %}
+              {% match d.body_html %}
+                {% when Some with (_h) %}<p class="muted">(conteúdo HTML — visualização em breve)</p>
+                {% when None %}<p class="muted">(sem corpo)</p>
+              {% endmatch %}
+          {% endmatch %}
+        </article>
+      {% when None %}
+        <div class="empty-state">Selecione uma mensagem</div>
+      {% endmatch %}
+    </section>
+  </main>
+</div>
+{% endblock %}

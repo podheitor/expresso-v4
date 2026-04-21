@@ -1,0 +1,30 @@
+[package]
+name = "expresso-web"
+version = "0.1.0"
+edition = "2021"
+description = "Server-side rendered web UI (Axum + Askama)"
+
+[[bin]]
+name = "expresso-web"
+path = "src/main.rs"
+
+[dependencies]
+tokio              = { workspace = true }
+axum               = { workspace = true }
+tower              = { workspace = true }
+tower-http         = { workspace = true, features = ["fs"] }
+serde              = { workspace = true }
+serde_json         = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow             = { workspace = true }
+time               = { workspace = true }
+reqwest            = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+askama             = { version = "0.12", default-features = false, features = ["with-axum"] }
+askama_axum        = "0.4" 
+thiserror         = { workspace = true }
+mime               = "0.3"
+percent-encoding   = "2"
+html-escape        = "0.2"
+
+expresso-core = { path = "../../libs/expresso-core" }

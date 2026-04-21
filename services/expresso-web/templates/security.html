@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Segurança · Expresso{% endblock %}
+{% block body %}
+<section class="card stack">
+  <h1>Segurança da conta</h1>
+
+  <article class="subcard">
+    <h2>Autenticação multifator</h2>
+    <dl class="kv">
+      <dt>TOTP</dt>
+      <dd>{% match me.mfa %}{% when Some with (m) %}{% if m.totp %}<span class="ok">Habilitado</span>{% else %}<span class="muted">Não habilitado</span>{% endif %}{% when None %}<span class="muted">—</span>{% endmatch %}</dd>
+
+      <dt>WebAuthn</dt>
+      <dd>{% match me.mfa %}{% when Some with (m) %}{% if m.webauthn %}<span class="ok">Usado nesta sessão</span>{% else %}<span class="muted">Não usado nesta sessão</span>{% endif %}{% when None %}<span class="muted">—</span>{% endmatch %}</dd>
+
+      <dt>AMR</dt>
+      <dd class="mono">{% match me.mfa %}{% when Some with (m) %}{% if m.amr.is_empty() %}—{% else %}{{ m.amr|join(", ") }}{% endif %}{% when None %}—{% endmatch %}</dd>
+
+      <dt>ACR</dt>
+      <dd class="mono">{% match me.mfa %}{% when Some with (m) %}{% match m.acr %}{% when Some with (a) %}{{ a }}{% when None %}—{% endmatch %}{% when None %}—{% endmatch %}</dd>
+    </dl>
+  </article>
+
+  <article class="subcard stack">
+    <h2>Registrar chave de segurança</h2>
+    <p class="muted">O registro e gestão de chaves FIDO2/WebAuthn é feito no console de autoatendimento do Keycloak.</p>
+    <a class="btn btn-primary" href="{{ kc_account }}" target="_blank" rel="noopener">Abrir console de credenciais</a>
+  </article>
+
+  <p><a class="link" href="/me">← Voltar ao perfil</a></p>
+</section>
+{% endblock %}
