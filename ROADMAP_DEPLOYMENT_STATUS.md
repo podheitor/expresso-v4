@@ -188,3 +188,56 @@
 1. Stand up Synapse homeserver (Matrix) + wire `expresso-chat` env to exercise `/api/v1/channels`.
 2. Promote stub services to real functionality (auth OAuth, calendar CalDAV, etc.).
 3. Phase 4: backup/DR for PostgreSQL + MinIO + Keycloak realm export.
+
+---
+
+## Update 2026-04-21b (Synapse + Jitsi BFFs wired e2e on VM 125)
+
+### Completed
+- [x] **Synapse homeserver** provisioned:
+  - Container `expresso-synapse` (matrixdotorg/synapse:latest) on `expresso_default`
+    network, external :8108 → internal :8008.
+  - Postgres backend: dedicated `synapse` DB (C locale) on 192.168.15.123.
+  - AppService registration `expresso-chat` (`@expresso-.*:expresso.local` +
+    `#expresso-.*:expresso.local`, exclusive=true).
+  - Admin user `@admin:expresso.local` created (register_new_matrix_user),
+    access_token captured for `MATRIX__ADMIN_TOKEN`.
+- [x] **expresso-chat e2e validated** against real Synapse v1.133:
+  - `POST /api/v1/channels` → 201 + Matrix room id (`!ATuykkioAwCqIllxqc:…`)
+  - `POST /api/v1/channels/:id/messages` → 201 + `event_id`
+  - `GET  /api/v1/channels/:id/messages` → chunk with `m.room.message` events
+  - Fix: `MatrixClient::ensure_registered` (commit `0e6c8b7`) — AS must
+    pre-register users in its exclusive namespace via
+    `m.login.application_service` before `?user_id=…` impersonation works on
+    Synapse.
+- [x] **expresso-meet e2e validated** (JWT path):
+  - Migration `meetings_schema` applied (tables `meetings` +
+    `meeting_participants` + RLS).
+  - `POST /api/v1/meetings` → 201 + `join_url` + HS256 JWT with expected
+    claims (`iss=expresso`, `sub=meet.expresso.local`, `context.user.*`,
+    `context.features.*`).
+  - `cargo test --package expresso-meet`: 3/3 passing (mint_round_trip_decodes,
+    generate_room_name_has_prefix, join_url_is_https).
+- [x] **Unit tests** added for chat Matrix localpart parsing (commit `04eb9d4`,
+  `cargo test --package expresso-chat`: 3/3 passing).
+
+### Phase 3 service status (VM 125 — unchanged)
+- All 12/12 Rust services still up + healthy.
+- `expresso-synapse` added as 13th container (Matrix homeserver).
+
+### Deferred
+- **Real Jitsi Meet infra** (Prosody + jicofo + jvb) — expresso-meet mints
+  Jitsi-compatible JWTs today; full Jitsi stack stands up in a separate
+  deployment cycle (TURN server + TLS certs + 5GB images).
+- **Push to origin** — no git remote configured in local clone; await URL.
+- **Phase 4 items remaining**:
+  - SSO Keycloak ↔ Synapse (OIDC bridge via mod_auth_oidc or delegated auth).
+  - E2EE direct messages, reactions/threads, file sharing via Drive.
+  - SvelteKit Matrix client UI.
+
+### Notes
+- `MATRIX__ADMIN_TOKEN` now populated but still `#[allow(dead_code)]`; wiring
+  lands with Keycloak→Matrix user provisioning flow.
+- AppService registration namespace flipped `exclusive: true` — required for
+  Synapse to accept user impersonation on first contact (pre-exclusive false
+  rejected with `M_FORBIDDEN`).
