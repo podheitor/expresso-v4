@@ -116,3 +116,75 @@
 ### Notes
 - `expresso-chat` and `expresso-meet` were not part of workspace build targets in this cycle.
 - `deploy/docker/compose-phase3.yaml` added for reproducible deployment.
+
+---
+
+## Update 2026-04-21 (expresso-chat alignment)
+
+### Completed
+- [x] Validated `expresso-chat` builds in workspace (`cargo check -p expresso-chat` OK).
+- [x] Fixed blocking compile errors:
+  - `RoomPreset` now derives `Serialize` (`#[serde(rename_all = "snake_case")]`) — `services/expresso-chat/src/matrix/mod.rs`.
+  - Dropped unused `routing::get` import — `services/expresso-chat/src/api/messages.rs`.
+- [x] Confirmed `Dockerfile.chat` pattern matches `Dockerfile.mail` (multi-stage, debian:bookworm-slim runtime).
+- [x] Added `expresso-chat` entry to `deploy/docker/compose-phase3.yaml` on port **8010**
+  (avoids collision with `expresso-drive` default 8004).
+  - Uses `SERVER__HOST` / `SERVER__PORT` env convention (matches service code).
+  - `DATABASE__URL`, `MATRIX__*` placeholders left for per-env injection.
+
+### Notes
+- Chat service has a real BFF scaffold (Matrix CS API wrapper, channels/messages routes,
+  tenant repos) — not just a /health stub like the other Phase 3 services.
+- `expresso-meet` still outside the workspace (`src/` empty, not in `Cargo.toml` members).
+  Deferred to dedicated scaffolding cycle.
+- Residual warning: `MatrixConfig.admin_token` never read (admin provisioning pending).
+
+### Next
+1. Build `expresso-chat:latest` image on VM 125 and deploy via `compose-phase3.yaml`.
+2. Wire a Synapse homeserver (or docker stub) to exercise `/api/v1/channels` end-to-end.
+3. Scaffold `expresso-meet` (workspace member + minimal axum runtime).
+
+---
+
+## Update 2026-04-21 (chat + meet deployed on VM 125)
+
+### Completed
+- [x] Scaffolded `expresso-meet` (workspace member, axum `/health` + `/ready`, port 8011).
+  - `services/expresso-meet/Cargo.toml` + `services/expresso-meet/src/main.rs` created.
+  - `Dockerfile.meet` binary path corrected (`expresso_meet` → `expresso-meet`).
+  - Added to root `Cargo.toml` workspace members.
+- [x] Built Docker images on VM 125 (192.168.15.125):
+  - `expresso-meet:latest` — 1m24s release build, sha256:f9a268cac357…
+  - `expresso-chat:latest` — 1m45s release build, sha256:0a7169e92492…
+- [x] Deployed via `~/expresso/compose-chat-meet.yaml`:
+  - `expresso-chat` listening on 0.0.0.0:8010 → `/health` returns `{"service":"expresso-chat","status":"ok"}` (HTTP 200).
+  - `expresso-meet` listening on 0.0.0.0:8011 → `/health` returns `{"service":"expresso-meet","status":"ok"}` (HTTP 200).
+
+### Phase 3 service status (VM 125)
+| Service | Port | Status |
+|---------|------|--------|
+| expresso-mail | (multi) | ✅ healthy (Phase 2) |
+| expresso-calendar | 8002 | ✅ healthy |
+| expresso-contacts | 8003 | ✅ healthy |
+| expresso-drive | 8004 | ✅ healthy |
+| expresso-flows | 8005 | ✅ healthy |
+| expresso-notifications | 8006 | ✅ healthy |
+| expresso-search | 8007 | ✅ healthy |
+| expresso-wopi | 8008 | ✅ healthy |
+| expresso-compliance | 8009 | ✅ healthy |
+| expresso-chat | 8010 | ✅ healthy (NEW) |
+| expresso-meet | 8011 | ✅ healthy (NEW) |
+| expresso-auth | 8100 | ✅ healthy |
+| expresso-admin | 8101 | ✅ healthy |
+
+**12/12 Rust services running on VM 125.**
+
+### Notes
+- Compose project warned about orphan containers from prior deploys — cosmetic only, all services still up.
+- `expresso-chat` deployed without DB/Matrix wiring; routes other than `/health` will return degraded responses until `MATRIX__*` + `DATABASE__URL` are injected.
+- Residual warning: `MatrixConfig.admin_token` never read (admin provisioning pending).
+
+### Next
+1. Stand up Synapse homeserver (Matrix) + wire `expresso-chat` env to exercise `/api/v1/channels`.
+2. Promote stub services to real functionality (auth OAuth, calendar CalDAV, etc.).
+3. Phase 4: backup/DR for PostgreSQL + MinIO + Keycloak realm export.
