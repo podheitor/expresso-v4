@@ -4,11 +4,13 @@ use std::sync::Arc;
 
 use expresso_core::DbPool;
 
+use crate::error::{CalendarError, Result};
+
 #[derive(Clone)]
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    pub db: Option<DbPool>,
+    db: Option<DbPool>,
 }
 
 impl AppState {
@@ -18,6 +20,11 @@ impl AppState {
 
     pub fn db(&self) -> Option<&DbPool> {
         self.0.db.as_ref()
+    }
+
+    /// DB reference or SERVICE_UNAVAILABLE error — for handlers that require DB.
+    pub fn db_or_unavailable(&self) -> Result<&DbPool> {
+        self.0.db.as_ref().ok_or(CalendarError::DatabaseUnavailable)
     }
 }
 

@@ -1,0 +1,8 @@
+//! Domain layer — calendars + events persistence + iCalendar helpers.
+
+pub mod calendar;
+pub mod event;
+pub mod ical;
+
+pub use calendar::{Calendar, CalendarRepo, NewCalendar, UpdateCalendar};
+pub use event::{Event, EventRepo, EventQuery};

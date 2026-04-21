@@ -1,6 +1,8 @@
 //! expresso-calendar service entrypoint
 
 mod api;
+mod domain;
+mod error;
 mod state;
 
 use std::{env, net::SocketAddr};

@@ -1,0 +1,217 @@
+//! Calendar event domain model + repository.
+
+use expresso_core::DbPool;
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+use crate::error::{CalendarError, Result};
+use crate::domain::ical;
+
+/// Stored event row. Mirrors `calendar_events` columns.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Event {
+    pub id:              Uuid,
+    pub calendar_id:     Uuid,
+    pub tenant_id:       Uuid,
+    pub uid:             String,
+    pub etag:            String,
+    pub ical_raw:        String,
+    pub summary:         Option<String>,
+    pub description:     Option<String>,
+    pub location:        Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub dtstart:         Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub dtend:           Option<OffsetDateTime>,
+    pub rrule:           Option<String>,
+    pub status:          Option<String>,
+    pub sequence:        i32,
+    pub organizer_email: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at:      OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    pub updated_at:      OffsetDateTime,
+}
+
+/// Time-range query parameters (matches CalDAV calendar-query REPORT).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct EventQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub from:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub to:    Option<OffsetDateTime>,
+    #[serde(default)]
+    pub limit: Option<i64>,
+}
+
+#[derive(Clone)]
+pub struct EventRepo<'a> {
+    pool: &'a DbPool,
+}
+
+impl<'a> EventRepo<'a> {
+    pub fn new(pool: &'a DbPool) -> Self {
+        Self { pool }
+    }
+
+    /// Insert an event parsed from raw iCalendar text.
+    pub async fn create(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        raw: &str,
+    ) -> Result<Event> {
+        let parsed = ical::parse_vevent(raw)?;
+        let etag   = ical::compute_etag(raw);
+
+        let row = sqlx::query_as::<_, Event>(
+            r#"
+            INSERT INTO calendar_events
+                (tenant_id, calendar_id, uid, etag, ical_raw, summary, description,
+                 location, dtstart, dtend, rrule, status, sequence, organizer_email)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                      description, location, dtstart, dtend, rrule, status,
+                      sequence, organizer_email, created_at, updated_at
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(&parsed.uid)
+        .bind(&etag)
+        .bind(raw)
+        .bind(&parsed.summary)
+        .bind(&parsed.description)
+        .bind(&parsed.location)
+        .bind(parsed.dtstart)
+        .bind(parsed.dtend)
+        .bind(&parsed.rrule)
+        .bind(&parsed.status)
+        .bind(parsed.sequence)
+        .bind(&parsed.organizer_email)
+        .fetch_one(self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+
+    /// Fetch single event by id within tenant scope.
+    pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Event> {
+        sqlx::query_as::<_, Event>(
+            r#"
+            SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                   description, location, dtstart, dtend, rrule, status,
+                   sequence, organizer_email, created_at, updated_at
+              FROM calendar_events
+             WHERE tenant_id = $1 AND id = $2
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .fetch_optional(self.pool)
+        .await?
+        .ok_or(CalendarError::EventNotFound(id))
+    }
+
+
+    /// List events in a calendar within optional time range, ordered by dtstart.
+    pub async fn list(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        q: &EventQuery,
+    ) -> Result<Vec<Event>> {
+        let limit = q.limit.unwrap_or(1000).clamp(1, 10_000);
+        let rows = sqlx::query_as::<_, Event>(
+            r#"
+            SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                   description, location, dtstart, dtend, rrule, status,
+                   sequence, organizer_email, created_at, updated_at
+              FROM calendar_events
+             WHERE tenant_id = $1
+               AND calendar_id = $2
+               AND ($3::timestamptz IS NULL OR dtend   IS NULL OR dtend   >= $3)
+               AND ($4::timestamptz IS NULL OR dtstart IS NULL OR dtstart <= $4)
+             ORDER BY dtstart NULLS LAST, created_at
+             LIMIT $5
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(q.from)
+        .bind(q.to)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    /// Update existing event by id, replacing ical_raw + derived fields.
+    pub async fn update(
+        &self,
+        tenant_id: Uuid,
+        id: Uuid,
+        raw: &str,
+    ) -> Result<Event> {
+        let parsed = ical::parse_vevent(raw)?;
+        let etag   = ical::compute_etag(raw);
+
+        sqlx::query_as::<_, Event>(
+            r#"
+            UPDATE calendar_events SET
+                uid             = $3,
+                etag            = $4,
+                ical_raw        = $5,
+                summary         = $6,
+                description     = $7,
+                location        = $8,
+                dtstart         = $9,
+                dtend           = $10,
+                rrule           = $11,
+                status          = $12,
+                organizer_email = $13,
+                sequence        = sequence + 1
+             WHERE tenant_id = $1 AND id = $2
+             RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                       description, location, dtstart, dtend, rrule, status,
+                       sequence, organizer_email, created_at, updated_at
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .bind(&parsed.uid)
+        .bind(&etag)
+        .bind(raw)
+        .bind(&parsed.summary)
+        .bind(&parsed.description)
+        .bind(&parsed.location)
+        .bind(parsed.dtstart)
+        .bind(parsed.dtend)
+        .bind(&parsed.rrule)
+        .bind(&parsed.status)
+        .bind(&parsed.organizer_email)
+        .fetch_optional(self.pool)
+        .await?
+        .ok_or(CalendarError::EventNotFound(id))
+    }
+
+    /// Delete event by id.
+    pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        let res = sqlx::query(
+            r#"DELETE FROM calendar_events WHERE tenant_id = $1 AND id = $2"#,
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .execute(self.pool)
+        .await?;
+        if res.rows_affected() == 0 {
+            return Err(CalendarError::EventNotFound(id));
+        }
+        Ok(())
+    }
+
+}
