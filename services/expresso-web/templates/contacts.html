@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Contatos · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <aside class="contacts-books">
+    <h2>Catálogos</h2>
+    {% if books.is_empty() %}
+      <p class="muted">Nenhum catálogo</p>
+    {% else %}
+    <ul>
+      {% for b in books %}
+      <li>
+        <a class="link{% match selected_book %}{% when Some with (sid) %}{% if sid.as_str() == b.id.as_str() %} active{% endif %}{% when None %}{% endmatch %}"
+           href="/contacts?book_id={{ b.id }}">
+          {{ b.name }}
+          {% if b.is_default %}<span class="badge">padrão</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </aside>
+
+  <main class="contacts-main">
+    <h1>Contatos</h1>
+    {% if contacts.is_empty() %}
+      <div class="empty-state">Catálogo vazio</div>
+    {% else %}
+    <table class="data-table">
+      <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th></tr></thead>
+      <tbody>
+        {% for c in contacts %}
+        <tr>
+          <td>{{ c.name_display() }}</td>
+          <td class="mono">{{ c.email_display() }}</td>
+          <td>{{ c.phone_display() }}</td>
+          <td>{{ c.org_display() }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </main>
+</section>
+{% endblock %}

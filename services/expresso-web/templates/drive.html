@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="page-header">
+    <h1>Meu Drive</h1>
+    <form class="upload-form" method="post" action="#" enctype="multipart/form-data">
+      <input type="file" name="file" disabled>
+      <button class="btn" type="button" disabled title="em breve">+ Upload (em breve)</button>
+    </form>
+  </header>
+
+  {% if files.is_empty() %}
+    <div class="empty-state">Pasta vazia</div>
+  {% else %}
+  <table class="data-table">
+    <thead>
+      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Modificado</th></tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td>{{ f.icon() }}</td>
+        <td>
+          {% if f.is_folder() %}
+            <a class="link" href="/drive?parent_id={{ f.id }}">{{ f.name }}</a>
+          {% else %}
+            <span>{{ f.name }}</span>
+          {% endif %}
+        </td>
+        <td class="mono">{{ f.size_human() }}</td>
+        <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% match parent_id %}
+  {% when Some with (_pid) %}
+    <p><a class="link" href="/drive">← Raiz</a></p>
+  {% when None %}
+  {% endmatch %}
+</section>
+{% endblock %}

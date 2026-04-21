@@ -1,0 +1,12 @@
+<header class="topbar">
+  <div class="brand">Expresso</div>
+  <nav class="appnav">
+    <a class="appnav-item{% if current == "mail"     %} active{% endif %}" href="/mail">✉ Mail</a>
+    <a class="appnav-item{% if current == "calendar" %} active{% endif %}" href="/calendar">📅 Agenda</a>
+    <a class="appnav-item{% if current == "contacts" %} active{% endif %}" href="/contacts">👥 Contatos</a>
+    <a class="appnav-item{% if current == "drive"    %} active{% endif %}" href="/drive">💾 Drive</a>
+  </nav>
+  <div class="useract">
+    <a class="appnav-item" href="/me">👤 {{ me.email }}</a>
+  </div>
+</header>

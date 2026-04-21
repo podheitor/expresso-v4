@@ -125,3 +125,93 @@ pub struct MailListTpl {
     pub selected_id: Option<String>,
 }
 
+
+// ─── Drive ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct DriveFile {
+    pub id:         String,
+    pub name:       String,
+    pub kind:       String,
+    #[serde(default)] pub size_bytes: i64,
+    #[serde(default)] pub mime_type:  Option<String>,
+    #[serde(default)] pub parent_id:  Option<String>,
+    #[serde(default)] pub sha256:     Option<String>,
+    #[serde(default)] pub created_at: Option<String>,
+}
+
+impl DriveFile {
+    pub fn is_folder(&self) -> bool { self.kind == "folder" }
+    pub fn size_human(&self) -> String {
+        if self.is_folder() { return "—".into(); }
+        let b = self.size_bytes as f64;
+        if b < 1024.0 { format!("{} B", self.size_bytes) }
+        else if b < 1024.0*1024.0 { format!("{:.1} KB", b/1024.0) }
+        else if b < 1024.0*1024.0*1024.0 { format!("{:.1} MB", b/(1024.0*1024.0)) }
+        else { format!("{:.1} GB", b/(1024.0*1024.0*1024.0)) }
+    }
+    pub fn icon(&self) -> &'static str {
+        if self.is_folder() { "📁" } else { "📄" }
+    }
+}
+
+#[derive(Template)]
+#[template(path = "drive.html")]
+pub struct DriveTpl {
+    pub me:         Me,
+    pub parent_id:  Option<String>,
+    pub files:      Vec<DriveFile>,
+}
+
+// ─── Calendar ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Calendar {
+    pub id:          String,
+    pub name:        String,
+    #[serde(default)] pub description: Option<String>,
+    #[serde(default)] pub color:       Option<String>,
+    #[serde(default)] pub is_default:  bool,
+}
+
+#[derive(Template)]
+#[template(path = "calendar.html")]
+pub struct CalendarTpl {
+    pub me:        Me,
+    pub calendars: Vec<Calendar>,
+}
+
+// ─── Contacts ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AddressBook {
+    pub id:          String,
+    pub name:        String,
+    #[serde(default)] pub description: Option<String>,
+    #[serde(default)] pub is_default:  bool,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Contact {
+    pub id:          String,
+    #[serde(default)] pub full_name:    Option<String>,
+    #[serde(default)] pub email:        Option<String>,
+    #[serde(default)] pub phone:        Option<String>,
+    #[serde(default)] pub organization: Option<String>,
+}
+
+impl Contact {
+    pub fn name_display(&self) -> &str { self.full_name.as_deref().unwrap_or("—") }
+    pub fn email_display(&self) -> &str { self.email.as_deref().unwrap_or("") }
+    pub fn phone_display(&self) -> &str { self.phone.as_deref().unwrap_or("") }
+    pub fn org_display(&self) -> &str { self.organization.as_deref().unwrap_or("") }
+}
+
+#[derive(Template)]
+#[template(path = "contacts.html")]
+pub struct ContactsTpl {
+    pub me:            Me,
+    pub books:         Vec<AddressBook>,
+    pub selected_book: Option<String>,
+    pub contacts:      Vec<Contact>,
+}

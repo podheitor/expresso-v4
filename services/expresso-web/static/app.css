@@ -190,3 +190,63 @@ h2 { font-size: 1.125rem; }
   .folder-name, .sidebar-header .app-name, .sidebar-footer { display: none; }
   .folder-item { justify-content: center; padding: .6rem .25rem; }
 }
+
+/* ─── Topbar ──────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 0 1.25rem; height: 52px;
+  background: var(--color-brand);
+  color: #fff; box-shadow: var(--shadow-sm);
+}
+.brand { font-weight: 700; letter-spacing: -.01em; font-size: 1.05rem; }
+.appnav { display: flex; gap: .25rem; flex: 1; }
+.appnav-item {
+  padding: .45rem .85rem;
+  color: rgba(255,255,255,.82);
+  text-decoration: none;
+  font-size: .9rem;
+  border-radius: var(--radius-sm);
+  transition: background .1s;
+}
+.appnav-item:hover        { background: rgba(255,255,255,.1); color: #fff; }
+.appnav-item.active       { background: rgba(255,255,255,.2); color: #fff; font-weight: 600; }
+.useract { display: flex; align-items: center; }
+
+/* ─── Generic page shell ─────────────────────────────────────────────────── */
+.page { max-width: 72rem; margin: 1.5rem auto; padding: 0 1.25rem; }
+.page-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.page-header h1 { margin: 0; }
+
+.card-list { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: .9rem;
+}
+.data-table th, .data-table td { padding: .6rem .85rem; text-align: left; border-bottom: 1px solid var(--color-border); }
+.data-table th { background: #fafbfc; font-weight: 600; color: var(--color-muted); font-size: .825rem; text-transform: uppercase; letter-spacing: .02em; }
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: #f8fafc; }
+
+/* Contacts two-pane */
+section.page { /* keep */ }
+.contacts-books {
+  float: left; width: 220px;
+  border-right: 1px solid var(--color-border);
+  padding-right: 1rem; margin-right: 1rem;
+  min-height: 60vh;
+}
+.contacts-books h2 { font-size: .9rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: .02em; }
+.contacts-books ul { list-style: none; padding: 0; margin: 0; }
+.contacts-books li a { display: block; padding: .4rem .25rem; text-decoration: none; color: inherit; font-size: .9rem; border-radius: var(--radius-sm); }
+.contacts-books li a:hover { background: #f1f5f9; }
+.contacts-books li a.active { background: #e0ecff; font-weight: 600; color: var(--color-brand-2); }
+.contacts-main { overflow: hidden; }

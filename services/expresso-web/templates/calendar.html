@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Agenda · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <h1>Minhas agendas</h1>
+  {% if calendars.is_empty() %}
+    <div class="empty-state">Nenhuma agenda configurada</div>
+  {% else %}
+  <ul class="card-list">
+    {% for c in calendars %}
+    <li class="subcard">
+      <div class="row" style="justify-content: space-between">
+        <div>
+          <strong>{{ c.name }}</strong>
+          {% if c.is_default %}<span class="badge" style="background:#15803d">padrão</span>{% endif %}
+        </div>
+        <div class="mono muted">{{ c.id }}</div>
+      </div>
+      {% match c.description %}
+      {% when Some with (d) %}<p class="muted">{{ d }}</p>
+      {% when None %}{% endmatch %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <p class="muted">Visualizações mês/semana/dia chegam em breve.</p>
+</section>
+{% endblock %}
