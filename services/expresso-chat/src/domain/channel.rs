@@ -101,6 +101,20 @@ impl<'a> ChannelRepo<'a> {
         Ok(row)
     }
 
+    pub async fn member_role(
+        &self,
+        tenant: Uuid,
+        channel: Uuid,
+        user: Uuid,
+    ) -> Result<Option<MemberRole>> {
+        let row: Option<(MemberRole,)> = sqlx::query_as(
+            r#"SELECT role FROM chat_channel_members
+               WHERE tenant_id=$1 AND channel_id=$2 AND user_id=$3"#)
+            .bind(tenant).bind(channel).bind(user)
+            .fetch_optional(self.pool).await?;
+        Ok(row.map(|(r,)| r))
+    }
+
     pub async fn is_member(&self, tenant: Uuid, channel: Uuid, user: Uuid) -> Result<bool> {
         let cnt: i64 = sqlx::query_scalar(
             r#"SELECT COUNT(*) FROM chat_channel_members

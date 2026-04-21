@@ -2,7 +2,7 @@
 //!
 //! Uses AppService impersonation (`?user_id=@alice:example.com`) so a single
 //! access token can act on behalf of any tenant-mapped Matrix user. See
-//! Synapse AppService docs + MSC2965.
+//! Synapse AppService spec (appservice/v1).
 //!
 //! Only implements the handful of endpoints we need right now:
 //! - create room (POST /createRoom)
@@ -63,6 +63,14 @@ pub struct CreateRoomResponse {
 }
 
 impl MatrixClient {
+    /// Admin API token (Synapse `/_synapse/admin/*`) — wired for user provisioning
+    /// once Keycloak→Matrix sync lands. Returned lazily so callers can fail with
+    /// a typed error instead of a boot-time panic.
+    pub fn admin_token(&self) -> Result<&str> {
+        self.cfg.admin_token.as_deref()
+            .ok_or_else(|| ChatError::Matrix("MATRIX__ADMIN_TOKEN not configured".into()))
+    }
+
     pub fn new(cfg: MatrixConfig) -> Self {
         let http = Client::builder()
             .timeout(std::time::Duration::from_secs(15))

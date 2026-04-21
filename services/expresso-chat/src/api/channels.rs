@@ -117,8 +117,12 @@ async fn archive(
     let repo = ChannelRepo::new(pool);
     let ch   = repo.get(ctx.tenant_id, id).await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
+    // Archive allowed for the original creator OR any owner/admin member.
     if ch.created_by != ctx.user_id {
-        return Err(ChatError::Forbidden);
+        match repo.member_role(ctx.tenant_id, id, ctx.user_id).await? {
+            Some(MemberRole::Owner) | Some(MemberRole::Admin) => {}
+            _ => return Err(ChatError::Forbidden),
+        }
     }
     repo.archive(ctx.tenant_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
@@ -139,8 +143,11 @@ async fn add_member(
     let pool   = state.db_or_unavailable()?;
     let matrix = state.matrix_or_unavailable()?;
     let repo   = ChannelRepo::new(pool);
-    if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
-        return Err(ChatError::NotMember);
+    // Invitation requires owner/admin role (RBAC hardening).
+    match repo.member_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(MemberRole::Owner) | Some(MemberRole::Admin) => {}
+        Some(_) => return Err(ChatError::Forbidden),
+        None    => return Err(ChatError::NotMember),
     }
     let ch = repo.get(ctx.tenant_id, id).await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
