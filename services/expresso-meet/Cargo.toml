@@ -2,22 +2,27 @@
 name = "expresso-meet"
 version = "0.1.0"
 edition = "2021"
-description = "Video meetings BFF — Jitsi/LiveKit gateway"
+description = "Video meetings BFF — Jitsi Meet gateway (JWT issuance + room registry)"
 
 [[bin]]
 name = "expresso-meet"
 path = "src/main.rs"
 
 [dependencies]
-tokio              = { workspace = true }
-axum               = { workspace = true }
-tower              = { workspace = true }
-tower-http         = { workspace = true }
-serde              = { workspace = true }
-serde_json         = { workspace = true }
-tracing            = { workspace = true }
-tracing-subscriber = { workspace = true }
-anyhow             = { workspace = true }
+tokio               = { workspace = true }
+axum                = { workspace = true }
+tower               = { workspace = true }
+tower-http          = { workspace = true }
+serde               = { workspace = true }
+serde_json          = { workspace = true }
+tracing             = { workspace = true }
+tracing-subscriber  = { workspace = true }
+anyhow              = { workspace = true }
+thiserror           = { workspace = true }
+uuid                = { workspace = true }
+time                = { workspace = true }
+sqlx                = { workspace = true }
+jsonwebtoken        = { workspace = true }
 
 expresso-core = { path = "../../libs/expresso-core" }
 
