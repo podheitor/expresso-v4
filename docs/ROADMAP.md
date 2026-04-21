@@ -108,6 +108,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 
 ### Sprint 12–14 (Semanas 1–6): Drive
 - [ ] WebDAV server (RFC 4918) em Rust
+- [x] Drive REST API scaffold (files CRUD + upload/download + soft-delete, migração drive_files com RLS)
 - [ ] Upload tus.io resumable (arquivos grandes)
 - [ ] Versionamento de arquivos
 - [ ] Compartilhamento de links (JWT assinado, TTL)
