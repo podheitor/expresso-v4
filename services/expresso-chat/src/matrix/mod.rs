@@ -22,6 +22,7 @@ pub struct MatrixConfig {
     pub hs_url:      String,   // e.g. https://synapse.expresso.local
     pub server_name: String,   // e.g. expresso.local (MXID suffix)
     pub as_token:    Option<String>,  // AppService token — impersonation allowed
+    #[allow(dead_code)]  // reserved — Synapse Admin API (deactivate/rename) lands with Keycloak sync
     pub admin_token: Option<String>,  // Admin API token — user provisioning
 }
 
@@ -66,6 +67,7 @@ impl MatrixClient {
     /// Admin API token (Synapse `/_synapse/admin/*`) — wired for user provisioning
     /// once Keycloak→Matrix sync lands. Returned lazily so callers can fail with
     /// a typed error instead of a boot-time panic.
+    #[allow(dead_code)]
     pub fn admin_token(&self) -> Result<&str> {
         self.cfg.admin_token.as_deref()
             .ok_or_else(|| ChatError::Matrix("MATRIX__ADMIN_TOKEN not configured".into()))
@@ -118,8 +120,7 @@ impl MatrixClient {
     /// Synapse requires AS to pre-register users within its exclusive namespace
     /// before impersonation (?user_id=…) via CS API works.
     async fn ensure_registered(&self, mxid: &str) -> Result<()> {
-        let localpart = mxid.trim_start_matches('@')
-            .split(':').next()
+        let localpart = localpart_from_mxid(mxid)
             .ok_or_else(|| ChatError::Matrix(format!("bad mxid: {mxid}")))?;
         let url = format!(
             "{}/_matrix/client/v3/register",
@@ -224,6 +225,15 @@ fn urlencode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
+/// Extract localpart from a MXID (`@local:server` → `local`). Returns None on
+/// malformed input (missing `@`, missing `:`, empty localpart).
+fn localpart_from_mxid(mxid: &str) -> Option<&str> {
+    let rest = mxid.strip_prefix('@')?;
+    let (local, server) = rest.split_once(':')?;
+    if local.is_empty() || server.is_empty() { return None; }
+    Some(local)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,5 +248,23 @@ mod tests {
         let c = MatrixClient::new(cfg);
         let u = Uuid::nil();
         assert_eq!(c.mxid_for(u), "@expresso-00000000-0000-0000-0000-000000000000:expresso.local");
+    }
+
+    #[test]
+    fn localpart_valid() {
+        assert_eq!(localpart_from_mxid("@alice:expresso.local"), Some("alice"));
+        assert_eq!(
+            localpart_from_mxid("@expresso-7d8b:expresso.local"),
+            Some("expresso-7d8b")
+        );
+    }
+
+    #[test]
+    fn localpart_rejects_malformed() {
+        assert_eq!(localpart_from_mxid("alice:expresso.local"),   None, "missing @");
+        assert_eq!(localpart_from_mxid("@alice"),                 None, "missing :");
+        assert_eq!(localpart_from_mxid("@:expresso.local"),       None, "empty local");
+        assert_eq!(localpart_from_mxid("@alice:"),                None, "empty server");
+        assert_eq!(localpart_from_mxid(""),                       None, "empty");
     }
 }
