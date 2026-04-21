@@ -254,3 +254,27 @@ pub struct ContactsTpl {
     pub selected_book: Option<String>,
     pub contacts:      Vec<Contact>,
 }
+
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct ShareRow {
+    pub id:         String,
+    #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)] pub expires_at: Option<String>,
+    #[serde(default)] pub revoked_at: Option<String>,
+}
+
+impl ShareRow {
+    pub fn is_active(&self) -> bool { self.revoked_at.is_none() }
+}
+
+#[derive(Template)]
+#[template(path = "drive_share.html")]
+pub struct DriveShareTpl {
+    pub me:        Me,
+    pub file:      DriveFile,
+    pub shares:    Vec<ShareRow>,
+    pub new_url:   Option<String>,
+    pub new_token: Option<String>,
+}
+

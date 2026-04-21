@@ -289,3 +289,11 @@ section.page { /* keep */ }
 .form-actions { display: flex; gap: .5rem; margin-top: .5rem; }
 .alert { padding: .75rem 1rem; border-radius: var(--radius-sm); margin-bottom: 1rem; }
 .alert-error { background: #fee2e2; color: #991b1b; border-left: 4px solid #dc2626; }
+
+/* ─── Shares ──────────────────────────────────────────────────────────────── */
+.card { background: var(--color-surface, #fff); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 1rem 1.25rem; margin-bottom: 1rem; }
+.card h2 { margin: 0 0 .75rem; font-size: 1rem; font-weight: 600; }
+.alert-success { background: #dcfce7; color: #14532d; border-left: 4px solid #16a34a; }
+.share-token { padding: .5rem; background: #f1f5f9; border-radius: var(--radius-sm); margin: .5rem 0; word-break: break-all; }
+.badge-ok  { background: #dcfce7; color: #14532d; padding: .125rem .5rem; border-radius: 999px; font-size: .75rem; }
+.badge-off { background: #fee2e2; color: #991b1b; padding: .125rem .5rem; border-radius: 999px; font-size: .75rem; }

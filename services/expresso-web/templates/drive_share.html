@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Compartilhar · {{ file.name }} · Drive{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="page-header">
+    <div>
+      <h1>Compartilhar arquivo</h1>
+      <p class="muted mono">{{ file.name }}</p>
+    </div>
+    <a class="btn btn-ghost" href="/drive">← Drive</a>
+  </header>
+
+  {% match new_url %}{% when Some with (u) %}
+    <div class="alert alert-success">
+      <strong>Link criado — copie agora, ele não será exibido novamente:</strong>
+      <div class="share-token mono">{{ u }}</div>
+      {% match new_token %}{% when Some with (t) %}
+        <details><summary>Token bruto</summary><code class="mono">{{ t }}</code></details>
+      {% when None %}{% endmatch %}
+    </div>
+  {% when None %}{% endmatch %}
+
+  <section class="card">
+    <h2>Novo link</h2>
+    <form method="post" action="/drive/{{ file.id }}/share" class="compose-form">
+      <label>
+        <span>Expira em (horas, máx 720 = 30 dias)</span>
+        <input type="number" name="ttl_hours" value="168" min="1" max="720" required>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Gerar link</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Links existentes</h2>
+    {% if shares.is_empty() %}
+      <div class="empty-state">Nenhum link criado ainda</div>
+    {% else %}
+    <table class="data-table">
+      <thead>
+        <tr><th>Criado</th><th>Expira</th><th>Status</th><th>Ações</th></tr>
+      </thead>
+      <tbody>
+        {% for s in shares %}
+        <tr>
+          <td class="mono muted">{% match s.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+          <td class="mono muted">{% match s.expires_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+          <td>
+            {% if s.is_active() %}
+              <span class="badge badge-ok">Ativo</span>
+            {% else %}
+              <span class="badge badge-off">Revogado</span>
+            {% endif %}
+          </td>
+          <td class="row-actions">
+            {% if s.is_active() %}
+            <form method="post" action="/drive/{{ file.id }}/share/{{ s.id }}/revoke" style="display:inline"
+                  onsubmit="return confirm('Revogar este link?')">
+              <button class="btn btn-ghost btn-sm" type="submit">Revogar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

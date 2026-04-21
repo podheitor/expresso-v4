@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, MailComposeTpl, MailListTpl, Me, MeTpl,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, MailComposeTpl, MailListTpl, Me, MeTpl, ShareRow,
         MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
@@ -37,6 +37,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/trash",  post(drive_trash_action))
         .route("/drive/:id/restore",post(drive_restore_action))
         .route("/drive/:id/purge",  post(drive_purge_action))
+        .route("/drive/:id/share",  get(drive_share_page).post(drive_share_create))
+        .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
         .route("/calendar",      get(calendar_page))
         .route("/contacts",      get(contacts_page))
         .with_state(state)
@@ -391,4 +393,96 @@ async fn mail_compose_action(
             error: Some(format!("Falha ao enviar (HTTP {status}).")),
         }.into_response())
     }
+}
+
+
+// ─── /drive/:id/share ────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct SharePageQuery {
+    new_url:   Option<String>,
+    new_token: Option<String>,
+}
+
+async fn drive_share_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Query(q): Query<SharePageQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let file: DriveFile = match get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/metadata"),
+        &headers, Some((&t, &u)),
+    ).await? {
+        Some(f) => f,
+        None => return Ok(login_redirect(&uri).into_response()),
+    };
+    let shares: Vec<ShareRow> = get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/shares"),
+        &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    Ok(DriveShareTpl { me, file, shares, new_url: q.new_url, new_token: q.new_token }
+        .into_response())
+}
+
+#[derive(Deserialize)]
+struct ShareCreateForm { ttl_hours: i64 }
+
+#[derive(serde::Serialize)]
+struct ShareCreatePayload { expires_in_seconds: i64 }
+
+#[derive(serde::Deserialize)]
+struct ShareCreateResp {
+    id:    String,
+    token: String,
+    url:   String,
+}
+
+async fn drive_share_create(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<ShareCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let ttl_s = f.ttl_hours.clamp(1, 720) * 3600;
+    let payload = ShareCreatePayload { expires_in_seconds: ttl_s };
+    // Precisamos do corpo de resposta → usa http client direto (não post_json que só retorna status).
+    let url = format!("{}/api/v1/drive/files/{}/shares",
+        st.backends.drive.trim_end_matches('/'), id);
+    let mut req = st.http.post(&url).json(&payload);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let resp = req.send().await?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        return Ok(Redirect::to(&format!("/drive/{id}/share?error={status}")).into_response());
+    }
+    let body: ShareCreateResp = resp.json().await?;
+    let _ = body.id;
+    let enc_url   = utf8_percent_encode(&body.url,   NON_ALPHANUMERIC).to_string();
+    let enc_token = utf8_percent_encode(&body.token, NON_ALPHANUMERIC).to_string();
+    Ok(Redirect::to(&format!("/drive/{id}/share?new_url={enc_url}&new_token={enc_token}"))
+        .into_response())
+}
+
+async fn drive_share_revoke(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((id, sid)): Path<(String, String)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = crate::upstream::delete_at(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/shares/{sid}"),
+        &headers, Some((&t, &u)),
+    ).await?;
+    Ok(Redirect::to(&format!("/drive/{id}/share")).into_response())
 }
