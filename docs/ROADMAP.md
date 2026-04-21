@@ -75,7 +75,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 ### Sprint 7 (Semanas 13–14): Auth + gov.br
 - [x] Keycloak setup + realm config (deploy/keycloak/seed-realm.sh)
 - [ ] gov.br OIDC adapter (sso.acesso.gov.br)
-- [x] OIDC RP backend (expresso-auth: PKCE+/auth/me); WebMail wiring pendente
+- [x] OIDC RP backend (expresso-auth: PKCE+/auth/me) + SPA cookie-session wiring (frontend/expresso-web: /login, /me, layout guard, vite proxy)
 - [ ] MFA: TOTP + WebAuthn
 - [ ] RBAC: SuperAdmin, TenantAdmin, User, Readonly
 - [ ] Audit log de autenticação
