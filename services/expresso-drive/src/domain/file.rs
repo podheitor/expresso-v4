@@ -120,6 +120,51 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+
+    pub async fn find_by_name(
+        &self,
+        tenant_id: Uuid,
+        parent_id: Option<Uuid>,
+        name:      &str,
+    ) -> Result<Option<DriveFile>> {
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files \
+             WHERE tenant_id = $1 \
+               AND parent_id IS NOT DISTINCT FROM $2 \
+               AND name = $3 \
+               AND deleted_at IS NULL"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id).bind(parent_id).bind(name)
+            .fetch_optional(self.pool).await?;
+        Ok(row)
+    }
+
+    /// Swap storage_key + size + sha + mime in place. Used quando upload
+    /// substitui versão corrente (histórico já foi arquivado em drive_file_versions).
+    pub async fn update_content(
+        &self,
+        tenant_id:   Uuid,
+        id:          Uuid,
+        storage_key: &str,
+        size_bytes:  i64,
+        sha256:      Option<&str>,
+        mime_type:   Option<&str>,
+    ) -> Result<DriveFile> {
+        let sql = format!(
+            "UPDATE drive_files \
+                SET storage_key = $3, size_bytes = $4, sha256 = $5, \
+                    mime_type = $6, updated_at = now() \
+              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL \
+              RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id)
+            .bind(storage_key).bind(size_bytes).bind(sha256).bind(mime_type)
+            .fetch_optional(self.pool).await?;
+        row.ok_or(DriveError::NotFound(id))
+    }
+
     pub async fn soft_delete(&self, tenant_id: Uuid, id: Uuid) -> Result<u64> {
         let r = sqlx::query(
             "UPDATE drive_files SET deleted_at = now() \

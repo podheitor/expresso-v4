@@ -1,4 +1,4 @@
-//! Drive files API — list, upload, download, delete, mkdir.
+//! Drive files API — list, upload (w/ auto-versioning), download, delete, mkdir, trash, versions.
 
 use axum::{
     body::Bytes,
@@ -16,19 +16,21 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, NewFile},
+    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, VersionRepo},
     error::{DriveError, Result},
     state::AppState,
 };
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/drive/files",                get(list).post(upload))
-        .route("/api/v1/drive/files/mkdir",          post(mkdir))
-        .route("/api/v1/drive/files/:id",            get(download).delete(delete))
-        .route("/api/v1/drive/files/:id/metadata",   get(metadata))
-        .route("/api/v1/drive/files/:id/restore",    post(restore))
-        .route("/api/v1/drive/trash",                get(trash))
+        .route("/api/v1/drive/files",                       get(list).post(upload))
+        .route("/api/v1/drive/files/mkdir",                 post(mkdir))
+        .route("/api/v1/drive/files/:id",                   get(download).delete(delete))
+        .route("/api/v1/drive/files/:id/metadata",          get(metadata))
+        .route("/api/v1/drive/files/:id/restore",           post(restore))
+        .route("/api/v1/drive/files/:id/versions",          get(list_versions))
+        .route("/api/v1/drive/files/:id/versions/:v",       get(download_version))
+        .route("/api/v1/drive/trash",                       get(trash))
 }
 
 #[derive(Debug, Deserialize)]
@@ -40,6 +42,12 @@ pub struct ListQuery {
 pub struct MkdirBody {
     pub name:      String,
     pub parent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteQuery {
+    #[serde(default)]
+    pub permanent: bool,
 }
 
 async fn list(
@@ -59,7 +67,7 @@ async fn mkdir(
 ) -> Result<(StatusCode, Json<DriveFile>)> {
     let pool = state.db_or_unavailable()?;
     let name = sanitize_name(&body.name)?;
-    let row = FileRepo::new(pool).insert(&NewFile {
+    let row  = FileRepo::new(pool).insert(&NewFile {
         tenant_id:     ctx.tenant_id,
         owner_user_id: ctx.user_id,
         parent_id:     body.parent_id,
@@ -80,10 +88,10 @@ async fn upload(
 ) -> Result<(StatusCode, Json<DriveFile>)> {
     let pool = state.db_or_unavailable()?;
 
-    let mut parent_id: Option<Uuid> = None;
-    let mut name:      Option<String> = None;
-    let mut mime:      Option<String> = None;
-    let mut data:      Option<Bytes>  = None;
+    let mut parent_id: Option<Uuid>    = None;
+    let mut name:      Option<String>  = None;
+    let mut mime:      Option<String>  = None;
+    let mut data:      Option<Bytes>   = None;
 
     while let Some(field) = mp.next_field().await.map_err(|e| DriveError::BadRequest(e.to_string()))? {
         match field.name().unwrap_or("") {
@@ -106,12 +114,10 @@ async fn upload(
     let bytes = data.ok_or(DriveError::BadRequest("missing file part".into()))?;
     let fname = sanitize_name(&name.unwrap_or_default())?;
 
-    // Hash + persist. storage_key = random UUID to avoid name collisions
-    // across tenants and keep on-disk layout flat.
-    let hash = Sha256::digest(&bytes);
-    let sha  = format!("{:x}", hash);
-    let key  = Uuid::new_v4().to_string();
-
+    // Hash + persist blob. storage_key = random UUID → evita colisão
+    // cross-tenant e mantém layout on-disk flat.
+    let sha = format!("{:x}", Sha256::digest(&bytes));
+    let key = Uuid::new_v4().to_string();
     let root = state.data_root();
     fs::create_dir_all(root).await?;
     let path: PathBuf = root.join(&key);
@@ -119,7 +125,50 @@ async fn upload(
     f.write_all(&bytes).await?;
     f.flush().await?;
 
-    let row = FileRepo::new(pool).insert(&NewFile {
+    let repo     = FileRepo::new(pool);
+    let ver_repo = VersionRepo::new(pool);
+
+    // Existing sibling w/ same name → archive current → overwrite row.
+    if let Some(existing) = repo.find_by_name(ctx.tenant_id, parent_id, &fname).await? {
+        if existing.kind != "file" {
+            // Folder collision → cleanup new blob + conflict.
+            let _ = fs::remove_file(&path).await;
+            return Err(DriveError::Conflict("a folder with this name already exists".into()));
+        }
+
+        // Archive previous content (if any) before overwrite.
+        if let Some(prev_key) = existing.storage_key.as_deref() {
+            let next_no = ver_repo.next_no(existing.id).await?;
+            ver_repo.insert(&NewVersion {
+                file_id:     existing.id,
+                tenant_id:   ctx.tenant_id,
+                version_no:  next_no,
+                storage_key: prev_key,
+                size_bytes:  existing.size_bytes,
+                sha256:      existing.sha256.as_deref(),
+                mime_type:   existing.mime_type.as_deref(),
+                created_by:  existing.owner_user_id,
+            }).await?;
+        }
+
+        let updated = repo.update_content(
+            ctx.tenant_id, existing.id,
+            &key, bytes.len() as i64,
+            Some(&sha), mime.as_deref(),
+        ).await;
+
+        if updated.is_err() {
+            let _ = fs::remove_file(&path).await;
+        }
+        let updated = updated?;
+        tracing::info!(target: "audit",
+            event = "drive.file.version",
+            tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %updated.id);
+        return Ok((StatusCode::OK, Json(updated)));
+    }
+
+    // New file → plain insert.
+    let row = repo.insert(&NewFile {
         tenant_id:     ctx.tenant_id,
         owner_user_id: ctx.user_id,
         parent_id,
@@ -132,11 +181,12 @@ async fn upload(
     }).await;
 
     if row.is_err() {
-        // Best-effort cleanup on DB conflict; ignore removal failure.
         let _ = fs::remove_file(&path).await;
     }
-
     let row = row?;
+    tracing::info!(target: "audit",
+        event = "drive.file.upload",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %row.id);
     Ok((StatusCode::CREATED, Json(row)))
 }
 
@@ -162,25 +212,11 @@ async fn download(
     }
     let key = f.storage_key.as_deref()
         .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
-    let path = state.data_root().join(key);
-    let bytes = fs::read(&path).await?;
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        f.mime_type.as_deref().unwrap_or("application/octet-stream").parse().unwrap(),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", f.name.replace('"', "_")).parse().unwrap(),
-    );
-    Ok((StatusCode::OK, headers, bytes).into_response())
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DeleteQuery {
-    #[serde(default)]
-    pub permanent: bool,
+    let bytes = fs::read(state.data_root().join(key)).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.download",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
+    Ok(attachment_response(&f.name, f.mime_type.as_deref(), bytes))
 }
 
 async fn delete(
@@ -192,7 +228,6 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     let repo = FileRepo::new(pool);
     if q.permanent {
-        // Purge → delete blob on disk + row. Row must already be in trash.
         let key = repo.purge(ctx.tenant_id, id).await?;
         let Some(key) = key else { return Err(DriveError::NotFound(id)); };
         if !key.is_empty() {
@@ -238,6 +273,50 @@ async fn trash(
     let pool = state.db_or_unavailable()?;
     let rows = FileRepo::new(pool).list_trash(ctx.tenant_id).await?;
     Ok(Json(rows))
+}
+
+async fn list_versions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Vec<FileVersion>>> {
+    let pool = state.db_or_unavailable()?;
+    // Ensure caller can see the file under current tenant.
+    FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let rows = VersionRepo::new(pool).list(ctx.tenant_id, id).await?;
+    Ok(Json(rows))
+}
+
+async fn download_version(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, v)): Path<(Uuid, i32)>,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    // Tenant-gate.
+    let parent = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let ver = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+        .ok_or(DriveError::NotFound(id))?;
+    let bytes = fs::read(state.data_root().join(&ver.storage_key)).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.download_version",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        file_id = %id, version_no = v);
+    let filename = format!("{}.v{}", parent.name, v);
+    Ok(attachment_response(&filename, ver.mime_type.as_deref(), bytes))
+}
+
+fn attachment_response(name: &str, mime: Option<&str>, bytes: Vec<u8>) -> Response {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        mime.unwrap_or("application/octet-stream").parse().unwrap(),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"{}\"", name.replace('"', "_")).parse().unwrap(),
+    );
+    (StatusCode::OK, headers, bytes).into_response()
 }
 
 fn sanitize_name(raw: &str) -> Result<String> {
