@@ -13,6 +13,9 @@ pub struct AppConfig {
     pub keycloak: KeycloakConfig,
     pub telemetry: TelemetryConfig,
     pub mail_server: MailServerConfig,
+    /// URL of the search service (e.g. "http://localhost:8007")
+    #[serde(default)]
+    pub search_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -91,11 +94,23 @@ pub struct MailServerConfig {
     /// IMAPS port
     #[serde(default = "default_imaps_port")]
     pub imaps_port: u16,
+    /// Outbound relay host (submission)
+    #[serde(default = "default_relay_host")]
+    pub relay_host: String,
+    /// Outbound relay port (587 submission, 2525 alt)
+    #[serde(default = "default_relay_port")]
+    pub relay_port: u16,
     pub domain: String,
     /// TLS cert path (PEM)
     pub tls_cert: Option<String>,
     /// TLS key path (PEM)
     pub tls_key: Option<String>,
+    /// DKIM selector name (e.g. "default")
+    #[serde(default)]
+    pub dkim_selector: Option<String>,
+    /// Path to DKIM RSA private key (PEM)
+    #[serde(default)]
+    pub dkim_key_path: Option<String>,
 }
 
 // ─── Defaults ────────────────────────────────────────────────────────────────
@@ -113,6 +128,8 @@ fn default_log_filter() -> String       { "info".into() }
 fn default_smtp_port() -> u16           { 25 }
 fn default_imap_port() -> u16           { 143 }
 fn default_imaps_port() -> u16          { 993 }
+fn default_relay_host() -> String     { "127.0.0.1".into() }
+fn default_relay_port() -> u16          { 587 }
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
 
