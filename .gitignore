@@ -33,3 +33,4 @@ logs/
 *.key
 *.pem
 *.p12
+CONNECTIONS.md
