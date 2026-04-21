@@ -31,14 +31,14 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 | `expresso-contacts` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
 | `expresso-drive` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
 | `expresso-wopi` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
-| `expresso-auth` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
+| `expresso-auth` | Implementado | OIDC RP completo (PKCE authorization_code, /auth/{login,callback,refresh,logout,me}) validado e2e contra Keycloak 25 |
 | `expresso-admin` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
 | `expresso-compliance` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
 | `expresso-search` | Implementado (parcial) | Tantivy full-text index/search API + integração com mail ingest |
 | `expresso-flows` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
 | `expresso-notifications` | Baseline validada | `GET /health` + `GET /ready` JSON validado |
-| `expresso-chat` | Planejado | pasta existe, sem crate no workspace |
-| `expresso-meet` | Planejado | pasta existe, sem crate no workspace |
+| `expresso-chat` | Implementado (parcial) | Synapse bridge + canais/mensagens + JWT strict (Authorization: Bearer) validado e2e |
+| `expresso-meet` | Implementado (parcial) | Reuniões + Jitsi JWT issuance + JWT strict validado e2e |
 
 ---
 
@@ -73,9 +73,9 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] Catálogo de endereços (GAL) com autocomplete
 
 ### Sprint 7 (Semanas 13–14): Auth + gov.br
-- [ ] Keycloak setup + realm config
+- [x] Keycloak setup + realm config (deploy/keycloak/seed-realm.sh)
 - [ ] gov.br OIDC adapter (sso.acesso.gov.br)
-- [ ] Login WebMail via OIDC
+- [x] OIDC RP backend (expresso-auth: PKCE+/auth/me); WebMail wiring pendente
 - [ ] MFA: TOTP + WebAuthn
 - [ ] RBAC: SuperAdmin, TenantAdmin, User, Readonly
 - [ ] Audit log de autenticação
@@ -129,7 +129,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 
 ### Sprint 18–20 (Semanas 1–6): Matrix Homeserver
 - [ ] Deploy Conduwuit (Matrix homeserver em Rust)
-- [ ] Integração SSO Keycloak ↔ Matrix
+- [x] Integração JWT Keycloak ↔ chat (RS256 via JWKS) — bridge SSO→Matrix application_service ativo
 - [ ] Canais (rooms) por workspace/departamento
 - [ ] Mensagens diretas E2EE
 - [ ] Reactions, threads, edição, exclusão
