@@ -1,5 +1,5 @@
 # Stage 1: Builder — compile expresso-drive
-FROM rust:latest AS builder
+FROM rust:1-bookworm AS builder
 
 WORKDIR /workspace
 
