@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Editar · {{ file.name }} · Drive{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page page-edit">
+  <header class="page-header">
+    <div>
+      <h1 class="mono">{{ file.name }}</h1>
+      <p class="muted">{{ file.size_human() }} · {% match file.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}—{% endmatch %}</p>
+    </div>
+    <a class="btn btn-ghost" href="/drive">← Drive</a>
+  </header>
+  <div class="wopi-frame-wrap">
+    <iframe
+      src="{{ iframe_url }}"
+      class="wopi-frame"
+      allow="fullscreen; clipboard-read; clipboard-write"
+      referrerpolicy="no-referrer"></iframe>
+  </div>
+</section>
+{% endblock %}

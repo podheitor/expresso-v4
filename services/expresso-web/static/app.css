@@ -297,3 +297,9 @@ section.page { /* keep */ }
 .share-token { padding: .5rem; background: #f1f5f9; border-radius: var(--radius-sm); margin: .5rem 0; word-break: break-all; }
 .badge-ok  { background: #dcfce7; color: #14532d; padding: .125rem .5rem; border-radius: 999px; font-size: .75rem; }
 .badge-off { background: #fee2e2; color: #991b1b; padding: .125rem .5rem; border-radius: 999px; font-size: .75rem; }
+
+/* ── WOPI editor ───────────────────────────────────────────── */
+.page-edit { display:flex; flex-direction:column; height:calc(100vh - 120px); }
+.wopi-frame-wrap { flex:1; margin-top:1rem; border:1px solid var(--border,#2a3040); border-radius:.5rem; overflow:hidden; background:#fff; }
+.wopi-frame { width:100%; height:100%; border:0; display:block; }
+.wopi-disabled { padding:1rem; background:#2a1f10; border:1px solid #8a6b33; border-radius:.5rem; color:#ffd089; }

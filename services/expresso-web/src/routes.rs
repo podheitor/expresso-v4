@@ -16,7 +16,7 @@ use crate::{
     error::WebResult,
     templates::{
         AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, ShareRow, VersionRow,
-        MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, CalendarTpl, ContactsTpl,
+        MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
 };
@@ -40,6 +40,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/share",  get(drive_share_page).post(drive_share_create))
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
         .route("/drive/:id/versions", get(drive_versions_page))
+        .route("/drive/:id/edit",     get(drive_edit_page))
         .route("/calendar",      get(calendar_page))
         .route("/contacts",      get(contacts_page))
         .with_state(state)
@@ -513,4 +514,48 @@ async fn drive_versions_page(
         &headers, Some((&t, &u)),
     ).await?.unwrap_or_default();
     Ok(DriveVersionsTpl { me, file, versions }.into_response())
+}
+
+// ─── /drive/:id/edit — WOPI/Collabora iframe ─────────────────────────────────
+
+async fn drive_edit_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+
+    if !st.wopi.is_enabled() {
+        return Ok((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "WOPI desabilitado — configure WOPI__SECRET no servidor"
+        ).into_response());
+    }
+
+    let (t, u) = ctx_of(&me);
+    let file: DriveFile = match get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/metadata"),
+        &headers, Some((&t, &u)),
+    ).await? {
+        Some(f) => f,
+        None => return Ok(login_redirect(&uri).into_response()),
+    };
+
+    if !file.is_editable() {
+        return Ok((StatusCode::BAD_REQUEST,
+            "Arquivo não suportado pelo editor (mime não editável).").into_response());
+    }
+
+    let token = crate::wopi::sign_token(
+        st.wopi.secret.as_bytes(),
+        &file.id, &me.tenant_id, &me.user_id,
+        st.wopi.token_ttl_secs,
+    );
+    let iframe_url = crate::wopi::build_iframe_url(
+        &st.wopi.collabora_url, &st.wopi.drive_url, &file.id, &token,
+    );
+
+    Ok(DriveEditTpl { me, file, iframe_url }.into_response())
 }

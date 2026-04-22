@@ -51,6 +51,7 @@
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">🔗</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">📜</a>
+            {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">✎</a>{% endif %}
           {% endif %}
           <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
             <button class="btn btn-ghost btn-sm" type="submit" title="Mover p/ lixeira"

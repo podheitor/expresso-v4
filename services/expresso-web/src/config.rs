@@ -46,3 +46,33 @@ impl Public {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Wopi {
+    /// Shared HMAC secret — deve casar com WOPI_SECRET do expresso-drive.
+    pub secret:          String,
+    /// URL do Collabora Online acessível pelo BROWSER do usuário.
+    /// Ex: http://localhost:9980 (dev) / https://office.exemplo.com (prod).
+    pub collabora_url:   String,
+    /// URL do expresso-drive acessível pelo container Collabora.
+    /// Ex: http://expresso-drive:8004 (compose) / https://drive.exemplo.com (prod).
+    pub drive_url:       String,
+    /// TTL do access_token WOPI em segundos. Default 4h.
+    pub token_ttl_secs:  i64,
+}
+
+impl Wopi {
+    pub fn from_env() -> Self {
+        Self {
+            secret:         envs("WOPI__SECRET").unwrap_or_default(),
+            collabora_url:  envs("WOPI__COLLABORA_URL").unwrap_or_else(|| "http://localhost:9980".into()),
+            drive_url:      envs("WOPI__DRIVE_URL").unwrap_or_else(|| "http://expresso-drive:8004".into()),
+            token_ttl_secs: envs("WOPI__TOKEN_TTL_SECS").and_then(|v| v.parse().ok()).unwrap_or(14400),
+        }
+    }
+
+    /// Recurso WOPI é opcional — ativo só quando secret configurado.
+    pub fn is_enabled(&self) -> bool {
+        !self.secret.trim().is_empty()
+    }
+}

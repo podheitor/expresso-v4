@@ -5,6 +5,7 @@ mod error;
 mod routes;
 mod templates;
 mod upstream;
+mod wopi;
 
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 use tower_http::services::ServeDir;
@@ -26,6 +27,7 @@ pub struct AppState {
     pub http:     reqwest::Client,
     pub backends: Arc<config::Backends>,
     pub public:   Arc<config::Public>,
+    pub wopi:     Arc<config::Wopi>,
 }
 
 #[tokio::main]
@@ -39,7 +41,8 @@ async fn main() -> anyhow::Result<()> {
 
     let backends = config::Backends::from_env();
     let public   = config::Public::from_env();
-    info!(?backends, ?public, "config loaded");
+    let wopi     = config::Wopi::from_env();
+    info!(?backends, ?public, wopi_enabled=wopi.is_enabled(), "config loaded");
 
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -47,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
         .redirect(reqwest::redirect::Policy::none())
         .build()?;
 
-    let state = AppState { http, backends: Arc::new(backends), public: Arc::new(public) };
+    let state = AppState { http, backends: Arc::new(backends), public: Arc::new(public), wopi: Arc::new(wopi) };
 
     let static_dir = env_string("WEB__STATIC_DIR").unwrap_or_else(|| "static".into());
     let app = routes::router(state).nest_service("/static", ServeDir::new(&static_dir));

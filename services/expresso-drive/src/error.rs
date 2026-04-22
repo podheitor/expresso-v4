@@ -34,6 +34,9 @@ pub enum DriveError {
     #[error("forbidden")]
     Forbidden,
 
+    #[error("unauthorized")]
+    Unauthorized,
+
     #[error("quota exceeded")]
     QuotaExceeded,
 }
@@ -46,6 +49,7 @@ impl IntoResponse for DriveError {
             Self::Conflict(_)         => StatusCode::CONFLICT,
             Self::BadRequest(_)       => StatusCode::BAD_REQUEST,
             Self::Forbidden           => StatusCode::FORBIDDEN,
+            Self::Unauthorized        => StatusCode::UNAUTHORIZED,
             Self::QuotaExceeded      => StatusCode::INSUFFICIENT_STORAGE,
             Self::Io(_) | Self::Database(_) | Self::Core(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };

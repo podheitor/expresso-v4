@@ -27,5 +27,8 @@ mime               = "0.3"
 percent-encoding   = "2"
 html-escape        = "0.2"
 bytes              = { workspace = true }
+hmac               = { workspace = true }
+hex                = { workspace = true }
+sha2               = { workspace = true }
 
 expresso-core = { path = "../../libs/expresso-core" }

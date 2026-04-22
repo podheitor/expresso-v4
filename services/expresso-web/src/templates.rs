@@ -161,6 +161,9 @@ impl DriveFile {
     pub fn icon(&self) -> &'static str {
         if self.is_folder() { "📁" } else { "📄" }
     }
+    pub fn is_editable(&self) -> bool {
+        !self.is_folder() && crate::wopi::is_editable_mime(self.mime_type.as_deref())
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Copy)]
@@ -300,3 +303,12 @@ pub struct DriveVersionsTpl {
     pub versions: Vec<VersionRow>,
 }
 
+
+
+#[derive(Template)]
+#[template(path = "drive_edit.html")]
+pub struct DriveEditTpl {
+    pub me:         Me,
+    pub file:       DriveFile,
+    pub iframe_url: String,
+}
