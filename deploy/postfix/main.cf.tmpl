@@ -34,9 +34,15 @@ smtpd_recipient_restrictions =
     permit_mynetworks,
     reject_unauth_destination
 
-# Disable SASL + TLS for internal deploy (enable in prod via override)
+# TLS — self-signed cert mounted at /etc/expresso/tls/ (may → opportunistic)
 smtpd_tls_security_level = may
 smtp_tls_security_level  = may
+smtpd_tls_cert_file = /etc/expresso/tls/postfix.crt
+smtpd_tls_key_file  = /etc/expresso/tls/postfix.key
+smtpd_tls_loglevel  = 1
+smtpd_tls_auth_only = no
+smtpd_tls_received_header = yes
+tls_preempt_cipherlist = yes
 
 # SASL — enabled on submission (587) via master.cf overrides
 smtpd_sasl_type = cyrus
