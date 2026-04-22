@@ -5,12 +5,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       postfix ca-certificates \
+      sasl2-bin libsasl2-modules \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy config templates + entrypoint
 COPY main.cf.tmpl  /etc/postfix/main.cf.tmpl
 COPY master.cf     /etc/postfix/master.cf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY smtpd.conf    /etc/postfix/sasl/smtpd.conf
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 25 465 587

@@ -37,3 +37,10 @@ smtpd_recipient_restrictions =
 # Disable SASL + TLS for internal deploy (enable in prod via override)
 smtpd_tls_security_level = may
 smtp_tls_security_level  = may
+
+# SASL — enabled on submission (587) via master.cf overrides
+smtpd_sasl_type = cyrus
+smtpd_sasl_path = smtpd
+smtpd_sasl_auth_enable = no
+smtpd_sasl_security_options = noanonymous
+broken_sasl_auth_clients = yes
