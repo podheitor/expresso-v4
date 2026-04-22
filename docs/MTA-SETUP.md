@@ -93,10 +93,10 @@ Production architecture for Expresso v4 mail pipeline.
 - Postfix container config + entrypoint
 - **Shared auth lib** `libs/expresso-mail-auth` — SPF/DKIM/DMARC verify + DKIM sign (used by both expresso-mail and expresso-milter, DRY)
 - **Milter real inbound verification** via `expresso-mail-auth::verify_inbound` — accumulates headers+body across callbacks, reassembles raw at EOM, injects real `Authentication-Results` via `add_header`
+- **Milter outbound DKIM signing** — detects AUTH via `{auth_authen}` macro at MAIL stage; when signer configured (`DKIM_SELECTOR`+`DKIM_KEY_PATH`), reassembles raw, signs via `DkimSignerState::sign`, injects `DKIM-Signature` header at index 0 via `insert_header`
 - Dockerfiles for both services
 
 ### ⏳ TODO
-- **Milter outbound DKIM signing**: detect AUTH session via `{auth_authen}` macro → load key from `DKIM_KEY_PATH` → sign body via `expresso-mail-auth::DkimSignerState::sign` → inject `DKIM-Signature` header using `insert_header(0, ...)`
 - **DNS records** required for MX + SPF + DKIM + DMARC (see below)
 - **Postfix TLS certs**: mount Let's Encrypt certs; set `smtpd_tls_cert_file` / `smtpd_tls_key_file`
 - **SASL auth**: integrate with expresso-auth for SMTP submission

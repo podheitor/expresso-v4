@@ -1,25 +1,26 @@
 //! expresso-milter — Postfix sidecar (indymilter 0.3)
 //!
-//! Inbound path: buffers headers + body across callbacks, reassembles raw
-//! RFC 5322 message at EOM, runs SPF/DKIM/DMARC via `expresso-mail-auth`,
-//! injects `Authentication-Results` header.
-//!
-//! Outbound DKIM signing (AUTH submission) = TODO — requires capturing the
-//! final headers+body as Postfix will send them downstream.
+//! Dual-path design:
+//!   * **Inbound** (no AUTH): buffer headers+body → verify SPF/DKIM/DMARC →
+//!     add `Authentication-Results` header at EOM.
+//!   * **Outbound** (AUTH submission, macro `{auth_authen}` set): reassemble
+//!     message → sign via DKIM → `insert_header(0, "DKIM-Signature", ...)`.
 //!
 //! Env:
-//!   MILTER_ADDR   listen addr (default "0.0.0.0:8891")
-//!   MAIL_DOMAIN   auth-serv-id in Authentication-Results
+//!   MILTER_ADDR     listen (default "0.0.0.0:8891")
+//!   MAIL_DOMAIN     auth-serv-id + DKIM domain
+//!   DKIM_SELECTOR   selector name (unset = no outbound sign)
+//!   DKIM_KEY_PATH   RSA private key PEM path
 
-use std::{env, ffi::CString, net::{IpAddr, SocketAddr}, sync::Arc};
+use std::{env, ffi::{CStr, CString}, net::{IpAddr, SocketAddr}, sync::Arc};
 
 use bytes::Bytes;
 use indymilter::{
-    Actions, Callbacks, ContextActions, NegotiateContext, SocketInfo, Status,
+    Actions, Callbacks, ContextActions, MacroStage, NegotiateContext, SocketInfo, Status,
 };
 use tracing::{debug, info, warn};
 
-use expresso_mail_auth::verify_inbound;
+use expresso_mail_auth::{DkimSignerState, verify_inbound};
 
 /// Per-session accumulator.
 #[derive(Default)]
@@ -27,14 +28,11 @@ struct Session {
     peer_ip: Option<IpAddr>,
     helo: String,
     mail_from: String,
-    /// Raw headers bytes (with CRLF separators).
     headers: Vec<u8>,
-    /// Raw body bytes.
     body: Vec<u8>,
 }
 
 impl Session {
-    /// Reconstruct message as bytes: headers + CRLF + body.
     fn as_raw(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(self.headers.len() + 2 + self.body.len());
         out.extend_from_slice(&self.headers);
@@ -55,26 +53,41 @@ async fn main() -> anyhow::Result<()> {
         .parse()?;
     let mail_domain = Arc::new(env::var("MAIL_DOMAIN").unwrap_or_else(|_| "localhost".into()));
 
-    info!(%addr, domain = %mail_domain, "expresso-milter starting");
+    // Load DKIM signer if configured
+    let dkim_signer: Option<Arc<DkimSignerState>> = match (
+        env::var("DKIM_SELECTOR").ok().filter(|s| !s.is_empty()),
+        env::var("DKIM_KEY_PATH").ok().filter(|s| !s.is_empty()),
+    ) {
+        (Some(sel), Some(path)) => match DkimSignerState::from_pem_file(&mail_domain, &sel, &path) {
+            Ok(s) => Some(Arc::new(s)),
+            Err(e) => {
+                warn!(error = %e, "DKIM signer load failed — outbound will NOT be signed");
+                None
+            }
+        },
+        _ => {
+            info!("DKIM signer not configured — outbound will NOT be signed");
+            None
+        }
+    };
 
-    let domain_neg = mail_domain.clone();
-    let domain_eom = mail_domain.clone();
+    info!(%addr, domain = %mail_domain, dkim = dkim_signer.is_some(), "expresso-milter starting");
 
     let callbacks: Callbacks<Session> = Callbacks::new()
-        .on_negotiate(move |cx: &mut NegotiateContext<Session>, _actions, _opts| {
-            let _ = &domain_neg;
+        .on_negotiate(|cx: &mut NegotiateContext<Session>, _actions, _opts| {
             Box::pin(async move {
                 cx.requested_actions |= Actions::ADD_HEADER;
+                let mail_macros = CString::new("{auth_authen}").unwrap();
+                cx.requested_macros.insert(MacroStage::Mail, mail_macros);
                 Status::Continue
             })
         })
         .on_connect(|cx, _hostname, socket_info| Box::pin(async move {
-            let mut s = Session::default();
-            s.peer_ip = match socket_info {
+            let peer_ip = match socket_info {
                 SocketInfo::Inet(a) => Some(a.ip()),
                 _ => None,
             };
-            cx.data = Some(s);
+            cx.data = Some(Session { peer_ip, ..Session::default() });
             Status::Continue
         }))
         .on_helo(|cx, hostname| Box::pin(async move {
@@ -109,37 +122,83 @@ async fn main() -> anyhow::Result<()> {
             }
             Status::Continue
         }))
-        .on_eom(move |cx| {
-            let domain = domain_eom.clone();
-            Box::pin(async move {
-                let session = match cx.data.as_ref() {
-                    Some(s) => s,
-                    None => return Status::Continue,
-                };
-                let ip = match session.peer_ip {
-                    Some(ip) => ip,
-                    None => {
-                        debug!("no peer IP — skipping verify");
-                        return Status::Continue;
-                    }
-                };
-                let raw = session.as_raw();
-                let auth = verify_inbound(ip, &session.helo, &session.mail_from, &domain, &raw).await;
-                info!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc, "auth results");
+        .on_eom({
+            let domain = mail_domain.clone();
+            let signer = dkim_signer.clone();
+            move |cx| {
+                let domain = domain.clone();
+                let signer = signer.clone();
+                Box::pin(async move {
+                    let session = match cx.data.as_ref() {
+                        Some(s) => s,
+                        None => return Status::Continue,
+                    };
 
-                let name = CString::new("Authentication-Results").unwrap();
-                let value = match CString::new(auth.to_value(&domain)) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!(error = %e, "A-R value contained NUL");
-                        return Status::Continue;
+                    // Check AUTH — {auth_authen} macro present & non-empty ⇒ outbound
+                    let auth_authen: Option<String> = cx.macros
+                        .get(CStr::from_bytes_with_nul(b"{auth_authen}\0").unwrap())
+                        .map(|v| v.to_string_lossy().into_owned())
+                        .filter(|v| !v.is_empty());
+
+                    let raw = session.as_raw();
+
+                    if let Some(user) = auth_authen {
+                        // OUTBOUND path — sign DKIM if signer configured
+                        debug!(user, "outbound (AUTH session)");
+                        if let Some(signer) = signer.as_ref() {
+                            match signer.sign(&raw) {
+                                Ok(sig_header) => {
+                                    // sig_header format: "DKIM-Signature: v=1; ...\r\n"
+                                    // Split name + value for insert_header
+                                    if let Some((name, value)) = parse_header_line(&sig_header) {
+                                        let name_c  = CString::new(name).unwrap();
+                                        let value_c = match CString::new(value) {
+                                            Ok(v) => v,
+                                            Err(e) => {
+                                                warn!(error = %e, "DKIM value had NUL");
+                                                return Status::Continue;
+                                            }
+                                        };
+                                        if let Err(e) = cx.actions.insert_header(0, name_c, value_c).await {
+                                            warn!(error = %e, "insert DKIM header failed");
+                                        } else {
+                                            info!(user, "outbound DKIM signed");
+                                        }
+                                    } else {
+                                        warn!("could not parse DKIM-Signature header line");
+                                    }
+                                }
+                                Err(e) => warn!(error = %e, "DKIM sign failed"),
+                            }
+                        } else {
+                            debug!("no signer configured — skipping outbound sign");
+                        }
+                    } else {
+                        // INBOUND path — verify + inject A-R
+                        let ip = match session.peer_ip {
+                            Some(ip) => ip,
+                            None => {
+                                debug!("no peer IP — skipping verify");
+                                return Status::Continue;
+                            }
+                        };
+                        let auth = verify_inbound(ip, &session.helo, &session.mail_from, &domain, &raw).await;
+                        info!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc, "inbound auth");
+                        let name  = CString::new("Authentication-Results").unwrap();
+                        let value = match CString::new(auth.to_value(&domain)) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!(error = %e, "A-R value had NUL");
+                                return Status::Continue;
+                            }
+                        };
+                        if let Err(e) = cx.actions.add_header(name, value).await {
+                            warn!(error = %e, "add_header failed");
+                        }
                     }
-                };
-                if let Err(e) = cx.actions.add_header(name, value).await {
-                    warn!(error = %e, "add_header failed");
-                }
-                Status::Continue
-            })
+                    Status::Continue
+                })
+            }
         });
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -147,4 +206,30 @@ async fn main() -> anyhow::Result<()> {
     let shutdown = async { let _ = tokio::signal::ctrl_c().await; };
     indymilter::run(listener, callbacks, Default::default(), shutdown).await?;
     Ok(())
+}
+
+/// Parse a "Name: value\r\n" line → (name, value_trimmed).
+fn parse_header_line(line: &str) -> Option<(String, String)> {
+    let line = line.trim_end_matches("\r\n").trim_end_matches('\n');
+    let (name, rest) = line.split_once(':')?;
+    Some((name.trim().to_owned(), rest.trim_start().to_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_header_line;
+
+    #[test]
+    fn parse_header_basic() {
+        let (n, v) = parse_header_line("DKIM-Signature: v=1; a=rsa-sha256\r\n").unwrap();
+        assert_eq!(n, "DKIM-Signature");
+        assert_eq!(v, "v=1; a=rsa-sha256");
+    }
+
+    #[test]
+    fn parse_header_no_crlf() {
+        let (n, v) = parse_header_line("X-Foo: bar baz").unwrap();
+        assert_eq!(n, "X-Foo");
+        assert_eq!(v, "bar baz");
+    }
 }
