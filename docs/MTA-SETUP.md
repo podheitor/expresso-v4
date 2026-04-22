@@ -93,6 +93,7 @@ Production architecture for Expresso v4 mail pipeline.
 - Postfix container config + entrypoint
 - **Shared auth lib** `libs/expresso-mail-auth` — SPF/DKIM/DMARC verify + DKIM sign (used by both expresso-mail and expresso-milter, DRY)
 - **Milter real inbound verification** via `expresso-mail-auth::verify_inbound` — accumulates headers+body across callbacks, reassembles raw at EOM, injects real `Authentication-Results` via `add_header`
+- **VM smoke test (A4)** — Postfix:25 → milter (SPF/DKIM/DMARC verify, DNS unavailable in bridge net ⇒ temperror expected) → LMTP → expresso-mail `LMTP received bytes=410`. Full containerized loop validated on VM 192.168.15.125. Requires internal DNS resolver for production.
 - **Milter outbound DKIM signing** — detects AUTH via `{auth_authen}` macro at MAIL stage; when signer configured (`DKIM_SELECTOR`+`DKIM_KEY_PATH`), reassembles raw, signs via `DkimSignerState::sign`, injects `DKIM-Signature` header at index 0 via `insert_header`
 - Dockerfiles for both services
 
