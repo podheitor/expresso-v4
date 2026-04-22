@@ -1,0 +1,52 @@
+# MTA stack — Postfix + milter + expresso-mail LMTP
+# Joins existing `expresso_default` network (reuses expresso-mail from phase3)
+# Smoke: docker exec expresso-postfix bash -c 'printf "..." | nc localhost 25'
+services:
+  expresso-mail:
+    # Override with rebuilt image exposing LMTP :24
+    image: expresso-mail:mta
+    container_name: expresso-mail
+    environment:
+      # Existing envs preserved by compose extension (set in phase3); only override if needed
+      MAIL_SERVER__LMTP_PORT: "24"
+    ports: []   # LMTP internal only
+    networks:
+      - expresso_default
+
+  expresso-milter:
+    image: expresso-milter:latest
+    container_name: expresso-milter
+    environment:
+      MILTER_ADDR: "0.0.0.0:8891"
+      MAIL_DOMAIN: "${MAIL_DOMAIN:-mail.expresso.local}"
+      DKIM_SELECTOR: "${DKIM_SELECTOR:-}"
+      DKIM_KEY_PATH: "${DKIM_KEY_PATH:-}"
+      RUST_LOG: "info"
+    volumes:
+      - /etc/expresso/dkim:/etc/expresso/dkim:ro
+    networks:
+      - expresso_default
+    restart: unless-stopped
+
+  expresso-postfix:
+    image: expresso-postfix:latest
+    container_name: expresso-postfix
+    depends_on:
+      - expresso-mail
+      - expresso-milter
+    environment:
+      MAIL_DOMAIN: "${MAIL_DOMAIN:-mail.expresso.local}"
+      LMTP_HOST: "expresso-mail"
+      LMTP_PORT: "24"
+      MILTER_HOST: "expresso-milter"
+      MILTER_PORT: "8891"
+    ports:
+      - "25:25"
+      - "587:587"
+    networks:
+      - expresso_default
+    restart: unless-stopped
+
+networks:
+  expresso_default:
+    external: true

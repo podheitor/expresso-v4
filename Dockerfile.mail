@@ -35,6 +35,6 @@ COPY --from=builder /workspace/target/release/expresso-mail /app/expresso-mail
 
 USER expresso
 
-EXPOSE 8000
+EXPOSE 8000 24
 
 ENTRYPOINT ["/app/expresso-mail"]
