@@ -73,10 +73,32 @@ pub async fn send_message(
         .port(smtp_port)
         .build();
 
+    // DKIM signing: se configurado, serializa → assina → prepend header → envia raw.
+    // Senão, fluxo normal via lettre send() (≠ signed).
+    if let Some(signer) = state.dkim() {
+        let envelope = email.envelope().clone();
+        let raw = email.formatted();
+        match signer.sign(&raw) {
+            Ok(sig_header) => {
+                let mut signed = Vec::with_capacity(sig_header.len() + raw.len());
+                signed.extend_from_slice(sig_header.as_bytes());
+                signed.extend_from_slice(&raw);
+                mailer.send_raw(&envelope, &signed).await
+                    .map_err(|e| MailError::SendFailed(e.to_string()))?;
+                tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim = true, "message sent");
+                return Ok(StatusCode::ACCEPTED);
+            }
+            Err(e) => {
+                // Falha DKIM ≠ bloqueia envio — loga e manda sem assinar.
+                tracing::warn!(error = %e, "DKIM sign failed — sending unsigned");
+            }
+        }
+    }
+
     mailer.send(email).await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
 
-    tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, "message sent");
+    tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim = false, "message sent");
     Ok(StatusCode::ACCEPTED)
 }
 
