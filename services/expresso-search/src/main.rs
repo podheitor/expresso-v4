@@ -60,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/index", post(api::index_doc))
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
+        .merge(expresso_observability::metrics_router())
         .with_state(store);
 
     let addr = resolve_addr()?;

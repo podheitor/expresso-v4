@@ -14,6 +14,7 @@ use crate::state::AppState;
 pub fn router(state: AppState, oidc: Option<Arc<OidcValidator>>) -> Router {
     let router = Router::new()
         .merge(health::routes())
+        .merge(expresso_observability::metrics_router())
         .merge(channels::routes())
         .merge(messages::routes())
         .layer(TraceLayer::new_for_http())

@@ -20,6 +20,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::routes())
+        .merge(expresso_observability::metrics_router())
         .nest("/api/v1", api_routes(state.clone()))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())

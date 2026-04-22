@@ -35,4 +35,5 @@ sqlx                = { workspace = true }
 url                 = "2"
 
 expresso-core        = { path = "../../libs/expresso-core" }
+expresso-observability = { workspace = true }
 expresso-auth-client = { path = "../../libs/expresso-auth-client" }

@@ -24,6 +24,7 @@ members = [
     "libs/expresso-mail-auth",
     "libs/expresso-storage",
     "libs/expresso-auth-client",
+    "libs/expresso-observability",
 ]
 
 [workspace.dependencies]
@@ -122,6 +123,7 @@ config       = "0.14"
 
 # Metrics
 prometheus   = { version = "0.13", features = ["process"] }
+expresso-observability = { path = "libs/expresso-observability" }
 
 [profile.dev]
 opt-level = 0

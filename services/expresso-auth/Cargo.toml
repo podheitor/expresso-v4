@@ -33,6 +33,7 @@ serde_urlencoded = "0.7"
 
 # Internal
 expresso-core         = { path = "../../libs/expresso-core" }
+expresso-observability = { workspace = true }
 expresso-auth-client  = { path = "../../libs/expresso-auth-client" }
 
 [dev-dependencies]

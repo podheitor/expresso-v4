@@ -14,6 +14,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .merge(health::routes())
+        .merge(expresso_observability::metrics_router())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
         .merge(gal::routes())

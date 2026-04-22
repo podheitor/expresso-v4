@@ -1,20 +1,91 @@
+# Prometheus config for Expresso — scrapes /metrics from all services via docker DNS.
+# All services expose /metrics thanks to libs/expresso-observability.
+
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    environment: dev
 
 scrape_configs:
+  # Prometheus self-metrics
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Rust services — each exposes /metrics on its HTTP port
   - job_name: 'expresso-mail'
     static_configs:
-      - targets: ['host.docker.internal:8001']
+      - targets: ['expresso-mail:8000']
+        labels: { service: mail }
+
+  - job_name: 'expresso-chat'
+    static_configs:
+      - targets: ['expresso-chat:8004']
+        labels: { service: chat }
+
+  - job_name: 'expresso-meet'
+    static_configs:
+      - targets: ['expresso-meet:8011']
+        labels: { service: meet }
 
   - job_name: 'expresso-calendar'
     static_configs:
-      - targets: ['host.docker.internal:8002']
+      - targets: ['expresso-calendar:8002']
+        labels: { service: calendar }
+
+  - job_name: 'expresso-contacts'
+    static_configs:
+      - targets: ['expresso-contacts:8003']
+        labels: { service: contacts }
 
   - job_name: 'expresso-drive'
     static_configs:
-      - targets: ['host.docker.internal:8004']
+      - targets: ['expresso-drive:8004']
+        labels: { service: drive }
 
   - job_name: 'expresso-auth'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['expresso-auth:8100']
+        labels: { service: auth }
+
+  - job_name: 'expresso-admin'
+    static_configs:
+      - targets: ['expresso-admin:8101']
+        labels: { service: admin }
+
+  - job_name: 'expresso-compliance'
+    static_configs:
+      - targets: ['expresso-compliance:8009']
+        labels: { service: compliance }
+
+  - job_name: 'expresso-search'
+    static_configs:
+      - targets: ['expresso-search:8007']
+        labels: { service: search }
+
+  - job_name: 'expresso-wopi'
+    static_configs:
+      - targets: ['expresso-wopi:8008']
+        labels: { service: wopi }
+
+  - job_name: 'expresso-web'
+    static_configs:
+      - targets: ['expresso-web:8080']
+        labels: { service: web }
+
+  - job_name: 'expresso-notifications'
+    static_configs:
+      - targets: ['expresso-notifications:8006']
+        labels: { service: notifications }
+
+  - job_name: 'expresso-flows'
+    static_configs:
+      - targets: ['expresso-flows:8005']
+        labels: { service: flows }
+
+  # Milter — metrics on secondary port 9091 (main port 8891 = milter protocol)
+  - job_name: 'expresso-milter'
+    static_configs:
+      - targets: ['expresso-milter:9091']
+        labels: { service: milter }

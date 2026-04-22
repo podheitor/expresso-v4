@@ -40,7 +40,8 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/health", get(health))
-        .route("/ready", get(ready));
+        .route("/ready", get(ready))
+        .merge(expresso_observability::metrics_router());
     let addr = resolve_addr()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
 

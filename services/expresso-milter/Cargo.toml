@@ -9,6 +9,7 @@ name = "expresso-milter"
 path = "src/main.rs"
 
 [dependencies]
+expresso-observability = { workspace = true }
 tokio              = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -16,6 +17,8 @@ anyhow             = { workspace = true }
 indymilter         = "0.3"
 bytes              = "1"
 expresso-mail-auth = { path = "../../libs/expresso-mail-auth", package = "expresso-mail-auth" }
+axum               = { workspace = true }
+serde_json         = { workspace = true }
 
 [dev-dependencies]
 indymilter-test = "0.2"

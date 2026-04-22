@@ -16,6 +16,7 @@ pub fn router(state: AppState) -> Router {
     // JSON API: recebe CORS + compressão + tracing.
     let api = Router::new()
         .merge(health::routes())
+        .merge(expresso_observability::metrics_router())
         .merge(calendars::routes())
         .merge(events::routes())
         .merge(scheduling::routes())

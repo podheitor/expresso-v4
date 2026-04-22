@@ -13,6 +13,7 @@ use crate::state::AppState;
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::routes())
+        .merge(expresso_observability::metrics_router())
         .merge(files::routes())
         .merge(shares::routes())
         .merge(wopi::routes())

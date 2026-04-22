@@ -201,6 +201,27 @@ async fn main() -> anyhow::Result<()> {
             }
         });
 
+    // Spawn metrics/health HTTP server on secondary port
+    let metrics_addr: SocketAddr = env::var("METRICS_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:9091".into())
+        .parse()?;
+    tokio::spawn(async move {
+        use axum::{routing::get, Router, Json};
+        let app: Router = Router::new()
+            .route("/health", get(|| async { Json(serde_json::json!({"service":"expresso-milter","status":"ok"})) }))
+            .route("/ready",  get(|| async { Json(serde_json::json!({"service":"expresso-milter","status":"ready"})) }))
+            .merge(expresso_observability::metrics_router());
+        match tokio::net::TcpListener::bind(metrics_addr).await {
+            Ok(lst) => {
+                info!(%metrics_addr, "metrics HTTP listener ready");
+                if let Err(e) = axum::serve(lst, app).await {
+                    warn!(error=%e, "metrics serve failed");
+                }
+            }
+            Err(e) => warn!(error=%e, %metrics_addr, "metrics bind failed"),
+        }
+    });
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(%addr, "milter listener ready");
     let shutdown = async { let _ = tokio::signal::ctrl_c().await; };

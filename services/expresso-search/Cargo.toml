@@ -34,6 +34,7 @@ tantivy = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
+expresso-observability = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

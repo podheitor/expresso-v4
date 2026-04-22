@@ -1,0 +1,62 @@
+// expresso-observability — shared Prometheus metrics + axum /metrics route
+//
+// Usage:
+//   let router = Router::new()
+//       .merge(expresso_observability::metrics_router())
+//       .route(...);
+//
+// Custom metrics: register into expresso_observability::registry()
+
+use axum::{http::StatusCode, response::IntoResponse, routing::get, Router};
+use once_cell::sync::Lazy;
+use prometheus::{Encoder, IntCounterVec, Registry, TextEncoder};
+
+// Global registry — single source across service + custom metrics
+static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+
+// Built-in HTTP request counter (opt-in via middleware — not auto-wired)
+pub static HTTP_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new("http_requests_total", "Total HTTP requests"),
+        &["service", "method", "status"],
+    )
+    .expect("metric build");
+    REGISTRY.register(Box::new(c.clone())).expect("metric register");
+    c
+});
+
+// Access global registry to register custom metrics
+pub fn registry() -> &'static Registry {
+    &REGISTRY
+}
+
+// Register counter/histogram into global registry — convenience wrapper
+pub fn register<T: prometheus::core::Collector + Clone + 'static>(metric: T) -> T {
+    REGISTRY
+        .register(Box::new(metric.clone()))
+        .expect("metric register");
+    metric
+}
+
+async fn metrics_handler() -> impl IntoResponse {
+    let encoder = TextEncoder::new();
+    let metric_families = REGISTRY.gather();
+    let mut buf = Vec::new();
+    if let Err(e) = encoder.encode(&metric_families, &mut buf) {
+        return (StatusCode::INTERNAL_SERVER_ERROR, format!("encode err: {e}")).into_response();
+    }
+    match String::from_utf8(buf) {
+        Ok(s) => (StatusCode::OK, [("content-type", encoder.format_type())], s).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "utf8").into_response(),
+    }
+}
+
+// Router exposing GET /metrics — merge into service root router
+pub fn metrics_router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    // Force lazy init so built-in counter appears even before first use
+    Lazy::force(&HTTP_REQUESTS_TOTAL);
+    Router::new().route("/metrics", get(metrics_handler))
+}

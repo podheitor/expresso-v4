@@ -36,6 +36,7 @@ futures = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
+expresso-observability = { workspace = true }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
 sqlx = { workspace = true }
 

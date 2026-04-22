@@ -43,6 +43,7 @@ chrono = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
+expresso-observability = { workspace = true }
 expresso-crypto = { path = "../../libs/expresso-crypto", package = "expresso-crypto" }
 expresso-mail-parser = { path = "../../libs/expresso-mail-parser", package = "expresso-mail-parser" }
 expresso-mail-auth   = { path = "../../libs/expresso-mail-auth", package = "expresso-mail-auth" }

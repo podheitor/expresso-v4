@@ -43,6 +43,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/edit",     get(drive_edit_page))
         .route("/calendar",      get(calendar_page))
         .route("/contacts",      get(contacts_page))
+        .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
 

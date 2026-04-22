@@ -94,6 +94,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/refresh",  post(handlers::refresh::refresh))
         .route("/auth/logout",   get(handlers::logout::logout))
         .route("/auth/me",       get(handlers::me::me))
+        .merge(expresso_observability::metrics_router())
         .with_state(app_state)
         // Extension for Authenticated extractor (/auth/me)
         .layer(Extension(validator));
