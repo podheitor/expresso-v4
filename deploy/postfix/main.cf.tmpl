@@ -44,9 +44,9 @@ smtpd_tls_auth_only = no
 smtpd_tls_received_header = yes
 tls_preempt_cipherlist = yes
 
-# SASL — enabled on submission (587) via master.cf overrides
-smtpd_sasl_type = cyrus
-smtpd_sasl_path = smtpd
+# SASL via Dovecot unix socket (A9 — Keycloak-backed)
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
 smtpd_sasl_auth_enable = no
 smtpd_sasl_security_options = noanonymous
 broken_sasl_auth_clients = yes
