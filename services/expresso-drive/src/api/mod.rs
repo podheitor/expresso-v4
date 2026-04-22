@@ -3,6 +3,7 @@ mod files;
 mod health;
 mod shares;
 mod wopi;
+mod uploads;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -15,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         .merge(files::routes())
         .merge(shares::routes())
         .merge(wopi::routes())
+        .merge(uploads::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
