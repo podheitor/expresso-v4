@@ -12,14 +12,18 @@ use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLay
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let api = Router::new()
         .merge(health::routes())
         .merge(addressbooks::routes())
         .merge(contacts::routes())
         .merge(gal::routes())
+        .layer(CorsLayer::permissive());
+
+    // CardDAV ≠ passa por CorsLayer (senão OPTIONS perde `DAV:`/`Allow:`).
+    Router::new()
+        .merge(api)
         .merge(crate::carddav::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
-        .layer(CorsLayer::permissive())
         .with_state(state)
 }
