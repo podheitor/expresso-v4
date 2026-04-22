@@ -9,6 +9,7 @@ mod api;
 mod bootstrap;
 mod error;
 mod imap;
+mod lmtp;
 mod ingest;
 mod dkim;
 mod sieve;
@@ -102,6 +103,11 @@ async fn main() -> anyhow::Result<()> {
     let smtp_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.smtp_port).parse()?;
     let smtp_state = state.clone();
     set.spawn(async move { smtp::serve(smtp_state, smtp_addr).await });
+
+    // LMTP (Postfix → app delivery)
+    let lmtp_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.lmtp_port).parse()?;
+    let lmtp_state = state.clone();
+    set.spawn(async move { lmtp::serve(lmtp_state, lmtp_addr).await });
 
     // IMAP (stub)
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     # Services
     "services/expresso-mail",
+    "services/expresso-milter",
     "services/expresso-chat",
     "services/expresso-meet",
     "services/expresso-calendar",

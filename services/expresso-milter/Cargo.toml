@@ -1,0 +1,19 @@
+[package]
+name = "expresso-milter"
+version = "0.1.0"
+edition = "2021"
+description = "Milter sidecar: inbound SPF/DKIM/DMARC verification + outbound DKIM signing for Postfix"
+
+[[bin]]
+name = "expresso-milter"
+path = "src/main.rs"
+
+[dependencies]
+tokio              = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow             = { workspace = true }
+indymilter         = "0.3"
+
+[dev-dependencies]
+indymilter-test = "0.2"
