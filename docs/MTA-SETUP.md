@@ -91,12 +91,12 @@ Production architecture for Expresso v4 mail pipeline.
 ### ✅ Complete
 - LMTP listener in `expresso-mail` (port 24) — RFC 2033, per-recipient replies, reuses `ingest::process`
 - Postfix container config + entrypoint
-- Milter scaffold — negotiates `ADD_HEADER`, injects stub `Authentication-Results` on EOM
+- **Shared auth lib** `libs/expresso-mail-auth` — SPF/DKIM/DMARC verify + DKIM sign (used by both expresso-mail and expresso-milter, DRY)
+- **Milter real inbound verification** via `expresso-mail-auth::verify_inbound` — accumulates headers+body across callbacks, reassembles raw at EOM, injects real `Authentication-Results` via `add_header`
 - Dockerfiles for both services
 
 ### ⏳ TODO
-- **Milter inbound verification**: integrate `mail-auth` crate to run SPF (`spf.verify(ip, helo, mail_from)`) + DKIM (`dkim.verify(body)`) + DMARC (`dmarc.verify(...)`) → real `Authentication-Results` value
-- **Milter outbound DKIM signing**: detect AUTH session via `{auth_authen}` macro → load key from `DKIM_KEY_PATH` → sign body via `mail-auth::dkim::sign` → inject `DKIM-Signature` header using `insert_header`
+- **Milter outbound DKIM signing**: detect AUTH session via `{auth_authen}` macro → load key from `DKIM_KEY_PATH` → sign body via `expresso-mail-auth::DkimSignerState::sign` → inject `DKIM-Signature` header using `insert_header(0, ...)`
 - **DNS records** required for MX + SPF + DKIM + DMARC (see below)
 - **Postfix TLS certs**: mount Let's Encrypt certs; set `smtpd_tls_cert_file` / `smtpd_tls_key_file`
 - **SASL auth**: integrate with expresso-auth for SMTP submission

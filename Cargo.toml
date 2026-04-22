@@ -21,6 +21,7 @@ members = [
     "libs/expresso-core",
     "libs/expresso-crypto",
     "libs/expresso-mail-parser",
+    "libs/expresso-mail-auth",
     "libs/expresso-storage",
     "libs/expresso-auth-client",
 ]

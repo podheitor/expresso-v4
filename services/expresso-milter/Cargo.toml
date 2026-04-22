@@ -14,6 +14,8 @@ tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow             = { workspace = true }
 indymilter         = "0.3"
+bytes              = "1"
+expresso-mail-auth = { path = "../../libs/expresso-mail-auth", package = "expresso-mail-auth" }
 
 [dev-dependencies]
 indymilter-test = "0.2"

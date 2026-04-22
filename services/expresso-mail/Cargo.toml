@@ -45,6 +45,7 @@ chrono = { workspace = true }
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-crypto = { path = "../../libs/expresso-crypto", package = "expresso-crypto" }
 expresso-mail-parser = { path = "../../libs/expresso-mail-parser", package = "expresso-mail-parser" }
+expresso-mail-auth   = { path = "../../libs/expresso-mail-auth", package = "expresso-mail-auth" }
 expresso-storage = { path = "../../libs/expresso-storage", package = "expresso-storage" }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
 sqlx = { workspace = true }
