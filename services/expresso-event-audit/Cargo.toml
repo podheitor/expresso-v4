@@ -1,0 +1,13 @@
+[package]
+name = "expresso-event-audit"
+version = "0.1.0"
+edition = "2021"
+description = "NATS JetStream consumer: logs calendar + contacts events for audit."
+
+[dependencies]
+tokio      = { workspace = true }
+tracing    = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow     = { workspace = true }
+futures    = { workspace = true }
+async-nats = "0.37"

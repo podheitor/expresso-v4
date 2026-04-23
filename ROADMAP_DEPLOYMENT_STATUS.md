@@ -2240,3 +2240,38 @@ consolidada.
 (email-dispatcher), admin 2FA enforcement, Keycloak realm-per-tenant wizard
 extension. Pipeline JetStream 100% funcional com publishers em calendar
 (7 call sites) e contacts (4 call sites).
+
+### #28 — NATS consumer: expresso-event-audit
+
+Primeiro consumer real da infra JetStream. Worker standalone que assina
+`EXPRESSO_CALENDAR` + `EXPRESSO_CONTACTS` e loga cada evento como JSON
+estruturado. Zero business logic — base para consumers futuros
+(iMIP dispatch, webhook fanout, thumbnails).
+
+- Novo crate: `services/expresso-event-audit/` (~100 linhas).
+- Spawna 1 task por stream, cria durable consumer (`event-audit-<stream>`),
+  `deliver_policy: New`, ack após log.
+- Env: `NATS_URL` (req) · `NATS_DURABLE` (default `event-audit`)
+  · `NATS_SUBJECT_FILTER` (default `expresso.>`) · `RUST_LOG`.
+- Imagem: `expresso-event-audit:t28` (debian:bookworm-slim + ca-certificates,
+  ~33MB gzipped).
+
+**Deploy 125:**
+```
+sudo docker run -d --name expresso-event-audit --restart unless-stopped \
+    -e NATS_URL=nats://172.17.0.1:4222 -e RUST_LOG=info \
+    expresso-event-audit:t28
+```
+
+**Smoke:**
+```
+pub expresso.calendar.t28.hello "audit-test"
+→ docker logs expresso-event-audit:
+  {"level":"INFO","message":"event","stream":"EXPRESSO_CALENDAR",
+   "subject":"expresso.calendar.t28.hello","payload":"audit-test",
+   "target":"event_audit"}
+```
+
+Publish → consume → ack verificado. Consumers durables persistem entre
+restarts; mensagens novas desde a criação são entregues (histórico antigo
+ignorado via `DeliverPolicy::New`).
