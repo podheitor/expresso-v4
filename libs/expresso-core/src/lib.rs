@@ -5,6 +5,8 @@ pub mod db;
 pub mod error;
 pub mod redis;
 pub mod audit;
+pub mod health;
+pub mod ratelimit;
 pub mod telemetry;
 
 // Re-export most-used types at crate root
@@ -13,3 +15,4 @@ pub use db::{DbPool, create_pool as create_db_pool, set_tenant_context, run_migr
 pub use redis::{RedisPool, create_pool as create_redis_pool};
 pub use error::{CoreError, Result};
 pub use telemetry::init_tracing;
+pub use ratelimit::{RateLimiter, RateLimitConfig};

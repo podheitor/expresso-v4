@@ -30,6 +30,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api)
         .merge(crate::carddav::routes())
+        .layer(axum::middleware::from_fn(expresso_observability::http_counter_mw))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .with_state(state)

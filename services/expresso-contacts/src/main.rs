@@ -95,7 +95,22 @@ async fn main() -> anyhow::Result<()> {
         domain::tombstone_gc::spawn(pool, retention, every);
     }
     let state = AppState::new(db, kc_basic);
-    let app = api::router(state);
+    // Per-tenant rate limiter (shared core; see expresso_core::ratelimit).
+    let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
+    info!(rps = rate_cfg.rps, burst = rate_cfg.burst, "rate limiter armed");
+    let rate_limiter = expresso_core::ratelimit::RateLimiter::new(rate_cfg);
+    {
+        let rl = rate_limiter.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                rl.gc();
+            }
+        });
+    }
+    let app = api::router(state)
+        .layer(axum::middleware::from_fn(expresso_core::ratelimit::layer))
+        .layer(axum::extract::Extension(rate_limiter));
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");

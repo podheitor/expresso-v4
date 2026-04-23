@@ -1817,3 +1817,73 @@ caldav, carddav, webmail, security.
 - Built on 101 (rust:1-bookworm + mold), shipped to 125 via scp.
 - Compose: `compose-phase3.yaml` `up -d --force-recreate expresso-admin`.
 - Only #9 required a DB migration; rest are in-process admin code.
+
+## Sprint Trilha #11–#20 (parte 1: #11 + #12 + #14)
+
+### #11 — Rate limiting por tenant (in-process)
+
+Token-bucket middleware keyed por `x-expresso-tenant` header (fallback
+`x-forwarded-for` → `_anon`). Configurável via env
+`EXPRESSO_RATELIMIT_RPS` (50) / `EXPRESSO_RATELIMIT_BURST` (200).
+Denied requests → 429 + `Retry-After`. GC 10min idle.
+
+**Novo:** `libs/expresso-core/src/ratelimit.rs` (RateLimiter, RateLimitConfig,
+`layer` middleware). Skip allowlist p/ `/health /healthz /readyz /ready /metrics`.
+3 unit tests (burst/refill/isolated).
+
+**Wiring:** `services/expresso-calendar/src/main.rs` +
+`services/expresso-contacts/src/main.rs`:
+```rust
+let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
+let rate_limiter = expresso_core::ratelimit::RateLimiter::new(rate_cfg);
+tokio::spawn(async move { loop { sleep(300s); rl.gc(); } });
+app.layer(from_fn(ratelimit::layer)).layer(Extension(rate_limiter));
+```
+
+**Smoke:** 2000 req P200 mesmo tenant → 347 passam (burst≈200+refill),
+1653 → 429. /health + /readyz + /metrics sempre 200 (allowlist).
+
+### #12 — Métricas Prometheus `/metrics`
+
+`libs/expresso-observability/src/lib.rs` já expunha `metrics_router()` +
+`HTTP_REQUESTS_TOTAL`. Adicionado `http_counter_mw(req, next)` middleware
+que conta service/method/status por label.
+
+**Wiring:** `services/expresso-calendar/src/api/mod.rs` +
+`services/expresso-contacts/src/api/mod.rs`:
+`.layer(from_fn(expresso_observability::http_counter_mw))`.
+
+**Smoke:** `curl /metrics` →
+```
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",service="expresso",status="404"} 347
+```
+
+### #14 — Health check profundo `/readyz`
+
+`libs/expresso-core/src/health.rs` — `ReadinessCheck` (name, required, fn),
+`run(checks)` com timeout 3s/check, 503 se qualquer required falhar.
+`db_check(PgPool)` roda `SELECT 1`.
+
+**Wiring:** `services/expresso-calendar/src/api/health.rs` +
+`services/expresso-contacts/src/api/health.rs`:
+```rust
+async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
+    let checks = vec![ReadinessCheck { name: "db", required: true, run: db_check(db.clone()) }];
+    let (code, report) = health::run(&checks).await;
+    (code, Json(report))
+}
+```
+
+**Smoke:** `/readyz` →
+```json
+{"status":"ok","components":[{"name":"db","status":"ok","error":null,"elapsed_ms":2}]}
+```
+
+### Deploy notes (#11/#12/#14)
+
+- Calendar: **expresso-calendar:t111214b** + `:latest`.
+- Contacts: **expresso-contacts:t111214b** + `:latest` (nova imagem
+  `Dockerfile.contacts.quick`).
+- Built on 101, scp → 125, docker load + compose up.

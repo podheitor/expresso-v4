@@ -8,7 +8,18 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
-        .route("/ready", get(ready))
+        .route("/ready",  get(ready))
+        .route("/readyz", get(readyz))
+}
+
+async fn readyz(State(state): State<AppState>) -> impl axum::response::IntoResponse {
+    use expresso_core::health::{ReadinessCheck, db_check};
+    let mut checks: Vec<ReadinessCheck> = Vec::new();
+    if let Some(db) = state.db() {
+        checks.push(ReadinessCheck { name: "db", required: true, run: db_check(db.clone()) });
+    }
+    let (code, report) = expresso_core::health::run(&checks).await;
+    (code, axum::Json(report))
 }
 
 async fn health() -> Json<Value> {

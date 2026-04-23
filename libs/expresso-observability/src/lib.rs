@@ -60,3 +60,21 @@ where
     Lazy::force(&HTTP_REQUESTS_TOTAL);
     Router::new().route("/metrics", get(metrics_handler))
 }
+
+
+// HTTP request counter middleware. Labels: service / method / status.
+// Usage: `app.layer(axum::middleware::from_fn(expresso_observability::http_counter_mw))`.
+pub async fn http_counter_mw(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let method = req.method().to_string();
+    let service = std::env::var("EXPRESSO_SERVICE_NAME")
+        .unwrap_or_else(|_| "expresso".into());
+    let resp = next.run(req).await;
+    let status = resp.status().as_u16().to_string();
+    HTTP_REQUESTS_TOTAL
+        .with_label_values(&[&service, &method, &status])
+        .inc();
+    resp
+}
