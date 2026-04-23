@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Painel Administrativo</h1>
+  <p class="muted">Visão geral do ambiente Expresso v4.</p>
+</section>
+<section class="stats">
+  <div class="stat-card"><div class="stat-num">{{ user_count }}</div><div class="stat-label">Usuários no realm</div></div>
+  <div class="stat-card"><div class="stat-num">{{ realm_name }}</div><div class="stat-label">Realm ativo</div></div>
+  <div class="stat-card"><div class="stat-num">{{ service_count }}</div><div class="stat-label">Serviços</div></div>
+</section>
+<section class="services">
+  <h2>Serviços</h2>
+  <table class="tbl">
+    <thead><tr><th>Nome</th><th>Porta</th><th>Papel</th></tr></thead>
+    <tbody>
+      {% for s in services %}
+      <tr><td>{{ s.name }}</td><td>{{ s.port }}</td><td>{{ s.role }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

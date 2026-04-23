@@ -9,11 +9,10 @@ name = "expresso-admin"
 path = "src/main.rs"
 
 [dependencies]
-# Workspace deps
 tokio = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "trace"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -30,9 +29,9 @@ prometheus = { workspace = true }
 reqwest = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
+askama = { version = "0.12", default-features = false, features = ["with-axum"] }
+askama_axum = "0.4"
 
-
-# Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }

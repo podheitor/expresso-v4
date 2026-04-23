@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero"><h1>Usuários</h1><p class="muted">Realm <code>{{ realm_name }}</code></p></section>
+<table class="tbl">
+  <thead><tr><th>Username</th><th>Email</th><th>Nome</th><th>Status</th><th>ID</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td><strong>{{ u.username }}</strong></td>
+      <td>{{ u.email }}</td>
+      <td>{{ u.full_name }}</td>
+      <td>{% if u.enabled %}<span class="pill ok">ativo</span>{% else %}<span class="pill off">desativado</span>{% endif %}</td>
+      <td class="mono">{{ u.id }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

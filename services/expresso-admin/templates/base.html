@@ -1,0 +1,15 @@
+<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><title>Expresso Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/static/admin.css">
+</head><body>
+<header class="topbar">
+  <div class="brand">Expresso • Admin</div>
+  <nav class="appnav">
+    <a class="appnav-item{% if current == "dashboard" %} active{% endif %}" href="/">📊 Dashboard</a>
+    <a class="appnav-item{% if current == "users" %} active{% endif %}" href="/users">👥 Usuários</a>
+    <a class="appnav-item{% if current == "realm" %} active{% endif %}" href="/realm">🏢 Realm</a>
+  </nav>
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body></html>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero"><h1>Realm: {{ realm.realm }}</h1></section>
+<table class="tbl kv">
+  <tr><th>Display Name</th><td>{{ realm.display_name }}</td></tr>
+  <tr><th>Enabled</th><td>{% if realm.enabled %}sim{% else %}não{% endif %}</td></tr>
+  <tr><th>SSL Required</th><td>{{ realm.ssl_required }}</td></tr>
+  <tr><th>Access Token Lifespan</th><td>{{ realm.access_token_lifespan }}s</td></tr>
+  <tr><th>Registration Allowed</th><td>{% if realm.registration_allowed %}sim{% else %}não{% endif %}</td></tr>
+  <tr><th>Password Policy</th><td class="mono">{{ realm.password_policy }}</td></tr>
+</table>
+{% endblock %}

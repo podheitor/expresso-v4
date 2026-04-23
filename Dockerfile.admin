@@ -32,9 +32,11 @@ RUN groupadd -r expresso && useradd -r -g expresso expresso
 WORKDIR /app
 
 COPY --from=builder /workspace/target/release/expresso-admin /app/expresso-admin
+COPY services/expresso-admin/static    /app/static
+COPY services/expresso-admin/templates /app/templates
 
 USER expresso
 
-EXPOSE 8000
+EXPOSE 8101
 
 ENTRYPOINT ["/app/expresso-admin"]
