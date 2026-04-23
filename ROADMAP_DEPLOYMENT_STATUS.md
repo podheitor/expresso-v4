@@ -2147,3 +2147,40 @@ logs contacts:  jetstream EXPRESSO_CONTACTS ready
 ```
 
 Imagem: `expresso-contacts:t24`.
+
+### #25 — Calendar publishers audit + CalDAV path coverage
+
+Auditoria dos call sites de `EventBus::publish()` em
+`services/expresso-calendar/`. Sprint #20 cobriu os handlers REST
+(`api/events.rs`, `api/scheduling.rs`), mas os paths CalDAV (usados por
+Thunderbird, Apple Calendar, iOS, Evolution) **não emitiam eventos**.
+
+**Gap fechado:**
+
+- `src/caldav/resource.rs`:
+  - `PUT` (upsert via iCalendar body) → `Event::EventUpdated { event_id, summary, sequence }`.
+  - `DELETE` → lookup `get_by_uid` para capturar `event_id` antes do `delete_by_uid`, depois `Event::EventCancelled`.
+- `src/caldav/movecopy.rs` (COPY/MOVE):
+  - Destino → `Event::EventUpdated` com dados do `dst_ev` retornado.
+  - MOVE com same_row=false → adicional `Event::EventCancelled` do source.
+
+**Paths agora instrumentados (100% do CRUD):**
+| Path | Método | Evento |
+|---|---|---|
+| `POST /api/v1/calendars/:id/events` | REST | EventCreated |
+| `PATCH /api/v1/events/:id` | REST | EventUpdated |
+| `DELETE /api/v1/events/:id` | REST | EventCancelled |
+| `POST /api/v1/scheduling/inbox` (iMIP COUNTER) | REST | CounterReceived |
+| `PUT /dav/principals/.../calendars/:id/:uid.ics` | CalDAV | EventUpdated |
+| `DELETE /dav/...` | CalDAV | EventCancelled |
+| `COPY/MOVE /dav/...` | CalDAV | EventUpdated (+ EventCancelled se MOVE) |
+
+**Smoke 125:**
+```
+logs calendar:  jetstream EXPRESSO_CALENDAR ready
+                async_nats: event: connected
+                calendar EventBus with NATS enabled
+                HTTP API listening, addr: 0.0.0.0:8002
+```
+
+Imagem: `expresso-calendar:t27`.

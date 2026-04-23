@@ -14,6 +14,7 @@ use axum::{body::Body, http::{HeaderMap, StatusCode}, response::Response};
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
 use crate::domain::EventRepo;
+use crate::events::Event;
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -89,14 +90,24 @@ async fn process(
     // `replace_by_uid` parses the iCal — the UID inside the body may differ
     // from the URI `uid`; per RFC 4791 §4.1 the in-body UID is authoritative
     // and is what the row is keyed on. This matches PUT semantics.
-    let _ = repo
+    let dst_ev = repo
         .replace_by_uid(principal.tenant_id, dst_cal, &src.ical_raw)
         .await?;
+    state.events().publish(Event::EventUpdated {
+        tenant_id: principal.tenant_id,
+        event_id:  dst_ev.id,
+        summary:   dst_ev.summary.clone(),
+        sequence:  dst_ev.sequence,
+    });
 
     // If MOVE and source != destination row, delete source.
     let same_row = src_cal == dst_cal && src.uid == dst_uid;
     if is_move && !same_row {
         repo.delete_by_uid(principal.tenant_id, src_cal, &src.uid).await?;
+        state.events().publish(Event::EventCancelled {
+            tenant_id: principal.tenant_id,
+            event_id:  src.id,
+        });
     }
 
     let status = if dst_existed {

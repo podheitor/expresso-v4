@@ -12,6 +12,7 @@ use axum::{
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::uri::{self, Target};
 use crate::domain::EventRepo;
+use crate::events::Event;
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -59,6 +60,14 @@ pub async fn put(
         .replace_by_uid(principal.tenant_id, cal_id, &body)
         .await?;
 
+    // Publish event (CalDAV PUT = upsert; emit as Updated with ev.sequence).
+    state.events().publish(Event::EventUpdated {
+        tenant_id: principal.tenant_id,
+        event_id:  ev.id,
+        summary:   ev.summary.clone(),
+        sequence:  ev.sequence,
+    });
+
     let resp = Response::builder()
         .status(StatusCode::CREATED)
         .header(header::ETAG, format!("\"{}\"", ev.etag))
@@ -82,7 +91,18 @@ pub async fn delete(
     };
 
     let pool = state.db_or_unavailable()?;
+    let ev_id = EventRepo::new(pool)
+        .get_by_uid(principal.tenant_id, cal_id, &uid)
+        .await
+        .ok()
+        .map(|e| e.id);
     EventRepo::new(pool).delete_by_uid(principal.tenant_id, cal_id, &uid).await?;
+    if let Some(event_id) = ev_id {
+        state.events().publish(Event::EventCancelled {
+            tenant_id: principal.tenant_id,
+            event_id,
+        });
+    }
 
     Ok(Response::builder()
         .status(StatusCode::NO_CONTENT)
