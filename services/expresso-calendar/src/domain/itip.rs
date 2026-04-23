@@ -157,6 +157,33 @@ pub fn apply_rsvp(raw: &str, email: &str, partstat: &str) -> Result<String> {
     Ok(lines.join("\r\n"))
 }
 
+/// Force `STATUS:<value>` on the first VEVENT of `raw`. Replaces existing
+/// STATUS line when present, otherwise inserts one just before `END:VEVENT`.
+/// Returns the new raw text. Used to apply METHOD:CANCEL at the attendee side
+/// (`STATUS:CANCELLED` per RFC 5546 §3.2.5).
+pub fn set_status(raw: &str, status: &str) -> Result<String> {
+    let status = status.to_ascii_uppercase();
+    let mut lines: Vec<String> = raw.split('\n').map(|s| s.trim_end_matches('\r').to_owned()).collect();
+    let mut in_event = false;
+    let mut replaced = false;
+    for line in lines.iter_mut() {
+        let upper = line.to_ascii_uppercase();
+        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
+        if upper == "END:VEVENT"   { break; }
+        if !in_event { continue; }
+        if upper.starts_with("STATUS:") || upper.starts_with("STATUS;") {
+            *line = format!("STATUS:{status}");
+            replaced = true;
+        }
+    }
+    if !replaced {
+        let pos = lines.iter().position(|l| l.eq_ignore_ascii_case("END:VEVENT"))
+            .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
+        lines.insert(pos, format!("STATUS:{status}"));
+    }
+    Ok(lines.join("\r\n"))
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 fn inject_method(raw: &str, method: &str) -> String {
@@ -286,5 +313,21 @@ END:VCALENDAR\r\n";
     #[test]
     fn apply_rsvp_rejects_bad_partstat() {
         assert!(apply_rsvp(SAMPLE, "bob@example.org", "WAT").is_err());
+    }
+
+    #[test]
+    fn set_status_replaces_existing() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let out = set_status(raw, "CANCELLED").unwrap();
+        assert!(out.contains("STATUS:CANCELLED"));
+        assert!(!out.contains("STATUS:CONFIRMED"));
+        assert_eq!(out.matches("STATUS:").count(), 1);
+    }
+
+    #[test]
+    fn set_status_inserts_when_absent() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let out = set_status(raw, "CANCELLED").unwrap();
+        assert!(out.contains("STATUS:CANCELLED"));
     }
 }

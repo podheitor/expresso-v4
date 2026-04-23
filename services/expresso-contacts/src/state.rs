@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use expresso_auth_client::KcBasicAuthenticator;
 use expresso_core::DbPool;
 
 use crate::error::{ContactsError, Result};
@@ -10,16 +11,21 @@ use crate::error::{ContactsError, Result};
 pub struct AppState(Arc<Inner>);
 
 struct Inner {
-    db: Option<DbPool>,
+    db:       Option<DbPool>,
+    kc_basic: Option<KcBasicAuthenticator>,
 }
 
 impl AppState {
-    pub fn new(db: Option<DbPool>) -> Self {
-        Self(Arc::new(Inner { db }))
+    pub fn new(db: Option<DbPool>, kc_basic: Option<KcBasicAuthenticator>) -> Self {
+        Self(Arc::new(Inner { db, kc_basic }))
     }
 
     pub fn db(&self) -> Option<&DbPool> {
         self.0.db.as_ref()
+    }
+
+    pub fn kc_basic(&self) -> Option<&KcBasicAuthenticator> {
+        self.0.kc_basic.as_ref()
     }
 
     pub fn db_or_unavailable(&self) -> Result<&DbPool> {

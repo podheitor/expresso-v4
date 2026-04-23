@@ -23,20 +23,36 @@
   </aside>
 
   <main class="contacts-main">
-    <h1>Contatos</h1>
+    <header class="row" style="justify-content: space-between; align-items: center">
+      <h1>Contatos</h1>
+      {% match selected_book %}{% when Some with (bid) %}
+        <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
+      {% when None %}{% endmatch %}
+    </header>
     {% if contacts.is_empty() %}
       <div class="empty-state">Catálogo vazio</div>
     {% else %}
     <table class="data-table">
-      <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th></tr></thead>
+      <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th><th></th></tr></thead>
       <tbody>
         {% for c in contacts %}
+        {% match selected_book %}{% when Some with (bid) %}
+        <tr>
+          <td><a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">{{ c.name_display() }}</a></td>
+          <td class="mono">{{ c.email_display() }}</td>
+          <td>{{ c.phone_display() }}</td>
+          <td>{{ c.org_display() }}</td>
+          <td><a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">editar</a></td>
+        </tr>
+        {% when None %}
         <tr>
           <td>{{ c.name_display() }}</td>
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
           <td>{{ c.org_display() }}</td>
+          <td></td>
         </tr>
+        {% endmatch %}
         {% endfor %}
       </tbody>
     </table>

@@ -12,7 +12,7 @@
     <li class="subcard">
       <div class="row" style="justify-content: space-between">
         <div>
-          <strong>{{ c.name }}</strong>
+          <a class="link" href="/calendar/{{ c.id }}"><strong>{{ c.name }}</strong></a>
           {% if c.is_default %}<span class="badge" style="background:#15803d">padrão</span>{% endif %}
         </div>
         <div class="mono muted">{{ c.id }}</div>
@@ -24,6 +24,6 @@
     {% endfor %}
   </ul>
   {% endif %}
-  <p class="muted">Visualizações mês/semana/dia chegam em breve.</p>
+  <p class="muted">Clique em uma agenda para abrir o grid mensal.</p>
 </section>
 {% endblock %}

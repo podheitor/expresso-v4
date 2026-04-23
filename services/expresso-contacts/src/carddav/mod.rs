@@ -6,7 +6,10 @@
 mod auth;
 mod mkcol;
 mod propfind;
+mod proppatch;
 mod report;
+mod sync;
+mod movecopy;
 mod resource;
 mod uri;
 mod xml;
@@ -71,10 +74,13 @@ async fn dispatch(
             propfind::handle(state, principal, &path, depth, &body_str).await
         }
  "MKCOL" => Ok(mkcol::handle(state, principal, &path, &body_str).await),
+        "PROPPATCH" => proppatch::handle(state, principal, &path, &body_str).await,
         "REPORT" => report::handle(state, principal, &path, &body_str).await,
  "GET"    => resource::get(state, principal, &path).await,
  "PUT"    => resource::put(state, principal, &path, body_str).await,
  "DELETE" => resource::delete(state, principal, &path).await,
+        "COPY"   => movecopy::copy(state, principal, &path, &headers).await,
+        "MOVE"   => movecopy::mov(state, principal, &path, &headers).await,
  "HEAD"   => resource::get(state, principal, &path).await.map(|r| {
             // HEAD: strip body, keep headers.
             let (parts, _) = r.into_parts();
@@ -114,7 +120,7 @@ fn payload_too_large() -> Response {
 fn method_not_allowed(m: &str) -> Response {
     Response::builder()
         .status(StatusCode::METHOD_NOT_ALLOWED)
-        .header("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, REPORT, MKCOL")
+        .header("Allow", "OPTIONS, GET, HEAD, PUT, DELETE, COPY, MOVE, PROPFIND, PROPPATCH, REPORT, MKCOL")
         .body(Body::from(format!("method not allowed: {m}")))
         .unwrap()
 }

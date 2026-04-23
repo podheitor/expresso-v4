@@ -17,7 +17,7 @@ use axum::{
 use crate::carddav::auth::CardDavPrincipal;
 use crate::carddav::xml::{self, PropRequest};
 use crate::carddav::{uri, MULTISTATUS_CT};
-use crate::domain::{AddressbookRepo, ContactRepo, };
+use crate::domain::{AddressbookRepo, ContactRepo, DeadProp, DeadPropRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -98,20 +98,24 @@ async fn propfind_home(
 
     // Self response — home collection.
     let home_href = format!("/carddav/{}/", principal.user_id);
-    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal);
+    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal, &[]);
 
     if matches!(depth, Depth::One | Depth::Infinity) {
         let books = AddressbookRepo::new(pool)
             .list_for_owner(principal.tenant_id, principal.user_id)
             .await?;
+        let dead_repo = DeadPropRepo::new(pool);
         for ab in books {
             let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
+            let dead = if req.allprop {
+                dead_repo.list_for_addressbook(ab.id).await.unwrap_or_default()
+            } else { Vec::new() };
             append_collection_response(
                 &mut out, &href, /*is_home=*/false,
                 Some(ab.name.as_str()),
                 ab.description.as_deref(),
                 Some(ab.ctag),
-                req, principal,
+                req, principal, &dead,
             );
         }
     }
@@ -135,13 +139,16 @@ async fn propfind_addressbook(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"  >"#);
 
+    let dead = if req.allprop {
+        DeadPropRepo::new(pool).list_for_addressbook(ab.id).await.unwrap_or_default()
+    } else { Vec::new() };
     let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
     append_collection_response(
         &mut out, &href, /*is_home=*/false,
         Some(ab.name.as_str()),
         ab.description.as_deref(),
         Some(ab.ctag),
-        req, principal,
+        req, principal, &dead,
     );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
@@ -181,14 +188,15 @@ async fn propfind_contact(
 
 /// Append a `<D:response>` for a collection (home or addressbook).
 fn append_collection_response(
-    out:       &mut String,
-    href:      &str,
-    is_home:   bool,
-    dispname:  Option<&str>,
-    descr:     Option<&str>,
-    cal_meta:  Option<i64>,  // ctag when this is an addressbook collection
-    req:       &PropRequest,
-    principal: &CardDavPrincipal,
+    out:        &mut String,
+    href:       &str,
+    is_home:    bool,
+    dispname:   Option<&str>,
+    descr:      Option<&str>,
+    cal_meta:   Option<i64>,  // ctag when this is an addressbook collection
+    req:        &PropRequest,
+    principal:  &CardDavPrincipal,
+    dead_props: &[DeadProp],
 ) {
     out.push_str("<D:response>");
     out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
@@ -238,6 +246,40 @@ fn append_collection_response(
         if req.supported_address_data {
             out.push_str("<C:supported-address-data><C:address-data-type content-type=\"text/vcard\" version=\"3.0\"/></C:supported-address-data>");
         }
+        if req.sync_token {
+            out.push_str("<D:sync-token>");
+            out.push_str(&format!("urn:expresso:ctag:{ctag}"));
+            out.push_str("</D:sync-token>");
+        }
+    }
+    if req.supported_report_set {
+        out.push_str(            "<D:supported-report-set>\
+             <D:supported-report><D:report><C:addressbook-query/></D:report></D:supported-report>\
+             <D:supported-report><D:report><C:addressbook-multiget/></D:report></D:supported-report>\
+             <D:supported-report><D:report><D:sync-collection/></D:report></D:supported-report>\
+             </D:supported-report-set>"
+        );
+    }
+    if req.current_user_privilege_set {
+        out.push_str(            "<D:current-user-privilege-set>\
+             <D:privilege><D:read/></D:privilege>\
+             <D:privilege><D:write/></D:privilege>\
+             <D:privilege><D:write-content/></D:privilege>\
+             <D:privilege><D:write-properties/></D:privilege>\
+             <D:privilege><D:read-current-user-privilege-set/></D:privilege>\
+             </D:current-user-privilege-set>"
+        );
+    }
+
+    if req.allprop && !dead_props.is_empty() {
+        for dp in dead_props {
+            out.push_str(&format!(
+                r#"<{local} xmlns="{ns}">{val}</{local}>"#,
+                local = dp.local_name,
+                ns    = xml::escape(&dp.namespace),
+                val   = xml::escape(&dp.xml_value),
+            ));
+        }
     }
 
     out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
@@ -269,6 +311,19 @@ fn append_contact_response(
         out.push_str("<C:address-data>");
         out.push_str(&xml::escape(vcard_raw));
         out.push_str("</C:address-data>");
+    }
+    if req.getcontentlength {
+        out.push_str("<D:getcontentlength>");
+        out.push_str(&vcard_raw.len().to_string());
+        out.push_str("</D:getcontentlength>");
+    }
+    if req.current_user_privilege_set {
+        out.push_str(            "<D:current-user-privilege-set>\
+             <D:privilege><D:read/></D:privilege>\
+             <D:privilege><D:write/></D:privilege>\
+             <D:privilege><D:write-content/></D:privilege>\
+             </D:current-user-privilege-set>"
+        );
     }
     out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
     out.push_str("</D:response>");

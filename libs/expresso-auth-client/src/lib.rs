@@ -10,8 +10,10 @@ mod axum_ext;
 mod claims;
 mod error;
 mod validator;
+mod keycloak_basic;
 
 pub use axum_ext::{Authenticated, AuthRejection, ACCESS_TOKEN_COOKIE};
 pub use claims::{AuthContext, RawClaims, AudClaim, RolesBlock};
 pub use error::{AuthError, Result};
 pub use validator::{OidcConfig, OidcValidator};
+pub use keycloak_basic::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};

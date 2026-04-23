@@ -13,6 +13,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub enum Target {
     Home { user_id: Uuid },
+    ScheduleInbox  { user_id: Uuid },
+    ScheduleOutbox { user_id: Uuid },
     Calendar { user_id: Uuid, calendar_id: Uuid },
     Event { user_id: Uuid, calendar_id: Uuid, uid: String },
     Unknown,
@@ -45,10 +47,16 @@ pub fn classify(path: &str) -> Target {
             .unwrap_or(Target::Unknown),
         2 if trailing_slash => {
             let u = parse_uuid(segments[0]);
-            let c = parse_uuid(segments[1]);
-            match (u, c) {
-                (Some(u), Some(c)) => Target::Calendar { user_id: u, calendar_id: c },
-                _ => Target::Unknown,
+            match (u, segments[1]) {
+                (Some(u), "schedule-inbox")  => Target::ScheduleInbox  { user_id: u },
+                (Some(u), "schedule-outbox") => Target::ScheduleOutbox { user_id: u },
+                _ => {
+                    let c = parse_uuid(segments[1]);
+                    match (u, c) {
+                        (Some(u), Some(c)) => Target::Calendar { user_id: u, calendar_id: c },
+                        _ => Target::Unknown,
+                    }
+                }
             }
         }
         3 if !trailing_slash => {
@@ -132,6 +140,21 @@ mod tests {
             }
             _ => panic!("wrong target {t:?}"),
         }
+    }
+
+
+    #[test]
+    fn parse_schedule_inbox() {
+        let u = Uuid::new_v4();
+        let t = classify(&format!("/caldav/{u}/schedule-inbox/"));
+        assert!(matches!(t, Target::ScheduleInbox { user_id } if user_id == u));
+    }
+
+    #[test]
+    fn parse_schedule_outbox() {
+        let u = Uuid::new_v4();
+        let t = classify(&format!("/caldav/{u}/schedule-outbox/"));
+        assert!(matches!(t, Target::ScheduleOutbox { user_id } if user_id == u));
     }
 
     #[test]

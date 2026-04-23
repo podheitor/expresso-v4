@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Auditoria</h1>
+  <p class="muted">Requer role <code>super_admin</code>. Mostrando últimas {{ rows.len() }} entradas (limit={{ limit }}).</p>
+  <form method="get" action="/audit.html" class="row" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end">
+    <label>Action prefix<br><input name="action_prefix" value="{{ action_prefix_v }}" placeholder="admin.tenant"></label>
+    <label>Tenant ID<br><input name="tenant_id" value="{{ tenant_id_v }}" placeholder="uuid"></label>
+    <label>Janela<br>
+      <select name="preset">
+        <option value=""     {% if preset_v == "" %}selected{% endif %}>— custom —</option>
+        <option value="24h"  {% if preset_v == "24h" %}selected{% endif %}>Últimas 24h</option>
+        <option value="7d"   {% if preset_v == "7d" %}selected{% endif %}>Últimos 7 dias</option>
+        <option value="30d"  {% if preset_v == "30d" %}selected{% endif %}>Últimos 30 dias</option>
+        <option value="all"  {% if preset_v == "all" %}selected{% endif %}>Tudo</option>
+      </select>
+    </label>
+    <label>Desde (RFC3339)<br><input name="since" value="{{ since_v }}" placeholder="2026-04-01T00:00:00Z" style="width:14rem"></label>
+    <label>Até (RFC3339)<br><input name="until" value="{{ until_v }}" placeholder="2026-04-23T23:59:59Z" style="width:14rem"></label>
+    <label>Limit<br><input name="limit" type="number" min="1" max="500" value="{{ limit }}" style="width:6rem"></label>
+    <button class="btn primary" type="submit">Filtrar</button>
+    <a class="btn small" href="/audit.json{{ query_string }}">JSON</a>
+  </form>
+  <p class="muted small">Preset sobrepõe since/until quando setado. Use <code>— custom —</code> para usar os campos manuais.</p>
+</section>
+{% match error %}{% when Some with (e) %}<p class="flash">{{ e }}</p>{% when None %}{% endmatch %}
+<details class="card" style="margin:1rem 0">
+  <summary><strong>Retenção — purge de logs antigos</strong></summary>
+  <form method="post" action="/audit/purge" class="row" style="display:flex;gap:.5rem;align-items:end;margin-top:.5rem"
+        onsubmit="return confirm('Remover permanentemente entradas mais antigas que o período informado?');">
+    <label>Reter últimos<br><input name="retention_days" type="number" min="7" max="3650" value="90" style="width:6rem"> dias</label>
+    <button class="btn warn" type="submit">Purge agora</button>
+    <span class="muted small">Remove rows com <code>created_at &lt; NOW() − N days</code>. Ação auditada como <code>admin.audit.purge</code>.</span>
+  </form>
+</details>
+<table class="tbl">
+  <thead>
+    <tr>
+      <th>ID</th><th>Quando</th><th>Tenant</th><th>User</th>
+      <th>Action</th><th>Resource</th><th>Status</th><th>Metadata</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td class="mono small">{{ r.id }}</td>
+      <td class="mono small">{{ r.created_at_fmt }}</td>
+      <td class="mono small">{{ r.tenant_id }}</td>
+      <td class="mono small">{% match r.user_id %}{% when Some with (u) %}{{ u }}{% when None %}—{% endmatch %}</td>
+      <td><code>{{ r.action }}</code></td>
+      <td class="mono small">{% match r.resource %}{% when Some with (v) %}{{ v }}{% when None %}—{% endmatch %}</td>
+      <td>
+        {% if r.status == "success" %}<span class="pill ok">ok</span>
+        {% else if r.status == "failure" %}<span class="pill off">fail</span>
+        {% else %}<span class="pill warn">{{ r.status }}</span>
+        {% endif %}
+      </td>
+      <td class="mono small" style="max-width:36rem;overflow:hidden;text-overflow:ellipsis"><code>{{ r.metadata_json }}</code></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<nav class="row" style="display:flex;gap:.5rem;margin-top:1rem">
+  {% if has_cursor %}<a class="btn small" href="{{ reset_href }}">⏮ primeira página</a>{% endif %}
+  {% match next_href %}{% when Some with (h) %}<a class="btn small" href="{{ h }}">próxima (mais antigas) →</a>{% when None %}<span class="muted small">— fim da lista —</span>{% endmatch %}
+</nav>
+{% endblock %}

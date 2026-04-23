@@ -169,4 +169,53 @@ impl<'a> AddressbookRepo<'a> {
         .await?;
         Ok(ctag)
     }
+
+    /// Owned + shared via addressbook_acl.
+    pub async fn list_accessible(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Addressbook>> {
+        let rows = sqlx::query_as::<_, Addressbook>(
+            r#"SELECT * FROM addressbooks
+               WHERE tenant_id = $1
+                 AND (owner_user_id = $2
+                      OR id IN (SELECT addressbook_id FROM addressbook_acl
+                                 WHERE tenant_id = $1 AND grantee_id = $2))
+               ORDER BY is_default DESC, name"#,
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
+    pub async fn access_level(
+        &self,
+        tenant_id: Uuid,
+        addrbook_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<String>> {
+        let owner: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT owner_user_id FROM addressbooks WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(addrbook_id)
+        .bind(tenant_id)
+        .fetch_optional(self.pool)
+        .await?;
+        match owner {
+            None => return Ok(None),
+            Some((o,)) if o == user_id => return Ok(Some("OWNER".into())),
+            _ => {}
+        }
+        let acl: Option<(String,)> = sqlx::query_as(
+            "SELECT privilege FROM addressbook_acl
+              WHERE addressbook_id = $1 AND tenant_id = $2 AND grantee_id = $3",
+        )
+        .bind(addrbook_id)
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_optional(self.pool)
+        .await?;
+        Ok(acl.map(|(p,)| p))
+    }
 }
+

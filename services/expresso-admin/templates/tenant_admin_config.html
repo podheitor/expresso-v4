@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Config de tenant</h1>
+  <p class="muted"><code>{{ slug }}</code> — {{ name }} · ID <code>{{ id }}</code></p>
+  <p><a class="btn small" href="/tenants/{{ id }}/edit">← dados básicos</a> <a class="btn small" href="/tenants">lista</a></p>
+</section>
+{% match error %}{% when Some with (e) %}<p class="error">{{ e }}</p>{% when None %}{% endmatch %}
+{% match flash %}{% when Some with (m) %}<p class="muted">{{ m }}</p>{% when None %}{% endmatch %}
+<form method="post" action="/tenants/{{ id }}/config" class="form">
+  <label>Config (JSON object)
+    <textarea name="config_json" rows="20" cols="90" style="font-family:ui-monospace,monospace;font-size:.85rem" spellcheck="false">{{ config_json }}</textarea>
+  </label>
+  <p class="muted small">Precisa ser um JSON object (<code>{ … }</code>). Use para policies, feature flags, limites, integrações externas. Mudanças vão direto à coluna <code>tenants.config</code>.</p>
+  <div class="actions">
+    <button class="btn primary" type="submit">Salvar config</button>
+    <a class="btn" href="/tenants">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

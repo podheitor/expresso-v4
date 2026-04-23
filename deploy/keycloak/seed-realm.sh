@@ -159,3 +159,10 @@ else
 fi
 
 echo "OK: realm=$REALM client=$CLIENT_ID alice/alice2026! tenant=$ALICE_TENANT"
+
+# 11. SuperAdmin bootstrap (opt-in via SA_PASS). Idempotent; syncs KC + DB when
+# DB_HOST is set. See deploy/keycloak/seed-super-admin.sh.
+if [[ -n "${SA_PASS:-}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$SCRIPT_DIR/seed-super-admin.sh"
+fi

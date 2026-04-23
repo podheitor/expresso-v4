@@ -35,7 +35,7 @@ async fn list(
     ctx: RequestCtx,
 ) -> Result<Json<Vec<Addressbook>>> {
     let pool = state.db_or_unavailable()?;
-    let abs  = AddressbookRepo::new(pool).list_for_owner(ctx.tenant_id, ctx.user_id).await?;
+    let abs  = AddressbookRepo::new(pool).list_accessible(ctx.tenant_id, ctx.user_id).await?;
     Ok(Json(abs))
 }
 

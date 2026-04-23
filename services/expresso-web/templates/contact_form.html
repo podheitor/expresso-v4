@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}{% match contact_id %}{% when Some with (_) %}Editar contato{% when None %}Novo contato{% endmatch %} · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="row" style="justify-content: space-between; align-items: center;">
+    <h1>{% match contact_id %}{% when Some with (_) %}Editar contato{% when None %}Novo contato{% endmatch %}</h1>
+    <a class="link" href="/contacts?book_id={{ book.id }}">← voltar</a>
+  </header>
+  <p class="muted">Catálogo: <strong>{{ book.name }}</strong></p>
+
+  {% match error %}{% when Some with (e) %}<div class="alert error">{{ e }}</div>{% when None %}{% endmatch %}
+
+  <form method="post" class="form" style="max-width: 640px">
+    <label>Nome completo
+      <input name="full_name" value="{{ full_name }}" placeholder="Ex: Alice Silva">
+    </label>
+    <div class="row" style="gap: .75rem">
+      <label style="flex:1">Primeiro nome
+        <input name="given_name" value="{{ given_name }}">
+      </label>
+      <label style="flex:1">Sobrenome
+        <input name="family_name" value="{{ family_name }}">
+      </label>
+    </div>
+    <label>Email
+      <input name="email" type="email" value="{{ email }}" placeholder="exemplo@dominio">
+    </label>
+    <label>Telefone
+      <input name="phone" value="{{ phone }}" placeholder="+55 11 ...">
+    </label>
+    <label>Organização
+      <input name="organization" value="{{ organization }}">
+    </label>
+
+    <div class="row" style="gap: .5rem; justify-content: flex-end">
+      {% match contact_id %}{% when Some with (id) %}
+      <button type="button" onclick="document.getElementById('delete-form').submit()" class="btn danger">Apagar</button>
+      {% when None %}{% endmatch %}
+      <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+
+  {% match contact_id %}{% when Some with (id) %}
+  <form id="delete-form" method="post" action="/contacts/{{ book.id }}/{{ id }}/delete" style="display:none"></form>
+  {% when None %}{% endmatch %}
+</section>
+{% endblock %}

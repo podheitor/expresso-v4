@@ -1,0 +1,167 @@
+//! OIDC group/role gate. Forwards browser cookie to expresso-auth `/auth/me`,
+//! requires the resulting principal to have at least one of `ADMIN_ROLES`.
+//! Bypasses static / health / metrics paths.
+
+use axum::{
+    body::Body,
+    extract::State,
+    http::{header, Request, StatusCode, Uri},
+    middleware::Next,
+    response::{IntoResponse, Redirect, Response},
+};
+use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+use serde::Deserialize;
+use std::sync::Arc;
+
+use crate::AppState;
+
+#[derive(Debug, Clone)]
+pub struct AuthConfig {
+    pub auth_base:    String,
+    pub admin_roles:  Vec<String>,
+    pub login_path:   String,
+}
+
+impl AuthConfig {
+    pub fn from_env() -> Self {
+        Self {
+            auth_base: std::env::var("BACKEND__AUTH").unwrap_or_else(|_| "http://expresso-auth:8012".into()),
+            admin_roles: std::env::var("ADMIN_ROLES")
+                .unwrap_or_else(|_| "super_admin,tenant_admin".into())
+                .split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            login_path: std::env::var("PUBLIC__AUTH_LOGIN").unwrap_or_else(|_| "/auth/login".into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MeResp {
+    #[serde(default)]
+    pub roles:     Vec<String>,
+    #[serde(default)]
+    pub user_id:   Option<uuid::Uuid>,
+    #[serde(default)]
+    pub tenant_id: Option<uuid::Uuid>,
+    #[serde(default)]
+    pub email:     Option<String>,
+}
+
+fn is_public_path(p: &str) -> bool {
+    p == "/health" || p == "/ready" || p.starts_with("/static") || p.starts_with("/metrics") || p == "/forbidden"
+}
+
+fn login_redirect(login_path: &str, uri: &Uri) -> Response {
+    let target = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
+    let enc = utf8_percent_encode(target, NON_ALPHANUMERIC).to_string();
+    Redirect::to(&format!("{login_path}?redirect={enc}")).into_response()
+}
+
+pub async fn require_admin(
+    State(st): State<Arc<AppState>>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let uri = req.uri().clone();
+    if is_public_path(uri.path()) {
+        return next.run(req).await;
+    }
+    let cookie = req.headers().get(header::COOKIE).cloned();
+
+    // No cookie → straight to login.
+    let Some(cookie_v) = cookie else {
+        return login_redirect(&st.auth.login_path, &uri);
+    };
+
+    let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
+    let resp = match st.http.get(&me_url).header(header::COOKIE, cookie_v).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!(error = %e, "auth backend unreachable");
+            return (StatusCode::BAD_GATEWAY, "auth backend unreachable").into_response();
+        }
+    };
+    if resp.status() == StatusCode::UNAUTHORIZED {
+        return login_redirect(&st.auth.login_path, &uri);
+    }
+    if !resp.status().is_success() {
+        return (StatusCode::BAD_GATEWAY, format!("auth/me {}", resp.status())).into_response();
+    }
+    let me: MeResp = match resp.json().await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "auth/me parse");
+            return (StatusCode::BAD_GATEWAY, "auth/me parse").into_response();
+        }
+    };
+
+    let allowed = me.roles.iter().any(|r| st.auth.admin_roles.iter().any(|a| a.eq_ignore_ascii_case(r) || a.replace('_', "").eq_ignore_ascii_case(&r.replace('_', ""))));
+    if !allowed {
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            format!(
+                "<!doctype html><meta charset=utf-8><title>403</title>\
+                 <body style=\"font-family:system-ui;padding:2rem\">\
+                 <h1>403 — Acesso negado</h1>\
+                 <p>Sua conta não possui permissão para acessar o painel administrativo.</p>\
+                 <p class=muted>Roles requeridas: <code>{}</code></p>\
+                 <p>Roles atuais: <code>{}</code></p>\
+                 </body>",
+                st.auth.admin_roles.join(", "),
+                me.roles.join(", ")
+            ),
+        ).into_response();
+    }
+
+    next.run(req).await
+}
+
+// ─── Super-admin gate for tenant management ─────────────────────────────────
+
+/// Fetch `/auth/me` roles list for the request. Returns empty vec on failure.
+pub async fn roles_for(st: &AppState, headers: &axum::http::HeaderMap) -> Vec<String> {
+    let Some(cookie) = headers.get(header::COOKIE).cloned() else { return vec![]; };
+    let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
+    let Ok(resp) = st.http.get(&me_url).header(header::COOKIE, cookie).send().await else {
+        return vec![];
+    };
+    if !resp.status().is_success() { return vec![]; }
+    resp.json::<MeResp>().await.map(|m| m.roles).unwrap_or_default()
+}
+
+/// Returns `None` if caller holds `super_admin`; otherwise returns a 403 response.
+pub async fn require_super_admin(st: &AppState, headers: &axum::http::HeaderMap) -> Option<Response> {
+    let roles = roles_for(st, headers).await;
+    if roles.iter().any(|r| r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin")) {
+        None
+    } else {
+        Some((
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            format!(
+                "<!doctype html><meta charset=utf-8><title>403</title>\
+                 <body style=\"font-family:system-ui;padding:2rem\">\
+                 <h1>403 — Requer super_admin</h1>\
+                 <p>Gestão de tenants exige role <code>super_admin</code>.</p>\
+                 <p>Roles atuais: <code>{}</code></p>\
+                 </body>",
+                roles.join(", ")
+            ),
+        ).into_response())
+    }
+}
+
+/// Fetch the full principal (sub + email + roles) via `/auth/me`. Empty struct on failure.
+pub async fn principal_for(st: &AppState, headers: &axum::http::HeaderMap) -> MeResp {
+    let Some(cookie) = headers.get(axum::http::header::COOKIE).cloned() else {
+        return MeResp::default();
+    };
+    let me_url = format!("{}/auth/me", st.auth.auth_base.trim_end_matches('/'));
+    let Ok(resp) = st.http.get(&me_url).header(axum::http::header::COOKIE, cookie).send().await else {
+        return MeResp::default();
+    };
+    if !resp.status().is_success() {
+        return MeResp::default();
+    }
+    resp.json::<MeResp>().await.unwrap_or(MeResp::default())
+}

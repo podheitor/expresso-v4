@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Tenants</h1>
+  <p class="muted">Requer role <code>super_admin</code>.</p>
+  <p><a class="btn primary" href="/tenants/new">+ Novo tenant</a></p>
+</section>
+{% match flash %}{% when Some with (m) %}<p class="error">{{ m }}</p>{% when None %}{% endmatch %}
+<table class="tbl">
+  <thead><tr><th>Slug</th><th>Nome</th><th>CNPJ</th><th>Plano</th><th>Status</th><th>Usuários</th><th>ID</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><code>{{ r.slug }}</code></td>
+      <td><strong>{{ r.name }}</strong></td>
+      <td class="mono small">{{ r.cnpj }}</td>
+      <td><span class="pill">{{ r.plan }}</span></td>
+      <td>
+        {% if r.status == "active" %}<span class="pill ok">ativo</span>
+        {% else if r.status == "suspended" %}<span class="pill warn">suspenso</span>
+        {% else %}<span class="pill off">cancelado</span>
+        {% endif %}
+      </td>
+      <td>{{ r.user_count }}</td>
+      <td class="mono small">{{ r.id }}</td>
+      <td>
+        <a class="btn small" href="/tenants/{{ r.id }}/edit">editar</a>
+        <a class="btn small" href="/tenants/{{ r.id }}/config">config</a>
+        <form method="post" action="/tenants/{{ r.id }}/delete" style="display:inline"
+              onsubmit="return confirm('Excluir tenant {{ r.name }}? Usuários e TODOS os dados do tenant serão removidos em cascata. Confirma?');">
+          <button class="btn small danger" type="submit">excluir</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

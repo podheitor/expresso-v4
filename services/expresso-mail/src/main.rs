@@ -11,6 +11,7 @@ mod error;
 mod imap;
 mod lmtp;
 mod ingest;
+mod imip;
 mod dkim;
 mod sieve;
 mod smtp;

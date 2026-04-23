@@ -43,7 +43,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_returns_ok_payload() {
-        let app = routes().with_state(AppState::new(None));
+        let app = routes().with_state(AppState::new(None, None));
         let response = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
             .await
@@ -59,7 +59,7 @@ mod tests {
 
     #[tokio::test]
     async fn ready_returns_503_without_database() {
-        let app = routes().with_state(AppState::new(None));
+        let app = routes().with_state(AppState::new(None, None));
         let response = app
             .oneshot(Request::builder().uri("/ready").body(Body::empty()).unwrap())
             .await

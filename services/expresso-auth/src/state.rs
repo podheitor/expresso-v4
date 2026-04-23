@@ -26,6 +26,8 @@ pub struct AppState {
     pub http:      reqwest::Client,
     pub validator: Arc<OidcValidator>,
     pub pending:   Mutex<HashMap<String, PendingLogin>>,
+    /// Optional DB pool for audit writes. None ⇒ audit disabled (service still serves OIDC).
+    pub pool:      Option<sqlx::PgPool>,
 }
 
 impl AppState {

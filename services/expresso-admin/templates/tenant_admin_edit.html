@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>{% match id %}{% when Some with (_) %}Editar tenant{% when None %}Novo tenant{% endmatch %}</h1>
+  {% match id %}{% when Some with (i) %}<p class="muted">ID <code>{{ i }}</code></p>{% when None %}{% endmatch %}
+</section>
+{% match error %}{% when Some with (e) %}<p class="error">{{ e }}</p>{% when None %}{% endmatch %}
+<form method="post" action="{% match id %}{% when Some with (i) %}/tenants/{{ i }}/edit{% when None %}/tenants/new{% endmatch %}" class="form">
+  <label>Slug <span class="muted">(a-z, 0-9, hifens; usado em URLs)</span>
+    <input name="slug" value="{{ slug }}" required pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" maxlength="63">
+  </label>
+  <label>Nome <input name="name" value="{{ name }}" required></label>
+  <label>CNPJ (opcional) <input name="cnpj" value="{{ cnpj }}"></label>
+  <label>Plano
+    <select name="plan">
+      <option value="standard"     {% if plan == "standard" %}selected{% endif %}>Standard</option>
+      <option value="professional" {% if plan == "professional" %}selected{% endif %}>Professional</option>
+      <option value="enterprise"   {% if plan == "enterprise" %}selected{% endif %}>Enterprise</option>
+    </select>
+  </label>
+  <label>Status
+    <select name="status">
+      <option value="active"    {% if status == "active" %}selected{% endif %}>Ativo</option>
+      <option value="suspended" {% if status == "suspended" %}selected{% endif %}>Suspenso</option>
+      <option value="cancelled" {% if status == "cancelled" %}selected{% endif %}>Cancelado</option>
+    </select>
+  </label>
+  <div class="actions">
+    <button class="btn primary" type="submit">Salvar</button>
+    <a class="btn" href="/tenants">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

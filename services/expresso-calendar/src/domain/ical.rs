@@ -20,6 +20,7 @@ pub struct ParsedEvent {
     pub location:        Option<String>,
     pub dtstart:         Option<OffsetDateTime>,
     pub dtend:           Option<OffsetDateTime>,
+    pub dtstamp:         Option<OffsetDateTime>,
     pub rrule:           Option<String>,
     pub status:          Option<String>,
     pub organizer_email: Option<String>,
@@ -73,6 +74,7 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
             "SEQUENCE"    => ev.sequence = value.parse().unwrap_or(0),
             "DTSTART"     => ev.dtstart = parse_dt(params, value),
             "DTEND"       => ev.dtend   = parse_dt(params, value),
+            "DTSTAMP"     => ev.dtstamp = parse_dt(params, value),
             _ => {}
         }
     }
@@ -307,5 +309,21 @@ END:VCALENDAR\r\n";
         let e2 = compute_etag(SAMPLE);
         assert_eq!(e1, e2);
         assert_eq!(e1.len(), 64);
+    }
+
+    #[test]
+    fn parses_dtstamp() {
+        let raw = "BEGIN:VEVENT\r\nUID:u1\r\nDTSTAMP:20260423T120000Z\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert!(ev.dtstamp.is_some());
+        let s = ev.dtstamp.unwrap();
+        assert_eq!(s.unix_timestamp(), 1776945600);
+    }
+
+    #[test]
+    fn missing_dtstamp_is_none() {
+        let raw = "BEGIN:VEVENT\r\nUID:u1\r\nSUMMARY:x\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert!(ev.dtstamp.is_none());
     }
 }

@@ -39,6 +39,9 @@ pub struct AclEntry {
     pub tenant_id:   Uuid,
     pub grantee_id:  Uuid,
     pub privilege:   String,
+    #[sqlx(default)]
+    #[serde(default)]
+    pub email:       Option<String>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at:  OffsetDateTime,
 }
@@ -81,10 +84,11 @@ pub async fn list_acl(
     assert_owner(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
 
     let rows: Vec<AclEntry> = sqlx::query_as(
-        r#"SELECT calendar_id, tenant_id, grantee_id, privilege, created_at
-             FROM calendar_acl
-            WHERE calendar_id = $1 AND tenant_id = $2
-            ORDER BY created_at"#,
+        r#"SELECT a.calendar_id, a.tenant_id, a.grantee_id, a.privilege, u.email, a.created_at
+             FROM calendar_acl a
+             LEFT JOIN users u ON u.id = a.grantee_id
+            WHERE a.calendar_id = $1 AND a.tenant_id = $2
+            ORDER BY a.created_at"#,
     )
     .bind(cal_id)
     .bind(ctx.tenant_id)
@@ -122,11 +126,15 @@ pub async fn share(
     }
 
     let row: AclEntry = sqlx::query_as(
-        r#"INSERT INTO calendar_acl (calendar_id, tenant_id, grantee_id, privilege)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (calendar_id, grantee_id)
-           DO UPDATE SET privilege = EXCLUDED.privilege
-           RETURNING calendar_id, tenant_id, grantee_id, privilege, created_at"#,
+        r#"WITH ins AS (
+             INSERT INTO calendar_acl (calendar_id, tenant_id, grantee_id, privilege)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (calendar_id, grantee_id)
+             DO UPDATE SET privilege = EXCLUDED.privilege
+             RETURNING calendar_id, tenant_id, grantee_id, privilege, created_at
+           )
+           SELECT ins.calendar_id, ins.tenant_id, ins.grantee_id, ins.privilege, u.email, ins.created_at
+             FROM ins LEFT JOIN users u ON u.id = ins.grantee_id"#,
     )
     .bind(cal_id)
     .bind(ctx.tenant_id)

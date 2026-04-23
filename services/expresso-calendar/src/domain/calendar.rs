@@ -227,4 +227,66 @@ impl<'a> CalendarRepo<'a> {
         .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
         Ok(ctag)
     }
+
+    /// List calendars visible to user: owned + shared via `calendar_acl`.
+    pub async fn list_accessible(
+        &self,
+        tenant_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Vec<Calendar>> {
+        let rows = sqlx::query_as::<_, Calendar>(
+            r#"
+            SELECT id, tenant_id, owner_user_id, name, description, color,
+                   timezone, ctag, is_default, created_at, updated_at
+              FROM calendars
+             WHERE tenant_id = $1
+               AND (owner_user_id = $2
+                    OR id IN (SELECT calendar_id FROM calendar_acl
+                               WHERE tenant_id = $1 AND grantee_id = $2))
+             ORDER BY is_default DESC, name ASC
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(self.pool)
+        .await
+        .map_err(CalendarError::from)?;
+        Ok(rows)
+    }
+
+    /// Effective access level for user on calendar:
+    /// returns "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
+    pub async fn access_level(
+        &self,
+        tenant_id: Uuid,
+        cal_id: Uuid,
+        user_id: Uuid,
+    ) -> Result<Option<String>> {
+        // owner shortcut
+        let owner: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT owner_user_id FROM calendars WHERE id = $1 AND tenant_id = $2",
+        )
+        .bind(cal_id)
+        .bind(tenant_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(CalendarError::from)?;
+        match owner {
+            None => return Ok(None),
+            Some((o,)) if o == user_id => return Ok(Some("OWNER".into())),
+            _ => {}
+        }
+        let acl: Option<(String,)> = sqlx::query_as(
+            "SELECT privilege FROM calendar_acl
+              WHERE calendar_id = $1 AND tenant_id = $2 AND grantee_id = $3",
+        )
+        .bind(cal_id)
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_optional(self.pool)
+        .await
+        .map_err(CalendarError::from)?;
+        Ok(acl.map(|(p,)| p))
+    }
 }
+

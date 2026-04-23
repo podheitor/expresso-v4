@@ -1,8 +1,11 @@
-//! CardDAV HTTP Basic authentication — MVP.
+//! CardDAV HTTP Basic authentication.
 //!
-//! Dev mode (`CONTACTS_DEV_AUTH=1`): username is treated as a user email; we
-//! look up the user + tenant in DB. Password is NOT validated.
-//! Production path (TODO): delegate to Keycloak token introspection.
+//! Order of precedence per request:
+//! 1. If `AppState::kc_basic()` is configured → delegate to Keycloak password
+//!    grant. On success, resolve the DB user row by email.
+//! 2. Else if `CONTACTS_DEV_AUTH=1` → dev mode: resolve user by email, accept
+//!    any password. Never enabled in production.
+//! 3. Else → 401.
 
 use axum::{
     async_trait,
@@ -11,6 +14,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use expresso_auth_client::KcBasicError;
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -33,26 +37,40 @@ impl FromRequestParts<AppState> for CardDavPrincipal {
             .to_str()
             .map_err(|_| AuthError::Malformed)?;
 
-        let (user, _pass) = decode_basic(header_val).ok_or(AuthError::Malformed)?;
+        let (user, pass) = decode_basic(header_val).ok_or(AuthError::Malformed)?;
 
-        // Dev path: resolve user by email, accept any password.
-        if std::env::var("CONTACTS_DEV_AUTH").ok().as_deref() == Some("1") {
-            let pool = state.db().ok_or(AuthError::Unavailable)?;
-            let row: Option<(Uuid, Uuid)> = sqlx::query_as(
-                r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 1"#,
-            )
-            .bind(&user)
-            .fetch_optional(pool)
-            .await
-            .map_err(|_| AuthError::Unavailable)?;
-
-            let (tenant_id, user_id) = row.ok_or(AuthError::Forbidden)?;
-            return Ok(CardDavPrincipal { tenant_id, user_id });
+        // 1) Keycloak path (production).
+        if let Some(kc) = state.kc_basic() {
+            match kc.authenticate(&user, &pass).await {
+                Ok(_)                                     => return resolve_user(state, &user).await,
+                Err(KcBasicError::InvalidCredentials)     => return Err(AuthError::Forbidden),
+                Err(KcBasicError::Unreachable(_))         => return Err(AuthError::Unavailable),
+                Err(KcBasicError::Upstream(_))            => return Err(AuthError::Unavailable),
+            }
         }
 
-        // TODO: Keycloak token introspection / password validation.
+        // 2) Dev path.
+        if std::env::var("CONTACTS_DEV_AUTH").ok().as_deref() == Some("1") {
+            return resolve_user(state, &user).await;
+        }
+
+        // 3) No auth backend configured.
         Err(AuthError::Forbidden)
     }
+}
+
+async fn resolve_user(state: &AppState, user: &str) -> Result<CardDavPrincipal, AuthError> {
+    let pool = state.db().ok_or(AuthError::Unavailable)?;
+    // Accept either email or username column match (Keycloak may return either).
+    let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+        r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 1"#,
+    )
+    .bind(user)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| AuthError::Unavailable)?;
+    let (tenant_id, user_id) = row.ok_or(AuthError::Forbidden)?;
+    Ok(CardDavPrincipal { tenant_id, user_id })
 }
 
 /// Decode `Basic <b64(user:pass)>` → (user, pass).
@@ -76,9 +94,9 @@ impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let challenge = HeaderValue::from_static("Basic realm=\"Expresso CardDAV\", charset=\"UTF-8\"");
         let (status, msg) = match self {
-            Self::Missing     => (StatusCode::UNAUTHORIZED, "authentication required"),
-            Self::Malformed   => (StatusCode::BAD_REQUEST, "malformed Authorization header"),
-            Self::Forbidden   => (StatusCode::UNAUTHORIZED, "invalid credentials"),
+            Self::Missing     => (StatusCode::UNAUTHORIZED,        "authentication required"),
+            Self::Malformed   => (StatusCode::BAD_REQUEST,         "malformed Authorization header"),
+            Self::Forbidden   => (StatusCode::UNAUTHORIZED,        "invalid credentials"),
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "auth backend unavailable"),
         };
         let mut resp = (status, msg).into_response();

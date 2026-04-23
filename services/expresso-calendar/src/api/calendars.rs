@@ -38,7 +38,7 @@ async fn list(
 ) -> Result<Json<Vec<Calendar>>> {
     let pool = state.db_or_unavailable()?;
     let cals = CalendarRepo::new(pool)
-        .list_for_owner(ctx.tenant_id, ctx.user_id)
+        .list_accessible(ctx.tenant_id, ctx.user_id)
         .await?;
     Ok(Json(cals))
 }

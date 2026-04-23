@@ -5,6 +5,9 @@ mod addressbooks;
 mod contacts;
 mod gal;
 mod health;
+mod wellknown;
+mod sharing;
+mod users;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -18,6 +21,9 @@ pub fn router(state: AppState) -> Router {
         .merge(addressbooks::routes())
         .merge(contacts::routes())
         .merge(gal::routes())
+        .merge(sharing::routes())
+        .merge(users::routes())
+        .merge(wellknown::routes())
         .layer(CorsLayer::permissive());
 
     // CardDAV ≠ passa por CorsLayer (senão OPTIONS perde `DAV:`/`Allow:`).

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Editar calendário</h1>
+  <p class="muted">Tenant <strong>{{ tenant_name }}</strong> · Dono <strong>{{ owner_email }}</strong> · ID <code>{{ id }}</code></p>
+</section>
+{% match error %}{% when Some with (e) %}<p class="error">{{ e }}</p>{% when None %}{% endmatch %}
+<form method="post" action="/calendars/{{ tenant_id }}/{{ id }}/edit" class="form">
+  <label>Nome <input name="name" value="{{ name }}" required></label>
+  <label>Descrição <input name="description" value="{{ description }}"></label>
+  <label>Cor (hex) <input name="color" value="{{ color }}" placeholder="#3b82f6"></label>
+  <label class="check"><input type="checkbox" name="is_default" value="1" {% if is_default %}checked{% endif %}> Padrão</label>
+  <div class="actions">
+    <button class="btn primary" type="submit">Salvar</button>
+    <a class="btn" href="/calendars">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

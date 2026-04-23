@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>{% match user_id %}{% when Some with (_id) %}Editar usuário{% when None %}Novo usuário{% endmatch %}</h1>
+  {% match error %}{% when Some with (msg) %}<p class="alert error">{{ msg }}</p>{% when None %}{% endmatch %}
+</section>
+<form method="post" action="{% match user_id %}{% when Some with (id) %}/users/{{ id }}/edit{% when None %}/users/new{% endmatch %}" class="form">
+  <label>Username
+    <input name="username" value="{{ username }}" required {% if user_id.is_some() %}readonly{% endif %}>
+  </label>
+  <label>Email
+    <input name="email" type="email" value="{{ email }}" required>
+  </label>
+  <div class="row">
+    <label>Nome
+      <input name="first_name" value="{{ first_name }}">
+    </label>
+    <label>Sobrenome
+      <input name="last_name" value="{{ last_name }}">
+    </label>
+  </div>
+  <label>Senha {% if user_id.is_some() %}<span class="muted">(deixe em branco para manter)</span>{% endif %}
+    <input name="password" type="password" {% if user_id.is_none() %}required{% endif %}>
+  </label>
+  <label class="check"><input type="checkbox" name="temporary" value="1"> Senha temporária (trocar no próximo login)</label>
+  <label class="check"><input type="checkbox" name="enabled" value="1" {% if enabled %}checked{% endif %}> Usuário ativo</label>
+  <div class="actions">
+    <button type="submit" class="btn primary">Salvar</button>
+    <a class="btn" href="/users">Cancelar</a>
+  </div>
+</form>
+{% match user_id %}{% when Some with (id) %}
+<form method="post" action="/users/{{ id }}/delete" class="form danger-zone" onsubmit="return confirm('Apagar usuário?');">
+  <button type="submit" class="btn danger">Apagar usuário</button>
+</form>
+{% when None %}{% endmatch %}
+{% endblock %}

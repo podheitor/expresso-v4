@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Livros de endereços</h1>
+  <p class="muted">Gestão cross-tenant. CRUD direto via DB (RLS bypass).</p>
+</section>
+<table class="tbl">
+  <thead><tr><th>Tenant</th><th>Dono</th><th>Nome</th><th>Default</th><th>ctag</th><th>ID</th><th></th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.tenant_name }}</td>
+      <td>{{ r.owner_email }}</td>
+      <td><strong>{{ r.name }}</strong>{% if !r.description.is_empty() %}<br><span class="muted small">{{ r.description }}</span>{% endif %}</td>
+      <td>{% if r.is_default %}<span class="pill ok">sim</span>{% endif %}</td>
+      <td>{{ r.ctag }}</td>
+      <td class="mono small">{{ r.id }}</td>
+      <td>
+        <a class="btn small" href="/addressbooks/{{ r.tenant_id }}/{{ r.id }}/edit">editar</a>
+        <form method="post" action="/addressbooks/{{ r.tenant_id }}/{{ r.id }}/delete" style="display:inline" onsubmit="return confirm('Excluir livro {{ r.name }}? Contatos serão removidos em cascata.');">
+          <button class="btn small danger" type="submit">excluir</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

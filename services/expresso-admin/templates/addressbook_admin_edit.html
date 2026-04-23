@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Editar livro de endereços</h1>
+  <p class="muted">Tenant <strong>{{ tenant_name }}</strong> · Dono <strong>{{ owner_email }}</strong> · ID <code>{{ id }}</code></p>
+</section>
+{% match error %}{% when Some with (e) %}<p class="error">{{ e }}</p>{% when None %}{% endmatch %}
+<form method="post" action="/addressbooks/{{ tenant_id }}/{{ id }}/edit" class="form">
+  <label>Nome <input name="name" value="{{ name }}" required></label>
+  <label>Descrição <input name="description" value="{{ description }}"></label>
+  <div class="actions">
+    <button class="btn primary" type="submit">Salvar</button>
+    <a class="btn" href="/addressbooks">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

@@ -30,17 +30,18 @@ pub async fn handle(
         _ => return Ok(not_found()),
     };
 
-    // Detect REPORT variant by looking at the root element of the body.
-    let lower = body.to_ascii_lowercase();
-    let is_multiget = lower.contains("addressbook-multiget");
-    let is_query    = lower.contains("addressbook-query");
+    // Detect REPORT variant via root element parsing (ns-safe).
+    let kind = xml::detect_report_kind(body).unwrap_or("");
 
-    if !is_multiget && !is_query {
+    if kind == "sync-collection" {
+        return crate::carddav::sync::handle(state, &principal, addressbook_id, body).await;
+    }
+    if kind != "addressbook-multiget" && kind != "addressbook-query" {
         return Ok(bad_request("unsupported REPORT variant"));
     }
 
     let req = xml::parse_propfind(body); // same prop-selection semantics
-    let xml_out = if is_multiget {
+    let xml_out = if kind == "addressbook-multiget" {
         multiget(&state, &principal, addressbook_id, body, &req).await?
     } else {
         query(&state, &principal, addressbook_id, body, &req).await?

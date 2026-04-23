@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ selected.name }} — {{ date_label }} · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="row" style="justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div>
+      <h1 style="margin: 0">{{ selected.name }}</h1>
+      <p class="muted" style="margin: 0">{{ date_label }}</p>
+    </div>
+    <div class="row" style="gap: .5rem">
+      <a class="btn" href="{{ prev_link }}">◀</a>
+      <a class="btn" href="{{ today_link }}">hoje</a>
+      <a class="btn" href="{{ next_link }}">▶</a>
+      <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
+    </div>
+  </header>
+
+  <nav class="view-switch" style="margin: .5rem 0">
+    <a class="btn" href="{{ month_link }}">Mês</a>
+    <a class="btn" href="{{ week_link }}">Semana</a>
+    <strong class="btn btn-primary" aria-current="page">Dia</strong>
+  </nav>
+
+  <div class="day-list">
+    {% if events.is_empty() %}
+    <p class="muted">Nenhum evento neste dia.</p>
+    {% endif %}
+    {% for ev in events %}
+    <a class="day-event" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
+      <span class="ev-time">{{ ev.time_label() }}</span>
+      <span class="ev-body">
+        <strong>{{ ev.title() }}</strong>
+        {% match ev.location %}{% when Some with (loc) %}{% if !loc.is_empty() %}<span class="muted"> · {{ loc }}</span>{% endif %}{% when None %}{% endmatch %}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

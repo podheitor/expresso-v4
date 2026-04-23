@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ selected.name }} — {{ week_label }} · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="row" style="justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div>
+      <h1 style="margin: 0">{{ selected.name }}</h1>
+      <p class="muted" style="margin: 0">Semana de {{ week_label }}</p>
+    </div>
+    <div class="row" style="gap: .5rem">
+      <a class="btn" href="{{ prev_link }}">◀</a>
+      <a class="btn" href="{{ today_link }}">hoje</a>
+      <a class="btn" href="{{ next_link }}">▶</a>
+      <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
+    </div>
+  </header>
+
+  <nav class="view-switch" style="margin: .5rem 0">
+    <a class="btn" href="{{ month_link }}">Mês</a>
+    <strong class="btn btn-primary" aria-current="page">Semana</strong>
+    <a class="btn" href="{{ day_link }}">Dia</a>
+  </nav>
+
+  <div class="week-grid">
+    {% for d in days %}
+    <section class="week-col {% if d.is_today %}today{% endif %}">
+      <header class="week-col-head">
+        <span class="week-col-label">{{ d.label }}</span>
+      </header>
+      <div class="week-col-events">
+        {% for ev in d.events %}
+        <a class="event-chip" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
+          <span class="ev-time">{{ ev.time_label() }}</span>
+          <span class="ev-title">{{ ev.title() }}</span>
+        </a>
+        {% endfor %}
+        {% if d.events.is_empty() %}
+        <p class="muted small">—</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

@@ -236,10 +236,14 @@ pub struct AddressBook {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Contact {
     pub id:          String,
+    #[serde(default)] pub uid:          Option<String>,
     #[serde(default)] pub full_name:    Option<String>,
-    #[serde(default)] pub email:        Option<String>,
-    #[serde(default)] pub phone:        Option<String>,
+    #[serde(default)] pub given_name:   Option<String>,
+    #[serde(default)] pub family_name:  Option<String>,
+    #[serde(default, alias = "email_primary")] pub email:        Option<String>,
+    #[serde(default, alias = "phone_primary")] pub phone:        Option<String>,
     #[serde(default)] pub organization: Option<String>,
+    #[serde(default)] pub vcard_raw:    Option<String>,
 }
 
 impl Contact {
@@ -317,4 +321,185 @@ pub struct DriveEditTpl {
 #[template(path = "home.html")]
 pub struct HomeTpl {
     pub me: Me,
+}
+
+// ─── Calendar events ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Event {
+    pub id:              String,
+    pub calendar_id:     String,
+    pub uid:             String,
+    #[serde(default)] pub summary:         Option<String>,
+    #[serde(default)] pub description:     Option<String>,
+    #[serde(default)] pub location:        Option<String>,
+    #[serde(default)] pub dtstart:         Option<String>,
+    #[serde(default)] pub dtend:           Option<String>,
+    #[serde(default)] pub status:          Option<String>,
+    #[serde(default)] pub organizer_email: Option<String>,
+}
+
+impl Event {
+    pub fn title(&self) -> &str { self.summary.as_deref().unwrap_or("(sem título)") }
+    /// HH:MM slice from RFC3339 dtstart → fallback "".
+    pub fn time_label(&self) -> String {
+        let Some(s) = &self.dtstart else { return String::new() };
+        // s like "2026-05-01T10:00:00+00:00" — take chars 11..16
+        if s.len() >= 16 { s[11..16].to_string() } else { String::new() }
+    }
+    pub fn date_key(&self) -> String {
+        self.dtstart.as_deref().map(|s| s.get(0..10).unwrap_or("").to_string())
+            .unwrap_or_default()
+    }
+}
+
+/// One cell of the month grid.
+#[derive(Debug, Clone)]
+pub struct MonthCell {
+    pub iso:       String,   // YYYY-MM-DD
+    pub day:       u8,
+    pub in_month:  bool,
+    pub is_today:  bool,
+    pub events:    Vec<Event>,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_month.html")]
+pub struct CalendarMonthTpl {
+    pub me:             Me,
+    pub calendars:      Vec<Calendar>,
+    pub selected:       Calendar,
+    pub year:           i32,
+    pub month:          u8,
+    pub month_label:    String,
+    pub prev_link:      String,
+    pub next_link:      String,
+    pub today_link:     String,
+    pub weekday_labels: Vec<&'static str>,
+    pub weeks:          Vec<Vec<MonthCell>>,
+}
+
+/// One column in week/day view.
+#[derive(Debug, Clone)]
+pub struct DayColumn {
+    pub date_iso: String,  // YYYY-MM-DD
+    pub label:    String,  // "Seg 01/05"
+    pub is_today: bool,
+    pub events:   Vec<Event>,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_week.html")]
+pub struct CalendarWeekTpl {
+    pub me:          Me,
+    pub calendars:   Vec<Calendar>,
+    pub selected:    Calendar,
+    pub week_label:  String,
+    pub prev_link:   String,
+    pub next_link:   String,
+    pub today_link:  String,
+    pub month_link:  String,
+    pub day_link:    String,
+    pub days:        Vec<DayColumn>, // 7
+}
+
+#[derive(Template)]
+#[template(path = "calendar_day.html")]
+pub struct CalendarDayTpl {
+    pub me:          Me,
+    pub calendars:   Vec<Calendar>,
+    pub selected:    Calendar,
+    pub date_label:  String,
+    pub date_iso:    String,
+    pub prev_link:   String,
+    pub next_link:   String,
+    pub today_link:  String,
+    pub week_link:   String,
+    pub month_link:  String,
+    pub events:      Vec<Event>,
+}
+
+#[derive(Template)]
+#[template(path = "event_form.html")]
+pub struct EventFormTpl {
+    pub me:       Me,
+    pub calendar: Calendar,
+    pub event_id: Option<String>,
+    pub summary:  String,
+    pub location: String,
+    pub description: String,
+    pub dtstart:  String,  // datetime-local value "YYYY-MM-DDTHH:MM"
+    pub dtend:    String,
+    pub attendees: String, // one email per line / comma-separated
+    pub attendee_pills: Vec<AttendeePill>,
+    pub error:    Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttendeePill {
+    pub email:    String,
+    pub partstat: String, // raw uppercase: NEEDS-ACTION | ACCEPTED | DECLINED | TENTATIVE
+}
+
+impl AttendeePill {
+    pub fn label(&self) -> &'static str {
+        match self.partstat.as_str() {
+            "ACCEPTED"  => "aceito",
+            "DECLINED"  => "recusado",
+            "TENTATIVE" => "talvez",
+            _           => "pendente",
+        }
+    }
+    pub fn css(&self) -> &'static str {
+        match self.partstat.as_str() {
+            "ACCEPTED"  => "ok",
+            "DECLINED"  => "off",
+            "TENTATIVE" => "warn",
+            _           => "muted",
+        }
+    }
+}
+
+
+#[derive(Template)]
+#[template(path = "contact_form.html")]
+pub struct ContactFormTpl {
+    pub me:           Me,
+    pub book:         AddressBook,
+    pub contact_id:   Option<String>,
+    pub full_name:    String,
+    pub given_name:   String,
+    pub family_name:  String,
+    pub email:        String,
+    pub phone:        String,
+    pub organization: String,
+    pub error:        Option<String>,
+}
+
+// ─── ACL share templates ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AclRow {
+    #[serde(alias = "grantee_id")]
+    pub grantee_id: String,
+    pub privilege:  String,
+    #[serde(default)] pub email: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "calendar_share.html")]
+pub struct CalendarShareTpl {
+    pub me:        Me,
+    pub calendar:  Calendar,
+    pub shares:    Vec<AclRow>,
+    pub error:     Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "addrbook_share.html")]
+pub struct AddrbookShareTpl {
+    pub me:          Me,
+    pub addressbook: AddressBook,
+    pub shares:      Vec<AclRow>,
+    pub error:       Option<String>,
 }

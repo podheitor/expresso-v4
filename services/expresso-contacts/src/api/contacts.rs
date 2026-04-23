@@ -16,6 +16,23 @@ use crate::domain::{Contact, ContactRepo};
 use crate::error::Result;
 use crate::state::AppState;
 
+/// Gate: require OWNER/WRITE/ADMIN on the addressbook.
+async fn assert_can_write(
+    pool: &expresso_core::DbPool,
+    tenant_id: uuid::Uuid,
+    book_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<()> {
+    let repo = crate::domain::AddressbookRepo::new(pool);
+    let lvl = repo.access_level(tenant_id, book_id, user_id).await?;
+    match lvl.as_deref() {
+        Some("OWNER") | Some("WRITE") | Some("ADMIN") => Ok(()),
+        Some(_) => Err(crate::error::ContactsError::Forbidden),
+        None    => Err(crate::error::ContactsError::AddressbookNotFound(book_id.to_string())),
+    }
+}
+
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -43,6 +60,7 @@ async fn create(
     raw: String,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).create(ctx.tenant_id, book_id, &raw).await?;
     let loc  = format!("/api/v1/addressbooks/{}/contacts/{}", book_id, c.id);
     Ok(Response::builder()
@@ -82,11 +100,12 @@ async fn get_one(
 async fn update(
     State(state): State<AppState>,
     ctx: RequestCtx,
-    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+    Path((book_id, id)): Path<(Uuid, Uuid)>,
     _headers: HeaderMap,
     raw: String,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -99,9 +118,10 @@ async fn update(
 async fn delete(
     State(state): State<AppState>,
     ctx: RequestCtx,
-    Path((_book_id, id)): Path<(Uuid, Uuid)>,
+    Path((book_id, id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     ContactRepo::new(pool).delete(ctx.tenant_id, id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

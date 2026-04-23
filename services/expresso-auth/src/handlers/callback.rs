@@ -26,6 +26,7 @@ use expresso_auth_client::ACCESS_TOKEN_COOKIE;
 use crate::error::{Result, RpError};
 use crate::oidc::tokens::{AuthCodeRequest, TokenResponse};
 use crate::state::AppState;
+use expresso_core::audit::{self, AuditEntry};
 
 const REFRESH_TOKEN_COOKIE: &str = "expresso_rt";
 
@@ -92,6 +93,23 @@ pub async fn callback(
         email = %ctx.email,
         "user logged in via OIDC"
     );
+
+    if let Some(pool) = app.pool.as_ref() {
+        let entry = AuditEntry {
+            tenant_id:   Some(ctx.tenant_id),
+            actor_sub:   Some(ctx.user_id.to_string()),
+            actor_email: Some(ctx.email.clone()),
+            actor_roles: ctx.roles.clone(),
+            action:      "auth.login.success".into(),
+            target_type: Some("user".into()),
+            target_id:   Some(ctx.user_id.to_string()),
+            http_method: Some("GET".into()),
+            http_path:   Some("/auth/callback".into()),
+            status_code: Some(200),
+            metadata:    serde_json::json!({}),
+        };
+        audit::record_async(pool.clone(), entry);
+    }
 
     // gov.br federation: emit structured audit event. cpf_hash is logged only
     // as a short prefix to avoid propagating the full hash through log sinks.

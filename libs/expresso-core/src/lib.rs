@@ -4,6 +4,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod redis;
+pub mod audit;
 pub mod telemetry;
 
 // Re-export most-used types at crate root

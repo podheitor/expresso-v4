@@ -32,6 +32,9 @@ fn env_u16(key: &str, default: u16) -> u16 {
 fn env_u32(key: &str, default: u32) -> u32 {
     env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
+fn env_i32(key: &str, default: i32) -> i32 {
+    env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
 fn env_u64(key: &str, default: u64) -> u64 {
     env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
 }
@@ -83,7 +86,15 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let http_addr = resolve_addr()?;
-    let state = AppState::new(db);
+    let kc_basic = expresso_auth_client::KcBasicConfig::from_env_prefix("CARDDAV_KC").map(expresso_auth_client::KcBasicAuthenticator::new);
+    if kc_basic.is_some() { tracing::info!("CardDAV Keycloak Basic auth enabled"); }
+    if let Some(pool) = db.clone() {
+        let retention = env_i32("DAV_TOMBSTONE_RETENTION_DAYS", domain::tombstone_gc::DEFAULT_RETENTION_DAYS);
+        let every = env_u64("DAV_TOMBSTONE_GC_INTERVAL_HOURS", domain::tombstone_gc::DEFAULT_INTERVAL_HOURS);
+        info!(retention_days = retention, interval_hours = every, "spawning tombstone GC");
+        domain::tombstone_gc::spawn(pool, retention, every);
+    }
+    let state = AppState::new(db, kc_basic);
     let app = api::router(state);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 

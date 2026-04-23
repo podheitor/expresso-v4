@@ -157,6 +157,22 @@ pub async fn process(
         tx.commit().await?;
         delivered += 1;
 
+        // Fire-and-forget: forward iMIP REPLY to calendar scheduling inbox.
+        // Mail delivery must succeed regardless; only log on error.
+        let calendar_url = state.cfg().calendar_url.clone();
+        if !calendar_url.is_empty() {
+            if let Some(ics) = crate::imip::extract_imip_reply(raw) {
+                let tid = tenant_id;
+                let uid_org = user_id;
+                tokio::spawn(async move {
+                    if let Err(e) = crate::imip::forward_reply(&calendar_url, tid, uid_org, &ics).await {
+                        tracing::warn!(error = %e, tenant_id = %tid, user_id = %uid_org,
+                            "iMIP REPLY forward failed");
+                    }
+                });
+            }
+        }
+
         // Fire-and-forget: notify search service
         let search_url = state.cfg().search_url.clone();
         if !search_url.is_empty() {

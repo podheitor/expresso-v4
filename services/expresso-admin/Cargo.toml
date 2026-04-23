@@ -31,6 +31,8 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 askama = { version = "0.12", default-features = false, features = ["with-axum"] }
 askama_axum = "0.4"
+percent-encoding = "2"
+sqlx = { workspace = true }
 
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }

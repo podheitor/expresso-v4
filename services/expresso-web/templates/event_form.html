@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{% match event_id %}{% when Some with (_) %}Editar evento{% when None %}Novo evento{% endmatch %} · Expresso{% endblock %}
+{% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="row" style="justify-content: space-between; align-items: center;">
+    <h1>{% match event_id %}{% when Some with (_) %}Editar evento{% when None %}Novo evento{% endmatch %}</h1>
+    <a class="link" href="/calendar/{{ calendar.id }}">← voltar</a>
+  </header>
+  <p class="muted">Agenda: <strong>{{ calendar.name }}</strong></p>
+
+  {% match error %}{% when Some with (e) %}<div class="alert error">{{ e }}</div>{% when None %}{% endmatch %}
+
+  <form method="post" class="form" style="max-width: 640px">
+    <label>Título
+      <input name="summary" required value="{{ summary }}" placeholder="Reunião, almoço, etc.">
+    </label>
+    <label>Início
+      <input name="dtstart" type="datetime-local" required value="{{ dtstart }}">
+    </label>
+    <label>Fim
+      <input name="dtend" type="datetime-local" required value="{{ dtend }}">
+    </label>
+    <label>Local
+      <input name="location" value="{{ location }}">
+    </label>
+    <label>Descrição
+      <textarea name="description" rows="4">{{ description }}</textarea>
+    </label>
+    <label>Convidados <span class="muted">(um email por linha, ou separados por vírgula)</span>
+      <textarea name="attendees" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local">{{ attendees }}</textarea>
+    </label>
+
+    {% if !attendee_pills.is_empty() %}
+    <div class="attendee-pills" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.25rem">
+      {% for a in attendee_pills %}
+      <span class="pill {{ a.css() }}" title="PARTSTAT: {{ a.partstat }}">
+        {{ a.email }} · {{ a.label() }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="row" style="gap: .5rem; justify-content: flex-end">
+      {% match event_id %}{% when Some with (id) %}
+      <button type="button" onclick="document.getElementById('delete-form').submit()" class="btn danger">Apagar</button>
+      {% when None %}{% endmatch %}
+      <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+  </form>
+
+  {% match event_id %}{% when Some with (id) %}
+  <form id="delete-form" method="post" action="/calendar/{{ calendar.id }}/events/{{ id }}/delete" style="display:none"></form>
+  {% when None %}{% endmatch %}
+</section>
+{% endblock %}

@@ -23,6 +23,7 @@ uuid = { workspace = true }
 time = { workspace = true }
 reqwest = { workspace = true }
 jsonwebtoken = { workspace = true }
+sqlx = { workspace = true }
 
 # Crypto / encoding for PKCE + state
 base64 = "0.22"

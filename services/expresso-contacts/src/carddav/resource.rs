@@ -94,12 +94,14 @@ pub async fn delete(
 pub fn options() -> Response {
     let mut resp = Response::builder()
         .status(StatusCode::OK)
-        .header(header::ALLOW, "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT, MKCOL")
+        .header(
+            header::ALLOW,
+            "OPTIONS, GET, HEAD, PUT, DELETE, COPY, MOVE, PROPFIND, PROPPATCH, REPORT, MKCOL",
+        )
         .body(Body::empty())
         .unwrap();
-    // DAV: header advertises supported feature classes.
     resp.headers_mut().insert(
- "DAV",
+        "DAV",
         HeaderValue::from_static("1, 2, 3, addressbook"),
     );
     resp

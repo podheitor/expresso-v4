@@ -16,6 +16,11 @@ pub struct AppConfig {
     /// URL of the search service (e.g. "http://localhost:8007")
     #[serde(default)]
     pub search_url: String,
+    /// URL of the calendar service (e.g. "http://localhost:8002").
+    /// When set, `expresso-mail` forwards iMIP REPLY parts to
+    /// `{calendar_url}/api/v1/scheduling/inbox` on delivery.
+    #[serde(default)]
+    pub calendar_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

@@ -31,17 +31,21 @@ pub async fn handle(
         _ => return Ok(not_found()),
     };
 
-    // Detect REPORT variant by looking at the root element of the body.
-    let lower = body.to_ascii_lowercase();
-    let is_multiget = lower.contains("calendar-multiget");
-    let is_query    = lower.contains("calendar-query");
+    // Detect REPORT variant via root element parsing (ns-safe).
+    let kind = xml::detect_report_kind(body).unwrap_or("");
 
-    if !is_multiget && !is_query {
+    if kind == "free-busy-query" {
+        return free_busy(&state, &principal, calendar_id, body).await;
+    }
+    if kind == "sync-collection" {
+        return crate::caldav::sync::handle(state, &principal, calendar_id, body).await;
+    }
+    if kind != "calendar-multiget" && kind != "calendar-query" {
         return Ok(bad_request("unsupported REPORT variant"));
     }
 
     let req = xml::parse_propfind(body); // same prop-selection semantics
-    let xml_out = if is_multiget {
+    let xml_out = if kind == "calendar-multiget" {
         multiget(&state, &principal, calendar_id, body, &req).await?
     } else {
         query(&state, &principal, calendar_id, body, &req).await?
@@ -148,6 +152,62 @@ fn parse_caldav_dt(v: &str) -> Option<OffsetDateTime> {
     let stripped = v.strip_suffix('Z').unwrap_or(v);
     let fmt = format_description::parse("[year][month][day]T[hour][minute][second]").ok()?;
     PrimitiveDateTime::parse(stripped, &fmt).ok().map(|p| p.assume_utc())
+}
+
+async fn free_busy(
+    state:       &AppState,
+    principal:   &CalDavPrincipal,
+    calendar_id: Uuid,
+    body:        &str,
+) -> Result<Response> {
+    // Parse [start, end] window from <time-range/>.
+    let Some((s_raw, e_raw)) = xml::parse_time_range(body) else {
+        return Ok(bad_request("missing time-range"));
+    };
+    let (Some(from), Some(to)) = (parse_caldav_dt(&s_raw), parse_caldav_dt(&e_raw)) else {
+        return Ok(bad_request("invalid time-range"));
+    };
+
+    let pool = state.db_or_unavailable()?;
+
+    // Collect busy windows from stored events on this calendar.
+    let q = EventQuery { from: Some(from), to: Some(to), limit: None };
+    let events = EventRepo::new(pool)
+        .list(principal.tenant_id, calendar_id, &q)
+        .await?;
+
+    // Build a minimal VFREEBUSY response.
+    let mut ical = String::with_capacity(256 + events.len() * 80);
+    ical.push_str("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Expresso//CalDAV//EN\r\nMETHOD:REPLY\r\n");
+    ical.push_str("BEGIN:VFREEBUSY\r\n");
+    ical.push_str(&format!("DTSTART:{}\r\n", fmt_dt(from)));
+    ical.push_str(&format!("DTEND:{}\r\n",   fmt_dt(to)));
+    for ev in events {
+        if ev.status.as_deref() == Some("CANCELLED") { continue; }
+        let (Some(ds), Some(de)) = (ev.dtstart, ev.dtend) else { continue; };
+        let start = ds.max(from);
+        let end   = de.min(to);
+        if end <= start { continue; }
+        ical.push_str(&format!("FREEBUSY:{}/{}\r\n", fmt_dt(start), fmt_dt(end)));
+    }
+    ical.push_str("END:VFREEBUSY\r\nEND:VCALENDAR\r\n");
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/calendar; charset=utf-8")
+        .body(Body::from(ical))
+        .unwrap())
+}
+
+fn fmt_dt(dt: time::OffsetDateTime) -> String {
+    // RFC 5545 basic UTC format: YYYYMMDDTHHMMSSZ
+    let d = dt.date();
+    let t = dt.time();
+    format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        d.year(), u8::from(d.month()), d.day(),
+        t.hour(), t.minute(), t.second(),
+    )
 }
 
 fn forbidden() -> Response {

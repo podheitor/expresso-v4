@@ -42,6 +42,14 @@ pub struct PropRequest {
     pub supported_calendar_component_set:  bool,
     pub calendar_data:                     bool,   // caldav ns
     pub owner:                             bool,
+    pub supported_report_set:              bool,
+    pub current_user_privilege_set:        bool,
+    pub getcontentlength:                  bool,
+    pub sync_token:                        bool,
+    pub schedule_inbox_url:                bool,
+    pub schedule_outbox_url:               bool,
+    /// True when body was empty or `<allprop/>` → include dead properties.
+    pub allprop:                           bool,
 }
 
 impl PropRequest {
@@ -61,6 +69,13 @@ impl PropRequest {
             supported_calendar_component_set: true,
             calendar_data: true,
             owner: true,
+            supported_report_set: true,
+            current_user_privilege_set: true,
+            getcontentlength: true,
+            sync_token: true,
+            schedule_inbox_url: true,
+            schedule_outbox_url: true,
+            allprop: true,
         }
     }
 }
@@ -176,6 +191,66 @@ pub fn parse_time_range(body: &str) -> Option<(String, String)> {
     None
 }
 
+/// Detect which REPORT variant a body requests.
+/// Returns the local element name of the first recognized REPORT root
+/// (`calendar-query`, `calendar-multiget`, `free-busy-query`, `sync-collection`).
+/// Extract `<sync-token>VALUE</sync-token>` (if present and non-empty) from a
+/// sync-collection REPORT body. Empty element or missing → None (initial sync).
+pub fn parse_sync_token(body: &str) -> Option<String> {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    let mut in_tok = false;
+    let mut buf = String::new();
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if local_name(e.name().as_ref()) == "sync-token" {
+                    in_tok = true;
+                    buf.clear();
+                }
+            }
+            Ok(Event::Text(t)) if in_tok => {
+                if let Ok(txt) = t.decode() {
+                    buf.push_str(txt.as_ref());
+                }
+            }
+            Ok(Event::End(e)) => {
+                if local_name(e.name().as_ref()) == "sync-token" {
+                    let v = buf.trim().to_owned();
+                    return if v.is_empty() { None } else { Some(v) };
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_)         => break,
+            _              => {}
+        }
+    }
+    None
+}
+
+pub fn detect_report_kind(body: &str) -> Option<&'static str> {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                let local = local_name(e.name().as_ref());
+                match local.as_str() {
+                    "calendar-query"    => return Some("calendar-query"),
+                    "calendar-multiget" => return Some("calendar-multiget"),
+                    "free-busy-query"   => return Some("free-busy-query"),
+                    "sync-collection"   => return Some("sync-collection"),
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) => return None,
+            Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /// Strip namespace prefix from an XML element name (`C:prop` → `prop`).
@@ -199,6 +274,12 @@ fn mark_prop(req: &mut PropRequest, name: &str) {
         "supported-calendar-component-set" => req.supported_calendar_component_set = true,
         "calendar-data"                    => req.calendar_data = true,
         "owner"                            => req.owner = true,
+        "supported-report-set"             => req.supported_report_set = true,
+        "current-user-privilege-set"       => req.current_user_privilege_set = true,
+        "getcontentlength"                 => req.getcontentlength = true,
+        "sync-token"                       => req.sync_token = true,
+        "schedule-inbox-URL"               => req.schedule_inbox_url = true,
+        "schedule-outbox-URL"              => req.schedule_outbox_url = true,
         _ => {}
     }
 }
@@ -241,6 +322,34 @@ mod tests {
             </calendar-multiget>"#;
         let hrefs = parse_multiget_hrefs(xml);
         assert_eq!(hrefs, vec!["/caldav/u/c/a.ics", "/caldav/u/c/b.ics"]);
+    }
+
+    #[test]
+    fn detect_report_kinds() {
+        let q = r#"<calendar-query xmlns="urn:ietf:params:xml:ns:caldav"/>"#;
+        let m = r#"<calendar-multiget xmlns="urn:ietf:params:xml:ns:caldav"/>"#;
+        let f = r#"<free-busy-query xmlns="urn:ietf:params:xml:ns:caldav"/>"#;
+        assert_eq!(super::detect_report_kind(q), Some("calendar-query"));
+        assert_eq!(super::detect_report_kind(m), Some("calendar-multiget"));
+        assert_eq!(super::detect_report_kind(f), Some("free-busy-query"));
+        assert_eq!(super::detect_report_kind("<junk/>"), None);
+    }
+
+    #[test]
+    fn propfind_new_props() {
+        let xml = r#"<propfind xmlns="DAV:"><prop><supported-report-set/><current-user-privilege-set/><getcontentlength/></prop></propfind>"#;
+        let r = super::parse_propfind(xml);
+        assert!(r.supported_report_set && r.current_user_privilege_set && r.getcontentlength);
+        assert!(!r.displayname);
+    }
+
+    #[test]
+    fn parse_sync_token_present_and_empty() {
+        let with = r#"<sync-collection xmlns="DAV:"><sync-token>urn:x:42</sync-token></sync-collection>"#;
+        let empty = r#"<sync-collection xmlns="DAV:"><sync-token/></sync-collection>"#;
+        assert_eq!(super::parse_sync_token(with), Some("urn:x:42".to_string()));
+        assert_eq!(super::parse_sync_token(empty), None);
+        assert_eq!(super::parse_sync_token("<junk/>"), None);
     }
 
     #[test]

@@ -17,7 +17,7 @@ use axum::{
 use crate::caldav::auth::CalDavPrincipal;
 use crate::caldav::xml::{self, PropRequest};
 use crate::caldav::{uri, MULTISTATUS_CT};
-use crate::domain::{CalendarRepo, EventRepo, EventQuery};
+use crate::domain::{CalendarRepo, DeadProp, DeadPropRepo, EventRepo, EventQuery};
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -50,6 +50,14 @@ pub async fn handle(
                 return Ok(forbidden());
             }
             propfind_event(&state, &principal, calendar_id, &uid, &req).await?
+        }
+        uri::Target::ScheduleInbox { user_id } => {
+            if user_id != principal.user_id { return Ok(forbidden()); }
+            propfind_schedule(&principal, /*inbox=*/true, &req)
+        }
+        uri::Target::ScheduleOutbox { user_id } => {
+            if user_id != principal.user_id { return Ok(forbidden()); }
+            propfind_schedule(&principal, /*inbox=*/false, &req)
         }
         uri::Target::Unknown => return Ok(not_found()),
     };
@@ -98,26 +106,100 @@ async fn propfind_home(
 
     // Self response — home collection.
     let home_href = format!("/caldav/{}/", principal.user_id);
-    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal);
+    append_collection_response(&mut out, &home_href, /*is_home=*/true, None, None, None, req, principal, &[]);
 
     if matches!(depth, Depth::One | Depth::Infinity) {
         let calendars = CalendarRepo::new(pool)
             .list_for_owner(principal.tenant_id, principal.user_id)
             .await?;
+        let dead_repo = DeadPropRepo::new(pool);
         for cal in calendars {
             let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
+            let dead = if req.allprop {
+                dead_repo.list_for_calendar(cal.id).await.unwrap_or_default()
+            } else { Vec::new() };
             append_collection_response(
                 &mut out, &href, /*is_home=*/false,
                 Some(cal.name.as_str()),
                 cal.description.as_deref(),
                 Some((cal.color.as_deref(), cal.timezone.as_str(), cal.ctag)),
-                req, principal,
+                req, principal, &dead,
             );
         }
     }
 
+    // RFC 6638 §4: expose schedule-inbox + schedule-outbox collections when
+    // Depth >= 1 so clients enumerate them alongside regular calendars.
+    if matches!(depth, Depth::One | Depth::Infinity) {
+        append_schedule_response(&mut out, principal, /*inbox=*/true,  req);
+        append_schedule_response(&mut out, principal, /*inbox=*/false, req);
+    }
+
     out.push_str("</D:multistatus>");
     Ok(out)
+}
+
+/// Stand-alone PROPFIND on a schedule-inbox/outbox collection URL.
+fn propfind_schedule(
+    principal: &CalDavPrincipal,
+    inbox:     bool,
+    req:       &PropRequest,
+) -> String {
+    let mut out = String::with_capacity(512);
+    out.push_str(xml::XML_PROLOG);
+    out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">"#);
+    append_schedule_response(&mut out, principal, inbox, req);
+    out.push_str("</D:multistatus>");
+    out
+}
+
+/// Append a single schedule-inbox or schedule-outbox `<D:response>`.
+fn append_schedule_response(
+    out:       &mut String,
+    principal: &CalDavPrincipal,
+    inbox:     bool,
+    req:       &PropRequest,
+) {
+    let (seg, elem, disp) = if inbox {
+        ("schedule-inbox",  "<C:schedule-inbox/>",  "Schedule Inbox")
+    } else {
+        ("schedule-outbox", "<C:schedule-outbox/>", "Schedule Outbox")
+    };
+    let href = format!("/caldav/{}/{seg}/", principal.user_id);
+
+    out.push_str("<D:response>");
+    out.push_str("<D:href>"); out.push_str(&xml::escape(&href)); out.push_str("</D:href>");
+    out.push_str("<D:propstat><D:prop>");
+    if req.resourcetype {
+        out.push_str("<D:resourcetype><D:collection/>");
+        out.push_str(elem);
+        out.push_str("</D:resourcetype>");
+    }
+    if req.displayname {
+        out.push_str("<D:displayname>");
+        out.push_str(disp);
+        out.push_str("</D:displayname>");
+    }
+    if req.current_user_principal {
+        out.push_str("<D:current-user-principal><D:href>");
+        out.push_str(&format!("/caldav/{}/", principal.user_id));
+        out.push_str("</D:href></D:current-user-principal>");
+    }
+    if req.owner {
+        out.push_str("<D:owner><D:href>");
+        out.push_str(&format!("/caldav/{}/", principal.user_id));
+        out.push_str("</D:href></D:owner>");
+    }
+    if req.current_user_privilege_set {
+        // Inbox: read (+ schedule-deliver). Outbox: schedule-send.
+        if inbox {
+            out.push_str("<D:current-user-privilege-set><D:privilege><D:read/></D:privilege><D:privilege><C:schedule-deliver/></D:privilege></D:current-user-privilege-set>");
+        } else {
+            out.push_str("<D:current-user-privilege-set><D:privilege><D:read/></D:privilege><D:privilege><C:schedule-send/></D:privilege></D:current-user-privilege-set>");
+        }
+    }
+    out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
+    out.push_str("</D:response>");
 }
 
 async fn propfind_calendar(
@@ -135,13 +217,16 @@ async fn propfind_calendar(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/">"#);
 
+    let dead = if req.allprop {
+        DeadPropRepo::new(pool).list_for_calendar(cal.id).await.unwrap_or_default()
+    } else { Vec::new() };
     let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
     append_collection_response(
         &mut out, &href, /*is_home=*/false,
         Some(cal.name.as_str()),
         cal.description.as_deref(),
         Some((cal.color.as_deref(), cal.timezone.as_str(), cal.ctag)),
-        req, principal,
+        req, principal, &dead,
     );
 
     if matches!(depth, Depth::One | Depth::Infinity) {
@@ -181,14 +266,15 @@ async fn propfind_event(
 
 /// Append a `<D:response>` for a collection (home or calendar).
 fn append_collection_response(
-    out:       &mut String,
-    href:      &str,
-    is_home:   bool,
-    dispname:  Option<&str>,
-    descr:     Option<&str>,
-    cal_meta:  Option<(Option<&str>, &str, i64)>,  // (color, tz, ctag)
-    req:       &PropRequest,
-    principal: &CalDavPrincipal,
+    out:        &mut String,
+    href:       &str,
+    is_home:    bool,
+    dispname:   Option<&str>,
+    descr:      Option<&str>,
+    cal_meta:   Option<(Option<&str>, &str, i64)>,  // (color, tz, ctag)
+    req:        &PropRequest,
+    principal:  &CalDavPrincipal,
+    dead_props: &[DeadProp],
 ) {
     out.push_str("<D:response>");
     out.push_str("<D:href>"); out.push_str(&xml::escape(href)); out.push_str("</D:href>");
@@ -217,6 +303,16 @@ fn append_collection_response(
         out.push_str(&format!("/caldav/{}/", principal.user_id));
         out.push_str("</D:href></C:calendar-home-set>");
     }
+    if req.schedule_inbox_url {
+        out.push_str("<C:schedule-inbox-URL><D:href>");
+        out.push_str(&format!("/caldav/{}/schedule-inbox/", principal.user_id));
+        out.push_str("</D:href></C:schedule-inbox-URL>");
+    }
+    if req.schedule_outbox_url {
+        out.push_str("<C:schedule-outbox-URL><D:href>");
+        out.push_str(&format!("/caldav/{}/schedule-outbox/", principal.user_id));
+        out.push_str("</D:href></C:schedule-outbox-URL>");
+    }
     if req.owner {
         out.push_str("<D:owner><D:href>");
         out.push_str(&format!("/caldav/{}/", principal.user_id));
@@ -227,6 +323,13 @@ fn append_collection_response(
             out.push_str("<CS:getctag>");
             out.push_str(&format!("{ctag}"));
             out.push_str("</CS:getctag>");
+        }
+        if req.sync_token {
+            // Opaque monotonic token (RFC 6578 §3). We reuse ctag as the
+            // underlying monotonic counter.
+            out.push_str("<D:sync-token>");
+            out.push_str(&format!("urn:expresso:ctag:{ctag}"));
+            out.push_str("</D:sync-token>");
         }
         if req.calendar_description {
             if let Some(d) = descr {
@@ -250,7 +353,41 @@ fn append_collection_response(
             }
         }
         if req.supported_calendar_component_set {
-            out.push_str("<C:supported-calendar-component-set><C:comp name=\"VEVENT\"/></C:supported-calendar-component-set>");
+            out.push_str("<C:supported-calendar-component-set><C:comp name=\"VEVENT\"/><C:comp name=\"VTODO\"/></C:supported-calendar-component-set>");
+        }
+    }
+    if req.supported_report_set {
+        // Advertise the REPORTs we serve (RFC 3253 §3.1.5 + RFC 4791 §5.2.1).
+        out.push_str(            "<D:supported-report-set>\
+             <D:supported-report><D:report><C:calendar-query/></D:report></D:supported-report>\
+             <D:supported-report><D:report><C:calendar-multiget/></D:report></D:supported-report>\
+             <D:supported-report><D:report><C:free-busy-query/></D:report></D:supported-report>\
+             <D:supported-report><D:report><D:sync-collection/></D:report></D:supported-report>\
+             </D:supported-report-set>"
+        );
+    }
+    if req.current_user_privilege_set {
+        // Owner privileges. Sharing ACL refinement handled elsewhere; here we
+        // grant the principal full access to their own home/calendar.
+        out.push_str(            "<D:current-user-privilege-set>\
+             <D:privilege><D:read/></D:privilege>\
+             <D:privilege><D:write/></D:privilege>\
+             <D:privilege><D:write-content/></D:privilege>\
+             <D:privilege><D:write-properties/></D:privilege>\
+             <D:privilege><D:read-current-user-privilege-set/></D:privilege>\
+             </D:current-user-privilege-set>"
+        );
+    }
+
+    // Dead properties (RFC 4918 §15) — only when allprop requested.
+    if req.allprop && !dead_props.is_empty() {
+        for dp in dead_props {
+            out.push_str(&format!(
+                r#"<{local} xmlns="{ns}">{val}</{local}>"#,
+                local = dp.local_name,
+                ns    = xml::escape(&dp.namespace),
+                val   = xml::escape(&dp.xml_value),
+            ));
         }
     }
 
@@ -283,6 +420,19 @@ fn append_event_response(
         out.push_str("<C:calendar-data>");
         out.push_str(&xml::escape(ical_raw));
         out.push_str("</C:calendar-data>");
+    }
+    if req.getcontentlength {
+        out.push_str("<D:getcontentlength>");
+        out.push_str(&ical_raw.len().to_string());
+        out.push_str("</D:getcontentlength>");
+    }
+    if req.current_user_privilege_set {
+        out.push_str(            "<D:current-user-privilege-set>\
+             <D:privilege><D:read/></D:privilege>\
+             <D:privilege><D:write/></D:privilege>\
+             <D:privilege><D:write-content/></D:privilege>\
+             </D:current-user-privilege-set>"
+        );
     }
     out.push_str("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>");
     out.push_str("</D:response>");

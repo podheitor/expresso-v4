@@ -40,6 +40,12 @@ pub struct PropRequest {
     pub supported_address_data:  bool,
     pub address_data:                     bool,   // carddav ns
     pub owner:                             bool,
+    pub supported_report_set:              bool,
+    pub current_user_privilege_set:        bool,
+    pub getcontentlength:                  bool,
+    pub sync_token:                        bool,
+    /// True when body was empty or `<allprop/>` → include dead properties.
+    pub allprop:                           bool,
 }
 
 impl PropRequest {
@@ -57,6 +63,11 @@ impl PropRequest {
             supported_address_data: true,
             address_data: true,
             owner: true,
+            supported_report_set: true,
+            current_user_privilege_set: true,
+            getcontentlength: true,
+            sync_token: true,
+            allprop: true,
         }
     }
 }
@@ -138,6 +149,59 @@ pub fn parse_multiget_hrefs(body: &str) -> Vec<String> {
 }
 
 
+/// Detect CardDAV REPORT variant by inspecting the root element.
+pub fn detect_report_kind(body: &str) -> Option<&'static str> {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+                match local_name(e.name().as_ref()).as_str() {
+                    "addressbook-query"    => return Some("addressbook-query"),
+                    "addressbook-multiget" => return Some("addressbook-multiget"),
+                    "sync-collection"      => return Some("sync-collection"),
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) | Err(_) => return None,
+            _ => {}
+        }
+    }
+}
+
+/// Extract `<sync-token>VALUE</sync-token>` from a sync-collection body.
+/// Empty element or absent → None.
+pub fn parse_sync_token(body: &str) -> Option<String> {
+    let mut reader = Reader::from_str(body);
+    reader.config_mut().trim_text(true);
+    let mut in_tok = false;
+    let mut buf = String::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                if local_name(e.name().as_ref()) == "sync-token" {
+                    in_tok = true;
+                    buf.clear();
+                }
+            }
+            Ok(Event::Text(t)) if in_tok => {
+                if let Ok(txt) = t.decode() {
+                    buf.push_str(&txt);
+                }
+            }
+            Ok(Event::End(e)) => {
+                if local_name(e.name().as_ref()) == "sync-token" {
+                    let v = buf.trim().to_owned();
+                    return if v.is_empty() { None } else { Some(v) };
+                }
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    None
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /// Strip namespace prefix from an XML element name (`C:prop` → `prop`).
@@ -159,6 +223,10 @@ fn mark_prop(req: &mut PropRequest, name: &str) {
  "supported-address-data" => req.supported_address_data = true,
  "address-data"                    => req.address_data = true,
  "owner"                            => req.owner = true,
+        "supported-report-set"             => req.supported_report_set = true,
+        "current-user-privilege-set"       => req.current_user_privilege_set = true,
+        "getcontentlength"                 => req.getcontentlength = true,
+        "sync-token"                       => req.sync_token = true,
         _ => {}
     }
 }
@@ -203,4 +271,29 @@ mod tests {
         assert_eq!(hrefs, vec!["/carddav/u/c/a.vcf", "/carddav/u/c/b.vcf"]);
     }
 
+    #[test]
+    fn detect_report_kinds() {
+        let q = r#"<addressbook-query xmlns="urn:ietf:params:xml:ns:carddav"/>"#;
+        let m = r#"<addressbook-multiget xmlns="urn:ietf:params:xml:ns:carddav"/>"#;
+        let sc = r#"<sync-collection xmlns="DAV:"/>"#;
+        assert_eq!(super::detect_report_kind(q), Some("addressbook-query"));
+        assert_eq!(super::detect_report_kind(m), Some("addressbook-multiget"));
+        assert_eq!(super::detect_report_kind(sc), Some("sync-collection"));
+        assert_eq!(super::detect_report_kind("<junk/>"), None);
+    }
+
+    #[test]
+    fn parse_sync_token_present_and_empty() {
+        let with = r#"<sync-collection xmlns="DAV:"><sync-token>urn:x:9</sync-token></sync-collection>"#;
+        let empty = r#"<sync-collection xmlns="DAV:"><sync-token/></sync-collection>"#;
+        assert_eq!(super::parse_sync_token(with), Some("urn:x:9".to_string()));
+        assert_eq!(super::parse_sync_token(empty), None);
+    }
+
+    #[test]
+    fn propfind_new_props() {
+        let xml = r#"<propfind xmlns="DAV:"><prop><supported-report-set/><current-user-privilege-set/><getcontentlength/><sync-token/></prop></propfind>"#;
+        let r = super::parse_propfind(xml);
+        assert!(r.supported_report_set && r.current_user_privilege_set && r.getcontentlength && r.sync_token);
+    }
 }

@@ -94,13 +94,17 @@ pub async fn delete(
 pub fn options() -> Response {
     let mut resp = Response::builder()
         .status(StatusCode::OK)
-        .header(header::ALLOW, "OPTIONS, GET, PUT, DELETE, PROPFIND, REPORT, MKCALENDAR")
+        .header(
+            header::ALLOW,
+            "OPTIONS, GET, HEAD, POST, PUT, DELETE, COPY, MOVE, PROPFIND, PROPPATCH, REPORT, MKCALENDAR",
+        )
         .body(Body::empty())
         .unwrap();
     // DAV: header advertises supported feature classes.
+    // calendar-schedule (RFC 6638) advertised; MVP delivers iTIP via SMTP.
     resp.headers_mut().insert(
         "DAV",
-        HeaderValue::from_static("1, 2, 3, calendar-access"),
+        HeaderValue::from_static("1, 2, 3, calendar-access, calendar-schedule"),
     );
     resp
 }

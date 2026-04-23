@@ -9,7 +9,9 @@ use axum::{
 };
 use serde::Deserialize;
 
+use axum::http::{header::COOKIE, HeaderMap};
 use expresso_auth_client::ACCESS_TOKEN_COOKIE;
+use expresso_core::audit::{self, AuditEntry};
 
 use crate::error::{Result, RpError};
 use crate::state::AppState;
@@ -21,8 +23,38 @@ pub struct LogoutQuery {
 
 pub async fn logout(
     State(app): State<Arc<AppState>>,
+    headers:    HeaderMap,
     Query(q):   Query<LogoutQuery>,
 ) -> Result<Response> {
+    // Best-effort audit: extract access_token from cookie → validate → record.
+    // Errors here are non-fatal: logout must always succeed from user POV.
+    if let Some(pool) = app.pool.as_ref() {
+        let token = headers.get(COOKIE).and_then(|h| h.to_str().ok()).and_then(|c| {
+            c.split(';').map(str::trim).find_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                if k == ACCESS_TOKEN_COOKIE { Some(v.to_string()) } else { None }
+            })
+        });
+        if let Some(tok) = token {
+            if let Ok(ctx) = app.validator.validate(&tok).await {
+                let entry = AuditEntry {
+                    tenant_id:   Some(ctx.tenant_id),
+                    actor_sub:   Some(ctx.user_id.to_string()),
+                    actor_email: Some(ctx.email.clone()),
+                    actor_roles: ctx.roles.clone(),
+                    action:      "auth.logout".into(),
+                    target_type: Some("user".into()),
+                    target_id:   Some(ctx.user_id.to_string()),
+                    http_method: Some("GET".into()),
+                    http_path:   Some("/auth/logout".into()),
+                    status_code: Some(303),
+                    metadata:    serde_json::json!({}),
+                };
+                audit::record_async(pool.clone(), entry);
+            }
+        }
+    }
+
     let end_session = app.provider.end_session_endpoint.as_ref()
         .ok_or_else(|| RpError::Discovery("end_session_endpoint absent".into()))?;
     let mut url = url::Url::parse(end_session)

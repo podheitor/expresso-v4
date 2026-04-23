@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Compartilhar {{ addressbook.name }} · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<section class="page">
+  <header class="row" style="justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+    <div>
+      <h1 style="margin: 0">Compartilhar · {{ addressbook.name }}</h1>
+      <p class="muted" style="margin: 0">Conceda acesso ao catálogo para outros usuários do tenant.</p>
+    </div>
+    <a class="btn" href="/contacts?book_id={{ addressbook.id }}">◀ voltar</a>
+  </header>
+
+  {% match error %}{% when Some with (e) %}<p class="error">{{ e }}</p>{% when None %}{% endmatch %}
+
+  <form method="post" action="/contacts/{{ addressbook.id }}/share" class="row" style="gap:.5rem; align-items:end; margin:1rem 0">
+    <label style="flex:1">
+      E-mail do usuário
+      <input type="email" name="email" required placeholder="usuario@expresso.local">
+    </label>
+    <label>
+      Privilégio
+      <select name="privilege">
+        <option value="READ">READ (ver)</option>
+        <option value="WRITE">WRITE (editar)</option>
+        <option value="ADMIN">ADMIN (compartilhar)</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary">Compartilhar</button>
+  </form>
+
+  <h2>Compartilhamentos atuais</h2>
+  {% if shares.is_empty() %}
+  <p class="muted">Nenhum compartilhamento.</p>
+  {% else %}
+  <table class="table">
+    <thead><tr><th>Usuário</th><th>Privilégio</th><th></th></tr></thead>
+    <tbody>
+      {% for s in shares %}
+      <tr>
+        <td>{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}</td>
+        <td>{{ s.privilege }}</td>
+        <td>
+          <form method="post" action="/contacts/{{ addressbook.id }}/share/{{ s.grantee_id }}/revoke" style="margin:0">
+            <button type="submit" class="btn btn-danger">Revogar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}
