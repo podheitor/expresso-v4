@@ -8,7 +8,26 @@
 //! also fire-and-forget published to subject
 //! `expresso.calendar.<tenant_id>.<kind>` on stream `EXPRESSO_CALENDAR`.
 
+use once_cell::sync::Lazy;
+use prometheus::IntCounterVec;
 use serde::Serialize;
+
+/// Publish attempts counter per {stream, kind, result}.
+/// result ∈ {"ok","err","serialize_err"}. Populated by `EventBus::publish`.
+/// Registered into shared `expresso_observability::registry()` so it appears
+/// at GET /metrics of the service.
+static NATS_PUBLISH_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            "calendar_nats_publish_total",
+            "Calendar NATS publish attempts per kind and result",
+        ),
+        &["kind", "result"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
+
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
@@ -88,6 +107,13 @@ impl EventBus {
         };
         js.get_or_create_stream(cfg).await
             .map_err(|e| anyhow::anyhow!("jetstream ensure: {e}"))?;
+        Lazy::force(&NATS_PUBLISH_TOTAL);
+        // Pre-populate zero-valued series so rate() works before first publish.
+        for kind in ["event_created","event_updated","event_cancelled","counter_received"] {
+            for result in ["ok","err","serialize_err"] {
+                NATS_PUBLISH_TOTAL.with_label_values(&[kind, result]).inc_by(0);
+            }
+        }
         tracing::info!(nats_url=%url, "jetstream EXPRESSO_CALENDAR ready");
         Ok(Self { tx, jetstream: Some(js) })
     }
@@ -96,15 +122,25 @@ impl EventBus {
     pub fn publish(&self, ev: Event) {
         let _ = self.tx.send(ev.clone());
         if let Some(js) = self.jetstream.clone() {
-            let subject = format!("expresso.calendar.{}.{}", ev.tenant_id(), ev.kind_str());
+            let kind = ev.kind_str();
+            let subject = format!("expresso.calendar.{}.{}", ev.tenant_id(), kind);
             tokio::spawn(async move {
                 match serde_json::to_vec(&ev) {
                     Ok(payload) => {
-                        if let Err(e) = js.publish(subject.clone(), payload.into()).await {
-                            tracing::warn!(error=%e, %subject, "nats publish failed");
+                        match js.publish(subject.clone(), payload.into()).await {
+                            Ok(_) => {
+                                NATS_PUBLISH_TOTAL.with_label_values(&[kind, "ok"]).inc();
+                            }
+                            Err(e) => {
+                                NATS_PUBLISH_TOTAL.with_label_values(&[kind, "err"]).inc();
+                                tracing::warn!(error=%e, %subject, "nats publish failed");
+                            }
                         }
                     }
-                    Err(e) => tracing::warn!(error=%e, "event serialize failed"),
+                    Err(e) => {
+                        NATS_PUBLISH_TOTAL.with_label_values(&[kind, "serialize_err"]).inc();
+                        tracing::warn!(error=%e, "event serialize failed");
+                    }
                 }
             });
         }

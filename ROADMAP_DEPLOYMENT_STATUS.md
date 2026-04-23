@@ -2377,3 +2377,45 @@ curl /metrics | grep event_audit
 Integra com Grafana dashboard (#21) — basta scraping Prometheus do
 `host.docker.internal:9191`. Painel "NATS consumer throughput" passa
 a ter dado real.
+
+### #32 — Publisher NATS counters (calendar + contacts)
+
+Fecha o loop de observabilidade produtor → broker → consumidor:
+- **Produtor** (#32): `calendar_nats_publish_total{kind,result}` +
+  `contacts_nats_publish_total{kind,result}`.
+- **Broker** (#21): JetStream messages totais via `/jsz`.
+- **Consumidor** (#31): `event_audit_events_total{stream}`.
+
+Lag de publish → consume fica visível em Grafana.
+
+- `services/expresso-calendar/src/events.rs` +
+  `services/expresso-contacts/src/events.rs`:
+  - `NATS_PUBLISH_TOTAL: Lazy<IntCounterVec>` registrado em
+    `expresso_observability::registry()` (shared com /metrics).
+  - Incrementado com `result="ok"|"err"|"serialize_err"` após cada
+    `js.publish()`.
+  - Pré-populado com zeros para todos os `{kind, result}` em
+    `new_with_nats()` → `rate()` funciona desde scrape #1.
+- Novas deps por serviço: `once_cell` (workspace).
+- Imagens: `expresso-calendar:t32`, `expresso-contacts:t32` deployed 125.
+
+**Smoke:**
+```
+curl :8002/metrics | grep calendar_nats
+  # HELP calendar_nats_publish_total …
+  calendar_nats_publish_total{kind="counter_received",result="ok"} 0
+  … (4 kinds × 3 results = 12 séries) ✅
+```
+
+**Painel Grafana sugerido:**
+```
+# Publish success rate por kind
+rate(calendar_nats_publish_total{result="ok"}[5m])
+
+# Error rate alertável
+rate(calendar_nats_publish_total{result!="ok"}[5m]) > 0.1
+
+# Publish vs consume lag
+sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
+  - sum(rate(event_audit_events_total{stream="EXPRESSO_CALENDAR"}[5m]))
+```
