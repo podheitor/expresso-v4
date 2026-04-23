@@ -1974,3 +1974,22 @@ status, metadata (JSON compacto).
 
 **Smoke:** `GET /audit.csv` → 303 (auth gate, SuperAdmin required).
 Imagem `expresso-admin:t17` + `:latest`.
+
+### #19 — Drive quota enforcement no upload path
+
+Já implementado em sprint anterior — verificado nesta trilha:
+
+- `libs` SQL: tabela `drive_quotas(tenant_id, max_bytes)` + função
+  `drive_quota_used(tenant)` (sprint #8).
+- `services/expresso-drive/src/domain/quota.rs::QuotaRepo::get` +
+  `Quota::fits(extra)`.
+- Enforçado em 3 paths:
+  - `api/files.rs:121` (upload simples).
+  - `api/uploads.rs:120` (resumable finalize).
+  - `api/wopi.rs:192` (WOPI PutFile).
+- Retorna `DriveError::QuotaExceeded` → HTTP **507 Insufficient Storage**.
+
+Default quota = 10 GB quando tenant não tem linha explícita em
+`drive_quotas` (gerenciado via admin `/drive-quotas.html`).
+
+**Status:** ✅ já estava em produção; nenhuma ação necessária.
