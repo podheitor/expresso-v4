@@ -2184,3 +2184,38 @@ logs calendar:  jetstream EXPRESSO_CALENDAR ready
 ```
 
 Imagem: `expresso-calendar:t27`.
+
+### #26 — NATS end-to-end smoke script
+
+`ops/nats/e2e-smoke.sh`: valida a **cadeia completa** publish → JetStream
+storage medindo delta de `state.messages` antes/depois do trigger.
+
+- Uso: `ops/nats/e2e-smoke.sh <MON_URL> <STREAM> <TRIGGER_CMD>`.
+- Lê count via `/jsz?streams=1`, executa trigger, aguarda 2s para ack
+  assíncrono, re-lê count. Exit 0 iff count aumentou.
+- Script complementa `smoke.sh` (#22 — presença de stream) com prova
+  funcional de write-path.
+
+**Smoke 125:**
+```
+bash e2e-smoke.sh http://172.17.0.1:8222 EXPRESSO_CALENDAR \
+    "docker run --rm --network host natsio/nats-box:latest \
+     nats --server=nats://172.17.0.1:4222 pub expresso.calendar.test.e2e payload"
+→ before: 1
+  after:  2
+  OK: +1 messages
+```
+
+Confirma stream `EXPRESSO_CALENDAR` aceitando publishes no subject
+`expresso.calendar.*.*` com persistência JetStream ativa.
+
+**Validação cruzada direta do publisher Rust (#20):**
+```
+docker logs expresso-calendar | grep jetstream
+  → jetstream EXPRESSO_CALENDAR ready
+     calendar EventBus with NATS enabled
+```
+
+O que falta para o pipeline ficar fim-a-fim em produção: consumer (sprint
+futuro) lendo de `expresso.calendar.>` e processando eventos (email
+dispatch, iMIP relay, webhook fanout).
