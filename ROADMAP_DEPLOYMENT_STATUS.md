@@ -2016,3 +2016,38 @@ curl http://172.17.0.1:8101/tenants/wizard → 303 (redirect auth, rota registra
 ```
 
 Imagem: `expresso-admin:t18`.
+
+### #20 — NATS JetStream event publishing
+
+Calendar service agora publica eventos em JetStream além do broadcast
+in-process. Transport opt-in via env `NATS_URL`.
+
+- `services/expresso-calendar/Cargo.toml`: `async-nats = "0.37" + bytes = "1"`.
+- `services/expresso-calendar/src/events.rs::EventBus::new_with_nats(url)`:
+  - Conecta em NATS + cria `jetstream::Context`.
+  - `get_or_create_stream` idempotente: nome `EXPRESSO_CALENDAR`, subjects
+    `expresso.calendar.>`, `max_age = 7 dias`.
+- `EventBus::publish(ev)`: mantém broadcast local + `tokio::spawn` publish
+  em JetStream no subject `expresso.calendar.<tenant_id>.<kind>`. Fire-and-forget
+  com `tracing::warn!` em erro (nunca bloqueia hot-path).
+- `main.rs`: quando `NATS_URL` presente → `new_with_nats`; falha → fallback
+  silencioso para in-process.
+- `compose-phase3.yaml` (125): `NATS_URL=nats://172.17.0.1:4222` adicionado
+  a `expresso-calendar` (NATS já rodava como `expresso-nats 2.10-alpine` com
+  JetStream habilitado em `/data/jetstream`).
+
+**Smoke 125:**
+```
+logs calendar:  jetstream EXPRESSO_CALENDAR ready, nats://172.17.0.1:4222
+                async_nats: event: connected
+                calendar EventBus with NATS enabled
+
+curl http://172.17.0.1:8222/jsz?streams=1
+  → streams: 1, EXPRESSO_CALENDAR registered
+```
+
+Imagem: `expresso-calendar:t20`.
+
+Extensões futuras (fora do #20):
+- Adicionar NATS no `expresso-contacts` (mesmo padrão, subject `expresso.contacts.>`).
+- Consumers: email-dispatcher, iMIP relay, webhook fanout, search re-indexer.

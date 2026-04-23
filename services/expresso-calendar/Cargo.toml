@@ -36,6 +36,8 @@ async-trait = { workspace = true }
 futures = { workspace = true }
 icalendar = { workspace = true }
 lettre = { workspace = true }
+async-nats = "0.37"
+bytes = "1"
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }

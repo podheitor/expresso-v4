@@ -127,7 +127,15 @@ async fn main() -> anyhow::Result<()> {
         info!(retention_days = retention, interval_hours = every, "spawning tombstone GC");
         domain::tombstone_gc::spawn(pool, retention, every);
     }
-    let state = AppState::new(db, kc_basic, crate::events::EventBus::new());
+    // Sprint #20: opt-in NATS JetStream publishing when NATS_URL is set.
+    let bus = match std::env::var("NATS_URL").ok().filter(|v| !v.trim().is_empty()) {
+        Some(url) => match crate::events::EventBus::new_with_nats(&url).await {
+            Ok(b) => { info!(nats_url=%url, "calendar EventBus with NATS enabled"); b }
+            Err(e) => { tracing::warn!(error=%e, "NATS init failed; falling back to in-process"); crate::events::EventBus::new() }
+        },
+        None => crate::events::EventBus::new(),
+    };
+    let state = AppState::new(db, kc_basic, bus);
     // Per-tenant rate limiter (in-process token bucket; see expresso_core::ratelimit).
     let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
     info!(rps = rate_cfg.rps, burst = rate_cfg.burst, "rate limiter armed");

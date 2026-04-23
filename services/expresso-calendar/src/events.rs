@@ -2,8 +2,11 @@
 //!
 //! MVP: `tokio::sync::broadcast` channel. Consumers subscribe via SSE
 //! endpoint (`GET /api/v1/events/stream`), filtered by tenant.
-//! Future: back with NATS when multi-node deployment required — the `Event`
-//! enum shape is stable so only the transport swaps.
+//!
+//! Sprint #20: optional NATS JetStream publish on top of broadcast.
+//! When `EventBus::new_with_nats(url)` is used, every published `Event` is
+//! also fire-and-forget published to subject
+//! `expresso.calendar.<tenant_id>.<kind>` on stream `EXPRESSO_CALENDAR`.
 
 use serde::Serialize;
 use tokio::sync::broadcast;
@@ -47,22 +50,64 @@ impl Event {
             Event::CounterReceived { tenant_id, .. } => *tenant_id,
         }
     }
+
+    pub fn kind_str(&self) -> &'static str {
+        match self {
+            Event::EventCreated    { .. } => "event_created",
+            Event::EventUpdated    { .. } => "event_updated",
+            Event::EventCancelled  { .. } => "event_cancelled",
+            Event::CounterReceived { .. } => "counter_received",
+        }
+    }
 }
 
 #[derive(Clone)]
 pub struct EventBus {
     tx: broadcast::Sender<Event>,
+    /// Optional JetStream context — None = in-process only.
+    jetstream: Option<async_nats::jetstream::Context>,
 }
 
 impl EventBus {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(BUS_CAPACITY);
-        Self { tx }
+        Self { tx, jetstream: None }
     }
 
-    /// Best-effort publish. Returns silently if there are no subscribers.
+    /// Connect to NATS, ensure stream, return bus with JetStream publishing enabled.
+    pub async fn new_with_nats(url: &str) -> anyhow::Result<Self> {
+        let (tx, _) = broadcast::channel(BUS_CAPACITY);
+        let client = async_nats::connect(url).await?;
+        let js = async_nats::jetstream::new(client);
+        // Idempotent stream creation. subject = expresso.calendar.*.*
+        let cfg = async_nats::jetstream::stream::Config {
+            name: "EXPRESSO_CALENDAR".to_string(),
+            subjects: vec!["expresso.calendar.>".to_string()],
+            max_age: std::time::Duration::from_secs(60 * 60 * 24 * 7),
+            ..Default::default()
+        };
+        js.get_or_create_stream(cfg).await
+            .map_err(|e| anyhow::anyhow!("jetstream ensure: {e}"))?;
+        tracing::info!(nats_url=%url, "jetstream EXPRESSO_CALENDAR ready");
+        Ok(Self { tx, jetstream: Some(js) })
+    }
+
+    /// Best-effort publish to broadcast + (optional) JetStream.
     pub fn publish(&self, ev: Event) {
-        let _ = self.tx.send(ev);
+        let _ = self.tx.send(ev.clone());
+        if let Some(js) = self.jetstream.clone() {
+            let subject = format!("expresso.calendar.{}.{}", ev.tenant_id(), ev.kind_str());
+            tokio::spawn(async move {
+                match serde_json::to_vec(&ev) {
+                    Ok(payload) => {
+                        if let Err(e) = js.publish(subject.clone(), payload.into()).await {
+                            tracing::warn!(error=%e, %subject, "nats publish failed");
+                        }
+                    }
+                    Err(e) => tracing::warn!(error=%e, "event serialize failed"),
+                }
+            });
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
