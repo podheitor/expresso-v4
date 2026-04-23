@@ -2219,3 +2219,24 @@ docker logs expresso-calendar | grep jetstream
 O que falta para o pipeline ficar fim-a-fim em produção: consumer (sprint
 futuro) lendo de `expresso.calendar.>` e processando eventos (email
 dispatch, iMIP relay, webhook fanout).
+
+### #27 — NATS tail + ops README
+
+Fecha a tríade ops/nats com ferramenta de subscribe/debug + documentação
+consolidada.
+
+- `ops/nats/tail.sh`: subscribe live via `natsio/nats-box` (image pull
+  automático). Uso:
+  ```bash
+  ops/nats/tail.sh nats://localhost:4222 'expresso.calendar.>'
+  ```
+- `ops/nats/README.md`: docs consolidados dos 3 scripts (`smoke.sh`,
+  `e2e-smoke.sh`, `tail.sh`) + tabela dos streams ativos + próximos passos.
+
+**Status:** ✅ artefatos bash + docs commitados; sem deploy necessário.
+
+**Trilha consolidada #2 → #27** — 26 sprints shipped entre núcleo planejado
++ extras de observabilidade/NATS. Próximas cartas: consumer worker
+(email-dispatcher), admin 2FA enforcement, Keycloak realm-per-tenant wizard
+extension. Pipeline JetStream 100% funcional com publishers em calendar
+(7 call sites) e contacts (4 call sites).
