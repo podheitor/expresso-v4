@@ -1,0 +1,16 @@
+[Unit]
+Description=Expresso — PostgreSQL daily backup
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/default/expresso-pg-backup
+ExecStart=/usr/local/sbin/expresso-pg-backup.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

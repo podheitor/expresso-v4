@@ -1887,3 +1887,22 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
 - Contacts: **expresso-contacts:t111214b** + `:latest` (nova imagem
   `Dockerfile.contacts.quick`).
 - Built on 101, scp → 125, docker load + compose up.
+
+### #13 — PostgreSQL backup diário + retention
+
+Script bash executa `pg_dump -Fc -Z 6` via container `postgres:16-alpine`
+contra PG remoto (192.168.15.123). Verifica integridade com
+`pg_restore -l` e aplica retenção (delete `-mtime +RETENTION_DAYS`).
+
+**Novo (repo):** `ops/backup/`:
+- `expresso-pg-backup.sh` (`/usr/local/sbin/`)
+- `expresso-pg-backup.service` (oneshot)
+- `expresso-pg-backup.timer` (daily 02:00 UTC, RandomizedDelaySec=300, Persistent=true)
+- `expresso-pg-backup.env.example` → `/etc/default/expresso-pg-backup`
+  (chmod 600, contém PG* + BACKUP_DIR + RETENTION_DAYS=30)
+
+**Instalado em 192.168.15.125:** `/var/backups/expresso/pg/` (chmod 700).
+
+**Smoke:** `systemctl start expresso-pg-backup.service` →
+`backup ok: /var/backups/expresso/pg/expresso-20260423T210056Z.dump (128316 bytes)`.
+Próximo agendamento: diário 02:00 UTC.
