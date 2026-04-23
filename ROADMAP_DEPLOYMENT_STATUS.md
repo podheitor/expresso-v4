@@ -1954,3 +1954,23 @@ botões por usuário:
 **Smoke:** `POST /users/c3a1459f.../totp/enroll` → 303,
 `POST /users/c3a1459f.../totp/reset` → 303. Image `expresso-admin:t16` +
 `:latest` deployed em 125.
+
+### #17 — Audit log CSV export
+
+`GET /audit.csv` — mesmos filtros de `/audit.json` (`action_prefix`,
+`tenant_id`, `preset` 24h/7d/30d/all, `since`/`until`, `before_id`,
+`limit`) mas cap = 50k rows/req. Content-Type `text/csv; charset=utf-8`
++ `Content-Disposition: attachment; filename="audit-<utc>.csv"`.
+Campos RFC 4180-escaped (aspas duplicadas, vírgulas/quebras quoted).
+
+**Colunas:** id, created_at, tenant_id, user_id, action, resource,
+status, metadata (JSON compacto).
+
+**Patched:**
+- `services/expresso-admin/src/audit.rs::csv` — novo handler.
+- `services/expresso-admin/src/main.rs`: `.route("/audit.csv", get(audit::csv))`.
+- `services/expresso-admin/templates/audit_admin.html`: botão CSV ao
+  lado do JSON.
+
+**Smoke:** `GET /audit.csv` → 303 (auth gate, SuperAdmin required).
+Imagem `expresso-admin:t17` + `:latest`.

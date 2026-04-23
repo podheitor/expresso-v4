@@ -347,3 +347,107 @@ pub async fn purge(
         &format!("/audit.html?purged={deleted}&days={days}")
     ).into_response()
 }
+
+
+// --- CSV export ---------------------------------------------------------
+
+/// GET /audit.csv — SuperAdmin-only. Same filters as `/audit.json` but capped
+/// at 50k rows per request. Returns `text/csv; charset=utf-8`.
+pub async fn csv(
+    State(st): State<Arc<AppState>>,
+    headers:   HeaderMap,
+    Query(q):  Query<AuditQuery>,
+) -> Response {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await { return r; }
+    let Some(pool) = st.db.as_ref() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "database unavailable").into_response();
+    };
+    let limit = q.limit.unwrap_or(5000).clamp(1, 50_000);
+    let prefix_like = q.action_prefix.as_ref().map(|p| format!("{p}%"));
+    let (since, until) = resolve_window(&q);
+
+    let rows_res = sqlx::query(
+        r#"SELECT id, created_at, tenant_id, user_id, action, resource, status, metadata
+             FROM audit_log
+            WHERE ($1::uuid        IS NULL OR tenant_id  = $1)
+              AND ($2::text        IS NULL OR action     LIKE $2)
+              AND ($3::timestamptz IS NULL OR created_at >= $3)
+              AND ($4::timestamptz IS NULL OR created_at <  $4)
+              AND ($5::bigint      IS NULL OR id         <  $5)
+            ORDER BY id DESC
+            LIMIT $6"#,
+    )
+    .bind(q.tenant_id)
+    .bind(prefix_like.as_deref())
+    .bind(since)
+    .bind(until)
+    .bind(q.before_id)
+    .bind(limit)
+    .fetch_all(pool).await;
+
+    let rows = match rows_res {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("db: {e}")).into_response(),
+    };
+
+    // RFC 4180: quote fields containing comma, quote, CR or LF; escape quote by doubling.
+    fn esc(f: &str) -> String {
+        let needs = f.contains(',') || f.contains('"') || f.contains('\n') || f.contains('\r');
+        if needs {
+            let replaced = f.replace('"', "\"\"");
+            format!("\"{replaced}\"")
+        } else {
+            f.to_string()
+        }
+    }
+
+    let mut buf = String::with_capacity(rows.len() * 128);
+    buf.push_str("id,created_at,tenant_id,user_id,action,resource,status,metadata\r\n");
+    for r in rows {
+        let id:         i64 = r.try_get("id").unwrap_or_default();
+        let created_at: OffsetDateTime = r.try_get("created_at").unwrap_or(OffsetDateTime::UNIX_EPOCH);
+        let tenant_id:  uuid::Uuid = r.try_get("tenant_id").unwrap_or_else(|_| uuid::Uuid::nil());
+        let user_id:    Option<uuid::Uuid> = r.try_get("user_id").ok().flatten();
+        let action:     String = r.try_get("action").unwrap_or_default();
+        let resource:   Option<String> = r.try_get("resource").ok().flatten();
+        let status:     String = r.try_get("status").unwrap_or_else(|_| "unknown".into());
+        let metadata:   serde_json::Value = r.try_get("metadata").unwrap_or(serde_json::json!({}));
+
+        let created_at_str = created_at
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        let metadata_str = serde_json::to_string(&metadata).unwrap_or_default();
+
+        buf.push_str(&esc(&id.to_string()));
+        buf.push(',');
+        buf.push_str(&esc(&created_at_str));
+        buf.push(',');
+        buf.push_str(&esc(&tenant_id.to_string()));
+        buf.push(',');
+        buf.push_str(&esc(&user_id.map(|u| u.to_string()).unwrap_or_default()));
+        buf.push(',');
+        buf.push_str(&esc(&action));
+        buf.push(',');
+        buf.push_str(&esc(&resource.unwrap_or_default()));
+        buf.push(',');
+        buf.push_str(&esc(&status));
+        buf.push(',');
+        buf.push_str(&esc(&metadata_str));
+        buf.push_str("\r\n");
+    }
+
+    let filename = format!(
+        "audit-{}.csv",
+        OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_else(|_| "export".into())
+    );
+    (
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
+            (axum::http::header::CONTENT_DISPOSITION, format!("attachment; filename=\"{filename}\"")),
+        ],
+        buf,
+    ).into_response()
+}

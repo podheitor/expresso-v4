@@ -105,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/tenants/:id/config",       get(tenants::config_form).post(tenants::config_action))
         .route("/tenants/:id/delete",       post(tenants::delete_action))
         .route("/audit.json",               get(audit::list))
+        .route("/audit.csv",                get(audit::csv))
         .route("/audit.html",               get(audit::page))
         .route("/audit",                    get(audit::page))
         .route("/audit/purge",              post(audit::purge))
