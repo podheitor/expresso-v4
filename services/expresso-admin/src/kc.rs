@@ -154,6 +154,21 @@ impl KcClient {
         Ok(())
     }
 
+    /// Returns true iff user has at least one credential of type `otp`.
+    /// One HTTP call per user; callers should rate-limit bulk scans.
+    pub async fn user_has_totp(&self, id: &str) -> Result<bool> {
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/credentials",
+            self.cfg.base_url, self.cfg.realm, id
+        );
+        let creds: Vec<serde_json::Value> = self.http.get(&url).bearer_auth(&tok)
+            .send().await.context("kc has_totp list req")?
+            .error_for_status().context("kc has_totp list status")?
+            .json().await.context("kc has_totp list json")?;
+        Ok(creds.iter().any(|c| c.get("type").and_then(|v| v.as_str()) == Some("otp")))
+    }
+
     /// Deletes all OTP credentials for user → forces re-enrollment on next login.
     pub async fn reset_totp(&self, id: &str) -> Result<u32> {
         let tok = self.token().await?;

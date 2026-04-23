@@ -209,4 +209,53 @@ pub async fn user_totp_reset(
     Ok(Redirect::to("/users"))
 }
 
+/// GET /users/totp-status — coverage report for ops.
+///
+/// Lists all realm users + whether each has TOTP enrolled. Useful
+/// before flipping `ADMIN_REQUIRE_2FA=true` in prod (sprint #29).
+///
+/// Performance: 1 + N HTTP calls to KC (N = user count). Good enough
+/// for realms <500 users; paginate/parallelize if that changes.
+pub async fn users_totp_status(
+    State(st): State<Arc<AppState>>,
+) -> Result<axum::response::Response, AdminError> {
+    use axum::response::IntoResponse;
+    let users = st.kc.users().await?;
+    let mut rows = String::new();
+    let mut with_totp = 0u32;
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;")
+         .replace('<', "&lt;")
+         .replace('>', "&gt;")
+         .replace('"', "&quot;")
+    }
+    for u in &users {
+        let has = st.kc.user_has_totp(&u.id).await.unwrap_or(false);
+        if has { with_totp += 1; }
+        let full = format!("{} {}", u.first, u.last).trim().to_string();
+        let badge = if has {
+            "<span style=color:#1a7f37>✓ TOTP</span>"
+        } else {
+            "<span style=color:#b42318>✗ sem TOTP</span>"
+        };
+        rows.push_str(&format!(
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            esc(&u.username),
+            esc(&u.email),
+            esc(&full),
+            if u.enabled { "ativo" } else { "desabilitado" },
+            badge,
+        ));
+    }
+    let total = users.len() as u32;
+    let pct = if total > 0 { (with_totp * 100) / total } else { 0 };
+    let html = format!(
+        "<!doctype html><meta charset=utf-8><title>Cobertura TOTP</title>        <style>body{{font-family:system-ui;padding:2rem;max-width:60rem;margin:auto}}        table{{width:100%;border-collapse:collapse}}th,td{{padding:.4rem .6rem;border-bottom:1px solid #eee;text-align:left}}        .sum{{background:#f6f8fa;padding:1rem;border-radius:.5rem;margin:1rem 0}}</style>        <h1>Cobertura TOTP</h1>        <div class=sum><strong>{with_totp}</strong> de <strong>{total}</strong> usuários têm TOTP cadastrado ({pct}%).</div>        <p><a href=\"/users\">← Voltar para usuários</a></p>        <table><thead><tr><th>Username</th><th>Email</th><th>Nome</th><th>Status</th><th>TOTP</th></tr></thead>        <tbody>{rows}</tbody></table>"
+    );
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    ).into_response())
+}
+
 pub fn kc_factory() -> KcClient { KcClient::new(crate::kc::KcConfig::from_env()) }

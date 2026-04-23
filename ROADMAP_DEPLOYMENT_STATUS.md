@@ -2308,3 +2308,38 @@ prévio todos os admins ficarão trancados fora do painel.
 
 Próximo passo natural seria wizard no admin que força enrollment via
 Required Action KC `CONFIGURE_TOTP`.
+
+### #30 — TOTP coverage report
+
+Complementa #29 com endpoint `GET /users/totp-status` listando
+quais usuários do realm têm TOTP cadastrado. Pré-requisito para
+ligar `ADMIN_REQUIRE_2FA=true` em prod sem trancar admins.
+
+- `kc.rs`: novo helper `user_has_totp(id) -> Result<bool>` (consulta
+  `/users/{id}/credentials`, procura `type=="otp"`).
+- `handlers.rs`: `users_totp_status()` renderiza HTML inline com tabela
+  username/email/nome/status/badge TOTP + sumário "N de M usuários
+  (X%)". Escape HTML inline (4 chars) — sem dep externa nova.
+- `main.rs`: rota `GET /users/totp-status` (atrás de `require_admin`).
+- Imagem: `expresso-admin:t30` deployed 125.
+
+**Smoke:**
+```
+curl -I /users/totp-status  → 303 → /auth/login  ✅ (gate aplicado)
+```
+
+**Uso operacional (playbook pra ligar 2FA em prod):**
+1. Acesse `/users/totp-status` logado como super_admin.
+2. Verifique que 100% dos usuários com role `tenant_admin`/`super_admin`
+   tenham TOTP.
+3. Para os sem TOTP, clique "enroll" em `/users` (dispara email KC com
+   `CONFIGURE_TOTP`).
+4. Após cobertura completa, edite `compose-phase3.yaml` adicionando
+   `ADMIN_REQUIRE_2FA: "true"` ao `expresso-admin.environment` e
+   recrie o container.
+
+Pipeline 2FA completo: enforcement (#29) + visibilidade (#30) +
+ações enroll/reset (pré-existentes). Ops pode flip safely.
+
+**Trilha consolidada #2 → #30** — 29 sprints shipped, todos verificados
+em 125.

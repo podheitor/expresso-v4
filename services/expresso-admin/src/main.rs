@@ -87,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/",       get(handlers::dashboard))
         .route("/users",  get(handlers::users))
+        .route("/users/totp-status", get(handlers::users_totp_status))
         .route("/users/new", get(handlers::user_new).post(handlers::user_create))
         .route("/users/:id/edit", get(handlers::user_edit).post(handlers::user_update))
         .route("/users/:id/delete", post(handlers::user_delete))
