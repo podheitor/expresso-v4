@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Drive — Quotas por tenant</h1>
+  <p class="hint">
+    Limite de armazenamento em MiB por tenant. <code>0</code> = sem limite (∞).
+    Uso calculado sobre <code>drive_files.size_bytes</code>.
+  </p>
+  {% if flash.is_some() %}<p class="flash">{{ flash.as_ref().unwrap() }}</p>{% endif %}
+
+  <table class="grid">
+    <thead>
+      <tr>
+        <th>Tenant</th>
+        <th>Slug</th>
+        <th>Usado (MiB)</th>
+        <th>Limite (MiB)</th>
+        <th>Uso</th>
+        <th>Atualizado</th>
+        <th>Ajustar</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td>{{ r.name }}<br><small><code>{{ r.tenant_id }}</code></small></td>
+        <td><code>{{ r.slug }}</code></td>
+        <td>{{ r.used_mb }}</td>
+        <td>{{ r.max_mb }}</td>
+        <td>{{ r.used_pct }}</td>
+        <td><code>{{ r.updated }}</code></td>
+        <td>
+          <form method="post" action="/drive-quotas/{{ r.tenant_id }}" style="display:flex;gap:4px">
+            <input type="number" name="max_mb" value="{{ r.max_mb }}" min="0" step="1" style="width:8em">
+            <button type="submit">Salvar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

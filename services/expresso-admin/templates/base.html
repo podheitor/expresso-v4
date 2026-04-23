@@ -8,7 +8,14 @@
   <nav class="appnav">
     <a class="appnav-item{% if current == "dashboard" %} active{% endif %}" href="/">📊 Dashboard</a>
     <a class="appnav-item{% if current == "users" %} active{% endif %}" href="/users">👥 Usuários</a>
+    <a class="appnav-item{% if current == "calendars" %} active{% endif %}" href="/calendars">📅 Calendários</a>
+    <a class="appnav-item{% if current == "addressbooks" %} active{% endif %}" href="/addressbooks">📇 Livros</a>
+    <a class="appnav-item{% if current == "tenants" %} active{% endif %}" href="/tenants">🏬 Tenants</a>
     <a class="appnav-item{% if current == "realm" %} active{% endif %}" href="/realm">🏢 Realm</a>
+    <a class="appnav-item{% if current == "counter" %} active{% endif %}" href="/counter.html">📨 iTIP COUNTER</a>
+    <a class="appnav-item{% if current == "drivequotas" %} active{% endif %}" href="/drive-quotas.html">💾 Drive Quotas</a>
+    <a class="appnav-item{% if current == "deadprops" %} active{% endif %}" href="/dead-props.html">🏷 Dead Props</a>
+    <a class="appnav-item{% if current == "audit" %} active{% endif %}" href="/audit.html">🛡 Auditoria</a>
   </nav>
 </header>
 <main>{% block content %}{% endblock %}</main>

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>iTIP COUNTER — propostas pendentes</h1>
+  <p class="hint">
+    Attendees podem enviar <code>METHOD:COUNTER</code> propondo novos DTSTART/DTEND
+    (RFC 5546 §3.2.7). O organizador revisa aqui e decide: aceitar aplica os
+    horários ao evento (SEQUENCE é incrementado automaticamente); rejeitar
+    descarta a proposta.
+  </p>
+
+  {% if flash.is_some() %}
+    <p class="flash">{{ flash.as_ref().unwrap() }}</p>
+  {% endif %}
+
+  {% if rows.is_empty() %}
+    <p><em>Nenhuma proposta pendente.</em></p>
+  {% else %}
+    <table class="grid">
+      <thead>
+        <tr>
+          <th>Recebido</th>
+          <th>Evento</th>
+          <th>Attendee</th>
+          <th>Novo DTSTART</th>
+          <th>Novo DTEND</th>
+          <th>SEQ</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><code>{{ r.created_at_fmt }}</code></td>
+          <td>
+            <strong>{{ r.event_summary }}</strong><br>
+            <small>event <code>{{ r.event_id }}</code></small><br>
+            <small>tenant <code>{{ r.tenant_id }}</code></small>
+          </td>
+          <td>{{ r.attendee_email }}</td>
+          <td><code>{{ r.proposed_dtstart }}</code></td>
+          <td><code>{{ r.proposed_dtend }}</code></td>
+          <td>{{ r.received_sequence }}</td>
+          <td>
+            <form method="post" action="/counter/{{ r.id }}/accept" style="display:inline"
+                  onsubmit="return confirm('Aplicar horários propostos ao evento?')">
+              <button type="submit" class="primary">Aceitar</button>
+            </form>
+            <form method="post" action="/counter/{{ r.id }}/reject" style="display:inline"
+                  onsubmit="return confirm('Rejeitar proposta? O evento permanece inalterado.')">
+              <button type="submit" class="secondary">Rejeitar</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

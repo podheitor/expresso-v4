@@ -5,7 +5,10 @@ mod calendars;
 mod events;
 mod health;
 mod scheduling;
+mod stream;
 mod sharing;
+mod users;
+mod wellknown;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -20,7 +23,10 @@ pub fn router(state: AppState) -> Router {
         .merge(calendars::routes())
         .merge(events::routes())
         .merge(scheduling::routes())
+        .merge(stream::routes())
         .merge(sharing::routes())
+        .merge(users::routes())
+        .merge(wellknown::routes())
         .layer(CorsLayer::permissive());
 
     // CalDAV: ≠ passa por CorsLayer (senão OPTIONS é sequestrado

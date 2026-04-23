@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 # Workspace deps
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -34,6 +35,7 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 icalendar = { workspace = true }
+lettre = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }

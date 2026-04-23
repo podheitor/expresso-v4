@@ -14,6 +14,24 @@ use crate::domain::{Event, EventQuery, EventRepo};
 use crate::error::{CalendarError, Result};
 use crate::state::AppState;
 
+/// Gate: require OWNER/WRITE/ADMIN on the calendar, else 403.
+async fn assert_can_write(
+    pool: &expresso_core::DbPool,
+    tenant_id: uuid::Uuid,
+    cal_id: uuid::Uuid,
+    user_id: uuid::Uuid,
+) -> Result<()> {
+    let repo = crate::domain::CalendarRepo::new(pool);
+    let lvl = repo.access_level(tenant_id, cal_id, user_id).await?;
+    match lvl.as_deref() {
+        Some("OWNER") | Some("WRITE") | Some("ADMIN") => Ok(()),
+        Some("READ") => Err(crate::error::CalendarError::Forbidden),
+        Some(_)      => Err(crate::error::CalendarError::Forbidden),
+        None         => Err(crate::error::CalendarError::CalendarNotFound(cal_id.to_string())),
+    }
+}
+
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -57,7 +75,12 @@ async fn create(
         return Err(CalendarError::BadRequest("empty body".into()));
     }
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     let ev = EventRepo::new(pool).create(ctx.tenant_id, cal_id, &raw).await?;
+
+    state.events().publish(crate::events::Event::EventCreated {
+        tenant_id: ctx.tenant_id, event_id: ev.id, summary: ev.summary.clone(),
+    });
 
     let etag = format!("\"{}\"", ev.etag);
     let location = format!("/api/v1/calendars/{}/events/{}", ev.calendar_id, ev.id);
@@ -95,14 +118,21 @@ async fn get_one(
 async fn update(
     State(state): State<AppState>,
     ctx: RequestCtx,
-    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
     raw: String,
 ) -> Result<Response> {
     if raw.trim().is_empty() {
         return Err(CalendarError::BadRequest("empty body".into()));
     }
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     let ev = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
+
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: ev.id,
+        summary: ev.summary.clone(), sequence: ev.sequence,
+    });
+
     let etag = format!("\"{}\"", ev.etag);
     let mut resp = Json(ev).into_response();
     resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
@@ -112,10 +142,14 @@ async fn update(
 async fn delete(
     State(state): State<AppState>,
     ctx: RequestCtx,
-    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     EventRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    state.events().publish(crate::events::Event::EventCancelled {
+        tenant_id: ctx.tenant_id, event_id: id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -173,6 +207,7 @@ async fn import_ics(
         return Err(CalendarError::BadRequest("no VEVENT blocks found in payload".into()));
     }
     let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     let repo = EventRepo::new(pool);
 
     let mut imported: usize = 0;

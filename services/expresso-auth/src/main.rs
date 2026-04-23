@@ -73,12 +73,25 @@ async fn main() -> anyhow::Result<()> {
         .timeout(cfg.http_timeout)
         .build()?;
 
+    // Optional DB pool for audit log writes.
+    let pool = match env::var("DATABASE_URL").or_else(|_| env::var("DATABASE__URL")) {
+        Ok(url) if !url.is_empty() => match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(4)
+            .acquire_timeout(std::time::Duration::from_secs(5))
+            .connect(&url).await {
+                Ok(p) => { info!("audit pool ready"); Some(p) }
+                Err(e) => { tracing::warn!(error=%e, "audit pool unavailable (continuing without audit)"); None }
+            },
+        _ => { info!("DATABASE_URL unset → audit writes disabled"); None }
+    };
+
     let app_state = Arc::new(AppState {
         cfg,
         provider,
         http,
         validator: validator.clone(),
         pending: Mutex::new(HashMap::new()),
+        pool,
     });
 
     let login_limiter = std::sync::Arc::new(
@@ -94,6 +107,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/refresh",  post(handlers::refresh::refresh))
         .route("/auth/logout",   get(handlers::logout::logout))
         .route("/auth/me",       get(handlers::me::me))
+        .route("/auth/impersonate/end", post(handlers::impersonate::end))
+        .route("/auth/impersonate/:target_user_id", post(handlers::impersonate::start))
         .merge(expresso_observability::metrics_router())
         .with_state(app_state)
         // Extension for Authenticated extractor (/auth/me)

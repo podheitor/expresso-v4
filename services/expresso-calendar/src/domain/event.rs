@@ -56,6 +56,9 @@ impl<'a> EventRepo<'a> {
         Self { pool }
     }
 
+    /// Expose pool for sibling repos in composite flows (e.g. CounterRepo).
+    pub fn pool(&self) -> &'a DbPool { self.pool }
+
     /// Insert an event parsed from raw iCalendar text.
     pub async fn create(
         &self,
@@ -174,7 +177,17 @@ impl<'a> EventRepo<'a> {
                 rrule           = $11,
                 status          = $12,
                 organizer_email = $13,
-                sequence        = sequence + 1
+                sequence        = CASE
+                    WHEN summary         IS DISTINCT FROM $6
+                      OR location        IS DISTINCT FROM $8
+                      OR dtstart         IS DISTINCT FROM $9
+                      OR dtend           IS DISTINCT FROM $10
+                      OR rrule           IS DISTINCT FROM $11
+                      OR status          IS DISTINCT FROM $12
+                      OR organizer_email IS DISTINCT FROM $13
+                    THEN sequence + 1
+                    ELSE sequence
+                END
              WHERE tenant_id = $1 AND id = $2
              RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                        description, location, dtstart, dtend, rrule, status,
@@ -240,8 +253,18 @@ impl<'a> EventRepo<'a> {
                 dtend           = EXCLUDED.dtend,
                 rrule           = EXCLUDED.rrule,
                 status          = EXCLUDED.status,
-                sequence        = calendar_events.sequence + 1,
-                organizer_email = EXCLUDED.organizer_email
+                organizer_email = EXCLUDED.organizer_email,
+                sequence        = CASE
+                    WHEN calendar_events.summary         IS DISTINCT FROM EXCLUDED.summary
+                      OR calendar_events.location        IS DISTINCT FROM EXCLUDED.location
+                      OR calendar_events.dtstart         IS DISTINCT FROM EXCLUDED.dtstart
+                      OR calendar_events.dtend           IS DISTINCT FROM EXCLUDED.dtend
+                      OR calendar_events.rrule           IS DISTINCT FROM EXCLUDED.rrule
+                      OR calendar_events.status          IS DISTINCT FROM EXCLUDED.status
+                      OR calendar_events.organizer_email IS DISTINCT FROM EXCLUDED.organizer_email
+                    THEN calendar_events.sequence + 1
+                    ELSE calendar_events.sequence
+                END
             RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                       description, location, dtstart, dtend, rrule, status,
                       sequence, organizer_email, created_at, updated_at
@@ -289,6 +312,31 @@ impl<'a> EventRepo<'a> {
         .fetch_optional(self.pool)
         .await?
         .ok_or_else(|| CalendarError::BadRequest(format!("event uid not found: {uid}")))
+    }
+
+    /// Locate an event by UID across ALL calendars in the tenant.
+    /// Used by iMIP REPLY ingestion: the responder may belong to any
+    /// calendar owned by the tenant; UID is globally unique per RFC 5545.
+    pub async fn find_by_uid_in_tenant(
+        &self,
+        tenant_id: Uuid,
+        uid: &str,
+    ) -> Result<Option<Event>> {
+        let row = sqlx::query_as::<_, Event>(
+            r#"
+            SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                   description, location, dtstart, dtend, rrule, status,
+                   sequence, organizer_email, created_at, updated_at
+              FROM calendar_events
+             WHERE tenant_id = $1 AND uid = $2
+             LIMIT 1
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(uid)
+        .fetch_optional(self.pool)
+        .await?;
+        Ok(row)
     }
 
     /// Fetch multiple events by UIDs (CalDAV calendar-multiget REPORT).

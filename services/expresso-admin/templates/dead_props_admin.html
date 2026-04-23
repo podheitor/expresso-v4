@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>DAV Dead Properties</h1>
+  <p class="hint">
+    Propriedades XML arbitrárias definidas via <code>PROPPATCH</code> pelos
+    clientes (cor custom da Apple, display-order, etc). Útil para diagnosticar
+    metadata inesperada em calendars/addressbooks.
+  </p>
+
+  {% if rows.is_empty() %}
+    <p><em>Nenhuma dead property registrada.</em></p>
+  {% else %}
+    <table class="grid">
+      <thead>
+        <tr>
+          <th>Atualizado</th>
+          <th>Tipo</th>
+          <th>Coleção</th>
+          <th>Propriedade</th>
+          <th>Valor (preview)</th>
+          <th>Tenant</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><code>{{ r.updated_at }}</code></td>
+          <td>{{ r.kind }}</td>
+          <td>
+            <strong>{{ r.parent_name }}</strong><br>
+            <small><code>{{ r.parent_id }}</code></small>
+          </td>
+          <td>
+            <small><code>{{ r.namespace }}</code></small><br>
+            <strong>{{ r.local_name }}</strong>
+          </td>
+          <td><code>{{ r.value_preview }}</code></td>
+          <td><small><code>{{ r.tenant_id }}</code></small></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}
