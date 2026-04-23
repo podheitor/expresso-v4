@@ -2343,3 +2343,37 @@ ações enroll/reset (pré-existentes). Ops pode flip safely.
 
 **Trilha consolidada #2 → #30** — 29 sprints shipped, todos verificados
 em 125.
+
+### #31 — event-audit metrics + healthz
+
+Ops hygiene para o consumer shipped em #28. Adiciona HTTP endpoints
+`/healthz`, `/readyz`, `/metrics` em port configurável (default 9090).
+
+- `services/expresso-event-audit/src/main.rs`:
+  - `run_ops_http()` spawnada antes da conexão NATS → sobrevive a outages
+    do broker (kubelet/healthcheck ainda funcionam).
+  - Counter `event_audit_events_total{stream="..."}` via
+    `prometheus::IntCounterVec` lazy-inicializado.
+  - Counter incrementado após log/ack de cada mensagem.
+- Novas deps: `axum`, `prometheus`, `once_cell` (workspace).
+- Env novo: `METRICS_ADDR` (default `0.0.0.0:9090`).
+
+**Deploy 125:**
+```
+docker run -d --name expresso-event-audit --network host \
+    -e NATS_URL=nats://172.17.0.1:4222 \
+    -e METRICS_ADDR=0.0.0.0:9191 \
+    expresso-event-audit:t31
+```
+
+**Smoke:**
+```
+curl /healthz                              → "ok"
+pub expresso.calendar.t31.hello metrics-test
+curl /metrics | grep event_audit
+  → event_audit_events_total{stream="EXPRESSO_CALENDAR"} 1   ✅
+```
+
+Integra com Grafana dashboard (#21) — basta scraping Prometheus do
+`host.docker.internal:9191`. Painel "NATS consumer throughput" passa
+a ter dado real.
