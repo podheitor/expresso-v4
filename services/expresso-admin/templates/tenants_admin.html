@@ -3,7 +3,7 @@
 <section class="hero">
   <h1>Tenants</h1>
   <p class="muted">Requer role <code>super_admin</code>.</p>
-  <p><a class="btn primary" href="/tenants/new">+ Novo tenant</a></p>
+  <p><a class="btn primary" href="/tenants/new">+ Novo tenant</a> <a class="btn" href="/tenants/wizard">Onboarding wizard</a></p>
 </section>
 {% match flash %}{% when Some with (m) %}<p class="error">{{ m }}</p>{% when None %}{% endmatch %}
 <table class="tbl">

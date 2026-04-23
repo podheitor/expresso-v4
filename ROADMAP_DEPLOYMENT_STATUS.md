@@ -1993,3 +1993,26 @@ Default quota = 10 GB quando tenant não tem linha explícita em
 `drive_quotas` (gerenciado via admin `/drive-quotas.html`).
 
 **Status:** ✅ já estava em produção; nenhuma ação necessária.
+
+### #18 — Tenant onboarding wizard
+
+Fluxo single-page para provisionar tenant completo:
+
+- `services/expresso-admin/templates/tenant_wizard.html`: form com slug, nome,
+  plano, email admin, username admin.
+- `services/expresso-admin/src/tenants.rs::wizard_form` + `wizard_action`:
+  - Valida entrada (slug `[a-z0-9-]+`, plano `free|pro|enterprise`, email).
+  - `INSERT INTO tenants (slug,name,plan,status='active') RETURNING id`.
+  - `KcAdmin.create_user()` com senha placeholder + `temporary:true`.
+  - Dispara `CONFIGURE_TOTP` via `execute_actions_email` (reusa método #16).
+  - Em falha KC → `DELETE FROM tenants WHERE id=$1` (sem tenants órfãos).
+  - Audit: `admin.tenant.onboard` com tenant_id+slug+admin_email+kc_user_id.
+- `main.rs`: rota `/tenants/wizard` (GET+POST) guardada por `require_super_admin`.
+- `templates/tenants_admin.html`: botão "Onboarding wizard" ao lado de "+ Novo tenant".
+
+**Smoke 125:**
+```
+curl http://172.17.0.1:8101/tenants/wizard → 303 (redirect auth, rota registrada)
+```
+
+Imagem: `expresso-admin:t18`.

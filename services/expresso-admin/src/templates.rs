@@ -221,3 +221,17 @@ pub struct TenantConfigTpl {
     pub error:       Option<String>,
     pub flash:       Option<String>,
 }
+
+
+#[derive(Template)]
+#[template(path = "tenant_wizard.html")]
+pub struct TenantWizardTpl {
+    pub current:     &'static str,
+    pub slug:        String,
+    pub name:        String,
+    pub plan:        String,
+    pub admin_email: String,
+    pub admin_user:  String,
+    pub error:       Option<String>,
+    pub success:     Option<String>,
+}

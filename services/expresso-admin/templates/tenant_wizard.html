@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Onboarding de Tenant</h1>
+  <p class="muted">Cria tenant + usuário admin (KC) + config defaults em um passo.</p>
+</section>
+
+{% if let Some(msg) = success %}
+<div class="flash ok"><strong>OK:</strong> {{ msg }}</div>
+{% endif %}
+{% if let Some(msg) = error %}
+<div class="flash err"><strong>Erro:</strong> {{ msg }}</div>
+{% endif %}
+
+<form method="post" action="/tenants/wizard" class="card" style="max-width:640px">
+  <div class="row">
+    <label>Slug
+      <input name="slug" value="{{ slug }}" required pattern="[a-z0-9-]+" placeholder="acme-corp">
+    </label>
+  </div>
+  <div class="row">
+    <label>Nome
+      <input name="name" value="{{ name }}" required placeholder="Acme Corp Ltda">
+    </label>
+  </div>
+  <div class="row">
+    <label>Plano
+      <select name="plan">
+        <option value="free" {% if plan == "free" %}selected{% endif %}>free</option>
+        <option value="pro"  {% if plan == "pro"  %}selected{% endif %}>pro</option>
+        <option value="enterprise" {% if plan == "enterprise" %}selected{% endif %}>enterprise</option>
+      </select>
+    </label>
+  </div>
+  <div class="row">
+    <label>Email do admin
+      <input name="admin_email" type="email" value="{{ admin_email }}" required placeholder="admin@acme.com">
+    </label>
+  </div>
+  <div class="row">
+    <label>Username do admin
+      <input name="admin_user" value="{{ admin_user }}" required pattern="[a-z0-9._-]+" placeholder="acme-admin">
+    </label>
+  </div>
+  <div class="row">
+    <button class="btn primary" type="submit">Provisionar</button>
+    <a class="btn" href="/tenants">Cancelar</a>
+  </div>
+  <p class="muted" style="margin-top:.5rem">
+    Tenant + user são criados em uma transação lógica. Se a criação no KC falhar,
+    a linha do tenant é revertida. Usuário recebe email <code>UPDATE_PASSWORD</code>.
+  </p>
+</form>
+{% endblock %}

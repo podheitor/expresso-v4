@@ -101,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/addressbooks/:tenant_id/:id/delete", post(dav_admin::addressbook_delete_action))
         .route("/tenants",                  get(tenants::list))
         .route("/tenants/new",              get(tenants::new_form).post(tenants::create_action))
+        .route("/tenants/wizard",           get(tenants::wizard_form).post(tenants::wizard_action))
         .route("/tenants/:id/edit",         get(tenants::edit_form).post(tenants::edit_action))
         .route("/tenants/:id/config",       get(tenants::config_form).post(tenants::config_action))
         .route("/tenants/:id/delete",       post(tenants::delete_action))

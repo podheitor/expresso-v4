@@ -294,3 +294,106 @@ async fn render_config_err(
         config_json: submitted, error: Some(msg), flash: None,
     }.into_response())
 }
+
+
+// --- Tenant onboarding wizard ----------------------------------------------
+
+#[derive(Debug, serde::Deserialize)]
+pub struct TenantWizardForm {
+    pub slug:        String,
+    pub name:        String,
+    pub plan:        String,
+    pub admin_email: String,
+    pub admin_user:  String,
+}
+
+pub async fn wizard_form(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response, AdminError> {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Ok(r); }
+    Ok(crate::templates::TenantWizardTpl {
+        current: "tenants",
+        slug: String::new(), name: String::new(), plan: "free".into(),
+        admin_email: String::new(), admin_user: String::new(),
+        error: None, success: None,
+    }.into_response())
+}
+
+fn validate_wizard(f: &TenantWizardForm) -> Option<String> {
+    if f.slug.trim().is_empty() || !f.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Some("slug inválido (use a-z0-9-)".into());
+    }
+    if f.name.trim().is_empty() { return Some("nome obrigatório".into()); }
+    if !f.admin_email.contains('@') { return Some("email admin inválido".into()); }
+    if f.admin_user.trim().is_empty() { return Some("username admin obrigatório".into()); }
+    if !matches!(f.plan.as_str(), "free"|"pro"|"enterprise") { return Some("plan inválido".into()); }
+    None
+}
+
+pub async fn wizard_action(
+    State(st): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(f): Form<TenantWizardForm>,
+) -> Result<Response, AdminError> {
+    if let Some(r) = auth::require_super_admin(&st, &headers).await { return Ok(r); }
+
+    let render = |error: Option<String>, success: Option<String>, f: &TenantWizardForm| {
+        crate::templates::TenantWizardTpl {
+            current: "tenants",
+            slug: f.slug.clone(), name: f.name.clone(), plan: f.plan.clone(),
+            admin_email: f.admin_email.clone(), admin_user: f.admin_user.clone(),
+            error, success,
+        }.into_response()
+    };
+
+    if let Some(err) = validate_wizard(&f) { return Ok(render(Some(err), None, &f)); }
+    let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+
+    // 1. INSERT tenant row (status=active, default config seeded by column defaults).
+    let tenant_id: uuid::Uuid = match sqlx::query_scalar::<_, uuid::Uuid>(
+        r#"INSERT INTO tenants (slug, name, plan, status) VALUES ($1,$2,$3,'active') RETURNING id"#,
+    ).bind(f.slug.trim()).bind(f.name.trim()).bind(&f.plan)
+     .fetch_one(pool).await {
+        Ok(id) => id,
+        Err(e) => return Ok(render(Some(format!("DB tenant insert: {e}")), None, &f)),
+    };
+
+    // 2. Create KC user with placeholder password + force UPDATE_PASSWORD.
+    use crate::kc::NewUser;
+    let placeholder = format!("init-{}", uuid::Uuid::new_v4());
+    let new_user = NewUser {
+        username:   f.admin_user.trim().to_string(),
+        email:      f.admin_email.trim().to_string(),
+        first_name: f.admin_user.trim().to_string(),
+        last_name:  "Admin".into(),
+        enabled:    true,
+        password:   placeholder,
+        temporary:  true,
+    };
+
+    match st.kc.create_user(&new_user).await {
+        Ok(kc_id) => {
+            // Fire UPDATE_PASSWORD action email (best-effort).
+            if let Err(e) = st.kc.enroll_totp(&kc_id).await {
+                tracing::warn!(error=%e, "(wizard) enroll_totp after user create failed");
+            }
+            audit::record(
+                &st, &headers, &axum::http::Method::POST, "/tenants/wizard",
+                "admin.tenant.onboard",
+                Some("tenant"), Some(tenant_id.to_string()), Some(200),
+                serde_json::json!({
+                    "tenant_id": tenant_id, "slug": f.slug, "admin_email": f.admin_email,
+                    "kc_user_id": kc_id, "plan": f.plan,
+                }),
+            ).await;
+            Ok(render(None, Some(format!("tenant {} criado; KC user {} enviado CONFIGURE_TOTP", tenant_id, kc_id)), &f))
+        }
+        Err(e) => {
+            // Rollback tenant row on KC failure (no orphan tenants).
+            let _ = sqlx::query("DELETE FROM tenants WHERE id = $1")
+                .bind(tenant_id).execute(pool).await;
+            Ok(render(Some(format!("KC user create failed (tenant row reverted): {e}")), None, &f))
+        }
+    }
+}
