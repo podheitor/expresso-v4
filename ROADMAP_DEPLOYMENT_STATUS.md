@@ -2068,3 +2068,22 @@ Artefato JSON + docs (zero deploy) alavancando as métricas expostas em
 - `ops/grafana/README.md`: instruções de import + scrape config exemplo.
 
 **Status:** ✅ artefato commitado; import manual no Grafana quando provisionado.
+
+### #22 — NATS JetStream smoke tool
+
+CLI ops para validar presença de streams JetStream (usado em smokes
+pós-deploy e em CI).
+
+- `ops/nats/smoke.sh`: bash + python3 (stdlib) — consulta `/jsz?streams=1`
+  e valida stream. Exit codes:
+  - `0` stream presente + stats impressas.
+  - `1` stream ausente.
+  - `2` monitoring endpoint inacessível.
+- Args: `[NATS_MON_URL] [STREAM]` (defaults: `http://localhost:8222` + `EXPRESSO_CALENDAR`).
+
+**Smoke 125:**
+```
+bash ops/nats/smoke.sh http://172.17.0.1:8222 EXPRESSO_CALENDAR
+→ OK: stream 'EXPRESSO_CALENDAR' present.
+    messages: 0, bytes: 0, consumers: 0
+```
