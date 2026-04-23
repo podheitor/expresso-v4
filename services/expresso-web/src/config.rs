@@ -34,6 +34,8 @@ pub struct Public {
     /// Caminho público do endpoint login upstream (AUTH rp).
     pub auth_login_path: String,
     pub auth_logout_path: String,
+    /// Base URL pública (usada p/ montar absolute redirect_uri pós-login).
+    pub web_base_url: String,
 }
 
 impl Public {
@@ -43,6 +45,7 @@ impl Public {
                 .unwrap_or_else(|| "/auth/realms/expresso/account/#/security/signingin".into()),
             auth_login_path:  envs("PUBLIC__AUTH_LOGIN").unwrap_or_else(|| "/auth/login".into()),
             auth_logout_path: envs("PUBLIC__AUTH_LOGOUT").unwrap_or_else(|| "/auth/logout".into()),
+            web_base_url: envs("PUBLIC__WEB_BASE_URL").unwrap_or_else(|| "".into()),
         }
     }
 }

@@ -15,7 +15,7 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, ShareRow, VersionRow,
+        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
         MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
     },
     upstream::get_json,
@@ -53,7 +53,12 @@ async fn healthz() -> impl IntoResponse {
      r#"{"service":"expresso-web","status":"ok"}"#)
 }
 
-async fn index() -> Redirect { Redirect::to("/mail") }
+async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(askama_axum::IntoResponse::into_response(HomeTpl { me }))
+}
 
 fn login_redirect(uri: &Uri) -> Redirect {
     let target = uri.path_and_query().map(|p| p.as_str()).unwrap_or("/");
@@ -79,7 +84,15 @@ async fn login_page(
     Query(q):  Query<LoginQuery>,
 ) -> WebResult<Response> {
     let redirect = q.redirect.unwrap_or_else(|| "/".into());
-    let enc = utf8_percent_encode(&redirect, NON_ALPHANUMERIC).to_string();
+    // Build absolute redirect URL so auth-rp can issue a cross-host 303 back to web.
+    let abs_redirect = if redirect.starts_with("http://") || redirect.starts_with("https://") {
+        redirect
+    } else if !st.public.web_base_url.is_empty() {
+        format!("{}{}", st.public.web_base_url.trim_end_matches('/'), redirect)
+    } else {
+        redirect
+    };
+    let enc = utf8_percent_encode(&abs_redirect, NON_ALPHANUMERIC).to_string();
     let login_url = format!("{}?redirect_uri={}", st.public.auth_login_path, enc);
     Ok(askama_axum::IntoResponse::into_response(LoginTpl { login_url, error: q.error }))
 }
