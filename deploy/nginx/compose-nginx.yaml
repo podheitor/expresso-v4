@@ -1,0 +1,21 @@
+# Reverse proxy + TLS for Expresso demo URLs
+services:
+  expresso-nginx:
+    image: nginx:1.27-alpine
+    container_name: expresso-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./tls:/etc/nginx/tls:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - expresso-net
+
+networks:
+  expresso-net:
+    external: true
+    name: expresso_default
