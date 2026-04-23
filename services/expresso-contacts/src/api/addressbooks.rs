@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::{Addressbook, AddressbookRepo, NewAddressbook, UpdateAddressbook};
+use crate::events::ContactsEvent;
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -27,6 +28,9 @@ async fn create(
 ) -> Result<(StatusCode, Json<Addressbook>)> {
     let pool = state.db_or_unavailable()?;
     let ab = AddressbookRepo::new(pool).create(ctx.tenant_id, ctx.user_id, body).await?;
+    state.bus().publish(ContactsEvent::AddressbookCreated {
+        tenant_id: ctx.tenant_id, addressbook_id: ab.id, name: Some(ab.name.clone()),
+    });
     Ok((StatusCode::CREATED, Json(ab)))
 }
 
@@ -67,6 +71,9 @@ async fn delete(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     AddressbookRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    state.bus().publish(ContactsEvent::AddressbookDeleted {
+        tenant_id: ctx.tenant_id, addressbook_id: id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 

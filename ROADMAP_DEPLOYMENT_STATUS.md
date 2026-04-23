@@ -2119,3 +2119,31 @@ Imagem: `expresso-contacts:t23`.
 **Pendência (fora do #23):** injetar `st.bus().publish(...)` nos handlers de
 CRUD de addressbook + contact. Por ora só scaffold/infra — 6 warnings dead_code
 esperadas até publishers serem wired.
+
+### #24 — Contacts NATS publishers wired
+
+Completa o scaffold #23 conectando os publishers JetStream aos handlers
+REST CRUD.
+
+- `services/expresso-contacts/src/api/addressbooks.rs`:
+  - `create` → `ContactsEvent::AddressbookCreated { tenant_id, addressbook_id, name }`.
+  - `delete` → `ContactsEvent::AddressbookDeleted { tenant_id, addressbook_id }`.
+- `services/expresso-contacts/src/api/contacts.rs`:
+  - `create` + `update` → `ContactsEvent::ContactUpserted { tenant_id, addressbook_id, contact_id }`.
+  - `delete` → `ContactsEvent::ContactDeleted { tenant_id, addressbook_id, contact_id }`.
+
+Publishes são fire-and-forget via `state.bus().publish(...)` → `tokio::spawn`,
+não afetam hot-path de resposta REST.
+
+Warnings dead_code do #23 (6 totais) → resolvidos (0 restantes).
+
+**Smoke 125:**
+```
+logs contacts:  jetstream EXPRESSO_CONTACTS ready
+                async_nats: event: connected
+                contacts EventBus with NATS enabled
+                rate limiter armed, rps: 50, burst: 200
+                HTTP API listening, addr: 0.0.0.0:8003
+```
+
+Imagem: `expresso-contacts:t24`.

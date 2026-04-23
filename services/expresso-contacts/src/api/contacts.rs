@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::domain::{Contact, ContactRepo};
+use crate::events::ContactsEvent;
 use crate::error::Result;
 use crate::state::AppState;
 
@@ -62,6 +63,9 @@ async fn create(
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).create(ctx.tenant_id, book_id, &raw).await?;
+    state.bus().publish(ContactsEvent::ContactUpserted {
+        tenant_id: ctx.tenant_id, addressbook_id: book_id, contact_id: c.id,
+    });
     let loc  = format!("/api/v1/addressbooks/{}/contacts/{}", book_id, c.id);
     Ok(Response::builder()
         .status(StatusCode::CREATED)
@@ -107,6 +111,9 @@ async fn update(
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
+    state.bus().publish(ContactsEvent::ContactUpserted {
+        tenant_id: ctx.tenant_id, addressbook_id: book_id, contact_id: c.id,
+    });
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::ETAG, format!("\"{}\"", c.etag))
@@ -123,6 +130,9 @@ async fn delete(
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     ContactRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    state.bus().publish(ContactsEvent::ContactDeleted {
+        tenant_id: ctx.tenant_id, addressbook_id: book_id, contact_id: id,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
