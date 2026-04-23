@@ -1906,3 +1906,29 @@ contra PG remoto (192.168.15.123). Verifica integridade com
 **Smoke:** `systemctl start expresso-pg-backup.service` →
 `backup ok: /var/backups/expresso/pg/expresso-20260423T210056Z.dump (128316 bytes)`.
 Próximo agendamento: diário 02:00 UTC.
+
+### #15 — Password reset self-service
+
+`POST /auth/forgot {"email":"..."}` — sempre 204 (sem leak de existência).
+Se email existe no realm KC, envia-se `execute-actions-email` com
+action `UPDATE_PASSWORD` (lifespan 1h). Audit: `auth.password_reset.requested`.
+
+**Novo:**
+- `services/expresso-auth/src/kc_admin.rs` — cliente admin KC minimal
+  (token master/admin-cli + user_id_by_email + execute_actions_email).
+- `services/expresso-auth/src/handlers/forgot.rs` — handler stateless.
+
+**main.rs:** registrado `mod kc_admin;` + route
+`POST /auth/forgot → handlers::forgot::forgot`.
+
+**Compose:** `compose-auth-rp.yaml` ganhou envs `KC_URL`, `KC_REALM`,
+`KC_ADMIN_USER`, `KC_ADMIN_PASS` + `extra_hosts: host.docker.internal`.
+
+**Smoke:**
+- email vazio → 204 (noop).
+- email inexistente → 204 (silent).
+- email real (alice@expresso.local) → 204; KC localiza user
+  `c3a1459f-…` + dispara `execute-actions-email`. Status real de envio
+  depende de SMTP do realm (erro `Please provide a valid address` se
+  realm SMTP não configurado — fora do escopo de código).
+- Imagem: `expresso-auth:t15` (+ `:latest`).

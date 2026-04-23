@@ -12,6 +12,7 @@ mod config;
 mod ratelimit;
 mod error;
 mod handlers;
+mod kc_admin;
 mod oidc;
 mod state;
 
@@ -109,6 +110,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/me",       get(handlers::me::me))
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route("/auth/impersonate/:target_user_id", post(handlers::impersonate::start))
+        .route("/auth/forgot", post(handlers::forgot::forgot))
         .merge(expresso_observability::metrics_router())
         .with_state(app_state)
         // Extension for Authenticated extractor (/auth/me)
