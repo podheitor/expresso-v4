@@ -181,4 +181,32 @@ pub async fn user_delete(
     Ok(Redirect::to("/users"))
 }
 
+pub async fn user_totp_enroll(
+    State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Redirect, AdminError> {
+    st.kc.enroll_totp(&id).await?;
+    crate::audit::record(
+        &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/totp/enroll"),
+        "admin.user.totp.enroll", Some("user"), Some(id.clone()), Some(302),
+        serde_json::json!({}),
+    ).await;
+    Ok(Redirect::to("/users"))
+}
+
+pub async fn user_totp_reset(
+    State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Redirect, AdminError> {
+    let removed = st.kc.reset_totp(&id).await?;
+    crate::audit::record(
+        &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/totp/reset"),
+        "admin.user.totp.reset", Some("user"), Some(id.clone()), Some(302),
+        serde_json::json!({"removed": removed}),
+    ).await;
+    Ok(Redirect::to("/users"))
+}
+
 pub fn kc_factory() -> KcClient { KcClient::new(crate::kc::KcConfig::from_env()) }

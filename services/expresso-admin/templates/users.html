@@ -15,7 +15,15 @@
       <td>{{ u.full_name }}</td>
       <td>{% if u.enabled %}<span class="pill ok">ativo</span>{% else %}<span class="pill off">desativado</span>{% endif %}</td>
       <td class="mono">{{ u.id }}</td>
-      <td><a class="btn small" href="/users/{{ u.id }}/edit">editar</a></td>
+      <td>
+        <a class="btn small" href="/users/{{ u.id }}/edit">editar</a>
+        <form method="post" action="/users/{{ u.id }}/totp/enroll" style="display:inline" onsubmit="return confirm('Enviar email de enrolamento TOTP p/ {{ u.username }}?')">
+          <button class="btn small" type="submit">enrolar 2FA</button>
+        </form>
+        <form method="post" action="/users/{{ u.id }}/totp/reset" style="display:inline" onsubmit="return confirm('Remover credenciais TOTP de {{ u.username }}?')">
+          <button class="btn small warn" type="submit">reset 2FA</button>
+        </form>
+      </td>
     </tr>
     {% endfor %}
   </tbody>

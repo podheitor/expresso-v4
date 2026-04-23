@@ -90,6 +90,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/users/new", get(handlers::user_new).post(handlers::user_create))
         .route("/users/:id/edit", get(handlers::user_edit).post(handlers::user_update))
         .route("/users/:id/delete", post(handlers::user_delete))
+        .route("/users/:id/totp/enroll", post(handlers::user_totp_enroll))
+        .route("/users/:id/totp/reset",  post(handlers::user_totp_reset))
         .route("/realm",  get(handlers::realm_page))
         .route("/calendars", get(dav_admin::calendars_list))
         .route("/calendars/:tenant_id/:id/edit", get(dav_admin::calendar_edit_form).post(dav_admin::calendar_edit_action))

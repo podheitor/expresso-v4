@@ -139,6 +139,52 @@ impl KcClient {
         Ok(())
     }
 
+    /// Send execute-actions-email with CONFIGURE_TOTP (lifespan 1h).
+    /// KC emails user an enrollment link; user scans QR in KC account page.
+    pub async fn enroll_totp(&self, id: &str) -> Result<()> {
+        let tok = self.token().await?;
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/execute-actions-email?lifespan=3600",
+            self.cfg.base_url, self.cfg.realm, id
+        );
+        self.http.put(&url).bearer_auth(&tok)
+            .json(&["CONFIGURE_TOTP"])
+            .send().await.context("kc enroll_totp req")?
+            .error_for_status().context("kc enroll_totp status")?;
+        Ok(())
+    }
+
+    /// Deletes all OTP credentials for user → forces re-enrollment on next login.
+    pub async fn reset_totp(&self, id: &str) -> Result<u32> {
+        let tok = self.token().await?;
+        // List credentials.
+        let url = format!(
+            "{}/admin/realms/{}/users/{}/credentials",
+            self.cfg.base_url, self.cfg.realm, id
+        );
+        let creds: Vec<serde_json::Value> = self.http.get(&url).bearer_auth(&tok)
+            .send().await.context("kc list creds req")?
+            .error_for_status().context("kc list creds status")?
+            .json().await.context("kc list creds json")?;
+        let mut removed = 0u32;
+        for c in creds {
+            let t = c.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if t == "otp" {
+                if let Some(cid) = c.get("id").and_then(|v| v.as_str()) {
+                    let del = format!(
+                        "{}/admin/realms/{}/users/{}/credentials/{}",
+                        self.cfg.base_url, self.cfg.realm, id, cid
+                    );
+                    self.http.delete(&del).bearer_auth(&tok)
+                        .send().await.context("kc del cred req")?
+                        .error_for_status().context("kc del cred status")?;
+                    removed += 1;
+                }
+            }
+        }
+        Ok(removed)
+    }
+
     pub async fn delete_user(&self, id: &str) -> Result<()> {
         let tok = self.token().await?;
         let url = format!("{}/admin/realms/{}/users/{}", self.cfg.base_url, self.cfg.realm, id);

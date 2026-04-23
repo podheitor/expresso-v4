@@ -1932,3 +1932,25 @@ action `UPDATE_PASSWORD` (lifespan 1h). Audit: `auth.password_reset.requested`.
   depende de SMTP do realm (erro `Please provide a valid address` se
   realm SMTP não configurado — fora do escopo de código).
 - Imagem: `expresso-auth:t15` (+ `:latest`).
+
+### #16 — 2FA TOTP toggle via admin UI
+
+KC nativamente suporta TOTP como required-action. Admin UI ganha dois
+botões por usuário:
+- **enrolar 2FA** → `POST /users/:id/totp/enroll` → KC
+  `execute-actions-email [CONFIGURE_TOTP]` (usuário recebe link p/ QR).
+- **reset 2FA** → `POST /users/:id/totp/reset` → lista
+  `/users/:id/credentials`, deleta todas do tipo `otp` → força
+  re-enrolamento no próximo login.
+
+**Patched:**
+- `services/expresso-admin/src/kc.rs`: `enroll_totp` + `reset_totp`.
+- `services/expresso-admin/src/handlers.rs`: `user_totp_enroll` +
+  `user_totp_reset` handlers com audit (`admin.user.totp.enroll|reset`).
+- `services/expresso-admin/src/main.rs`: 2 rotas POST.
+- `services/expresso-admin/templates/users.html`: 2 `<form>` inline
+  com `confirm()` JS antes de submeter.
+
+**Smoke:** `POST /users/c3a1459f.../totp/enroll` → 303,
+`POST /users/c3a1459f.../totp/reset` → 303. Image `expresso-admin:t16` +
+`:latest` deployed em 125.
