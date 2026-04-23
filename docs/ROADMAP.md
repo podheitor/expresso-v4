@@ -5,6 +5,8 @@
 > Status tracking atualizado em 20 de abril de 2026 para refletir o estado validado no workspace.
 > `Baseline validada` = crate compila + smoke test HTTP executado no ambiente local.
 > Itens podem estar em estado "scaffold/placeholder" mesmo quando marcados como concluidos.
+>
+> **Stack de UI:** 100% Rust (Axum + Askama SSR). Não há SvelteKit/React/Vue — menções a SvelteKit em versões anteriores deste roadmap foram obsoletas e corrigidas em 22/04/2026.
 
 ## Visão de Fases
 
@@ -45,7 +47,7 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 ## Fase 1 — Expresso Mail MVP (14 semanas)
 
 ### Sprint 1–2 (Semanas 1–4): Infraestrutura Base
-- [x] Monorepo scaffold (Cargo workspace + pnpm workspace)
+- [x] Monorepo scaffold (Cargo workspace — 100% Rust, sem Node)
 - [ ] Dockerfile para Debian 13 base image
 - [x] Docker Compose: PostgreSQL 16, Redis 7, MinIO
 - [x] Migration engine (sqlx migrations)
@@ -63,8 +65,8 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] SPF + DMARC validation na entrada
 - [x] Armazenamento de mensagens no MinIO — S3 ObjectStore + fallback FS
 
-### Sprint 5–6 (Semanas 9–12): WebMail (SvelteKit)
-- [ ] UI SvelteKit: lista de e-mails, leitura, composição
+### Sprint 5–6 (Semanas 9–12): WebMail (Axum + Askama SSR)
+- [x] UI Axum+Askama SSR: lista de e-mails, leitura, composição (`expresso-web`, rotas `/mail`, `/mail/:id`, `/mail/compose`)
 - [ ] Thread view (conversas agrupadas)
 - [ ] Inbox rules UI (Sieve)
 - [x] Pesquisa de e-mail (Tantivy) — expresso-search + mail ingest integration
@@ -93,12 +95,12 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [x] Calendário compartilhado (ACL READ/WRITE/ADMIN via POST /calendars/:id/acl)
 - [x] iCal export/import — GET /api/v1/calendars/:id/export.ics (VCALENDAR download), POST /api/v1/calendars/:id/import (batch VEVENT upsert with per-event error capture)
 
-### Sprint 10–11 (Semanas 5–8): CardDAV + UI Calendar
+### Sprint 10–11 (Semanas 5–8): CardDAV + UI Calendar (Axum + Askama)
 - [ ] CardDAV server (RFC 6352) em Rust
 - [x] vCard 4.0 import/export — GET /api/v1/addressbooks/:id/export.vcf (text/vcard download), POST /api/v1/addressbooks/:id/import (batch vCard upsert via replace_by_uid)
 - [x] Sincronização GAL → contatos pessoais — POST /api/v1/gal/save (user_id ou email → personal addressbook, UID estável dir:<user_id>, idempotente; auto-cria addressbook "Pessoal" se ausente)
-- [ ] UI: calendar view (mês/semana/dia/agenda)
-- [ ] UI: criar/editar/excluir eventos com convites
+- [ ] UI: calendar view (mês/semana/dia/agenda) — hoje `templates/calendar.html` lista agenda
+- [ ] UI: criar/editar/excluir eventos com convites — API OK, UI pendente
 - [x] Email de convite (iTIP, RFC 5546)
 - [x] RSVP handling (accept/decline/tentative)
 
@@ -136,8 +138,8 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] Reactions, threads, edição, exclusão
 - [ ] Compartilhamento de arquivos via Drive
 
-### Sprint 21–22 (Semanas 7–10): UI Chat
-- [ ] SvelteKit Matrix client (Element-inspirado, mas próprio)
+### Sprint 21–22 (Semanas 7–10): UI Chat (Axum + Askama)
+- [ ] Axum+Askama Matrix client SSR (Element-inspirado, mas próprio)
 - [ ] Notificações (Web Push)
 - [ ] Status de presença
 - [ ] Search em mensagens (Tantivy)
@@ -156,13 +158,13 @@ Legenda: `Implementado` = funcionalidade executavel relevante; `Baseline validad
 - [ ] Salas de espera (lobby)
 - [ ] Chat em reunião
 
-### Sprint 26–28 (Semanas 7–12): Admin + Tenant Mgmt
-- [ ] Multi-tenant admin dashboard
+### Sprint 26–28 (Semanas 7–12): Admin + Tenant Mgmt (Axum + Askama)
+- [x] Multi-tenant admin dashboard — `expresso-admin` (rotas `/`, `/users`, `/realm`) com Axum+Askama
 - [ ] Gerenciamento de usuários (SCIM 2.0)
 - [ ] Gerenciamento de domínios
 - [ ] Quotas e billing básico
 - [ ] Reports de uso (Grafana dashboards)
-- [ ] Health dashboard do serviço
+- [x] Health dashboard do serviço — dashboard em `expresso-admin` lista 10 services + KC realm/users
 
 ---
 
