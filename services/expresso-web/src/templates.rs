@@ -312,3 +312,9 @@ pub struct DriveEditTpl {
     pub file:       DriveFile,
     pub iframe_url: String,
 }
+
+#[derive(Template)]
+#[template(path = "home.html")]
+pub struct HomeTpl {
+    pub me: Me,
+}

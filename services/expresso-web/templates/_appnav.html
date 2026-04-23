@@ -1,6 +1,7 @@
 <header class="topbar">
   <div class="brand">Expresso</div>
   <nav class="appnav">
+    <a class="appnav-item{% if current == "home" %} active{% endif %}" href="/">🏠 Início</a>
     <a class="appnav-item{% if current == "mail"     %} active{% endif %}" href="/mail">✉ Mail</a>
     <a class="appnav-item{% if current == "calendar" %} active{% endif %}" href="/calendar">📅 Agenda</a>
     <a class="appnav-item{% if current == "contacts" %} active{% endif %}" href="/contacts">👥 Contatos</a>

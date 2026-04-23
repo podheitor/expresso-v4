@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block nav %}{% let current = "home" %}{% include "_appnav.html" %}{% endblock %}
+{% block title %}Início · Expresso{% endblock %}
+{% block body %}
+<section class="home-hero">
+  <h1>Bem-vindo, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}</h1>
+  <p class="muted">Plataforma colaborativa Expresso — selecione um módulo abaixo.</p>
+</section>
+<section class="home-grid">
+  <a class="home-tile" href="/mail">
+    <div class="home-tile-icon">✉</div>
+    <div class="home-tile-title">Mail</div>
+    <div class="home-tile-desc">Caixa postal, envio e regras Sieve.</div>
+  </a>
+  <a class="home-tile" href="/calendar">
+    <div class="home-tile-icon">📅</div>
+    <div class="home-tile-title">Agenda</div>
+    <div class="home-tile-desc">Eventos, convites iTIP e calendários compartilhados.</div>
+  </a>
+  <a class="home-tile" href="/contacts">
+    <div class="home-tile-icon">👥</div>
+    <div class="home-tile-title">Contatos</div>
+    <div class="home-tile-desc">Cadernos vCard com sincronização CardDAV.</div>
+  </a>
+  <a class="home-tile" href="/drive">
+    <div class="home-tile-icon">💾</div>
+    <div class="home-tile-title">Drive</div>
+    <div class="home-tile-desc">Arquivos, versões e compartilhamento com expiração.</div>
+  </a>
+  <a class="home-tile" href="/me">
+    <div class="home-tile-icon">👤</div>
+    <div class="home-tile-title">Minha sessão</div>
+    <div class="home-tile-desc">Perfil, MFA e segurança da conta.</div>
+  </a>
+</section>
+{% endblock %}
