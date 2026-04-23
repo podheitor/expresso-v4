@@ -2051,3 +2051,20 @@ Imagem: `expresso-calendar:t20`.
 Extensões futuras (fora do #20):
 - Adicionar NATS no `expresso-contacts` (mesmo padrão, subject `expresso.contacts.>`).
 - Consumers: email-dispatcher, iMIP relay, webhook fanout, search re-indexer.
+
+### #21 — Grafana dashboards
+
+Artefato JSON + docs (zero deploy) alavancando as métricas expostas em
+`/metrics` pelos serviços (sprint #12) + JetStream (sprint #20).
+
+- `ops/grafana/expresso-overview.json`: dashboard schemaVersion 39 com 6 painéis:
+  1. HTTP req/s por serviço (`rate(http_requests_total[1m])` by service).
+  2. HTTP 4xx/5xx por serviço.
+  3. 429 rate-limited hits (5m increase).
+  4. Status mix global.
+  5. JetStream EXPRESSO_CALENDAR (messages + bytes — requer nats-exporter).
+  6. /readyz up count (serviços com `up=1`).
+- Template variable `$service` = `label_values(http_requests_total, service)`.
+- `ops/grafana/README.md`: instruções de import + scrape config exemplo.
+
+**Status:** ✅ artefato commitado; import manual no Grafana quando provisionado.

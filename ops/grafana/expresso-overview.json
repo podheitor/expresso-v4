@@ -1,0 +1,108 @@
+{
+  "title": "Expresso — Overview",
+  "uid": "expresso-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["expresso"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(http_requests_total, service)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "HTTP req/s por serviço",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (service) (rate(http_requests_total{service=~\"$service\"}[1m]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP 4xx/5xx por serviço",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (service,status) (rate(http_requests_total{service=~\"$service\",status=~\"4..|5..\"}[1m]))",
+          "legendFormat": "{{service}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "429 Rate-limited (último 5m)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(http_requests_total{status=\"429\"}[5m]))",
+          "legendFormat": "429 hits"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Status mix (últimos 15m)",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(http_requests_total[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "JetStream — mensagens (EXPRESSO_CALENDAR)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "nats_stream_messages{stream=\"EXPRESSO_CALENDAR\"}",
+          "legendFormat": "messages"
+        },
+        {
+          "expr": "nats_stream_bytes{stream=\"EXPRESSO_CALENDAR\"}",
+          "legendFormat": "bytes"
+        }
+      ],
+      "description": "Requer prometheus-nats-exporter apontando para http://expresso-nats:8222."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "/readyz — serviços OK",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(up{job=~\"expresso-.*\"})",
+          "legendFormat": "up"
+        }
+      ]
+    }
+  ]
+}
