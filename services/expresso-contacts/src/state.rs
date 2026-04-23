@@ -6,6 +6,7 @@ use expresso_auth_client::KcBasicAuthenticator;
 use expresso_core::DbPool;
 
 use crate::error::{ContactsError, Result};
+use crate::events::ContactsEventBus;
 
 #[derive(Clone)]
 pub struct AppState(Arc<Inner>);
@@ -13,12 +14,15 @@ pub struct AppState(Arc<Inner>);
 struct Inner {
     db:       Option<DbPool>,
     kc_basic: Option<KcBasicAuthenticator>,
+    bus:      ContactsEventBus,
 }
 
 impl AppState {
-    pub fn new(db: Option<DbPool>, kc_basic: Option<KcBasicAuthenticator>) -> Self {
-        Self(Arc::new(Inner { db, kc_basic }))
+    pub fn new(db: Option<DbPool>, kc_basic: Option<KcBasicAuthenticator>, bus: ContactsEventBus) -> Self {
+        Self(Arc::new(Inner { db, kc_basic, bus }))
     }
+
+    pub fn bus(&self) -> &ContactsEventBus { &self.0.bus }
 
     pub fn db(&self) -> Option<&DbPool> {
         self.0.db.as_ref()

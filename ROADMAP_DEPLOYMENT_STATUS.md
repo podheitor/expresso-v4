@@ -2087,3 +2087,35 @@ bash ops/nats/smoke.sh http://172.17.0.1:8222 EXPRESSO_CALENDAR
 → OK: stream 'EXPRESSO_CALENDAR' present.
     messages: 0, bytes: 0, consumers: 0
 ```
+
+### #23 — Contacts EventBus + NATS JetStream (scaffold)
+
+Infra de publicação de eventos para contacts, espelhando #20 (calendar) sem
+broadcast in-process (contacts não tem SSE consumer).
+
+- `services/expresso-contacts/Cargo.toml`: `async-nats = "0.37"`.
+- `services/expresso-contacts/src/events.rs`: enum `ContactsEvent` com
+  variantes `AddressbookCreated|Deleted`, `ContactUpserted|Deleted`.
+  `ContactsEventBus::new_with_nats(url)` → stream `EXPRESSO_CONTACTS`
+  (`expresso.contacts.>`, max_age 7 dias).
+  `publish(ev)` fire-and-forget com `tokio::spawn`.
+- `src/state.rs`: AppState agora armazena `bus: ContactsEventBus` + getter `bus()`.
+- `src/main.rs`: `mod events;` + opt-in via `NATS_URL` (mesmo padrão calendar,
+  fallback silencioso para `noop()`).
+- `compose-phase3.yaml` (125): `NATS_URL=nats://172.17.0.1:4222` em contacts.
+
+**Smoke 125:**
+```
+logs:  jetstream EXPRESSO_CONTACTS ready, nats://172.17.0.1:4222
+       async_nats: event: connected
+       contacts EventBus with NATS enabled
+
+bash ops/nats/smoke.sh http://172.17.0.1:8222 EXPRESSO_CONTACTS
+→ OK: stream 'EXPRESSO_CONTACTS' present.
+```
+
+Imagem: `expresso-contacts:t23`.
+
+**Pendência (fora do #23):** injetar `st.bus().publish(...)` nos handlers de
+CRUD de addressbook + contact. Por ora só scaffold/infra — 6 warnings dead_code
+esperadas até publishers serem wired.

@@ -4,6 +4,7 @@ mod api;
 mod carddav;
 mod domain;
 mod error;
+mod events;
 mod state;
 
 use std::{env, net::SocketAddr};
@@ -94,7 +95,15 @@ async fn main() -> anyhow::Result<()> {
         info!(retention_days = retention, interval_hours = every, "spawning tombstone GC");
         domain::tombstone_gc::spawn(pool, retention, every);
     }
-    let state = AppState::new(db, kc_basic);
+    // Sprint #23: opt-in NATS JetStream via NATS_URL.
+    let bus = match std::env::var("NATS_URL").ok().filter(|v| !v.trim().is_empty()) {
+        Some(url) => match crate::events::ContactsEventBus::new_with_nats(&url).await {
+            Ok(b) => { tracing::info!(nats_url=%url, "contacts EventBus with NATS enabled"); b }
+            Err(e) => { tracing::warn!(error=%e, "NATS init failed; noop bus"); crate::events::ContactsEventBus::noop() }
+        },
+        None => crate::events::ContactsEventBus::noop(),
+    };
+    let state = AppState::new(db, kc_basic, bus);
     // Per-tenant rate limiter (shared core; see expresso_core::ratelimit).
     let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
     info!(rps = rate_cfg.rps, burst = rate_cfg.burst, "rate limiter armed");
