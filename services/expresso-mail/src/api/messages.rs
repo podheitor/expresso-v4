@@ -40,6 +40,7 @@ pub struct MessageListItem {
     pub has_attachments: bool,
     pub preview_text:    Option<String>,
     pub flags:           Vec<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub date:            Option<OffsetDateTime>,
     pub size_bytes:      i32,
 }
@@ -60,7 +61,9 @@ pub struct MessageDetail {
     pub has_attachments: bool,
     pub body_path:       String,
     pub preview_text:    Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub date:            Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339")]
     pub received_at:     OffsetDateTime,
     pub size_bytes:      i32,
 }
