@@ -1,0 +1,13 @@
+fbca6e35e9f9cf6d59478ae5a8536eb7fb518286ef4e266749bfaddff1669a45
+expresso-admin-2fa
+cef9654a0704e9ade5a0d6c6ca7bce7a064e8665c8b423d127532d88dfb213ba
+--- TEST 1: totp=false, require=true - 2FA-required 403 ---
+HTTP/1.1 403 Forbidden
+content-type: text/html; charset=utf-8
+content-length: 564
+date: Thu, 23 Apr 2026 22:51:51 GMT
+
+<!doctype html><meta charset=utf-8><title>2FA obrigatória</title><body style="font-family:system-ui;padding:2rem;max-width:40rem;margin:auto"><h1>Autenticação em 2 fatores obrigatória</h1><p>O painel administrativo exige autenticação em 2 fatores (TOTP ou chave de segurança).</p><p>Sua sessão atual <strong>não</strong> foi elevada com 2FA.</p><ol><li>Faça logout e entre novamente informando o código TOTP, ou</li><li>Registre TOTP no seu perfil Keycloak antes de tentar de novo.</li></ol><p><a href="/auth/logout">Sair e tentar de novo</a></p></body>
+--- TEST 2: admin-2fa logs ---
+{"timestamp":"2026-04-23T22:51:49.131726Z","level":"INFO","fields":{"message":"listening","service":"expresso-admin","addr":"0.0.0.0:8102"},"target":"expresso_admin"}
+{"timestamp":"2026-04-23T22:51:51.943137Z","level":"WARN","fields":{"message":"admin access denied: 2FA required but not present","user":"Some(00000000-0000-0000-0000-000000000001)","email":"Some(\"x@y.z\")"},"target":"expresso_admin::auth"}

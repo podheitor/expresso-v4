@@ -20,6 +20,9 @@ pub struct AuthConfig {
     pub auth_base:    String,
     pub admin_roles:  Vec<String>,
     pub login_path:   String,
+    /// Iff true, admins must have performed TOTP/WebAuthn step-up (via `mfa.totp`|`mfa.webauthn`)
+    /// for the current session. Controlled via `ADMIN_REQUIRE_2FA` env (default false).
+    pub require_2fa:  bool,
 }
 
 impl AuthConfig {
@@ -30,8 +33,19 @@ impl AuthConfig {
                 .unwrap_or_else(|_| "super_admin,tenant_admin".into())
                 .split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
             login_path: std::env::var("PUBLIC__AUTH_LOGIN").unwrap_or_else(|_| "/auth/login".into()),
+            require_2fa: std::env::var("ADMIN_REQUIRE_2FA")
+                .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+                .unwrap_or(false),
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct MfaField {
+    #[serde(default)]
+    pub totp:     bool,
+    #[serde(default)]
+    pub webauthn: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -44,6 +58,8 @@ pub struct MeResp {
     pub tenant_id: Option<uuid::Uuid>,
     #[serde(default)]
     pub email:     Option<String>,
+    #[serde(default)]
+    pub mfa:       MfaField,
 }
 
 fn is_public_path(p: &str) -> bool {
@@ -110,6 +126,30 @@ pub async fn require_admin(
                 st.auth.admin_roles.join(", "),
                 me.roles.join(", ")
             ),
+        ).into_response();
+    }
+
+    // 2FA gate — require TOTP or WebAuthn step-up when enabled.
+    if st.auth.require_2fa && !(me.mfa.totp || me.mfa.webauthn) {
+        tracing::warn!(
+            user = ?me.user_id,
+            email = ?me.email,
+            "admin access denied: 2FA required but not present"
+        );
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            "<!doctype html><meta charset=utf-8><title>2FA obrigatória</title>\
+             <body style=\"font-family:system-ui;padding:2rem;max-width:40rem;margin:auto\">\
+             <h1>Autenticação em 2 fatores obrigatória</h1>\
+             <p>O painel administrativo exige autenticação em 2 fatores (TOTP ou chave de segurança).</p>\
+             <p>Sua sessão atual <strong>não</strong> foi elevada com 2FA.</p>\
+             <ol>\
+               <li>Faça logout e entre novamente informando o código TOTP, ou</li>\
+               <li>Registre TOTP no seu perfil Keycloak antes de tentar de novo.</li>\
+             </ol>\
+             <p><a href=\"/auth/logout\">Sair e tentar de novo</a></p>\
+             </body>"
         ).into_response();
     }
 

@@ -2275,3 +2275,36 @@ pub expresso.calendar.t28.hello "audit-test"
 Publish → consume → ack verificado. Consumers durables persistem entre
 restarts; mensagens novas desde a criação são entregues (histórico antigo
 ignorado via `DeliverPolicy::New`).
+
+### #29 — Admin 2FA enforcement
+
+Middleware `require_admin` agora exige step-up MFA quando
+`ADMIN_REQUIRE_2FA=true`.
+
+- `services/expresso-admin/src/auth.rs`:
+  - `MeResp` extendido com `mfa: MfaField { totp, webauthn }` (refletindo
+    schema de `/auth/me` já existente em `expresso-auth`).
+  - `AuthConfig.require_2fa` lido de `ADMIN_REQUIRE_2FA`
+    (`1|true|yes|on` = ativo, default false).
+  - Pós-role-check: se `require_2fa && !(mfa.totp || mfa.webauthn)` →
+    403 com página HTML "2FA obrigatória" + link `/auth/logout`.
+  - Log `WARN admin access denied: 2FA required but not present`
+    com user + email.
+
+- Imagem: `expresso-admin:t29` (deployed 125).
+- Backward-compat: sem env → comportamento idêntico ao t18.
+
+**Smoke (mock /auth/me):**
+```
+TEST 1  mfa.totp=false, ADMIN_REQUIRE_2FA=true  → 403 + 2FA page  ✅
+TEST 2  mfa.totp=true,  ADMIN_REQUIRE_2FA=true  → gate passa      ✅
+TEST 3  sem env (default)                        → login redirect  ✅
+```
+
+Para ativar em prod: adicionar `ADMIN_REQUIRE_2FA: "true"` ao environment
+do serviço `expresso-admin` em `compose-phase3.yaml` após garantir que
+todos os super_admins possuem TOTP cadastrado no Keycloak. Sem enrollment
+prévio todos os admins ficarão trancados fora do painel.
+
+Próximo passo natural seria wizard no admin que força enrollment via
+Required Action KC `CONFIGURE_TOTP`.
