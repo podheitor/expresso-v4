@@ -1,0 +1,15 @@
+[Unit]
+Description=Expresso UI web login smoke (multi-tenant /login + /auth/login flow)
+Documentation=file:///opt/expresso/smoke-web.sh
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/expresso/smoke-web.env
+ExecStart=/bin/bash /opt/expresso/smoke-web.sh
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

@@ -25,6 +25,17 @@
 Todas as mudanças notáveis. Formato baseado em [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versionamento: sprints numerados sequencialmente (sem semver atualmente; workspace interno).
 
+### Added (follow-ups Sprint #46)
+- ops/smoke-web.sh: 3-tenant probe (/login renders, /auth/login → realm+redirect_uri asserts).
+- ops/systemd/expresso-smoke-web.{service,timer}: 10-min periodic run (hardened: NoNewPrivileges, ProtectSystem=strict).
+- ops/regen-tls-wildcard.sh: self-signed cert with SAN *.expresso.local + pilot hosts (825d, 4096b). Auto-reloads nginx container.
+- ops/tenant-add.sh: appended kcadm block for provisioning `expresso-web` public client per realm (redirectUris, webOrigins, PKCE S256).
+
+### Verified (follow-ups)
+- TLS cert regenerated on 125: SANs agora incluem `*.expresso.local` + `pilot.expresso.local` + `pilot2.expresso.local`. nginx reload OK.
+- expresso-smoke-web.timer enabled (active running). First manual trigger: SMOKE WEB PASS (3/3 tenants).
+
+
 ## [Unreleased]
 
 ## Sprint #45 — 2026-04-24 — Multi-realm rollout COMPLETO (7/7)
