@@ -133,3 +133,26 @@ services:
       PORT: 8011
     ports:
       - "8011:8011"
+
+  # iMIP dispatcher — envia convites calendar via SMTP relay.
+  # IMIP_ENABLED=true exige SMTP_HOST alcançável (e.g. expresso-postfix na
+  # rede expresso_default). Default false = dry-run (só loga + incrementa
+  # métrica imip_dispatch_total{...,result="dry_run"}).
+  expresso-imip-dispatch:
+    image: expresso-imip-dispatch:latest
+    container_name: expresso-imip-dispatch
+    restart: unless-stopped
+    environment:
+      RUST_LOG: info
+      NATS_URL: nats://expresso-nats:4222
+      NATS_STREAM: EXPRESSO_CALENDAR
+      NATS_SUBJECT: expresso.imip.request
+      NATS_DURABLE: imip-dispatch
+      IMIP_ENABLED: "true"
+      SMTP_HOST: expresso-postfix
+      SMTP_PORT: "25"
+      SMTP_STARTTLS: "false"
+      SMTP_FROM: "calendar@expresso.local"
+      METRICS_ADDR: 0.0.0.0:9192
+    expose:
+      - 9192
