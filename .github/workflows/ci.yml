@@ -75,3 +75,14 @@ jobs:
       - run: pnpm install
       - run: pnpm -r typecheck
       - run: pnpm -r lint
+
+  shellcheck:
+    name: Shell — shellcheck ops/*.sh
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: warning
+          scandir: './ops'
