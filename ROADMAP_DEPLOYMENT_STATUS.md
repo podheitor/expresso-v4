@@ -2571,3 +2571,48 @@ UI layer fechado. Stack final em prod:
 `expresso-prometheus` + `expresso-alertmanager` + `expresso-grafana` +
 `expresso-nats-exporter`. Operador acessa dashboard em
 `http://127.0.0.1:3000` (tunnel SSH).
+
+### #38 — `expresso-imip` crate (RFC 6047 builder)
+
+Novo crate puro `libs/expresso-imip` — constrói iCalendar + MIME multipart
+para envio iMIP a attendees. Groundwork para dispatch real num sprint futuro
+(que precisará SMTP config + wiring em `expresso-event-audit` ou novo service).
+
+**Escopo v0.1:**
+- `EventInvite` struct: uid, sequence, summary/description/location,
+  dtstart/dtend (UTC), organizer, attendees.
+- `build_ical(invite, Method::Request|Cancel)` → iCalendar body com
+  VCALENDAR + VEVENT, METHOD, ORGANIZER, ATTENDEE (ROLE/PARTSTAT/RSVP),
+  STATUS:CANCELLED em CANCEL.
+- `build_mime_multipart(invite, method, human_text)` → `(ct, body)`
+  com 2 parts (text/plain + text/calendar;method=... attachment
+  `invite.ics`).
+
+**Conformidade RFC 5545/6047:**
+- CRLF line endings (`\r\n`).
+- Line folding em 75 octets (§3.1) com continuação ` `.
+- TEXT escaping (`\`, `;`, `,`, `\n`).
+- CN param quoting p/ valores com whitespace/símbolos.
+- DTSTART/DTEND em UTC basic: `YYYYMMDDTHHMMSSZ`.
+
+**Limitações v0.1 (futuro):**
+- Sem VTIMEZONE/TZID (tudo UTC).
+- Sem recurring exceptions (RRULE/EXDATE).
+- Sem REPLY/COUNTER methods.
+
+**Testes:** 9/9 unit passing em rust:1-bookworm (isolado em `/tmp/imip-test`
+no host 125):
+- `request_contains_required_fields`
+- `cancel_sets_status_and_partstat`
+- `text_escaping`, `location_with_semicolon_escaped`
+- `rejects_empty_attendees`, `rejects_end_before_start`
+- `folding_respects_75_octet_limit`
+- `mime_multipart_has_both_parts`
+- `format_ical_utc_strips_separators`
+
+Deps: `time = "0.3"`, `uuid = "1"`, `thiserror = "1"`. Zero IO, zero async —
+integrável em qualquer consumer NATS.
+
+Próximo passo natural (#39+): estender `EventBus` p/ publicar `attendees +
+dtstart/dtend + location` no payload NATS, depois wire `expresso-event-audit`
+(ou novo crate `expresso-imip-dispatch`) p/ consumir + enviar via `lettre`.

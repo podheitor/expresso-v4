@@ -26,6 +26,7 @@ members = [
     "libs/expresso-storage",
     "libs/expresso-auth-client",
     "libs/expresso-observability",
+    "libs/expresso-imip",
 ]
 
 [workspace.dependencies]

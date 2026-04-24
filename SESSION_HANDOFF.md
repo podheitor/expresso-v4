@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** sprint #37 (Grafana provisioned + deployed). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #38 (expresso-imip crate). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #37 shipped (36 sprints)
+## Status da trilha — #2 → #38 shipped (37 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 
@@ -22,6 +22,7 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 | 35 | `a18879d` | Observability stack template — alertmanager.yml + prometheus.yml + compose-observability.yaml + README. amtool+promtool validados em 125. Artefato-only. |
 | 36 | `d7fad94` | Observability stack deployed em 125 — expresso-prometheus/alertmanager/nats-exporter up. Rules 3 grupos × 9, targets 4 up, 12 séries calendar_nats_publish_total confirmadas. |
 | 37 | `6c1e833` | Grafana 13.0.1 provisioned + deployed em 125 — datasource Prometheus + dashboard `expresso-overview` (11 panels) auto-importado. |
+| 38 | `2ab025f` | Novo crate `libs/expresso-imip` — iCal REQUEST/CANCEL + MIME multipart builder (RFC 6047). 9 testes unitários. Groundwork p/ iMIP dispatch. |
 
 ## Estado em produção (125)
 
