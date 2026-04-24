@@ -1,34 +1,58 @@
 # systemd units for Expresso ops
 
-## expresso-smoke-multirealm
+## expresso-smoke-multirealm (single tenant, legacy)
 
-Periodic end-to-end smoke: issues pilot JWT → `/auth/me` → Prometheus query.
-Runs every 10 min. Failures → journal (`journalctl -u expresso-smoke-multirealm`).
+Fixed-env unit for pilot1. Reads `/etc/expresso/smoke-multirealm.env`.
+
+## expresso-smoke-multirealm@TENANT (template, multi-tenant)
+
+Instanced unit. Each enabled instance reads `/etc/expresso/smoke-multirealm-<TENANT>.env`.
+Random 0-60s jitter avoids push collisions.
 
 ### Install (prod 125)
 
 ```bash
 sudo install -m 755 ops/smoke-multirealm.sh /opt/expresso/smoke-multirealm.sh
-sudo install -m 644 ops/systemd/expresso-smoke-multirealm.{service,timer} /etc/systemd/system/
+sudo install -m 644 ops/systemd/expresso-smoke-multirealm@.service /etc/systemd/system/
+sudo install -m 644 ops/systemd/expresso-smoke-multirealm@.timer   /etc/systemd/system/
+
+# Per-tenant env (one file per tenant)
 sudo install -d -m 750 /etc/expresso
-# populate with pilot credentials (one per line, KEY=VALUE)
-sudo tee /etc/expresso/smoke-multirealm.env >/dev/null <<ENV
-PILOT_REALM=<uuid>
+sudo tee /etc/expresso/smoke-multirealm-pilot.env >/dev/null <<ENV
+PILOT_REALM=30aa38fd-5948-47f0-9e42-eee64a621745
 PILOT_CLIENT_SECRET=<secret>
 PILOT_PASS=<password>
+PILOT_USER=admin@pilot.expresso.local
+TENANT_HOST=pilot.expresso.local
+PUSHGATEWAY_URL=http://127.0.0.1:9091
 ENV
-sudo chmod 600 /etc/expresso/smoke-multirealm.env
+sudo chmod 600 /etc/expresso/smoke-multirealm-pilot.env
+
+sudo tee /etc/expresso/smoke-multirealm-pilot2.env >/dev/null <<ENV
+PILOT_REALM=3b11c7a2-44d1-4935-963b-ba622b70786a
+PILOT_CLIENT_SECRET=<secret>
+PILOT_PASS=<password>
+PILOT_USER=admin@pilot2.expresso.local
+TENANT_HOST=pilot2.expresso.local
+PUSHGATEWAY_URL=http://127.0.0.1:9091
+ENV
+sudo chmod 600 /etc/expresso/smoke-multirealm-pilot2.env
+
 sudo systemctl daemon-reload
-sudo systemctl enable --now expresso-smoke-multirealm.timer
+sudo systemctl enable --now expresso-smoke-multirealm@pilot.timer
+sudo systemctl enable --now expresso-smoke-multirealm@pilot2.timer
 ```
 
 ### Operations
 
-- `systemctl list-timers expresso-smoke-multirealm.timer` — next run
-- `systemctl start expresso-smoke-multirealm.service` — run now
-- `journalctl -u expresso-smoke-multirealm -n 50` — recent outputs
-- Failures: exit code non-zero → journal records; SMOKE FAIL string grep-able
+- `systemctl list-timers 'expresso-smoke-multirealm@*.timer'` — all instances
+- `systemctl start expresso-smoke-multirealm@pilot.service` — run now
+- `journalctl -u 'expresso-smoke-multirealm@*' -n 100`
+- `curl -s http://127.0.0.1:9091/metrics | grep expresso_smoke` — all tenants
 
-### Future
+### Migration from legacy
 
-- Push `expresso_smoke_multirealm_success` gauge to Prometheus via node_exporter textfile collector → enables alerting on stale/failed smoke.
+```bash
+sudo systemctl disable --now expresso-smoke-multirealm.timer
+# Keep legacy unit for a while → rollback safety, remove later.
+```
