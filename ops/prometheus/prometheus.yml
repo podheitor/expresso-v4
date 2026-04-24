@@ -1,5 +1,4 @@
-# Prometheus scrape + alerting config — Expresso V4 template.
-# Monte ops/prometheus/ em /etc/prometheus/ e ops/alertmanager/ separado.
+# Prometheus scrape + alerting — Expresso V4 (prod 125)
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -23,18 +22,17 @@ scrape_configs:
           - expresso-calendar:8002
           - expresso-contacts:8003
           - expresso-admin:8101
-          - expresso-auth:8012
-          - expresso-mail:8001
   - job_name: expresso-event-audit
     metrics_path: /metrics
+    # event-audit runs with --network host
     static_configs:
-      - targets: [expresso-event-audit:9191]
+      - targets: ['172.17.0.1:9191']
   - job_name: nats
     static_configs:
-      - targets: [prometheus-nats-exporter:7777]
+      - targets: ['expresso-nats-exporter:7777']
   - job_name: prometheus
     static_configs:
-      - targets: [localhost:9090]
+      - targets: ['localhost:9090']
   - job_name: alertmanager
     static_configs:
-      - targets: [alertmanager:9093]
+      - targets: ['alertmanager:9093']

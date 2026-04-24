@@ -1,6 +1,6 @@
-# Observability stack — Expresso V4 (sprint #35 deploy template)
+# Observability stack — Expresso V4 (deploy em 125)
 # Deploy: sudo docker compose -f compose-observability.yaml up -d
-# Requer rede externa expresso-net (compartilhada com serviços).
+# Usa rede externa expresso_default (criada pelo compose-phase3.yaml).
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -17,7 +17,10 @@ services:
       - '--web.enable-lifecycle'
     ports:
       - '127.0.0.1:9090:9090'
-    networks: [expresso-net]
+    networks: [expresso_default]
+    extra_hosts:
+      # host.docker.internal → host gateway, p/ alvos host-networked como event-audit
+      - 'host.docker.internal:host-gateway'
 
   alertmanager:
     image: prom/alertmanager:latest
@@ -31,9 +34,9 @@ services:
       - '--storage.path=/alertmanager'
     ports:
       - '127.0.0.1:9093:9093'
-    networks: [expresso-net]
+    networks: [expresso_default]
 
-  prometheus-nats-exporter:
+  expresso-nats-exporter:
     image: natsio/prometheus-nats-exporter:latest
     container_name: expresso-nats-exporter
     restart: unless-stopped
@@ -42,14 +45,12 @@ services:
       - '-jsz=all'
       - '-port=7777'
       - 'http://expresso-nats:8222'
-    ports:
-      - '127.0.0.1:7777:7777'
-    networks: [expresso-net]
+    networks: [expresso_default]
 
 volumes:
   prom-data:
   am-data:
 
 networks:
-  expresso-net:
+  expresso_default:
     external: true

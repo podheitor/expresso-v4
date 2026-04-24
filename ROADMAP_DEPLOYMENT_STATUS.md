@@ -2511,3 +2511,34 @@ curl :9090/api/v1/rules | jq '.data.groups[].name'
 Loop observability 100% artefato-pronto: counters (#31/#32) → dashboard (#33)
 → rules (#34) → stack deploy (#35). Próximo passo natural: subir em prod +
 conectar receivers reais.
+
+### #36 — Observability stack deployed in production (125)
+
+Stack da #35 deployado em `~/expresso-obs/` no host `192.168.15.125`:
+
+- `expresso-prometheus` (prom/prometheus:latest) — bind `127.0.0.1:9090`
+- `expresso-alertmanager` (prom/alertmanager:latest v0.32.0) — bind `127.0.0.1:9093`
+- `expresso-nats-exporter` (natsio/prometheus-nats-exporter) — interna à rede
+
+Ajustes vs. template (#35):
+- Rede: `expresso_default` (real) em vez de `expresso-net`.
+- Scrape de `expresso-event-audit`: `172.17.0.1:9191` (container host-networked).
+- Scrape de services limpado para o que roda: calendar, contacts, admin
+  (mail/auth-rp não expõem /metrics ainda).
+
+**Verificação:**
+```
+curl :9090/-/ready  → Prometheus Server is Ready
+curl :9093/-/healthy → OK
+curl :9090/api/v1/rules  → 3 groups: pipeline(5) + health(3) + broker(1) = 9
+curl :9090/api/v1/targets → 5 active, 4 up (calendar/contacts/admin/
+                            event-audit/nats-exporter) + self/am pendente 1º scrape
+query calendar_nats_publish_total → 12 series (4 kinds × 3 results) ✅
+```
+
+Loop observability agora **vivo em prod**: métricas fluindo do produtor
+(calendar:8002) → prometheus (em memória + TSDB 30d) → rules → alertmanager
+(webhooks placeholder, prontos p/ Slack/PagerDuty).
+
+Próximo passo natural: conectar receivers reais (secrets via env) + Grafana
+apontando para esse Prometheus em `http://expresso-prometheus:9090`.
