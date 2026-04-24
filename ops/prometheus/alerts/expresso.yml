@@ -167,3 +167,22 @@ groups:
         annotations:
           summary: "Dispatcher iMIP offline (5m+)"
           description: "expresso-imip-dispatch não responde ao scrape. Convites calendar não estão saindo por SMTP."
+
+  - name: expresso-auth-multirealm
+    rules:
+    - alert: ExpressoAuthValidationErrorsHigh
+      expr: sum by (realm) (rate(auth_validation_total{result!~"ok|missing_bearer"}[5m])) > 0.1
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Auth validation error rate high (realm: {{ $labels.realm }})"
+        description: "Per-tenant JWT validation errors > 0.1/s for {{ $labels.realm }} over 10m."
+    - alert: ExpressoAuthNoRealmsLoaded
+      expr: auth_realm_cache_size == 0
+      for: 15m
+      labels:
+        severity: info
+      annotations:
+        summary: "Multi-realm cache empty"
+        description: "auth_realm_cache_size=0 for 15m — no tenants validated (unusual for prod)."
