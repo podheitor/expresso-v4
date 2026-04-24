@@ -6,18 +6,35 @@
 use mail_auth::{
     AuthenticatedMessage,
     DkimResult,
+    DmarcResult,
     MessageAuthenticator,
     common::{
         crypto::{RsaKey, Sha256},
         headers::HeaderWriter,
     },
     dkim::DkimSigner,
-    dmarc::verify::DmarcParameters,
+    dmarc::{Policy, verify::DmarcParameters},
     spf::verify::SpfParameters,
 };
+use once_cell::sync::Lazy;
+use prometheus::IntCounterVec;
 use rustls_pki_types::{PrivateKeyDer, PrivatePkcs1KeyDer, pem::PemObject};
 use std::net::IpAddr;
 use tracing::{debug, info, warn};
+
+// Prometheus counter: result of each inbound auth check.
+// Labels: check ∈ {spf,dkim,dmarc}, result ∈ {pass,fail,none,temperror,permerror}
+pub static MAIL_AUTH_CHECKS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            "mail_auth_checks_total",
+            "Inbound mail authentication check results",
+        ),
+        &["check", "result"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
 
 // ─── DKIM SIGNING ─────────────────────────────────────────────────────────────
 
@@ -67,24 +84,58 @@ pub struct AuthResults {
     pub spf: String,
     pub dkim: String,
     pub dmarc: String,
+    /// Published DMARC policy on the From domain. Values: "none", "quarantine",
+    /// "reject", "unspecified" (no record) or `None` when not evaluated.
+    pub dmarc_policy: Option<String>,
 }
 
 impl AuthResults {
-    /// Format as full Authentication-Results header (with CRLF).
+    /// Format as full Authentication-Results header (with CRLF). Includes
+    /// "(p=<policy>)" suffix on dmarc when a policy was observed.
     pub fn to_header(&self, hostname: &str) -> String {
-        format!(
-            "Authentication-Results: {}; spf={}; dkim={}; dmarc={}\r\n",
-            hostname, self.spf, self.dkim, self.dmarc
-        )
+        format!("Authentication-Results: {}\r\n", self.to_value(hostname))
     }
 
     /// Format just the value (no "Authentication-Results: " prefix, no CRLF)
     /// — useful when caller injects via milter `add_header(name, value)`.
     pub fn to_value(&self, hostname: &str) -> String {
+        let dmarc_frag = match self.dmarc_policy.as_deref() {
+            Some(p) if p != "unspecified" => format!("dmarc={} (p={})", self.dmarc, p),
+            _ => format!("dmarc={}", self.dmarc),
+        };
         format!(
-            "{}; spf={}; dkim={}; dmarc={}",
-            hostname, self.spf, self.dkim, self.dmarc
+            "{}; spf={}; dkim={}; {}",
+            hostname, self.spf, self.dkim, dmarc_frag
         )
+    }
+
+    /// True when DMARC verdict is `fail` and the published policy asks for reject.
+    pub fn should_reject(&self) -> bool {
+        self.dmarc == "fail" && self.dmarc_policy.as_deref() == Some("reject")
+    }
+}
+
+fn policy_str(p: Policy) -> &'static str {
+    match p {
+        Policy::None        => "none",
+        Policy::Quarantine  => "quarantine",
+        Policy::Reject      => "reject",
+        Policy::Unspecified => "unspecified",
+    }
+}
+
+fn dmarc_verdict(spf: &DmarcResult, dkim: &DmarcResult) -> &'static str {
+    // DMARC pass = at least one of SPF/DKIM is aligned Pass.
+    if matches!(spf, DmarcResult::Pass) || matches!(dkim, DmarcResult::Pass) {
+        "pass"
+    } else if matches!(spf, DmarcResult::TempError(_)) || matches!(dkim, DmarcResult::TempError(_)) {
+        "temperror"
+    } else if matches!(spf, DmarcResult::PermError(_)) || matches!(dkim, DmarcResult::PermError(_)) {
+        "permerror"
+    } else if matches!(spf, DmarcResult::None) && matches!(dkim, DmarcResult::None) {
+        "none"
+    } else {
+        "fail"
     }
 }
 
@@ -100,10 +151,14 @@ pub async fn verify_inbound(
         Ok(a) => a,
         Err(e) => {
             warn!(error = %e, "authenticator init failed — skipping auth");
+            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["spf",   "temperror"]).inc();
+            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dkim",  "temperror"]).inc();
+            MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dmarc", "temperror"]).inc();
             return AuthResults {
                 spf: "temperror".into(),
                 dkim: "temperror".into(),
                 dmarc: "temperror".into(),
+                dmarc_policy: None,
             };
         }
     };
@@ -121,7 +176,7 @@ pub async fn verify_inbound(
     let spf_str = format!("{:?}", spf_output.result()).to_ascii_lowercase();
     debug!(spf = %spf_str, from_domain, "SPF result");
 
-    let (dkim_str, dmarc_str) = match AuthenticatedMessage::parse(raw) {
+    let (dkim_str, dmarc_str, dmarc_policy) = match AuthenticatedMessage::parse(raw) {
         Some(authenticated) => {
             let dkim_results = authenticator.verify_dkim(&authenticated).await;
             let dk = if dkim_results.is_empty() {
@@ -140,17 +195,23 @@ pub async fn verify_inbound(
                     &spf_output,
                 ))
                 .await;
-            let dm = format!("{:?}", dmarc_output.dkim_result()).to_ascii_lowercase();
-            (dk, dm)
+            let dm = dmarc_verdict(dmarc_output.spf_result(), dmarc_output.dkim_result()).to_string();
+            let policy = Some(policy_str(dmarc_output.policy()).to_string());
+            (dk, dm, policy)
         }
-        None => ("permerror".to_string(), "permerror".to_string()),
+        None => ("permerror".to_string(), "permerror".to_string(), None),
     };
-    debug!(dkim = %dkim_str, dmarc = %dmarc_str, "DKIM/DMARC results");
+    debug!(dkim = %dkim_str, dmarc = %dmarc_str, policy = ?dmarc_policy, "DKIM/DMARC results");
+
+    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["spf",   spf_str.as_str()]).inc();
+    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dkim",  dkim_str.as_str()]).inc();
+    MAIL_AUTH_CHECKS_TOTAL.with_label_values(&["dmarc", dmarc_str.as_str()]).inc();
 
     AuthResults {
         spf: spf_str,
         dkim: dkim_str,
         dmarc: dmarc_str,
+        dmarc_policy,
     }
 }
 
@@ -164,6 +225,7 @@ mod tests {
             spf: "pass".into(),
             dkim: "pass".into(),
             dmarc: "pass".into(),
+            dmarc_policy: None,
         };
         let hdr = ar.to_header("mx.example.com");
         assert!(hdr.starts_with("Authentication-Results: mx.example.com"));
@@ -173,5 +235,50 @@ mod tests {
 
         let v = ar.to_value("mx.example.com");
         assert_eq!(v, "mx.example.com; spf=pass; dkim=pass; dmarc=pass");
+    }
+
+    #[test]
+    fn dmarc_policy_appended_to_header() {
+        let ar = AuthResults {
+            spf: "fail".into(),
+            dkim: "none".into(),
+            dmarc: "fail".into(),
+            dmarc_policy: Some("reject".into()),
+        };
+        let v = ar.to_value("mx.example.com");
+        assert!(v.contains("dmarc=fail (p=reject)"), "got {v}");
+    }
+
+    #[test]
+    fn unspecified_policy_not_rendered() {
+        let ar = AuthResults {
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: Some("unspecified".into()),
+        };
+        let v = ar.to_value("mx.example.com");
+        assert!(!v.contains("(p="), "unexpected policy fragment: {v}");
+    }
+
+    #[test]
+    fn should_reject_only_when_fail_and_p_reject() {
+        let fail_reject = AuthResults {
+            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            dmarc_policy: Some("reject".into()),
+        };
+        assert!(fail_reject.should_reject());
+
+        let fail_quar = AuthResults {
+            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            dmarc_policy: Some("quarantine".into()),
+        };
+        assert!(!fail_quar.should_reject());
+
+        let pass = AuthResults {
+            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            dmarc_policy: Some("reject".into()),
+        };
+        assert!(!pass.should_reject());
     }
 }

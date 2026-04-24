@@ -63,7 +63,20 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                     raw,
                 )
                 .await;
-                debug!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc, "auth results");
+                debug!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc,
+                       policy = ?auth.dmarc_policy, "auth results");
+
+                // DMARC policy enforcement: p=reject rejects at SMTP level.
+                if auth.should_reject() {
+                    warn!(from = %mail_from, spf = %auth.spf, dkim = %auth.dkim,
+                          "DMARC fail + p=reject — refusing message");
+                    writer
+                        .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
+                        .await?;
+                    data_buf.clear();
+                    env = Envelope::default();
+                    continue;
+                }
 
                 // Prepend Authentication-Results header
                 let auth_header = auth.to_header(domain);
