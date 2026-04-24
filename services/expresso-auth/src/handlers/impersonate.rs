@@ -1,9 +1,9 @@
 //! Impersonation endpoints (SuperAdmin-gated).
 //!
-//! MVP: audit-only tracking. Full session swap via Keycloak admin UI
-//! (`/admin/<realm>/console/#/<realm>/users/<id>/impersonate`). This module
-//! records the operator's intent so the audit trail is complete; the actual
-//! token issuance for the target user is delegated to Keycloak's admin REST.
+//! Full token-exchange (RFC 8693) when a confidential exchange client is
+//! configured (`KC_TOKEN_EXCHANGE_CLIENT_ID/SECRET`); otherwise falls back
+//! to returning the Keycloak admin-console URL so the operator can finish
+//! the swap manually. Both paths emit an audit event.
 //!
 //! Endpoints:
 //!   POST /auth/impersonate/:target_user_id  — start; audit `auth.impersonate.start`.
@@ -21,6 +21,7 @@ use expresso_auth_client::Authenticated;
 use expresso_core::audit::{record_async, AuditEntry};
 
 use std::sync::Arc;
+use crate::kc_admin::{KcAdmin, KcAdminConfig, ImpersonationTokens};
 use crate::state::AppState;
 
 const SUPER_ROLE: &str = "superadmin";
@@ -29,7 +30,12 @@ const SUPER_ROLE: &str = "superadmin";
 pub struct ImpersonateResp {
     pub impersonator_sub: String,
     pub target_user_id:   Uuid,
+    /// Admin-console fallback URL — always populated when issuer is parseable.
     pub keycloak_url:     Option<String>,
+    /// Token set for the target user when token-exchange succeeded.
+    /// Caller's frontend swaps its session cookie/Bearer to these tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens:           Option<ImpersonationTokens>,
     pub message:          String,
 }
 
@@ -46,8 +52,29 @@ pub async fn start(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Audit first — if pool absent, still return the Keycloak URL so operator
-    // can act; alerting pipelines will catch missing DB separately.
+    let keycloak_url = Some(st.cfg.issuer.as_str())
+        .and_then(|iss| iss.trim_end_matches('/').rsplit_once("/realms/").map(|(base, realm)| {
+            format!("{base}/admin/{realm}/console/#/{realm}/users/{target_user_id}/impersonate")
+        }));
+
+    // Try RFC 8693 token-exchange when an exchange client is configured.
+    // Falls back to admin-console URL only when KC isn't configured or the
+    // call fails — keeps the operator unblocked even on partial setup.
+    let (tokens, exchange_status, exchange_error) = match KcAdminConfig::from_env() {
+        Some(cfg) if cfg.has_exchange_client() => {
+            let kc = KcAdmin::new(cfg);
+            match kc.impersonate_token(&target_user_id.to_string()).await {
+                Ok(t)  => (Some(t), "exchanged", None),
+                Err(e) => {
+                    tracing::warn!(error=%e, target=%target_user_id, "token-exchange failed");
+                    (None, "exchange_failed", Some(format!("{e}")))
+                }
+            }
+        }
+        Some(_) => (None, "exchange_client_not_configured", None),
+        None    => (None, "kc_admin_not_configured", None),
+    };
+
     if let Some(pool) = st.pool.as_ref() {
         let entry = AuditEntry {
             tenant_id:   Some(ctx.tenant_id),
@@ -63,21 +90,30 @@ pub async fn start(
             metadata:    serde_json::json!({
                 "impersonator_email": ctx.email,
                 "target_user_id":     target_user_id.to_string(),
+                "exchange_status":    exchange_status,
+                "exchange_error":     exchange_error,
             }),
         };
         record_async(pool.clone(), entry);
     }
 
-    let keycloak_url = Some(st.cfg.issuer.as_str())
-        .and_then(|iss| iss.trim_end_matches('/').rsplit_once("/realms/").map(|(base, realm)| {
-            format!("{base}/admin/{realm}/console/#/{realm}/users/{target_user_id}/impersonate")
-        }));
+    let message = match exchange_status {
+        "exchanged" =>
+            "token-exchange succeeded; tokens issued for target user".into(),
+        "exchange_failed" =>
+            "token-exchange failed; follow keycloak_url in admin console (see audit log for cause)".into(),
+        "exchange_client_not_configured" =>
+            "KC_TOKEN_EXCHANGE_CLIENT_ID/SECRET not set; follow keycloak_url in admin console".into(),
+        _ /* kc_admin_not_configured */ =>
+            "KC_ADMIN_* not configured; impersonation recorded only (no Keycloak interaction)".into(),
+    };
 
     Ok(Json(ImpersonateResp {
         impersonator_sub: ctx.user_id.to_string(),
         target_user_id,
         keycloak_url,
-        message: "impersonation recorded; follow keycloak_url in admin console to acquire session for target user (MVP — full token-exchange pending)".into(),
+        tokens,
+        message,
     }))
 }
 
