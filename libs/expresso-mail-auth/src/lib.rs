@@ -87,6 +87,12 @@ pub struct AuthResults {
     /// Published DMARC policy on the From domain. Values: "none", "quarantine",
     /// "reject", "unspecified" (no record) or `None` when not evaluated.
     pub dmarc_policy: Option<String>,
+    /// Connecting peer IP — used to render `client-ip` in Received-SPF.
+    pub spf_client_ip: Option<IpAddr>,
+    /// HELO/EHLO identity advertised by the peer.
+    pub spf_helo: Option<String>,
+    /// RFC5321.MailFrom (reverse-path), empty for null sender.
+    pub spf_envelope_from: Option<String>,
 }
 
 impl AuthResults {
@@ -106,6 +112,38 @@ impl AuthResults {
         format!(
             "{}; spf={}; dkim={}; {}",
             hostname, self.spf, self.dkim, dmarc_frag
+        )
+    }
+
+    /// Full Received-SPF header per RFC 7208 §9.1 (with CRLF).
+    pub fn to_received_spf_header(&self, hostname: &str) -> String {
+        format!("Received-SPF: {}\r\n", self.to_received_spf(hostname))
+    }
+
+    /// Received-SPF value (no header name, no CRLF) per RFC 7208 §9.1.
+    pub fn to_received_spf(&self, hostname: &str) -> String {
+        let ip = self
+            .spf_client_ip
+            .map(|i| i.to_string())
+            .unwrap_or_else(|| "unknown".into());
+        let from = self.spf_envelope_from.as_deref().unwrap_or("");
+        let helo = self.spf_helo.as_deref().unwrap_or("");
+        let phrase = match self.spf.as_str() {
+            "pass"      => "designates",
+            "fail"      => "does not designate",
+            "softfail"  => "does not designate (softfail)",
+            "neutral"   => "reports neutral for",
+            "none"      => "has no SPF record for",
+            "temperror" => "transient error evaluating",
+            "permerror" => "permanent error evaluating",
+            _           => "evaluating",
+        };
+        let origin = if from.is_empty() { helo } else { from };
+        let comment =
+            format!("{hostname}: domain of {origin} {phrase} {ip} as permitted sender");
+        format!(
+            "{result} ({comment}) receiver={hostname}; client-ip={ip}; envelope-from=<{from}>; helo={helo}",
+            result = self.spf,
         )
     }
 
@@ -178,6 +216,9 @@ pub async fn verify_inbound(
                 dkim: "temperror".into(),
                 dmarc: "temperror".into(),
                 dmarc_policy: None,
+                spf_client_ip: Some(peer_ip),
+                spf_helo: Some(helo_domain.to_owned()),
+                spf_envelope_from: Some(mail_from.to_owned()),
             };
         }
     };
@@ -231,6 +272,9 @@ pub async fn verify_inbound(
         dkim: dkim_str,
         dmarc: dmarc_str,
         dmarc_policy,
+        spf_client_ip: Some(peer_ip),
+        spf_helo: Some(helo_domain.to_owned()),
+        spf_envelope_from: Some(mail_from.to_owned()),
     }
 }
 
@@ -245,6 +289,7 @@ mod tests {
             dkim: "pass".into(),
             dmarc: "pass".into(),
             dmarc_policy: None,
+            ..Default::default()
         };
         let hdr = ar.to_header("mx.example.com");
         assert!(hdr.starts_with("Authentication-Results: mx.example.com"));
@@ -263,6 +308,7 @@ mod tests {
             dkim: "none".into(),
             dmarc: "fail".into(),
             dmarc_policy: Some("reject".into()),
+            ..Default::default()
         };
         let v = ar.to_value("mx.example.com");
         assert!(v.contains("dmarc=fail (p=reject)"), "got {v}");
@@ -275,6 +321,7 @@ mod tests {
             dkim: "pass".into(),
             dmarc: "pass".into(),
             dmarc_policy: Some("unspecified".into()),
+            ..Default::default()
         };
         let v = ar.to_value("mx.example.com");
         assert!(!v.contains("(p="), "unexpected policy fragment: {v}");
@@ -285,6 +332,7 @@ mod tests {
         let fail_quar = AuthResults {
             spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
             dmarc_policy: Some("quarantine".into()),
+            ..Default::default()
         };
         assert!(fail_quar.should_quarantine());
         assert!(!fail_quar.should_reject());
@@ -292,8 +340,61 @@ mod tests {
         let pass_quar = AuthResults {
             spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
             dmarc_policy: Some("quarantine".into()),
+            ..Default::default()
         };
         assert!(!pass_quar.should_quarantine());
+    }
+
+    #[test]
+    fn received_spf_pass_format() {
+        let ar = AuthResults {
+            spf: "pass".into(),
+            dkim: "pass".into(),
+            dmarc: "pass".into(),
+            dmarc_policy: None,
+            spf_client_ip: Some("192.0.2.10".parse().unwrap()),
+            spf_helo: Some("mail.example.com".into()),
+            spf_envelope_from: Some("alice@example.com".into()),
+        };
+        let v = ar.to_received_spf("mx.expresso.local");
+        assert!(v.starts_with("pass ("), "got: {v}");
+        assert!(v.contains("mx.expresso.local: domain of alice@example.com designates 192.0.2.10"));
+        assert!(v.contains("receiver=mx.expresso.local"));
+        assert!(v.contains("client-ip=192.0.2.10"));
+        assert!(v.contains("envelope-from=<alice@example.com>"));
+        assert!(v.contains("helo=mail.example.com"));
+
+        let hdr = ar.to_received_spf_header("mx.expresso.local");
+        assert!(hdr.starts_with("Received-SPF: pass "));
+        assert!(hdr.ends_with("\r\n"));
+    }
+
+    #[test]
+    fn received_spf_null_sender_uses_helo() {
+        let ar = AuthResults {
+            spf: "none".into(),
+            spf_client_ip: Some("198.51.100.5".parse().unwrap()),
+            spf_helo: Some("bounce.example.org".into()),
+            spf_envelope_from: Some(String::new()),
+            ..Default::default()
+        };
+        let v = ar.to_received_spf("mx.expresso.local");
+        assert!(v.contains("domain of bounce.example.org has no SPF record for 198.51.100.5"), "got: {v}");
+        assert!(v.contains("envelope-from=<>"));
+    }
+
+    #[test]
+    fn received_spf_fail_phrase() {
+        let ar = AuthResults {
+            spf: "fail".into(),
+            spf_client_ip: Some("203.0.113.7".parse().unwrap()),
+            spf_helo: Some("spoof.example".into()),
+            spf_envelope_from: Some("eve@example.com".into()),
+            ..Default::default()
+        };
+        let v = ar.to_received_spf("mx.expresso.local");
+        assert!(v.starts_with("fail ("), "got: {v}");
+        assert!(v.contains("does not designate 203.0.113.7"));
     }
 
     #[test]
@@ -301,18 +402,21 @@ mod tests {
         let fail_reject = AuthResults {
             spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
             dmarc_policy: Some("reject".into()),
+            ..Default::default()
         };
         assert!(fail_reject.should_reject());
 
         let fail_quar = AuthResults {
             spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
             dmarc_policy: Some("quarantine".into()),
+            ..Default::default()
         };
         assert!(!fail_quar.should_reject());
 
         let pass = AuthResults {
             spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
             dmarc_policy: Some("reject".into()),
+            ..Default::default()
         };
         assert!(!pass.should_reject());
     }

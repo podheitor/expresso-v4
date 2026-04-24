@@ -197,6 +197,17 @@ async fn main() -> anyhow::Result<()> {
                             warn!(error = %e, "add_header failed");
                         }
 
+                        // Received-SPF trace header (RFC 7208 §9.1).
+                        let rspf_name = CString::new("Received-SPF").unwrap();
+                        match CString::new(auth.to_received_spf(&domain)) {
+                            Ok(v) => {
+                                if let Err(e) = cx.actions.add_header(rspf_name, v).await {
+                                    warn!(error = %e, "add Received-SPF failed");
+                                }
+                            }
+                            Err(e) => warn!(error = %e, "Received-SPF value had NUL"),
+                        }
+
                         // DMARC policy enforcement.
                         if auth.should_reject() {
                             warn!(from = %session.mail_from, "DMARC fail + p=reject — rejecting");

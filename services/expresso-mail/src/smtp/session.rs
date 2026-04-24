@@ -82,9 +82,10 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                 expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
                     .with_label_values(&["accept"]).inc();
 
-                // Prepend Authentication-Results header
+                // Prepend Received-SPF (RFC 7208 §9.1) + Authentication-Results.
+                let rspf_header = auth.to_received_spf_header(domain);
                 let auth_header = auth.to_header(domain);
-                let signed_raw = format!("{auth_header}{data_buf}");
+                let signed_raw = format!("{rspf_header}{auth_header}{data_buf}");
 
                 match ingest::process(&state, env.from.as_deref(), &env.rcpts, signed_raw.as_bytes())
                     .await
