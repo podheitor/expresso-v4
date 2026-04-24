@@ -307,3 +307,9 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 
 - calendar main.rs já tinha `resolve_multi_realm()` desde sprint anterior — só context.rs faltava trocar de header-only para strict JWT path
 - contacts main.rs precisou: `use std::sync::Arc` + fn helper + wire `Extension(m/r)` antes do `bind`
+
+## 2026-04-24 — Sprint #43 smoke E2E validado
+
+- `ops/smoke-calendar.sh` criado — JWT pilot → GET /api/v1/calendars Host=pilot.expresso.local → HTTP 200 + [] → SMOKE PASS
+- Runtime multi-realm chain confirmado: Host→TenantResolver→MultiRealmValidator→per-realm JWKS→RequestCtx→route
+- `expresso_calendar` container runtime: multi-realm real funcional (não apenas código deployed)
