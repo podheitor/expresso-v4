@@ -31,11 +31,6 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
     type Rejection = AuthRejection;
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        let validator = parts.extensions
-            .get::<Arc<OidcValidator>>()
-            .cloned()
-            .ok_or(AuthRejection::Misconfigured)?;
-
         let token_owned;
         let token = if let Some(t) = extract_bearer(parts) {
             t
@@ -46,6 +41,26 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
             return Err(AuthRejection::from(AuthError::MissingBearer));
         };
 
+        // Multi-realm path: se MultiRealmValidator + TenantResolver presentes
+        // em extensions, resolve realm via Host header e valida. Fase2 do
+        // realm-per-tenant. Caso host nao mapeado ou extensions ausentes,
+        // cai p/ single-realm.
+        let multi = parts.extensions.get::<Arc<crate::multi_validator::MultiRealmValidator>>().cloned();
+        let resolver = parts.extensions.get::<Arc<crate::tenant_resolver::TenantResolver>>().cloned();
+        if let (Some(m), Some(r)) = (multi, resolver) {
+            if let Some(host) = parts.headers.get(axum::http::header::HOST).and_then(|v| v.to_str().ok()) {
+                if let Some(realm) = r.resolve(host) {
+                    let v = m.for_realm(realm).await.map_err(AuthRejection::from)?;
+                    let ctx = v.validate(token).await.map_err(AuthRejection::from)?;
+                    return Ok(Self(ctx));
+                }
+            }
+        }
+
+        let validator = parts.extensions
+            .get::<Arc<OidcValidator>>()
+            .cloned()
+            .ok_or(AuthRejection::Misconfigured)?;
         let ctx = validator.validate(token).await.map_err(AuthRejection::from)?;
         Ok(Self(ctx))
     }
