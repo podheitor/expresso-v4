@@ -98,3 +98,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Build docs
         run: cargo doc --workspace --no-deps --all-features
+
+  cargo-deny:
+    name: Rust — cargo-deny (bans + sources)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked --quiet
+      - name: Check bans + sources
+        run: cargo deny check bans sources
