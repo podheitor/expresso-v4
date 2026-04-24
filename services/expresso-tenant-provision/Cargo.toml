@@ -1,5 +1,6 @@
 [package]
 name = "expresso-tenant-provision"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Idempotent Keycloak realm + clients + roles + initial admin provisioning (CLI)."

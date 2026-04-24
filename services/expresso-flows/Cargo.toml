@@ -1,5 +1,6 @@
 [package]
 name = "expresso-flows"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Workflow engine (webhooks + triggers)"

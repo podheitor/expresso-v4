@@ -1,5 +1,6 @@
 [package]
 name = "expresso-mail-auth"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Shared SPF/DKIM/DMARC verify + DKIM sign — used by expresso-mail and expresso-milter"

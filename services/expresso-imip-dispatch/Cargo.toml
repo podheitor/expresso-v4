@@ -1,5 +1,6 @@
 [package]
 name = "expresso-imip-dispatch"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "NATS JetStream consumer: sends iMIP (RFC 6047) invites to attendees via SMTP."

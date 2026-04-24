@@ -1,5 +1,6 @@
 [package]
 name = "expresso-admin"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Admin API + tenant management"

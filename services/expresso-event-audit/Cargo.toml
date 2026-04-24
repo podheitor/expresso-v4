@@ -1,5 +1,6 @@
 [package]
 name = "expresso-event-audit"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "NATS JetStream consumer: logs calendar + contacts events for audit."

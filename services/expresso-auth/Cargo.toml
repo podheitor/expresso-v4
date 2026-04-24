@@ -1,5 +1,6 @@
 [package]
 name = "expresso-auth"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "OIDC Relying Party — authorization_code+PKCE flow against Keycloak"

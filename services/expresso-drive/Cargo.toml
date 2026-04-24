@@ -1,5 +1,6 @@
 [package]
 name = "expresso-drive"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "WebDAV server + file sync API"

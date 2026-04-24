@@ -1,5 +1,6 @@
 [package]
 name = "expresso-web"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Server-side rendered web UI (Axum + Askama)"

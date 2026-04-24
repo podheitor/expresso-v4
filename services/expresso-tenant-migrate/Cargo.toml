@@ -1,5 +1,6 @@
 [package]
 name = "expresso-tenant-migrate"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Migra users do realm único 'expresso' → realms per-tenant"

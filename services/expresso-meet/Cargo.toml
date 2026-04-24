@@ -1,5 +1,6 @@
 [package]
 name = "expresso-meet"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Video meetings BFF — Jitsi Meet gateway (JWT issuance + room registry)"

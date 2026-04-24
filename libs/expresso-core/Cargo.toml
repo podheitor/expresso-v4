@@ -1,5 +1,6 @@
 [package]
 name = "expresso-core"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "Shared types, config, DB pool, errors"

@@ -1,5 +1,6 @@
 [package]
 name = "expresso-imip"
+publish = false
 version = "0.1.0"
 edition = "2021"
 description = "iMIP (RFC 6047) builder — iCal REQUEST/CANCEL + MIME multipart assembly."
