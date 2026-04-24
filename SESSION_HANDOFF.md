@@ -133,3 +133,50 @@ Standalone CLI tool that idempotently provisions a full Keycloak realm per tenan
 - Fase 4 — drop `tenant_id` user attribute; source of truth = realm
 
 **Last session end**: sprint #40c-fase1 (expresso-tenant-provision CLI; dry-run validated on prod 125).
+
+---
+
+## Sessão atual — shipped
+
+Trilha `realm-per-tenant` completa (#40c fase2→fase4) + iMIP habilitado em prod (#41).
+
+| # | Commit | Descrição |
+|---|--------|-----------|
+| 40c-fase2-lib | `892fcda` | `expresso-auth-client`: `MultiRealmValidator` + resolver por Host header |
+| 40c-fase2-lib | `aba8b94` | `TenantAuthenticated` extractor axum (resolve realm → valida token) |
+| 40c-fase2-step2 | `e46a888` | Wire chat+meet: flag `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS` (compat single-realm default) |
+| 40c-fase2-step2 | `37f1c03` | Wire calendar+auth-rp (mesmo padrão) |
+| 40c-fase3 | `993342f` | Novo crate `expresso-tenant-migrate` (CLI migra users de realm legado → realms per-tenant, flag `--send-reset`, dry-run default, 5 testes) |
+| 40c-fase4 | `997c522` | Drop mapper hardcoded `tenant_id`: `AuthContext::from_raw` deriva do `iss` via `realm_from_iss`. Fallback p/ claim legado. 22 testes auth-client. |
+| 40c ops | `d845765` | `ops/deploy-fase2-notes.md` — runbook de deploy fase2 |
+| 40c cleanup | `22df1e4` | remove `tracing::warn` não usado |
+| 41 | `eabe16c` | IMIP_ENABLED=true em compose-phase3 (SMTP_HOST=expresso-postfix:25, STARTTLS=false, FROM=calendar@expresso.local) |
+| 40c-fase4 ops | `d7e1a1e` | `ops/keycloak/remove-hardcoded-tenant-mapper.sh` — script idempotente limpa mapper legado |
+| docs | `22c8b84` | `docs/TENANT-ONBOARDING.md` — runbook 7 seções (provision→migrate→cleanup→multi-realm→iMIP→rollback) |
+| ops/alerts | `c7e082b` | 3 regras Prometheus iMIP (`ExpressoImipSendErrors`/`ParseErrors`/`DispatcherDown`), aplicadas em prod via `/-/reload` |
+
+### Deploy fase2 em prod 125 (binários ativos)
+
+- `expresso-chat:fase2` (`1f90c794e63f`) + tag `:latest`, preserva `:pre-fase2`
+- `expresso-meet:fase2` (`3cb8b4acee3c`)
+- `expresso-calendar:fase2` (`08be07e3069f`)
+- `expresso-auth:fase2` (`d167dcc66d8e`)
+
+Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `MultiRealmValidator`, `multi-realm validator ready`.
+
+**Modo atual**: compat single-realm (sem `AUTH__OIDC_ISSUER_TEMPLATE` setado → fallback p/ legacy `AUTH__OIDC_ISSUER`). Para ativar multi-realm, setar template + `AUTH__TENANT_HOSTS` no compose.
+
+### iMIP end-to-end validado
+
+- NATS publish envelope REQUEST → `imip-dispatch` log `sent`
+- Postfix smtpd recebe da 172.19.0.27 → LMTP → dovecot `status=sent delivered`
+- Métrica `imip_dispatch_total{method="REQUEST",result="ok"} = 1`
+- Alerts state: 3/3 `inactive` (dispatcher saudável)
+
+**Quirk envelope**: `method` é UPPERCASE `REQUEST`|`CANCEL`. Campos `dtstart`/`dtend` (não `start_utc`), `organizer_cn`, `common_name` (não `name`).
+
+### Realm cleanup em prod
+
+`ops/keycloak/remove-hardcoded-tenant-mapper.sh` executado contra realm `expresso` (prod 125): 2 clients (`web`, `dav`), zero mappers hardcoded removidos — realm já compliant com fase4.
+
+**Session ID TaskSync**: `"14"`.
