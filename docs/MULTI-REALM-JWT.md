@@ -82,3 +82,33 @@ env snippets, systemd timer command e compose files a patchar.
 
 7 serviços × 2 tenants (pilot, pilot2) = 14 probes E2E PASS a cada 10min.
 Ver [SESSION_HANDOFF.md](../SESSION_HANDOFF.md) para histórico completo.
+
+## Escopo — API/DAV apenas (2026-04-24)
+
+Este rollout cobre **backends de API/DAV** (7 serviços). A **UI web
+(`expresso-web` + `expresso-auth-rp` + `expresso-nginx`) permanece em modo
+single-realm** nesta entrega:
+
+- `expresso-nginx`: config default, sem vhosts por tenant.
+- `expresso-web`: URLs de login fixas (`https://expresso.local/auth/*`).
+- `expresso-auth-rp`: tem `AUTH__TENANT_HOSTS` carregado (validator multi-realm
+  ativo), mas o fluxo OIDC code-flow usa `AUTH_RP__ISSUER` estático
+  (`/realms/expresso`).
+
+### O que funciona HOJE (multi-tenant)
+- Clientes DAV (iOS/Android, Thunderbird): CalDAV, CardDAV.
+- Chat/Meet API calls diretas (Bearer JWT).
+- Mail (IMAP/SMTP + REST API).
+- Drive (REST API).
+
+### O que NÃO funciona ainda
+- Login via browser em `https://pilot.expresso.local` → resolve default nginx.
+- Seleção de tenant no UI web.
+
+### Roadmap próxima sprint (UI multi-tenant)
+1. Nginx vhosts per-tenant (TLS + Host routing → `expresso-web`/`expresso-auth-rp`).
+2. `expresso-auth-rp`: derivar issuer do Host header (similar aos backends).
+3. `expresso-web`: URLs de login dinâmicas per-tenant.
+4. Certs: multi-SAN ou per-tenant.
+
+Ver [SESSION_HANDOFF.md](../SESSION_HANDOFF.md) para decisão registrada.

@@ -498,3 +498,17 @@ Conflito: webapp legacy emite JWT com `aud=expresso-web`; DAV clients usam `aud=
 - Expansão: onboarding pilot3+ (receita: add `AUTH__TENANT_HOSTS` entry + realm Keycloak + DNS; sem rebuild)
 - CI: GitHub Actions rodando smoke-dav contra staging com matriz de tenants
 - Endurecer: migrar `expresso-web` aud para `account` eventualmente → poder remover multi-aud da config (manter capability no validator)
+
+
+## 2026-04-24 — Decisão: fechar rollout como API/DAV-only (aceita option C)
+
+Gap identificado pós-deploy: UI web (nginx default + web + auth-rp) ainda é
+single-realm. Usuário optou por **aceitar limite atual e adiar refactor UI
+multi-tenant para próxima sprint** (opção C).
+
+- Rollout multi-realm declarado COMPLETO para backends (7/7).
+- UI web backlog em roadmap (docs/MULTI-REALM-JWT.md seção "Escopo").
+- Sem breaking change: UI atual continua funcional em modo legacy.
+
+Pipeline production-ready: 14/14 probes E2E PASS a cada 10min, commits 21
+pushados, origin/main synced, CI hardened.

@@ -25,6 +25,12 @@ Versionamento: sprints numerados sequencialmente (sem semver atualmente; workspa
 ### Fixed
 - Migração `20260423180000_audit_log.sql`: idempotente via `ALTER TABLE ADD COLUMN IF NOT EXISTS` (antes falhava em bases com schema antigo).
 
+### Known Limitations
+- UI web (`expresso-web` + `expresso-nginx`) permanece single-realm: rollout
+  multi-realm cobre apenas backends API/DAV. Browser login via
+  `pilot.expresso.local` não resolve ainda. Próxima sprint: nginx vhosts
+  per-tenant + auth-rp issuer dinâmico. Ver [docs/MULTI-REALM-JWT.md](docs/MULTI-REALM-JWT.md#escopo--apidav-apenas-2026-04-24).
+
 ### Production state
 7 serviços × 2 tenants (pilot, pilot2) = 14 probes E2E PASS a cada 10min via systemd timer. Prometheus alerts `ExpressoSmokeDav{Failing,Stale}` ativos.
 
