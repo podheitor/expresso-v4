@@ -45,6 +45,17 @@ impl OidcConfig {
             http_timeout:     Duration::from_secs(5),
         }
     }
+
+    /// Multi-aud support: comma-separated audience values accepted during JWT
+    /// validation. First entry also used as `primary_audience` for role/roles
+    /// extraction from `resource_access[audience]`.
+    pub fn audiences(&self) -> Vec<&str> {
+        self.audience.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect()
+    }
+
+    pub fn primary_audience(&self) -> &str {
+        self.audiences().into_iter().next().unwrap_or(self.audience.as_str())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,7 +127,8 @@ impl OidcValidator {
 
         let mut val = Validation::new(key_entry.alg);
         val.set_issuer(&[self.cfg.issuer.as_str()]);
-        val.set_audience(&[self.cfg.audience.as_str()]);
+        let auds = self.cfg.audiences();
+        val.set_audience(&auds);
         val.validate_exp = true;
 
         let data = decode::<RawClaims>(token, &key_entry.key, &val)
@@ -125,7 +137,7 @@ impl OidcValidator {
                 _ => AuthError::InvalidToken(e.to_string()),
             })?;
 
-        AuthContext::from_raw(data.claims, &self.cfg.audience)
+        AuthContext::from_raw(data.claims, self.cfg.primary_audience())
     }
 
     /// Lookup a `kid` in the cache; on miss, refresh JWKS once (rate-limited).
