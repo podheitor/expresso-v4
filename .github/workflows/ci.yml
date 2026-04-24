@@ -86,3 +86,15 @@ jobs:
         with:
           severity: warning
           scandir: './ops'
+
+  rustdoc:
+    name: Rust — cargo doc (build check)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Build docs
+        run: cargo doc --workspace --no-deps --all-features
