@@ -52,3 +52,39 @@ sudo docker compose -f compose-chat-meet.yaml  up -d --force-recreate expresso-c
 sudo docker compose -f compose-phase3.yaml     up -d --force-recreate expresso-calendar
 sudo docker compose -f compose-auth-rp.yaml    up -d --force-recreate expresso-auth
 ```
+
+## fase2b — Rebuild com Authenticated multi-realm auto-promovido
+
+Commit `1e6f88f` (`Authenticated` extractor auto-promove p/ multi-realm quando
+`Arc<MultiRealmValidator>`+`Arc<TenantResolver>` presentes em extensions).
+
+Built em 101 (cache `/root/cargo-cache-fase2/`), shipped+loaded em 125, tags
+`:fase2b` criadas + `:latest` repontadas. Preserva `:fase2` + `:pre-fase2`.
+
+| Service | Image ID (fase2b) | Bytes |
+|---|---|---|
+| `expresso-chat` | `815915f8a37a` | 95.3 MB |
+| `expresso-meet` | `ad933c984d4a` | 95.1 MB |
+| `expresso-calendar` | `b1deaa53339f` | 97.9 MB |
+| `expresso-auth` | `e7898d8342cf` | 95.2 MB |
+
+Recreate executado via `compose-phase3.yaml` (calendar) +
+`compose-chat-meet.yaml` (chat+meet) + `compose-auth-rp.yaml` (auth-rp).
+Healthz 200 em 8010/8011/8002/8012. Símbolo `multi-realm` presente no
+binário (grep direto na imagem).
+
+**Modo atual em prod**: compat single-realm — `AUTH__OIDC_ISSUER_TEMPLATE`
+não setado, services caem no fallback `AUTH__OIDC_ISSUER`. Para ativar
+multi-realm real, setar `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS`
+e recriar containers.
+
+### Rollback fase2b → fase2
+
+```bash
+for svc in chat meet calendar auth; do
+  docker tag expresso-${svc}:fase2 expresso-${svc}:latest
+done
+docker compose -f compose-phase3.yaml up -d --force-recreate expresso-calendar
+docker compose -f compose-chat-meet.yaml up -d --force-recreate expresso-chat expresso-meet
+docker compose -f compose-auth-rp.yaml up -d --force-recreate expresso-auth
+```
