@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** sprint #34 (Prometheus alerting rules). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #35 (Observability stack template). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #34 shipped (33 sprints)
+## Status da trilha — #2 → #35 shipped (34 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 
@@ -18,7 +18,8 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 | 31 | `138e44f` | `expresso-event-audit` — `/healthz`, `/readyz`, `/metrics` (prometheus) + `event_audit_events_total{stream}` |
 | 32 | `a7b62a5` | Produtores `expresso-calendar` + `expresso-contacts` — `calendar_nats_publish_total{kind,result}` + `contacts_nats_publish_total{kind,result}` (result ∈ ok/err/serialize_err), zero pré-populado |
 | 33 | `c6cf4b8` | Grafana dashboard extension — +5 painéis (produtor publish rate, audit consume, lag, errors, contacts JetStream). Artefato-only, sem deploy. |
-| 34 | `3a14996` | Prometheus alerting rules — `ops/prometheus/alerts/expresso.yml` (9 rules, 3 groups). Validado com promtool. Artefato-only. |
+| 34 | `09afe87` | Prometheus alerting rules — `ops/prometheus/alerts/expresso.yml` (9 rules, 3 groups). Validado com promtool. Artefato-only. |
+| 35 | `c0a917f`  | Observability stack template — alertmanager.yml + prometheus.yml + compose-observability.yaml + README. amtool+promtool validados em 125. Artefato-only. |
 
 ## Estado em produção (125)
 

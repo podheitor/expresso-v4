@@ -1,0 +1,50 @@
+# Alertmanager — Expresso V4 (sprint #35 template)
+# Roteamento básico. Receivers com placeholders; preencher em deploy real.
+global:
+  resolve_timeout: 5m
+  # smtp_* preenchidos via env via --config.file render.
+
+route:
+  receiver: ops-default
+  group_by: ['alertname', 'component']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: ops-critical
+      continue: true
+    - matchers:
+        - severity="info"
+      receiver: ops-info
+      group_wait: 2m
+      repeat_interval: 24h
+
+receivers:
+  - name: ops-default
+    # Placeholder — substituir por webhook Slack/Teams/etc em prod.
+    webhook_configs:
+      - url: 'http://localhost:5001/hook'
+        send_resolved: true
+
+  - name: ops-critical
+    # Mesma destinação agora; em prod: PagerDuty / SMS.
+    webhook_configs:
+      - url: 'http://localhost:5001/hook-critical'
+        send_resolved: true
+
+  - name: ops-info
+    webhook_configs:
+      - url: 'http://localhost:5001/hook-info'
+        send_resolved: false
+
+inhibit_rules:
+  # Se serviço down, não alerta sobre 5xx / 429 no mesmo serviço
+  - source_matchers: [alertname="ExpressoServiceDown"]
+    target_matchers: [component=~"service|rate-limit"]
+    equal: [instance]
+  # Crítico de publish errors inibe warning
+  - source_matchers: [alertname="ExpressoNatsPublishErrorsCritical"]
+    target_matchers: [alertname="ExpressoNatsPublishErrors"]
+    equal: []

@@ -2476,3 +2476,38 @@ SUCCESS: 9 rules found
 README novo em [ops/prometheus/README.md](ops/prometheus/README.md) com tabela
 de alerts + snippet de integração em `prometheus.yml`. Artefato-only, sem
 rebuild/deploy — basta montar o arquivo e `rule_files` no Prometheus de prod.
+
+### #35 — Observability stack template (prometheus + alertmanager + nats-exporter)
+
+Empacota #31→#34 como stack deployável: `ops/compose-observability.yaml`.
+
+Artefatos:
+- `ops/alertmanager/alertmanager.yml` — rota por severity, 3 receivers (default
+  / critical / info), 2 inhibit rules (`ServiceDown` silencia 5xx/429 no mesmo
+  instance; `PublishErrorsCritical` silencia warning).
+- `ops/alertmanager/README.md` — tabela de rotas, templates p/ Slack/Teams/
+  PagerDuty/Email.
+- `ops/prometheus/prometheus.yml` — scrape `expresso-services`,
+  `expresso-event-audit`, `nats`, self, alertmanager + `rule_files:
+  /etc/prometheus/alerts/*.yml`.
+- `ops/compose-observability.yaml` — stack completo (Prometheus 9090 +
+  Alertmanager 9093 + prometheus-nats-exporter 7777 + volumes `prom-data`/
+  `am-data`), rede externa `expresso-net`.
+
+**Validação (promtool + amtool em prod-host 125):**
+```
+amtool check-config /w/am.yml       → SUCCESS
+promtool check config prometheus.yml → SUCCESS: 1 rule files found
+                                     → SUCCESS: 9 rules found
+```
+
+Deploy (quando operador estiver pronto):
+```
+cd ops && sudo docker compose -f compose-observability.yaml up -d
+curl :9093/-/healthy && curl :9090/-/ready
+curl :9090/api/v1/rules | jq '.data.groups[].name'
+```
+
+Loop observability 100% artefato-pronto: counters (#31/#32) → dashboard (#33)
+→ rules (#34) → stack deploy (#35). Próximo passo natural: subir em prod +
+conectar receivers reais.
