@@ -354,3 +354,16 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 | chat/meet | ⚠ | ⚠ (aud conflict — deferido) |
 
 4 serviços multi-realm 2-tenant em produção.
+
+## 2026-04-24 — Observabilidade DAV multi-realm contínua
+
+- `ops/smoke-dav.sh` — probe combinado calendar+contacts por tenant (env file)
+- `ops/systemd/expresso-smoke-dav@.{service,timer}` — template systemd (10min)
+- Ativado em prod 125: `expresso-smoke-dav@{pilot,pilot2}.timer`
+- Métricas push: `expresso_smoke_dav_success{tenant,service=calendar|contacts}`
+- 4 probes iniciais PASS (pilot+pilot2 × calendar+contacts)
+
+### Timers multi-realm ativos em 125
+
+- `expresso-smoke-multirealm@{pilot,pilot2}.timer` (auth-rp)
+- `expresso-smoke-dav@{pilot,pilot2}.timer` (calendar+contacts) ← novo

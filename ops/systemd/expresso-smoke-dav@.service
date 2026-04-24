@@ -1,0 +1,15 @@
+[Unit]
+Description=Expresso DAV (calendar+contacts) multi-realm smoke (tenant=%i)
+Documentation=file:///opt/expresso/smoke-dav.sh
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/expresso/smoke-multirealm-%i.env
+ExecStart=/bin/bash /opt/expresso/smoke-dav.sh
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

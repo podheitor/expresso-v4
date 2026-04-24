@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic DAV multi-realm smoke (tenant=%i, every 10 min)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Persistent=true
+Unit=expresso-smoke-dav@%i.service
+RandomizedDelaySec=60s
+
+[Install]
+WantedBy=timers.target
