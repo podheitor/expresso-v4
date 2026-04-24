@@ -1,20 +1,12 @@
 #!/bin/bash
 # Smoke test for multi-realm JWT validation in prod.
-# Usage: PILOT_REALM=<uuid> PILOT_PASS=<pwd> ./smoke-multirealm.sh [host]
-#
-# Env defaults assume prod 125 context. Override for other envs.
-#   KC_URL                (default http://127.0.0.1:8080)
-#   AUTH_RP_URL           (default http://127.0.0.1:8012)
-#   PROM_URL              (default http://127.0.0.1:9090)
-#   PILOT_REALM           (required)
-#   PILOT_CLIENT_ID       (default expresso-dav)
-#   PILOT_CLIENT_SECRET   (required)
-#   PILOT_USER            (default admin@pilot.expresso.local)
-#   PILOT_PASS            (required)
-#   TENANT_HOST           (default pilot.expresso.local)
-#
+# Required env: PILOT_REALM, PILOT_CLIENT_SECRET, PILOT_PASS
+# Optional env:
+#   KC_URL, AUTH_RP_URL, PROM_URL
+#   PILOT_CLIENT_ID, PILOT_USER, TENANT_HOST
+#   PUSHGATEWAY_URL, SMOKE_JOB
 # Exit codes: 0=ok, 1=token_fail, 2=auth_me_fail, 3=metric_missing
-set -euo pipefail
+set -uo pipefail
 
 KC_URL="${KC_URL:-http://127.0.0.1:8080}"
 AUTH_RP_URL="${AUTH_RP_URL:-http://127.0.0.1:8012}"
@@ -22,9 +14,29 @@ PROM_URL="${PROM_URL:-http://127.0.0.1:9090}"
 PILOT_CLIENT_ID="${PILOT_CLIENT_ID:-expresso-dav}"
 PILOT_USER="${PILOT_USER:-admin@pilot.expresso.local}"
 TENANT_HOST="${TENANT_HOST:-pilot.expresso.local}"
+PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-}"
+SMOKE_JOB="${SMOKE_JOB:-smoke_multirealm}"
 : "${PILOT_REALM:?PILOT_REALM required}"
 : "${PILOT_CLIENT_SECRET:?PILOT_CLIENT_SECRET required}"
 : "${PILOT_PASS:?PILOT_PASS required}"
+
+push_metric() {
+  local success="$1"
+  [[ -z "$PUSHGATEWAY_URL" ]] && return 0
+  local ts; ts=$(date +%s)
+  curl -sS --data-binary @- "$PUSHGATEWAY_URL/metrics/job/$SMOKE_JOB/tenant/$PILOT_REALM" >/dev/null 2>&1 <<PUSH || true
+# TYPE expresso_smoke_multirealm_success gauge
+expresso_smoke_multirealm_success $success
+# TYPE expresso_smoke_multirealm_last_run_timestamp_seconds gauge
+expresso_smoke_multirealm_last_run_timestamp_seconds $ts
+PUSH
+}
+
+on_exit() {
+  local ec=$?
+  if [[ $ec -eq 0 ]]; then push_metric 1; else push_metric 0; fi
+}
+trap on_exit EXIT
 
 echo "[1/3] issue JWT from realm=$PILOT_REALM"
 RESP=$(curl -sS -X POST "$KC_URL/realms/$PILOT_REALM/protocol/openid-connect/token" \

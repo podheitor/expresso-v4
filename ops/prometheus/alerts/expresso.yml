@@ -186,3 +186,25 @@ groups:
       annotations:
         summary: "Multi-realm cache empty"
         description: "auth_realm_cache_size=0 for 15m — no tenants validated (unusual for prod)."
+
+  - name: expresso-smoke-multirealm
+    rules:
+      - alert: ExpressoSmokeMultirealmFailing
+        expr: expresso_smoke_multirealm_success == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "Smoke multi-realm falhando (tenant={{ $labels.tenant }})"
+          description: "expresso_smoke_multirealm_success==0 por 15m — JWT/auth_me/metric cadeia quebrou p/ tenant {{ $labels.tenant }}."
+
+      - alert: ExpressoSmokeMultirealmStale
+        expr: time() - expresso_smoke_multirealm_last_run_timestamp_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+          component: auth
+        annotations:
+          summary: "Smoke multi-realm sem execução há >30min (tenant={{ $labels.tenant }})"
+          description: "Timer systemd parado ou pushgateway indisponível. Conferir journalctl -u expresso-smoke-multirealm."
