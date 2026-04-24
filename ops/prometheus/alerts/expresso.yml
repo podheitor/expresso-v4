@@ -208,3 +208,35 @@ groups:
         annotations:
           summary: "Smoke multi-realm sem execução há >30min (tenant={{ $labels.tenant }})"
           description: "Timer systemd parado ou pushgateway indisponível. Conferir journalctl -u expresso-smoke-multirealm."
+
+  - name: expresso-mail-auth
+    rules:
+      - alert: ExpressoDmarcRejectSurge
+        expr: sum(rate(mail_auth_actions_total{action="reject"}[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: mail
+        annotations:
+          summary: "Surge em rejeições DMARC (>3/min por 10m)"
+          description: "Taxa de {{ $value | humanize }}/s mensagens rejeitadas por DMARC p=reject. Pode indicar spoofing real ou quebra de config DKIM/SPF do remetente."
+
+      - alert: ExpressoMailAuthTempErrorHigh
+        expr: sum(rate(mail_auth_checks_total{result="temperror"}[10m])) / clamp_min(sum(rate(mail_auth_checks_total[10m])), 1) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+          component: mail
+        annotations:
+          summary: ">20% das verificações auth retornando temperror"
+          description: "DNS upstream ou rede do milter/mail com problema: {{ $value | humanizePercentage }} temperror rate."
+
+      - alert: ExpressoDmarcQuarantineSurge
+        expr: sum(rate(mail_auth_actions_total{action="quarantine"}[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: info
+          component: mail
+        annotations:
+          summary: "Surge em quarentenas DMARC (>6/min por 10m)"
+          description: "{{ $value | humanize }}/s mensagens entrando na hold queue do Postfix por DMARC p=quarantine. Rever se legítimo vs. spoof."
