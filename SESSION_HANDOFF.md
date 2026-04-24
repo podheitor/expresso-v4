@@ -257,3 +257,24 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 - pushgateway scrape: `honor_labels: true` é essencial p/ preservar `job=smoke_multirealm` + `tenant=<uuid>` originais; senão Prometheus sobrescreve.
 - Pushgateway POST grouping key: `/metrics/job/<job>/tenant/<uuid>` — cada grupo é idempotente (POST replace, DELETE remove).
 - `set -euo pipefail` + `trap EXIT` + `|| true` no push garante que falhas de rede no pushgateway não mascarem exit code do teste.
+
+## 2026-04-24 — Sprint #42: chat + meet RequestCtx multi-realm (ship)
+
+| Step | Commit/Tag | Descrição |
+|------|------------|-----------|
+| code | `1d562c5` | chat/meet `RequestCtx` → MultiRealmValidator precedence + per-tenant `auth_validation_total` |
+| build | image `expresso-{chat,meet}:fase42` | rust:1-bookworm release build (1m49s) em 101 |
+| deploy | prod 125 | `compose-chat-meet.yaml up -d --force-recreate` — containers up |
+
+### Runtime prod 125 (pós-recreate)
+
+- `expresso-chat` :8010 up, HTTP listening
+- `expresso-meet` :8011 up, HTTP listening
+- Compat fallback: sem `AUTH__OIDC_ISSUER_TEMPLATE` no compose → mesmo path single-realm legacy (erro JWKS `auth.expresso.local` → dev header mode — pre-existente, ≠ regressão)
+- strings binário: `MultiRealmValidator` + `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS` presentes
+
+### Próximos passos candidatos
+
+- Ativar multi-realm chat/meet: KC clients `expresso-chat` + `expresso-meet` em pilot/pilot2 realms + env `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS` + `extra_hosts` em compose-chat-meet.yaml
+- Aplicar mesmo pattern em calendar + contacts (próximos serviços tenant-aware)
+- Smoke test chat endpoint com JWT pilot
