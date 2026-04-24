@@ -450,3 +450,51 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 | chat/meet | ⚠ compat | ⚠ compat (aud conflict) |
 
 **6 serviços multi-realm 2-tenant em produção — 10 probes E2E PASS a cada 10min.**
+
+## 2026-04-24 — Sprint #45: chat/meet multi-realm ATIVADO (rollout COMPLETO)
+
+### Mudança core — multi-audience JWT validator
+
+Conflito: webapp legacy emite JWT com `aud=expresso-web`; DAV clients usam `aud=account`. Single-valued `AUTH__OIDC_AUDIENCE` não cobria ambos.
+
+- `libs/expresso-auth-client/src/validator.rs`:
+  - `OidcConfig.audiences() -> Vec<&str>` — split comma-separated list, trim, filter empty
+  - `OidcConfig.primary_audience() -> &str` — first entry (usado p/ `resource_access[aud]` role extraction)
+  - `OidcValidator.validate()`: `val.set_audience(&auds)` aceita slice de N valores (jsonwebtoken API)
+- Backward-compat: single aud continua funcionando (Vec of 1).
+
+### Deploy
+
+- Rebuild `expresso-chat:fase45` + `expresso-meet:fase45` em 101 (58s release).
+- `compose-chat-meet.yaml` patched em 125: img fase45, `AUTH__OIDC_AUDIENCE="account,expresso-web"`, `AUTH__OIDC_ISSUER_TEMPLATE`, `AUTH__TENANT_HOSTS`, `extra_hosts: auth.expresso.local:172.19.0.3`.
+- Logs: `multi-realm validator ready ... hosts: 2` em chat e meet.
+- Smoke `ops/smoke-chat-meet.sh`: HTTP 200 `/api/v1/channels` + `/api/v1/meetings` em pilot+pilot2.
+
+### smoke-dav estendido (5 → 7 probes)
+
+`ops/smoke-dav.sh` agora cobre JWT + calendar + contacts + drive + mail + **chat** + **meet**. 14/14 probes PASS (pilot+pilot2). systemd timer 10min + Prometheus alerts cobrem conjunto estendido via labels `service=chat|meet`.
+
+### Status runtime multi-realm FINAL
+
+| Service | pilot | pilot2 |
+|---------|-------|--------|
+| auth-rp | ✅ | ✅ |
+| calendar | ✅ | ✅ |
+| contacts | ✅ | ✅ |
+| drive | ✅ | ✅ |
+| mail | ✅ | ✅ |
+| chat | ✅ | ✅ |
+| meet | ✅ | ✅ |
+
+**7 serviços multi-realm 2-tenant em produção — 14 probes E2E PASS a cada 10min.**
+
+### Commits sprint #45
+
+- `88e67d8` sprint #45: multi-audience JWT validator + chat/meet multi-realm ATIVO
+- `96ca980` smoke-dav: extend to 7 probes (add chat + meet)
+
+### Próximos passos sugeridos
+
+- Expansão: onboarding pilot3+ (receita: add `AUTH__TENANT_HOSTS` entry + realm Keycloak + DNS; sem rebuild)
+- CI: GitHub Actions rodando smoke-dav contra staging com matriz de tenants
+- Endurecer: migrar `expresso-web` aud para `account` eventualmente → poder remover multi-aud da config (manter capability no validator)
