@@ -2616,3 +2616,28 @@ integrável em qualquer consumer NATS.
 Próximo passo natural (#39+): estender `EventBus` p/ publicar `attendees +
 dtstart/dtend + location` no payload NATS, depois wire `expresso-event-audit`
 (ou novo crate `expresso-imip-dispatch`) p/ consumir + enviar via `lettre`.
+
+---
+
+## Sprint #39 — expresso-imip-dispatch service (artifact)
+
+**Escopo:** novo service `services/expresso-imip-dispatch` — consumer JetStream que recebe envelopes iMIP (JSON `{method, invite, subject_hint?}`) e envia e-mails RFC 6047 via SMTP (lettre) usando builder da crate `expresso-imip`.
+
+**Entrega:**
+- `services/expresso-imip-dispatch/Cargo.toml` — deps async-nats 0.37, lettre 0.11 (smtp-transport + tokio1-rustls-tls + builder), time 0.3 (serde rfc3339), expresso-imip path dep.
+- `services/expresso-imip-dispatch/src/main.rs` (~430 linhas) — parsing envelope → `EventInvite` → `build_mime_multipart` → SMTP send (ou dry-run se `IMIP_ENABLED=false`). Ops HTTP em `:9192` (`/healthz`, `/readyz`, `/metrics`). Métrica `imip_dispatch_total{method,result}` pré-populada zero.
+- Registrado em `Cargo.toml` raíz.
+- 4 unit tests passam (`parse_valid_envelope`, `parse_cancel_with_defaults`, `envelope_method_serializes_upper`, `human_summary_varies_by_method`).
+- Release build validada em `rust:1-bookworm` (125): binário 11 MB.
+- Imagem `expresso-imip-dispatch:latest` construída em 125; smoke: conecta em `nats://expresso-nats:4222`, consumer `imip-dispatch` criado em stream `EXPRESSO_CALENDAR`, ops http responde 200, métricas expostas.
+
+**Design:**
+- Dispatcher é agnóstico ao fluxo do calendário: não lê nem altera `Event` enum. Ouve subject dedicado `expresso.imip.request` (JSON envelope). Publicação pelo calendar fica para sprint futura.
+- Gate `IMIP_ENABLED` default `false` → todos os dispatches são `dry_run` (log + métrica), seguro deploy com config mínima.
+- SMTP via STARTTLS padrão (`SMTP_STARTTLS=true`), creds opcionais via `SMTP_USER`/`SMTP_PASSWORD`.
+
+**Pendências p/ deploy prod (próxima sprint):**
+1. Criar stream `EXPRESSO_IMIP` com subject `expresso.imip.>` (ou adicionar `expresso.imip.>` ao `EXPRESSO_CALENDAR`).
+2. Adicionar serviço ao compose com env `IMIP_ENABLED=false` inicial.
+3. Scrape target Prometheus apontando p/ `expresso-imip-dispatch:9192`.
+4. Wire calendar → publicar envelope em `expresso.imip.request` ao criar/cancelar evento.

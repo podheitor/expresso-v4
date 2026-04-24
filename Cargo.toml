@@ -18,6 +18,7 @@ members = [
     "services/expresso-notifications",
     "services/expresso-flows",
     "services/expresso-event-audit",
+    "services/expresso-imip-dispatch",
     # Libraries
     "libs/expresso-core",
     "libs/expresso-crypto",
