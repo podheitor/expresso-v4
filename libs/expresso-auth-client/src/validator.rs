@@ -233,3 +233,47 @@ fn jwk_to_key(jwk: &Jwk) -> Option<KeyEntry> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(aud: &str) -> OidcConfig {
+        OidcConfig::new("http://kc/realms/x", aud)
+    }
+
+    #[test]
+    fn single_audience() {
+        let c = cfg("account");
+        assert_eq!(c.audiences(), vec!["account"]);
+        assert_eq!(c.primary_audience(), "account");
+    }
+
+    #[test]
+    fn multi_audience_csv() {
+        let c = cfg("account,expresso-web");
+        assert_eq!(c.audiences(), vec!["account", "expresso-web"]);
+        assert_eq!(c.primary_audience(), "account");
+    }
+
+    #[test]
+    fn multi_audience_trims_whitespace() {
+        let c = cfg(" account , expresso-web ,  other ");
+        assert_eq!(c.audiences(), vec!["account", "expresso-web", "other"]);
+        assert_eq!(c.primary_audience(), "account");
+    }
+
+    #[test]
+    fn empty_entries_filtered() {
+        let c = cfg("account,,expresso-web,");
+        assert_eq!(c.audiences(), vec!["account", "expresso-web"]);
+    }
+
+    #[test]
+    fn primary_fallback_when_blank() {
+        let c = cfg("");
+        assert_eq!(c.audiences(), Vec::<&str>::new());
+        // fallback returns raw audience string
+        assert_eq!(c.primary_audience(), "");
+    }
+}
