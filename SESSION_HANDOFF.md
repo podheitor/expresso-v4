@@ -102,3 +102,34 @@ Session ID usado: `"12"`. User costuma responder `"segue"` / `"autonomous tempor
 - Grafana: [ops/grafana/expresso-overview.json](ops/grafana/expresso-overview.json) (11 painéis, inclui counters #31/#32 a partir de #33)
 - Observability lib: [libs/expresso-observability](libs/expresso-observability)
 - Event audit worker: [services/expresso-event-audit](services/expresso-event-audit)
+
+## Sprint #40c-fase1 — expresso-tenant-provision (realm-per-tenant Phase 1)
+
+Standalone CLI tool that idempotently provisions a full Keycloak realm per tenant.
+
+**Crate**: `services/expresso-tenant-provision/` (new, 478-line main.rs, clap 4 derive).
+
+**Provisions** (idempotent — skip if exists):
+- Realm with security defaults: sslRequired=external, bruteForceProtected, passwordPolicy length(12)+upper+digit+history(3)
+- 3 clients: `expresso-web` (public, PKCE S256), `expresso-dav` (confidential, directAccessGrants), `expresso-admin` (confidential, serviceAccountsEnabled)
+- `tenant_id` hardcoded-claim protocol mapper (realm name = tenant_id) on all 3 clients → access/id/userinfo tokens
+- 4 realm roles: SuperAdmin, TenantAdmin, User, Readonly
+- Initial admin user with temp password + TenantAdmin role assignment
+
+**Flags**: `--kc-url --realm --display --admin-email --admin-password --base-redirect --dry-run` (env: KC_ADMIN_PASS, TENANT_ADMIN_EMAIL, TENANT_ADMIN_PASSWORD).
+
+**Dry-run**: fetches admin token + existence GETs but never POSTs; prints realm body and returns full summary. Validated end-to-end on prod 125 against `expresso-keycloak` — returns:
+```json
+{ "realm": "tenant-demo", "realm_created": true, "clients_created": ["expresso-web","expresso-dav","expresso-admin"], "roles_created": ["SuperAdmin","TenantAdmin","User","Readonly"], "admin_user_id": "(dry-run)", "dry_run": true }
+```
+
+**Tests**: 7 unit tests on pure body builders — all pass. Isolated workspace `/tmp/tp-test` on 125 used for `cargo test -p expresso-tenant-provision`.
+
+**Deploy state**: artifact-only. No compose service, no systemd. Operator runs binary manually when provisioning a new tenant.
+
+**Not yet** (future fases of realm-per-tenant plan):
+- Fase 2 — services resolve realm via Host header (expresso-web/dav/admin → lookup realm from tenant domain map)
+- Fase 3 — migration script: move existing `expresso` realm users into per-tenant realms
+- Fase 4 — drop `tenant_id` user attribute; source of truth = realm
+
+**Last session end**: sprint #40c-fase1 (expresso-tenant-provision CLI; dry-run validated on prod 125).
