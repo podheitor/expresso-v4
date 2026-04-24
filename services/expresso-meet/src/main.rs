@@ -14,7 +14,7 @@ use std::{env, net::SocketAddr, sync::Arc};
 
 use tracing::{error, info, warn};
 
-use expresso_auth_client::{OidcConfig, OidcValidator};
+use expresso_auth_client::{MultiRealmValidator, OidcConfig, OidcValidator, TenantResolver};
 
 use expresso_core::{config::{DatabaseConfig, TelemetryConfig}, create_db_pool, init_tracing};
 use state::AppState;
@@ -93,6 +93,24 @@ async fn resolve_oidc() -> Option<Arc<OidcValidator>> {
     }
 }
 
+
+fn resolve_multi_realm() -> (Option<Arc<MultiRealmValidator>>, Option<Arc<TenantResolver>>) {
+    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") { Some(v) => v, None => return (None, None) };
+    let audience = match env_string("AUTH__OIDC_AUDIENCE")   { Some(v) => v, None => return (None, None) };
+    let resolver = TenantResolver::from_env("AUTH__TENANT_HOSTS");
+    if resolver.is_empty() {
+        warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
+        return (None, None);
+    }
+    match MultiRealmValidator::new(tpl.clone(), audience.clone()) {
+        Ok(m)  => {
+            info!(template = %tpl, hosts = resolver.len(), "multi-realm validator ready");
+            (Some(Arc::new(m)), Some(Arc::new(resolver)))
+        }
+        Err(e) => { error!(error = %e, "multi-realm init failed"); (None, None) }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let telemetry = resolve_telemetry();
@@ -117,9 +135,10 @@ async fn main() -> anyhow::Result<()> {
     if oidc.is_none() {
         warn!("AUTH__OIDC_ISSUER / AUTH__OIDC_AUDIENCE unset — auth in DEV header-mode (INSECURE)");
     }
+    let (multi, resolver) = resolve_multi_realm();
     let http_addr = resolve_addr()?;
     let state = AppState::new(db, jitsi);
-    let app = api::router(state, oidc);
+    let app = api::router(state, oidc, multi, resolver);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");
