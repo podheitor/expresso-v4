@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 use tokio::sync::Mutex;
 use tracing::info;
 
-use expresso_auth_client::{OidcConfig, OidcValidator};
+use expresso_auth_client::{MultiRealmValidator, OidcConfig, OidcValidator, TenantResolver};
 
 use crate::{
     config::RpConfig,
@@ -99,6 +99,28 @@ async fn main() -> anyhow::Result<()> {
         ratelimit::RateLimiter::new(std::time::Duration::from_secs(60), 20)
     );
 
+    // Multi-realm opt-in (fase 2 do realm-per-tenant). Ativo quando
+    // AUTH__OIDC_ISSUER_TEMPLATE + AUTH__TENANT_HOSTS setados.
+    let (multi, tenant_resolver): (Option<Arc<MultiRealmValidator>>, Option<Arc<TenantResolver>>) = {
+        let tpl = env::var("AUTH__OIDC_ISSUER_TEMPLATE").ok().filter(|v| !v.is_empty());
+        let aud = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty());
+        match (tpl, aud) {
+            (Some(t), Some(a)) => {
+                let r = TenantResolver::from_env("AUTH__TENANT_HOSTS");
+                if r.is_empty() {
+                    tracing::warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
+                    (None, None)
+                } else {
+                    match MultiRealmValidator::new(t.clone(), a.clone()) {
+                        Ok(m)  => { info!(template = %t, hosts = r.len(), "multi-realm validator ready"); (Some(Arc::new(m)), Some(Arc::new(r))) }
+                        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+                    }
+                }
+            }
+            _ => (None, None),
+        }
+    };
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready",  get(ready))
@@ -115,6 +137,8 @@ async fn main() -> anyhow::Result<()> {
         .with_state(app_state)
         // Extension for Authenticated extractor (/auth/me)
         .layer(Extension(validator));
+    let app = match multi     { Some(m) => app.layer(Extension(m)), None => app };
+    let app = match tenant_resolver { Some(r) => app.layer(Extension(r)), None => app };
 
     let addr = resolve_addr()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

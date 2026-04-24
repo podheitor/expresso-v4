@@ -8,7 +8,7 @@ mod state;
 mod events;
 mod imip_publish;
 
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, sync::Arc};
 
 use tracing::{info, warn};
 
@@ -98,6 +98,27 @@ fn resolve_database_config() -> Option<DatabaseConfig> {
     })
 }
 
+
+fn resolve_multi_realm() -> (
+    Option<Arc<expresso_auth_client::MultiRealmValidator>>,
+    Option<Arc<expresso_auth_client::TenantResolver>>,
+) {
+    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") { Some(v) => v, None => return (None, None) };
+    let audience = match env_string("AUTH__OIDC_AUDIENCE")   { Some(v) => v, None => return (None, None) };
+    let resolver = expresso_auth_client::TenantResolver::from_env("AUTH__TENANT_HOSTS");
+    if resolver.is_empty() {
+        warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
+        return (None, None);
+    }
+    match expresso_auth_client::MultiRealmValidator::new(tpl.clone(), audience.clone()) {
+        Ok(m)  => {
+            info!(template = %tpl, hosts = resolver.len(), "multi-realm validator ready");
+            (Some(Arc::new(m)), Some(Arc::new(resolver)))
+        }
+        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let telemetry = resolve_telemetry();
@@ -150,9 +171,12 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
-    let app = api::router(state)
+    let (multi, resolver) = resolve_multi_realm();
+    let mut app = api::router(state)
         .layer(axum::middleware::from_fn(expresso_core::ratelimit::layer))
         .layer(axum::extract::Extension(rate_limiter));
+    if let Some(m) = multi    { app = app.layer(axum::extract::Extension(m)); }
+    if let Some(r) = resolver { app = app.layer(axum::extract::Extension(r)); }
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 
     info!(addr = %http_addr, "HTTP API listening");
