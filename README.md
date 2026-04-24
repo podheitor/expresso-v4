@@ -41,6 +41,9 @@
 - [Arquitetura Técnica](docs/ARCHITECTURE.md)
 - [Conformidade Governo Brasileiro](docs/COMPLIANCE_GOV_BR.md)
 - [Infra Lab (Proxmox)](docs/INFRA_LAB.md)
+- [Multi-Realm JWT Validation](docs/MULTI-REALM-JWT.md)
+- [Tenant Onboarding Runbook](docs/TENANT-ONBOARDING.md)
+- [Observability](docs/OBSERVABILITY.md)
 
 > Nota: `docs/PLAN.md` e `docs/UX_IDENTITY.md` ainda nao existem neste repositorio (17 de abril de 2026).
 
