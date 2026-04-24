@@ -80,11 +80,26 @@ pub async fn process(
             continue;
         };
 
+        // Sieve evaluation — fetch user script, evaluate, determine target folder/action.
+        let target_folder: String = match apply_sieve(&mut tx, user_id, raw).await {
+            SieveDecision::Deliver { folder } => folder,
+            SieveDecision::Discard => {
+                tracing::info!(rcpt = %rcpt, "sieve: discard");
+                tx.commit().await?;
+                continue;
+            }
+            SieveDecision::Reject { reason } => {
+                tracing::warn!(rcpt = %rcpt, reason = %reason, "sieve: reject");
+                tx.commit().await?;
+                anyhow::bail!("sieve reject: {}", reason);
+            }
+        };
+
         let inbox_row: Option<(Uuid, i64)> = sqlx::query_as(
             r#"
             SELECT id, next_uid
             FROM mailboxes
-            WHERE user_id = $1 AND folder_name = 'INBOX'
+            WHERE user_id = $1 AND folder_name = $2
             FOR UPDATE
             "#,
         )
@@ -500,4 +515,59 @@ mod tests {
         assert_eq!(parsed.preview_text.as_deref(), Some("Hello world Second line"));
         assert!(parsed.date.is_some());
     }
+}
+
+// ─── Sieve integration ───────────────────────────────────────────────────────
+
+enum SieveDecision {
+    Deliver { folder: String },
+    Discard,
+    Reject { reason: String },
+}
+
+async fn apply_sieve(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    raw: &[u8],
+) -> SieveDecision {
+    let vacation_script: Option<String> = sqlx::query_scalar(
+        r#"SELECT sieve_script FROM user_vacation WHERE user_id = $1 AND enabled = true"#,
+    )
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .unwrap_or(None);
+
+    let filter_script: Option<String> = sqlx::query_scalar(
+        r#"SELECT script FROM user_sieve WHERE user_id = $1 AND enabled = true"#,
+    )
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await
+    .unwrap_or(None);
+
+    let mut combined = String::new();
+    if let Some(v) = vacation_script { combined.push_str(&v); combined.push('\n'); }
+    if let Some(f) = filter_script   { combined.push_str(&f); }
+
+    if combined.trim().is_empty() {
+        return SieveDecision::Deliver { folder: "INBOX".to_string() };
+    }
+
+    let actions = crate::sieve::evaluate(combined.as_bytes(), raw);
+    for a in &actions {
+        match a {
+            crate::sieve::FilterAction::Reject { reason } => {
+                return SieveDecision::Reject { reason: reason.clone() };
+            }
+            crate::sieve::FilterAction::Discard => return SieveDecision::Discard,
+            _ => {}
+        }
+    }
+    for a in &actions {
+        if let crate::sieve::FilterAction::FileInto { folder, .. } = a {
+            return SieveDecision::Deliver { folder: folder.clone() };
+        }
+    }
+    SieveDecision::Deliver { folder: "INBOX".to_string() }
 }
