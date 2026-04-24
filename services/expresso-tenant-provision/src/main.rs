@@ -27,7 +27,7 @@ use clap::Parser;
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tracing::{info, warn};
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(name = "expresso-tenant-provision", version)]
