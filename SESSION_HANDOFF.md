@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** sprint #39 (expresso-imip-dispatch service — artifact, not deployed). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #40a (calendar publishes iMIP envelope to NATS — artifact, not deployed). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #39 shipped (38 sprints)
+## Status da trilha — #2 → #40a shipped (39 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 

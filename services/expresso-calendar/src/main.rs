@@ -6,6 +6,7 @@ mod domain;
 mod error;
 mod state;
 mod events;
+mod imip_publish;
 
 use std::{env, net::SocketAddr};
 

@@ -146,6 +146,16 @@ impl EventBus {
         }
     }
 
+
+    /// Publish iMIP envelope to `expresso.imip.request` for the given stored event.
+    /// Fire-and-forget; silently skipped when JetStream not connected or event
+    /// lacks attendees / dtstart / dtend / organizer_email.
+    pub fn publish_imip(&self, ev: crate::domain::event::Event, method: &'static str) {
+        if let Some(js) = self.jetstream.clone() {
+            crate::imip_publish::publish_imip(js, ev, method);
+        }
+    }
+
     pub fn subscribe(&self) -> broadcast::Receiver<Event> {
         self.tx.subscribe()
     }

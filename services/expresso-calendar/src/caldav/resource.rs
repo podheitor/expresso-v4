@@ -67,6 +67,7 @@ pub async fn put(
         summary:   ev.summary.clone(),
         sequence:  ev.sequence,
     });
+    state.events().publish_imip(ev.clone(), "REQUEST");
 
     let resp = Response::builder()
         .status(StatusCode::CREATED)

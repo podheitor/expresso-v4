@@ -2641,3 +2641,23 @@ dtstart/dtend + location` no payload NATS, depois wire `expresso-event-audit`
 2. Adicionar serviço ao compose com env `IMIP_ENABLED=false` inicial.
 3. Scrape target Prometheus apontando p/ `expresso-imip-dispatch:9192`.
 4. Wire calendar → publicar envelope em `expresso.imip.request` ao criar/cancelar evento.
+
+---
+
+## Sprint #40a — calendar publica envelope iMIP em NATS
+
+**Escopo:** wire do `expresso-calendar` → `expresso-imip-dispatch` via subject `expresso.imip.request`. Quando evento é criado/atualizado, calendário extrai ATTENDEEs do `ical_raw`, monta envelope JSON (`{method, invite, subject_hint}`) com campos do evento armazenado, e publica fire-and-forget em JetStream.
+
+**Entrega:**
+- `services/expresso-calendar/src/imip_publish.rs` (novo, ~220 linhas): `build_envelope_bytes(ev, method)` constrói envelope compatível com o dispatcher; `publish_imip(js, ev, method)` spawna task publicando. Skip silencioso (com métrica) quando evento não tem attendees ou falta dtstart/dtend/organizer.
+- `EventBus::publish_imip(ev, method)` — bridge pública no bus.
+- Handlers `api/events.rs::create` e `::update` invocam `publish_imip(ev.clone(), "REQUEST")` após publicar o evento de domínio.
+- CalDAV PUT (`caldav/resource.rs`) idem.
+- Métrica `calendar_imip_publish_total{method,result}` registrada no observability registry; pré-populada zero via `init_metrics()`.
+- 5 unit tests passam (envelope conteúdo, CANCEL subject hint, skip no-attendees, skip no-times, RFC3339 datetimes).
+- Fix colateral: `api/health.rs` tests passam `EventBus::new()` para `AppState::new` (previamente quebrado).
+
+**Ainda pendente:**
+- DELETE handler (`api/events.rs`) não emite CANCEL iMIP — cancellation ID só após `EventRepo::delete` retornar o evento; ajustar repo para `.delete_and_return()` fica para sprint futura.
+- `EventBus::publish_imip` não é chamado de `caldav/movecopy.rs` (scope minimalista; mover calendário externo é caso de borda).
+- Stream + compose deploy = #40b.

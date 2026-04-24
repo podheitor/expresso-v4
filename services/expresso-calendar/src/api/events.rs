@@ -81,6 +81,7 @@ async fn create(
     state.events().publish(crate::events::Event::EventCreated {
         tenant_id: ctx.tenant_id, event_id: ev.id, summary: ev.summary.clone(),
     });
+    state.events().publish_imip(ev.clone(), "REQUEST");
 
     let etag = format!("\"{}\"", ev.etag);
     let location = format!("/api/v1/calendars/{}/events/{}", ev.calendar_id, ev.id);
@@ -132,6 +133,7 @@ async fn update(
         tenant_id: ctx.tenant_id, event_id: ev.id,
         summary: ev.summary.clone(), sequence: ev.sequence,
     });
+    state.events().publish_imip(ev.clone(), "REQUEST");
 
     let etag = format!("\"{}\"", ev.etag);
     let mut resp = Json(ev).into_response();
