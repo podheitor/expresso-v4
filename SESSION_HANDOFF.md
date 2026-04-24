@@ -278,3 +278,32 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 - Ativar multi-realm chat/meet: KC clients `expresso-chat` + `expresso-meet` em pilot/pilot2 realms + env `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS` + `extra_hosts` em compose-chat-meet.yaml
 - Aplicar mesmo pattern em calendar + contacts (próximos serviços tenant-aware)
 - Smoke test chat endpoint com JWT pilot
+
+## 2026-04-24 — Sprint #43: calendar + contacts RequestCtx multi-realm
+
+| Step | Commit/Tag | Descrição |
+|------|------------|-----------|
+| code | `4f2be60` | calendar+contacts `RequestCtx` = chat/meet pattern (sprint #42 replicado) |
+| build | `expresso-{calendar,contacts}:fase43` | cargo build --release 2m03s em 101 |
+| deploy | prod 125 via `compose-phase3.yaml` | containers recreate OK |
+
+### Runtime prod 125 (pós-recreate)
+
+- `expresso-calendar` :8002 → multi-realm ATIVO (`hosts: 1`, template `{realm}`, já tinha env `AUTH__OIDC_ISSUER_TEMPLATE` + `AUTH__TENANT_HOSTS` no compose-phase3.yaml)
+- `expresso-contacts` :8003 → compat fallback (sem env multi-realm no compose → single-realm legacy)
+- Log `multi-realm validator ready, template=…, hosts=1` visível no calendar → confirmação que runtime carrega `MultiRealmValidator` + `TenantResolver`
+
+### Status multi-realm refactor (cross-service)
+
+| Service | sprint | Code | Runtime prod |
+|---------|--------|------|--------------|
+| auth-rp | #40c | ✅ (lib axum_ext) | ✅ ATIVO |
+| chat | #42 | ✅ | ⚠ compat (env não definido) |
+| meet | #42 | ✅ | ⚠ compat (env não definido) |
+| calendar | #43 | ✅ | ✅ ATIVO |
+| contacts | #43 | ✅ | ⚠ compat (env não definido) |
+
+### Gotcha
+
+- calendar main.rs já tinha `resolve_multi_realm()` desde sprint anterior — só context.rs faltava trocar de header-only para strict JWT path
+- contacts main.rs precisou: `use std::sync::Arc` + fn helper + wire `Extension(m/r)` antes do `bind`
