@@ -367,3 +367,17 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 
 - `expresso-smoke-multirealm@{pilot,pilot2}.timer` (auth-rp)
 - `expresso-smoke-dav@{pilot,pilot2}.timer` (calendar+contacts) ← novo
+
+## 2026-04-24 — Alertas Prometheus smoke-dav
+
+- Append em `/home/debian/expresso-obs/prometheus/alerts/expresso.yml` (prod 125):
+  - `ExpressoSmokeDavFailing` — `expresso_smoke_dav_success==0` por 15m (warning)
+  - `ExpressoSmokeDavStale` — `time() - last_run > 1800` por 5m (warning)
+- `promtool check rules`: SUCCESS 18 rules
+- `SIGHUP` recarregou Prometheus — rules visíveis em /api/v1/rules
+- Doc fonte: `ops/prometheus/alerts/smoke-dav.yml`
+
+### Alert rules multi-realm (prod 125)
+
+- `ExpressoSmokeMultirealmFailing` + `ExpressoSmokeMultirealmStale` (auth-rp)
+- `ExpressoSmokeDavFailing` + `ExpressoSmokeDavStale` (calendar+contacts) ← novo
