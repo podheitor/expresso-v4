@@ -7,6 +7,7 @@ pub mod compose;
 pub mod attachments;
 pub mod context;
 pub mod vacation;
+pub mod sieve;
 
 use axum::Router;
 use tower_http::{
@@ -40,4 +41,5 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(compose::routes())
         .merge(attachments::routes())
         .merge(vacation::routes())
+        .merge(sieve::routes())
 }
