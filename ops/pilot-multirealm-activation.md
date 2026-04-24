@@ -40,3 +40,21 @@ extra_hosts:
 ## Rollback
 
 Remove the 3 `AUTH__*` env vars + `extra_hosts` auth.expresso.local:172.19.0.3 from compose files → recreate. Services revert to single-realm legacy validator.
+
+## Scale validation — 2 tenants simultâneos (2026-04-24)
+
+Segundo tenant adicionado sem downtime via append em `AUTH__TENANT_HOSTS`:
+
+```yaml
+AUTH__TENANT_HOSTS: "pilot.expresso.local:30aa38fd-...,pilot2.expresso.local:3b11c7a2-44d1-4935-963b-ba622b70786a"
+```
+
+Recreate `expresso-auth` → logs confirmam `multi-realm validator ready, hosts: 2`.
+
+Validação cruzada:
+- `Host: pilot.expresso.local` + JWT do realm1 → 200 `tenant_id=30aa38fd-...`
+- `Host: pilot2.expresso.local` + JWT do realm2 → 200 `tenant_id=3b11c7a2-...`
+- Métricas isoladas por tenant: `auth_validation_total{realm="..."}` rastreia cada realm independentemente
+- `auth_realm_cache_size = 2` (lazy-load funcionou em ambos)
+
+Conclusão: escala horizontal trivial — adicionar entry no TENANT_HOSTS + recreate. Onboarding incremental sem impacto em tenants existentes.
