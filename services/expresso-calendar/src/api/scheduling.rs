@@ -172,7 +172,7 @@ async fn inbox(
     match method.as_str() {
         "REPLY"   => handle_reply(ctx, repo, parsed, &body).await,
         "COUNTER" => handle_counter(&state, ctx, repo, parsed, &body).await,
-        "REFRESH" => handle_refresh(ctx, repo, parsed).await,
+        "REFRESH" => handle_refresh(&state, ctx, repo, parsed).await,
         "CANCEL"  => handle_cancel(ctx, repo, parsed).await,
         other     => Err(CalendarError::BadRequest(format!(
             "unsupported METHOD: {other} (expected REPLY|COUNTER|REFRESH|CANCEL)"
@@ -297,25 +297,35 @@ async fn handle_counter(
 }
 
 async fn handle_refresh(
+    state:  &AppState,
     ctx:    RequestCtx,
     repo:   EventRepo<'_>,
     parsed: ical::ParsedEvent,
 ) -> Result<Json<InboxResp>> {
-    // RFC 5546 §3.2.6: attendee requests the latest event state. MVP: ack.
-    // Organizer-initiated REQUEST resend is out of band (future: enqueue
-    // outbound iMIP via schedule::dispatch_itip).
+    // RFC 5546 §3.2.6: attendee requests latest event state — organizer
+    // republishes the current REQUEST. We enqueue a fresh iMIP REQUEST via
+    // JetStream (`expresso.imip.request`); `expresso-imip-dispatch` fans it
+    // out to all current attendees. Targeted resend (only to the requester)
+    // is a future refinement; for now a broadcast keeps everyone in sync.
     let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
     let matched = event_opt.is_some();
+    let mut republished = false;
+    if let Some(ev) = event_opt {
+        republished = state.events().publish_imip(ev, "REQUEST");
+    }
     tracing::info!(
         tenant_id = %ctx.tenant_id,
         uid = %parsed.uid,
         matched,
+        republished,
         "iMIP REFRESH acknowledged",
     );
     let mut r = InboxResp::skeleton("REFRESH", parsed.uid, None, None);
     r.matched = matched;
-    r.message = if matched {
-        "REFRESH acknowledged; organizer resend required (out of band)".into()
+    r.message = if republished {
+        "REFRESH acknowledged; REQUEST re-published to attendees".into()
+    } else if matched {
+        "REFRESH matched but republish skipped (no JetStream)".into()
     } else {
         "uid not found in tenant".into()
     };
