@@ -1,5 +1,5 @@
 [Unit]
-Description=Expresso DAV (calendar+contacts) multi-realm smoke (tenant=%i)
+Description=Expresso DAV (calendar+contacts+drive) multi-realm smoke (tenant=%i)
 Documentation=file:///opt/expresso/smoke-dav.sh
 After=network-online.target
 

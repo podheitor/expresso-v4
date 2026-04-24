@@ -415,3 +415,10 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 | admin | N/A (sem api/ dir — pattern não aplicável) |
 
 5 serviços multi-realm 2-tenant em produção (auth-rp + calendar + contacts + drive).
+
+## 2026-04-24 — smoke-dav estendido p/ drive
+
+- `ops/smoke-dav.sh`: [1/4] JWT → [2/4] calendar → [3/4] contacts → [4/4] drive
+- Métrica push agora inclui `service=drive` label
+- Timer ativo recarregado — 6 probes PASS (pilot+pilot2 × 3 serviços)
+- Alerta `ExpressoSmokeDavFailing` cobre drive automaticamente (expr usa `service` label)
