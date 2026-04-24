@@ -20,7 +20,7 @@ use indymilter::{
 };
 use tracing::{debug, info, warn};
 
-use expresso_mail_auth::{DkimSignerState, verify_inbound};
+use expresso_mail_auth::{DkimSignerState, verify_inbound, MAIL_AUTH_ACTIONS_TOTAL};
 
 /// Per-session accumulator.
 #[derive(Default)]
@@ -183,7 +183,8 @@ async fn main() -> anyhow::Result<()> {
                             }
                         };
                         let auth = verify_inbound(ip, &session.helo, &session.mail_from, &domain, &raw).await;
-                        info!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc, "inbound auth");
+                        info!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc,
+                              policy = ?auth.dmarc_policy, "inbound auth");
                         let name  = CString::new("Authentication-Results").unwrap();
                         let value = match CString::new(auth.to_value(&domain)) {
                             Ok(v) => v,
@@ -195,6 +196,23 @@ async fn main() -> anyhow::Result<()> {
                         if let Err(e) = cx.actions.add_header(name, value).await {
                             warn!(error = %e, "add_header failed");
                         }
+
+                        // DMARC policy enforcement.
+                        if auth.should_reject() {
+                            warn!(from = %session.mail_from, "DMARC fail + p=reject — rejecting");
+                            MAIL_AUTH_ACTIONS_TOTAL.with_label_values(&["reject"]).inc();
+                            return Status::Reject;
+                        }
+                        if auth.should_quarantine() {
+                            warn!(from = %session.mail_from, "DMARC fail + p=quarantine — holding");
+                            let reason = CString::new("DMARC fail (p=quarantine)").unwrap();
+                            if let Err(e) = cx.actions.quarantine(reason).await {
+                                warn!(error = %e, "quarantine action failed");
+                            }
+                            MAIL_AUTH_ACTIONS_TOTAL.with_label_values(&["quarantine"]).inc();
+                            return Status::Continue;
+                        }
+                        MAIL_AUTH_ACTIONS_TOTAL.with_label_values(&["accept"]).inc();
                     }
                     Status::Continue
                 })

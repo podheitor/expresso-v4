@@ -113,7 +113,26 @@ impl AuthResults {
     pub fn should_reject(&self) -> bool {
         self.dmarc == "fail" && self.dmarc_policy.as_deref() == Some("reject")
     }
+
+    /// True when DMARC verdict is `fail` and the published policy asks for quarantine.
+    pub fn should_quarantine(&self) -> bool {
+        self.dmarc == "fail" && self.dmarc_policy.as_deref() == Some("quarantine")
+    }
 }
+
+/// Prometheus counter: policy action taken after verify.
+/// Labels: action ∈ {accept, reject, quarantine}
+pub static MAIL_AUTH_ACTIONS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
+    let c = IntCounterVec::new(
+        prometheus::Opts::new(
+            "mail_auth_actions_total",
+            "Policy action taken after inbound auth verify",
+        ),
+        &["action"],
+    )
+    .expect("metric build");
+    expresso_observability::register(c)
+});
 
 fn policy_str(p: Policy) -> &'static str {
     match p {
@@ -259,6 +278,22 @@ mod tests {
         };
         let v = ar.to_value("mx.example.com");
         assert!(!v.contains("(p="), "unexpected policy fragment: {v}");
+    }
+
+    #[test]
+    fn should_quarantine_only_when_fail_and_p_quarantine() {
+        let fail_quar = AuthResults {
+            spf: "fail".into(), dkim: "fail".into(), dmarc: "fail".into(),
+            dmarc_policy: Some("quarantine".into()),
+        };
+        assert!(fail_quar.should_quarantine());
+        assert!(!fail_quar.should_reject());
+
+        let pass_quar = AuthResults {
+            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            dmarc_policy: Some("quarantine".into()),
+        };
+        assert!(!pass_quar.should_quarantine());
     }
 
     #[test]

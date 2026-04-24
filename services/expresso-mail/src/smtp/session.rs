@@ -70,6 +70,8 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                 if auth.should_reject() {
                     warn!(from = %mail_from, spf = %auth.spf, dkim = %auth.dkim,
                           "DMARC fail + p=reject — refusing message");
+                    expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+                        .with_label_values(&["reject"]).inc();
                     writer
                         .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
                         .await?;
@@ -77,6 +79,8 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                     env = Envelope::default();
                     continue;
                 }
+                expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
+                    .with_label_values(&["accept"]).inc();
 
                 // Prepend Authentication-Results header
                 let auth_header = auth.to_header(domain);
