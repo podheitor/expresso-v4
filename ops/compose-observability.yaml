@@ -47,9 +47,29 @@ services:
       - 'http://expresso-nats:8222'
     networks: [expresso_default]
 
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: expresso-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - '127.0.0.1:3000:3000'
+    networks: [expresso_default]
+    depends_on: [prometheus]
+
 volumes:
   prom-data:
   am-data:
+  grafana-data:
 
 networks:
   expresso_default:

@@ -2542,3 +2542,32 @@ Loop observability agora **vivo em prod**: métricas fluindo do produtor
 
 Próximo passo natural: conectar receivers reais (secrets via env) + Grafana
 apontando para esse Prometheus em `http://expresso-prometheus:9090`.
+
+### #37 — Grafana provisioned + deployed (125)
+
+Grafana 13.0.1 adicionada ao `compose-observability.yaml` com auto-provisioning:
+
+- `ops/grafana/provisioning/datasources/prometheus.yml` — Prometheus datasource
+  default (uid=`prometheus`) apontando para `http://expresso-prometheus:9090`.
+- `ops/grafana/provisioning/dashboards/expresso.yml` — provider `file` carrega
+  `/var/lib/grafana/dashboards` na folder `Expresso`.
+- `ops/grafana/dashboards/expresso-overview.json` — cópia do dashboard do #33
+  para auto-import.
+
+Compose: novo serviço `grafana` (bind `127.0.0.1:3000`, depende de prometheus,
+volume `grafana-data`, admin env `GRAFANA_ADMIN_PASSWORD`). Deployado em 125.
+
+**Verificação:**
+```
+GET /api/health       → {"database":"ok","version":"13.0.1"}
+GET /api/datasources  → Prometheus @ http://expresso-prometheus:9090
+GET /api/search       → Expresso — Overview (uid=expresso-overview)
+GET dashboards/uid/expresso-overview → 11 panels
+GET datasources/proxy/uid/prometheus/api/v1/query?query=calendar_nats_publish_total
+  → status:success, series:12 ✅
+```
+
+UI layer fechado. Stack final em prod:
+`expresso-prometheus` + `expresso-alertmanager` + `expresso-grafana` +
+`expresso-nats-exporter`. Operador acessa dashboard em
+`http://127.0.0.1:3000` (tunnel SSH).

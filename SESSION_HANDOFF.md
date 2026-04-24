@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** sprint #36 (Observability stack deployed em prod). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #37 (Grafana provisioned + deployed). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #36 shipped (35 sprints)
+## Status da trilha — #2 → #37 shipped (36 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 
@@ -20,7 +20,8 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 | 33 | `c6cf4b8` | Grafana dashboard extension — +5 painéis (produtor publish rate, audit consume, lag, errors, contacts JetStream). Artefato-only, sem deploy. |
 | 34 | `09afe87` | Prometheus alerting rules — `ops/prometheus/alerts/expresso.yml` (9 rules, 3 groups). Validado com promtool. Artefato-only. |
 | 35 | `a18879d` | Observability stack template — alertmanager.yml + prometheus.yml + compose-observability.yaml + README. amtool+promtool validados em 125. Artefato-only. |
-| 36 | `c1160bf` | Observability stack deployed em 125 — expresso-prometheus/alertmanager/nats-exporter up. Rules 3 grupos × 9, targets 4 up, 12 séries calendar_nats_publish_total confirmadas. |
+| 36 | `d7fad94` | Observability stack deployed em 125 — expresso-prometheus/alertmanager/nats-exporter up. Rules 3 grupos × 9, targets 4 up, 12 séries calendar_nats_publish_total confirmadas. |
+| 37 | `6c1e833` | Grafana 13.0.1 provisioned + deployed em 125 — datasource Prometheus + dashboard `expresso-overview` (11 panels) auto-importado. |
 
 ## Estado em produção (125)
 
@@ -32,6 +33,7 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 - `expresso-prometheus` 127.0.0.1:9090 (stack ~/expresso-obs/compose-observability.yaml)
 - `expresso-alertmanager` 127.0.0.1:9093 (receivers webhook placeholder)
 - `expresso-nats-exporter` (rede expresso_default)
+- `expresso-grafana` 127.0.0.1:3000 (v13.0.1, admin/admin default)
 - Consumer durables: `event-audit-expresso_calendar`, `event-audit-expresso_contacts` (`DeliverPolicy::New`)
 
 ## Infra / acessos (não commitar)
