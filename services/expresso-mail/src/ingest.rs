@@ -35,6 +35,23 @@ pub async fn process(
         return Ok(0);
     }
 
+    // Scan for spam/virus (no-op if env vars not set; fail-open on errors).
+    let scan = crate::scanner::scan(raw).await;
+    if let Some(reason) = crate::scanner::should_reject(&scan) {
+        tracing::warn!(rcpts = ?rcpts, reason = %reason, "ingest rejected");
+        anyhow::bail!("message rejected: {}", reason);
+    }
+    let scan_headers = scan.to_headers();
+    let raw_with_scan: Vec<u8> = if scan_headers.is_empty() {
+        raw.to_vec()
+    } else {
+        let mut v = Vec::with_capacity(scan_headers.len() + raw.len());
+        v.extend_from_slice(scan_headers.as_bytes());
+        v.extend_from_slice(raw);
+        v
+    };
+    let raw: &[u8] = &raw_with_scan;
+
     let parsed = parse_message(mail_from, rcpts, raw);
     let body_path = write_raw_message(state, raw).await?;
     let size_bytes = raw.len().min(i32::MAX as usize) as i32;

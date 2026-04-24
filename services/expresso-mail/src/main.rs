@@ -14,6 +14,7 @@ mod ingest;
 mod imip;
 mod dkim;
 mod sieve;
+mod scanner;
 mod smtp;
 mod state;
 
