@@ -381,3 +381,37 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 
 - `ExpressoSmokeMultirealmFailing` + `ExpressoSmokeMultirealmStale` (auth-rp)
 - `ExpressoSmokeDavFailing` + `ExpressoSmokeDavStale` (calendar+contacts) ← novo
+
+## 2026-04-24 — Sprint #44: drive + mail multi-realm refactor
+
+### Drive — ✅ ATIVO pilot+pilot2
+
+- `services/expresso-drive/src/api/context.rs` substituído por template chat (MultiRealm → OidcValidator → header fallback)
+- `services/expresso-drive/src/main.rs`: `resolve_multi_realm()` + wire Extensions
+- Docker: `Dockerfile.drive.quick` + `expresso-drive:fase44` (95.8MB)
+- Compose: compose-phase3.yaml → image fase44 + AUTH env + extra_hosts
+- Container log: `multi-realm validator ready, hosts: 2`
+- Smoke pilot+pilot2 → GET /api/v1/drive/files → HTTP 200 + [] → SMOKE PASS
+- `ops/smoke-drive.sh` adicionado
+
+### Mail — ⚠ ROLLBACK
+
+- Código refatorado idem drive (context.rs + main.rs + resolve_multi_realm)
+- Build expresso-mail:fase44 OK (109MB)
+- Deploy FALHOU: migration 20260423180000_audit_log.sql — erro `column "actor_sub" does not exist` (bug pré-existente na migration; table CREATE IF NOT EXISTS deixa schema antigo com índice tentando usar coluna nova)
+- Rollback: compose-mail.yaml → `expresso-mail:mta` (imagem anterior funcionando)
+- Bloqueador fora escopo multi-realm: corrigir migration com `ALTER TABLE ADD COLUMN IF NOT EXISTS` para actor_sub/actor_email/actor_roles/http_method/http_path/status_code/metadata
+
+### Status runtime multi-realm final
+
+| Service | pilot | pilot2 |
+|---------|-------|--------|
+| auth-rp | ✅ | ✅ |
+| calendar | ✅ | ✅ |
+| contacts | ✅ | ✅ |
+| drive | ✅ | ✅ |
+| mail | ❌ (DB migration) | ❌ |
+| chat/meet | ⚠ compat | ⚠ compat (aud conflict) |
+| admin | N/A (sem api/ dir — pattern não aplicável) |
+
+5 serviços multi-realm 2-tenant em produção (auth-rp + calendar + contacts + drive).

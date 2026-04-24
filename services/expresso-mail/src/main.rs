@@ -17,12 +17,37 @@ mod sieve;
 mod smtp;
 mod state;
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use tokio::{signal, task::JoinSet};
 use tracing::info;
 
 use expresso_core::{create_db_pool, create_redis_pool, init_tracing, run_migrations, AppConfig};
 use state::AppState;
+
+
+fn env_string(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
+fn resolve_multi_realm() -> (
+    Option<Arc<expresso_auth_client::MultiRealmValidator>>,
+    Option<Arc<expresso_auth_client::TenantResolver>>,
+) {
+    let tpl = match env_string("AUTH__OIDC_ISSUER_TEMPLATE") { Some(v) => v, None => return (None, None) };
+    let audience = match env_string("AUTH__OIDC_AUDIENCE")   { Some(v) => v, None => return (None, None) };
+    let resolver = expresso_auth_client::TenantResolver::from_env("AUTH__TENANT_HOSTS");
+    if resolver.is_empty() {
+        tracing::warn!("AUTH__TENANT_HOSTS empty — multi-realm disabled");
+        return (None, None);
+    }
+    match expresso_auth_client::MultiRealmValidator::new(tpl.clone(), audience.clone()) {
+        Ok(m)  => {
+            tracing::info!(template = %tpl, hosts = resolver.len(), "multi-realm validator ready");
+            (Some(Arc::new(m)), Some(Arc::new(resolver)))
+        }
+        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -90,8 +115,11 @@ async fn main() -> anyhow::Result<()> {
     // HTTP API
     let http_addr: SocketAddr = format!("{}:{}", cfg.server.host, cfg.server.port).parse()?;
     let http_state = state.clone();
+    let (multi, resolver) = resolve_multi_realm();
     set.spawn(async move {
-        let router = api::router(http_state);
+        let mut router = api::router(http_state);
+        if let Some(m) = multi    { router = router.layer(axum::extract::Extension(m)); }
+        if let Some(r) = resolver { router = router.layer(axum::extract::Extension(r)); }
         let listener = tokio::net::TcpListener::bind(http_addr).await?;
         info!(addr = %http_addr, "HTTP API listening");
         axum::serve(listener, router)
