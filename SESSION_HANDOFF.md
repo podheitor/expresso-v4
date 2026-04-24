@@ -335,3 +335,22 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 | contacts | #43+fix | ✅ ATIVO (pilot) — smoke PASS |
 | chat | #42 | ⚠ compat (aud conflict) |
 | meet | #42 | ⚠ compat (aud conflict) |
+
+## 2026-04-24 — pilot2 expandido em calendar + contacts
+
+- compose-phase3.yaml: `AUTH__TENANT_HOSTS` → `pilot.expresso.local:<uuid1>,pilot2.expresso.local:<uuid2>` (2 services patched simultaneously)
+- Container logs: `multi-realm validator ready, hosts: 2` — ambos
+- Smoke E2E 2-tenant:
+  - calendar pilot → PASS | calendar pilot2 → PASS
+  - contacts pilot → PASS | contacts pilot2 → PASS
+
+### Status runtime multi-realm final
+
+| Service | pilot | pilot2 |
+|---------|-------|--------|
+| auth-rp | ✅ | ✅ |
+| calendar | ✅ | ✅ |
+| contacts | ✅ | ✅ |
+| chat/meet | ⚠ | ⚠ (aud conflict — deferido) |
+
+4 serviços multi-realm 2-tenant em produção.
