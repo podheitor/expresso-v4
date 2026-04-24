@@ -131,3 +131,39 @@ groups:
         annotations:
           summary: "Stream {{ $labels.stream }} não cresce com publishers ativos"
           description: "messages total estável por 10m+ mas produtores com rate>0. Broker pode estar rejeitando."
+
+  - name: expresso-imip-dispatch
+    interval: 30s
+    rules:
+      - alert: ExpressoImipSendErrors
+        expr: |
+          sum(rate(imip_dispatch_total{result="send_err"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: imip-dispatch
+        annotations:
+          summary: "iMIP dispatch falhando no SMTP (>0.05/s por 10m)"
+          description: "Dispatcher consegue parsear envelope mas SMTP relay rejeita. Checar postfix maillog e conectividade expresso-imip-dispatch -> SMTP_HOST."
+
+      - alert: ExpressoImipParseErrors
+        expr: |
+          sum(increase(imip_dispatch_total{result="parse_err"}[5m])) > 5
+        for: 0m
+        labels:
+          severity: warning
+          component: imip-dispatch
+        annotations:
+          summary: "iMIP envelopes malformados (>5 em 5m)"
+          description: "Publishers em expresso.imip.request estão emitindo payload inválido. Verificar fonte do evento (calendar service?)."
+
+      - alert: ExpressoImipDispatcherDown
+        expr: |
+          up{job=~".*imip.*"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: imip-dispatch
+        annotations:
+          summary: "Dispatcher iMIP offline (5m+)"
+          description: "expresso-imip-dispatch não responde ao scrape. Convites calendar não estão saindo por SMTP."
