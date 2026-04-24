@@ -4,6 +4,7 @@
 //! on the request method (incl. non-standard PROPFIND / REPORT verbs).
 
 mod auth;
+mod filter;
 mod mkcol;
 mod propfind;
 mod proppatch;

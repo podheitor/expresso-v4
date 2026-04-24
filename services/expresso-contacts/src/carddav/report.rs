@@ -9,6 +9,7 @@ use axum::{body::Body, http::StatusCode, response::Response};
 use uuid::Uuid;
 
 use crate::carddav::auth::CardDavPrincipal;
+use crate::carddav::filter;
 use crate::carddav::uri::{self, Target};
 use crate::carddav::xml::{self, PropRequest};
 use crate::carddav::MULTISTATUS_CT;
@@ -93,12 +94,11 @@ async fn query(
     state:          &AppState,
     principal:      &CardDavPrincipal,
     addressbook_id: Uuid,
-    _body:          &str,
+    body:           &str,
     req:            &PropRequest,
 ) -> Result<String> {
-    // MVP: ignore <filter>/<prop-filter>/<text-match> — return ALL contacts.
-    // Clients like Evolution / Apple Contacts fetch once then do client-side
-    // filtering, so this is safe for v1. Server-side text-match → TODO.
+    // Parse RFC 6352 §10.5 filter; absent → unfiltered.
+    let filter = filter::parse(body);
     let pool = state.db_or_unavailable()?;
     let contacts = ContactRepo::new(pool)
         .list(principal.tenant_id, addressbook_id)
@@ -108,6 +108,9 @@ async fn query(
     out.push_str(xml::XML_PROLOG);
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">"#);
     for c in contacts {
+        if let Some(f) = filter.as_ref() {
+            if !filter::matches(&c.vcard_raw, f) { continue; }
+        }
         let href = format!("/carddav/{}/{}/{}.vcf", principal.user_id, addressbook_id, c.uid);
         append_contact(&mut out, &href, &c.etag, req, &c.vcard_raw);
     }
