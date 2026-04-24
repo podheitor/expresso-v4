@@ -144,6 +144,16 @@ pub struct MailThreadTpl {
     pub subject:   String,
 }
 
+#[derive(Template)]
+#[template(path = "mail_rules.html")]
+pub struct MailRulesTpl {
+    pub me:      Me,
+    pub enabled: bool,
+    pub script:  String,
+    pub saved:   bool,
+    pub error:   Option<String>,
+}
+
 
 // ─── Drive ───────────────────────────────────────────────────────────────────
 

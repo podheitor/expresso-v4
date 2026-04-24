@@ -33,4 +33,14 @@ else
   echo "thread skipped: no threaded messages in INBOX (empty or single)"
 fi
 
+# Sieve rules probe — GET must return 200 + JSON with enabled/script fields
+CODE_S=$(curl -sS -o /tmp/ms.json -w "%{http_code}" -H "Host: $TENANT_HOST" -H "Authorization: Bearer $TOKEN" "$MAIL_URL/api/v1/mail/sieve")
+python3 -c 'import json,sys
+j=json.load(open("/tmp/ms.json"))
+assert "enabled" in j and "script" in j, j
+print(f"sieve ok enabled={j[\"enabled\"]} script_len={len(j[\"script\"])}")'
+SIEVE_RC=$?
+echo "sieve http=$CODE_S"
+[[ "$CODE_S" == "200" && $SIEVE_RC -eq 0 ]] || { echo "SMOKE FAIL sieve"; exit 2; }
+
 echo "SMOKE PASS"

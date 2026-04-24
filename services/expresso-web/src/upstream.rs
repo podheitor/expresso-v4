@@ -113,6 +113,22 @@ pub async fn post_json<T: serde::Serialize>(
     Ok(req.send().await?.status().as_u16())
 }
 
+/// PUT com JSON body → propaga status.
+pub async fn put_json<T: serde::Serialize>(
+    state:   &AppState,
+    base:    &str,
+    path:    &str,
+    headers: &HeaderMap,
+    ctx:     Option<(&str, &str)>,
+    body:    &T,
+) -> WebResult<u16> {
+    let url = build_url(base, path);
+    let mut req = state.http.put(&url).json(body);
+    req = fwd_cookie(req, headers);
+    if let Some((t, u)) = ctx { req = inject_ctx(req, t, u); }
+    Ok(req.send().await?.status().as_u16())
+}
+
 /// PUT com body + content-type → propaga status.
 pub async fn put_body(
     state:        &AppState,

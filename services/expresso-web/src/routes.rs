@@ -16,11 +16,11 @@ use crate::{
     error::WebResult,
     templates::{
         AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
-        MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
+        MailRulesTpl, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
         Event, MonthCell, CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl, ContactFormTpl,
         AclRow, CalendarShareTpl, AddrbookShareTpl,
     },
-    upstream::{get_json, post_body, put_body, delete_at},
+    upstream::{get_json, post_body, put_body, put_json, delete_at},
 };
 
 pub fn router(state: AppState) -> Router {
@@ -32,6 +32,7 @@ pub fn router(state: AppState) -> Router {
         .route("/me/security",   get(security_page))
         .route("/mail",              get(mail_page))
         .route("/mail/compose",      get(mail_compose_page).post(mail_compose_action))
+        .route("/mail/rules",        get(mail_rules_page).post(mail_rules_save))
         .route("/mail/thread/:tid",  get(mail_thread_page))
         .route("/mail/:id",          get(mail_detail_page))
         .route("/drive",            get(drive_page))
@@ -196,6 +197,68 @@ async fn mail_detail_page(
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me, folders, selected, messages, detail, selected_id: Some(id),
     }))
+}
+
+// ─── /mail/rules ─────────────────────────────────────────────────────────────
+
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+struct SieveRules {
+    #[serde(default)] enabled: bool,
+    #[serde(default)] script:  String,
+}
+
+#[derive(Deserialize)]
+struct SieveRulesForm {
+    #[serde(default)] enabled: Option<String>,
+    #[serde(default)] script:  String,
+}
+
+async fn mail_rules_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let rules = get_json::<SieveRules>(
+        &st, &st.backends.mail, "/api/v1/mail/sieve", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+
+    Ok(MailRulesTpl {
+        me, enabled: rules.enabled, script: rules.script,
+        saved: false, error: None,
+    }.into_response())
+}
+
+async fn mail_rules_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<SieveRulesForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = SieveRules {
+        enabled: f.enabled.is_some(),
+        script:  f.script,
+    };
+    let status = put_json(
+        &st, &st.backends.mail, "/api/v1/mail/sieve",
+        &headers, Some((&t, &u)), &payload,
+    ).await?;
+
+    if (200..300).contains(&status) {
+        Ok(MailRulesTpl {
+            me, enabled: payload.enabled, script: payload.script,
+            saved: true, error: None,
+        }.into_response())
+    } else {
+        Ok(MailRulesTpl {
+            me, enabled: payload.enabled, script: payload.script,
+            saved: false,
+            error: Some(format!("Falha ao salvar (HTTP {status}) — verifique a sintaxe Sieve.")),
+        }.into_response())
+    }
 }
 
 async fn mail_thread_page(
