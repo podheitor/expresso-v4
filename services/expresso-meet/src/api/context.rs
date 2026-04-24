@@ -13,14 +13,15 @@ use std::sync::Arc;
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    http::{header::{HeaderMap, AUTHORIZATION, COOKIE}, request::Parts, StatusCode},
+    http::{header::{HeaderMap, AUTHORIZATION, COOKIE, HOST}, request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
 use uuid::Uuid;
 
-use expresso_auth_client::{AuthError, OidcValidator, ACCESS_TOKEN_COOKIE};
+use expresso_auth_client::{AuthError, MultiRealmValidator, OidcValidator, TenantResolver, ACCESS_TOKEN_COOKIE};
+use expresso_auth_client::metrics as auth_metrics;
 
 pub const H_TENANT: &str = "x-tenant-id";
 pub const H_USER:   &str = "x-user-id";
@@ -40,7 +41,50 @@ impl<S: Send + Sync> FromRequestParts<S> for RequestCtx {
     type Rejection = CtxError;
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
-        if let Some(validator) = parts.extensions.get::<Arc<OidcValidator>>().cloned() {
+// Multi-realm precedence: if MultiRealmValidator + TenantResolver
+        // present → resolve realm via Host header and validate.
+        if let (Some(m), Some(r)) = (
+            parts.extensions.get::<Arc<MultiRealmValidator>>().cloned(),
+            parts.extensions.get::<Arc<TenantResolver>>().cloned(),
+        ) {
+            if let Some(host) = parts.headers.get(HOST).and_then(|v| v.to_str().ok()) {
+                if let Some(realm) = r.resolve(host) {
+                    let token_owned;
+                    let token: &str = if let Some(t) = bearer_token(&parts.headers) {
+                        t
+                    } else if let Some(t) = cookie_token(&parts.headers, ACCESS_TOKEN_COOKIE) {
+                        token_owned = t;
+                        token_owned.as_str()
+                    } else {
+                        return Err(CtxError::MissingBearer);
+                    };
+                    let v = m.for_realm(realm).await.map_err(|e| {
+                        auth_metrics::VALIDATION_TOTAL
+                            .with_label_values(&[realm, auth_metrics::result_label(&e)]).inc();
+                        CtxError::from(e)
+                    })?;
+                    match v.validate(token).await {
+                        Ok(c) => {
+                            auth_metrics::VALIDATION_TOTAL
+                                .with_label_values(&[realm, "ok"]).inc();
+                            return Ok(Self {
+                            tenant_id:    c.tenant_id,
+                            user_id:      c.user_id,
+                            display_name: c.display_name,
+                            email:        c.email,
+                        });
+                        }
+                        Err(e) => {
+                            auth_metrics::VALIDATION_TOTAL
+                                .with_label_values(&[realm, auth_metrics::result_label(&e)]).inc();
+                            return Err(CtxError::from(e));
+                        }
+                    }
+                }
+            }
+        }
+
+                if let Some(validator) = parts.extensions.get::<Arc<OidcValidator>>().cloned() {
             let token_owned;
             let token: &str = if let Some(t) = bearer_token(&parts.headers) {
                 t
