@@ -204,3 +204,56 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 - Audience default KC direct-grant = `account`
 - Prometheus bind-mount: file replace via cp → inode muda → precisa `docker restart` (reload não basta)
 - expresso-observability Registry: migrado p/ `prometheus::default_registry()` → metrics de libs (auth-client) aparecem no /metrics
+
+## 2026-04-24 — Fase 10e→10h concluída (2-tenant scale + smoke-as-metric + systemd template)
+
+| Fase | Commit | Descrição |
+|------|--------|-----------|
+| 10d | `7b32d9a` | `ops/smoke-multirealm.sh` — JWT + /auth/me + Prom metric check (exit 0/1/2/3) |
+| 10e | `8ff2863` | Scale validation: pilot2 realm `3b11c7a2-...` provisioned + TENANT_HOSTS hot-swap (hosts:2) |
+| 10f | `4755199` | systemd unit legacy + timer (OnUnitActiveSec=10min) |
+| 10g | `e9360e2` | Pushgateway + trap EXIT emit `expresso_smoke_multirealm_{success,last_run_timestamp_seconds}` + 2 alerts (Failing, Stale) |
+| 10h | `14b951e` | Template `expresso-smoke-multirealm@.{service,timer}` — per-tenant instance + RandomizedDelaySec=60s |
+
+### Prod state 125 adicional
+
+- `expresso-pushgateway` 127.0.0.1:9091 (persist pg-data)
+- Prometheus job `pushgateway` (`honor_labels: true`) healthy
+- systemd timers ativos:
+  - `expresso-smoke-multirealm@pilot.timer`
+  - `expresso-smoke-multirealm@pilot2.timer`
+  - legacy `expresso-smoke-multirealm.timer` → disabled
+- `/etc/expresso/smoke-multirealm-{pilot,pilot2}.env` (mode 600)
+
+### E2E validated 2-tenant
+
+- pilot (realm `30aa38fd-...`) smoke count=5+ → PASS → push → Prom scrape → `expresso_smoke_multirealm_success{tenant="30aa38fd-..."}=1`
+- pilot2 (realm `3b11c7a2-...`) smoke count=2+ → PASS → push → `expresso_smoke_multirealm_success{tenant="3b11c7a2-..."}=1`
+- Loop observabilidade fechado: falha → pushgateway → Prom → AlertManager (rules `ExpressoSmokeMultirealmFailing` + `ExpressoSmokeMultirealmStale`)
+
+### Sprint #40c FINAL — 10 fases shipped
+
+```
+10a bf870e7  runbook activation
+10b 29956b7  per-tenant auth metrics (lib)
+10c 9e0606a  Grafana + Prom alerts
+10d 7b32d9a  smoke script
+10e 8ff2863  2-tenant scale (pilot+pilot2)
+10f 4755199  systemd timer
+10g e9360e2  pushgateway + smoke-as-metric + staleness alert
+10h 14b951e  systemd template per-tenant + RandomizedDelaySec
+```
+
+### Credenciais pilot2 (não-commit)
+
+- Realm UUID: `3b11c7a2-44d1-4935-963b-ba622b70786a`
+- Admin: `admin@pilot2.expresso.local` / `PilotAdmin!2026Strong`
+- DAV secret: `dav-pilot2-secret-2026-strong`
+- Host: `pilot2.expresso.local`
+
+### Gotchas adicionais desta janela
+
+- compose volumes: edits via python precisam inserir chave dentro do bloco `volumes:` — append no final gera seção órfã sob `networks:`. Sempre validar com `docker compose config --quiet`.
+- pushgateway scrape: `honor_labels: true` é essencial p/ preservar `job=smoke_multirealm` + `tenant=<uuid>` originais; senão Prometheus sobrescreve.
+- Pushgateway POST grouping key: `/metrics/job/<job>/tenant/<uuid>` — cada grupo é idempotente (POST replace, DELETE remove).
+- `set -euo pipefail` + `trap EXIT` + `|| true` no push garante que falhas de rede no pushgateway não mascarem exit code do teste.
