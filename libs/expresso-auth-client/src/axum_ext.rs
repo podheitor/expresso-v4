@@ -154,3 +154,54 @@ mod tests {
         let _ = HeaderMap::new();
     }
 }
+
+// --- Multi-realm extractor (fase 2 do realm-per-tenant) ---------------
+
+use crate::multi_validator::MultiRealmValidator;
+use crate::tenant_resolver::TenantResolver;
+use axum::http::header::HOST;
+
+/// Extractor multi-realm: resolve Host → realm → validator, valida token.
+///
+/// Requer nas request extensions:
+/// - `Arc<MultiRealmValidator>` — pool de validators por realm
+/// - `Arc<TenantResolver>`      — mapeamento host → realm
+///
+/// Se qualquer um faltar → 500 `misconfigured`. Se host desconhecido
+/// → 401 `unknown_tenant`.
+pub struct TenantAuthenticated(pub AuthContext, pub String /* realm */);
+
+#[async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for TenantAuthenticated {
+    type Rejection = AuthRejection;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let multi = parts.extensions.get::<Arc<MultiRealmValidator>>().cloned()
+            .ok_or(AuthRejection::Misconfigured)?;
+        let resolver = parts.extensions.get::<Arc<TenantResolver>>().cloned()
+            .ok_or(AuthRejection::Misconfigured)?;
+
+        let host = parts.headers.get(HOST)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| AuthRejection::Unauthorized("missing_host".into()))?;
+
+        let realm = resolver.resolve(host)
+            .ok_or_else(|| AuthRejection::Unauthorized(format!("unknown_tenant: {host}")))?
+            .to_string();
+
+        let validator = multi.for_realm(&realm).await.map_err(AuthRejection::from)?;
+
+        let token_owned;
+        let token = if let Some(t) = extract_bearer(parts) {
+            t
+        } else if let Some(t) = extract_cookie(parts, ACCESS_TOKEN_COOKIE) {
+            token_owned = t;
+            token_owned.as_str()
+        } else {
+            return Err(AuthRejection::from(AuthError::MissingBearer));
+        };
+
+        let ctx = validator.validate(token).await.map_err(AuthRejection::from)?;
+        Ok(Self(ctx, realm))
+    }
+}
