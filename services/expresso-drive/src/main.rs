@@ -9,7 +9,7 @@ use std::{env, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use tracing::{info, warn};
 
-use expresso_core::{create_db_pool, init_tracing};
+use expresso_core::{create_db_pool, init_tracing, report_rls_posture};
 use expresso_core::config::{DatabaseConfig, TelemetryConfig};
 use state::AppState;
 
@@ -85,6 +85,21 @@ async fn main() -> anyhow::Result<()> {
         },
         None => { warn!("db config missing"); None }
     };
+
+    // Surface real tenant-isolation posture at boot. Drive uses FORCE RLS on
+    // all `drive_*` tables, but isolation only fires when (a) the DB role
+    // does NOT have BYPASSRLS and (b) handlers run inside a tx with
+    // `app.tenant_id` set. Today's handlers rely on explicit WHERE clauses;
+    // this log makes the gap explicit instead of hidden.
+    if let Some(p) = db.as_ref() {
+        let _ = report_rls_posture(p, &[
+            "drive_files",
+            "drive_file_versions",
+            "drive_shares",
+            "drive_quotas",
+            "drive_uploads",
+        ]).await;
+    }
 
     let data_root = PathBuf::from(
         env_string("DRIVE__DATA_ROOT").unwrap_or_else(|| DEFAULT_DATA_ROOT.into())
