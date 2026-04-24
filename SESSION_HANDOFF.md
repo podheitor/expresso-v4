@@ -313,3 +313,25 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 - `ops/smoke-calendar.sh` criado — JWT pilot → GET /api/v1/calendars Host=pilot.expresso.local → HTTP 200 + [] → SMOKE PASS
 - Runtime multi-realm chain confirmado: Host→TenantResolver→MultiRealmValidator→per-realm JWKS→RequestCtx→route
 - `expresso_calendar` container runtime: multi-realm real funcional (não apenas código deployed)
+
+## 2026-04-24 — Contacts multi-realm ATIVADO + smoke E2E
+
+- compose-phase3.yaml: adicionado `AUTH__OIDC_ISSUER_TEMPLATE`, `AUTH__OIDC_AUDIENCE=account`, `AUTH__TENANT_HOSTS=pilot.expresso.local:<uuid>`, `extra_hosts: auth.expresso.local:172.19.0.3`
+- Container log: `multi-realm validator ready, hosts: 1`
+- `ops/smoke-contacts.sh` → GET /api/v1/addressbooks Host=pilot.expresso.local → HTTP 200 + [] → SMOKE PASS
+
+### Chat/Meet multi-realm — pendente
+
+- Problema: audience conflita entre multi (pilot usa `account`) e single-realm legacy (webapp usa `expresso-web`)
+- Para ativar: criar KC clients dedicados `expresso-chat` + `expresso-meet` em pilot+pilot2 realms COM mesmo audience do legacy, OU uniformizar tudo para `account` e reconfigurar webapp client
+- Decisão atual: deferir até definir estratégia de audience unificada
+
+### Status multi-realm cross-service (runtime)
+
+| Service | sprint | Runtime |
+|---------|--------|---------|
+| auth-rp | #40c | ✅ ATIVO (pilot + pilot2) |
+| calendar | #43 | ✅ ATIVO (pilot) — smoke PASS |
+| contacts | #43+fix | ✅ ATIVO (pilot) — smoke PASS |
+| chat | #42 | ⚠ compat (aud conflict) |
+| meet | #42 | ⚠ compat (aud conflict) |
