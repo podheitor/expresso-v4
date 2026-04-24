@@ -16,6 +16,7 @@ use crate::{error::{MailError, Result}, state::AppState};
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/messages",            get(list_messages))
+        .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
         .route("/mail/messages/:id/move",   patch(move_message))
@@ -34,6 +35,7 @@ pub struct ListParams {
 #[derive(Debug, Serialize, FromRow)]
 pub struct MessageListItem {
     pub id:              Uuid,
+    pub thread_id:       Option<Uuid>,
     pub subject:         Option<String>,
     pub from_addr:       Option<String>,
     pub from_name:       Option<String>,
@@ -93,7 +95,7 @@ async fn list_messages(
     let rows: Vec<MessageListItem> = sqlx::query_as(
         r#"
         SELECT
-            m.id, m.subject, m.from_addr, m.from_name,
+            m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
             m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
         FROM messages m
         JOIN mailboxes mb ON mb.id = m.mailbox_id
@@ -147,6 +149,30 @@ async fn get_message(
     }
 
     Ok(Json(msg))
+}
+
+
+/// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC
+async fn list_thread(
+    State(state): State<AppState>,
+    Path(thread_id): Path<Uuid>,
+) -> Result<Json<Vec<MessageListItem>>> {
+    let rows: Vec<MessageListItem> = sqlx::query_as(
+        r#"
+        SELECT
+            m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
+            m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
+        FROM messages m
+        WHERE m.thread_id = $1
+        ORDER BY m.received_at ASC
+        "#,
+    )
+    .bind(thread_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(expresso_core::CoreError::Database)?;
+
+    Ok(Json(rows))
 }
 
 /// DELETE /api/v1/mail/messages/:id — soft-delete: move to Trash
