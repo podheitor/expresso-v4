@@ -133,6 +133,15 @@ async fn main() -> anyhow::Result<()> {
     let smtp_state = state.clone();
     set.spawn(async move { smtp::serve(smtp_state, smtp_addr).await });
 
+    // SMTP Submission (587, STARTTLS + AUTH required) — only if TLS configured
+    if cfg.mail_server.tls_cert.is_some() && cfg.mail_server.tls_key.is_some() {
+        let sub_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.submission_port).parse()?;
+        let sub_state = state.clone();
+        set.spawn(async move { smtp::submission::serve(sub_state, sub_addr).await });
+    } else {
+        info!("submission (587) disabled — mail_server.tls_cert/tls_key not set");
+    }
+
     // LMTP (Postfix → app delivery)
     let lmtp_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.lmtp_port).parse()?;
     let lmtp_state = state.clone();

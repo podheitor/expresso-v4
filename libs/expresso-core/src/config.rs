@@ -93,6 +93,9 @@ pub struct MailServerConfig {
     /// SMTP listen port (usually 25 internal, 587 submission)
     #[serde(default = "default_smtp_port")]
     pub smtp_port: u16,
+    /// Submission port (587, STARTTLS + AUTH required)
+    #[serde(default = "default_submission_port")]
+    pub submission_port: u16,
     /// LMTP listen port (Postfix → app delivery, usually 24)
     #[serde(default = "default_lmtp_port")]
     pub lmtp_port: u16,
@@ -134,6 +137,7 @@ fn default_s3_region() -> String        { "us-east-1".into() }
 fn default_otlp_endpoint() -> String    { "http://localhost:4317".into() }
 fn default_log_filter() -> String       { "info".into() }
 fn default_smtp_port() -> u16           { 25 }
+fn default_submission_port() -> u16     { 587 }
 fn default_lmtp_port() -> u16           { 24 }
 fn default_imap_port() -> u16           { 143 }
 fn default_imaps_port() -> u16          { 993 }

@@ -2,6 +2,7 @@
 //! Parses envelope → calls ingest pipeline → 250 OK or 4xx/5xx.
 
 pub mod session;
+pub mod submission;
 
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
