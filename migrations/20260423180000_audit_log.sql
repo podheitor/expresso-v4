@@ -1,23 +1,22 @@
 -- Audit log: cross-service append-only trail of actor actions.
--- Generic schema: caller sets action/target/metadata; middleware/handlers
--- populate actor (sub/email/roles) + HTTP envelope when applicable.
--- Append-only: no UPDATE/DELETE from app; tombstone GC may purge by age.
+-- Idempotent: if table pre-exists with older schema, ALTER ensures new cols.
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id            BIGSERIAL PRIMARY KEY,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    tenant_id     UUID,
-    actor_sub     TEXT,
-    actor_email   TEXT,
-    actor_roles   TEXT[] NOT NULL DEFAULT '{}',
-    action        TEXT NOT NULL,
-    target_type   TEXT,
-    target_id     TEXT,
-    http_method   TEXT,
-    http_path     TEXT,
-    status_code   SMALLINT,
-    metadata      JSONB NOT NULL DEFAULT '{}'::jsonb
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS tenant_id    UUID;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_sub    TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_email  TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS actor_roles  TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS action       TEXT NOT NULL DEFAULT '';
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS target_type  TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS target_id    TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS http_method  TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS http_path    TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS status_code  SMALLINT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS metadata     JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS audit_log_created_idx    ON audit_log (created_at DESC);
 CREATE INDEX IF NOT EXISTS audit_log_tenant_idx     ON audit_log (tenant_id, created_at DESC) WHERE tenant_id IS NOT NULL;

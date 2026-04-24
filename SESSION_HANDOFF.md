@@ -422,3 +422,31 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 - Métrica push agora inclui `service=drive` label
 - Timer ativo recarregado — 6 probes PASS (pilot+pilot2 × 3 serviços)
 - Alerta `ExpressoSmokeDavFailing` cobre drive automaticamente (expr usa `service` label)
+
+## 2026-04-24 — Mail multi-realm ATIVADO (migration fix)
+
+### Fix migration 20260423180000_audit_log.sql
+
+- Problema: CREATE TABLE IF NOT EXISTS pulava quando tabela pré-existia com schema antigo; CREATE INDEX depois falhava com "column actor_sub does not exist"
+- Solução: separar CREATE TABLE (min schema) + ALTER TABLE ADD COLUMN IF NOT EXISTS p/ cada coluna + indexes
+- Idempotente: safe para bases novas (ALTERs após CREATE) e bases com schema antigo (adiciona colunas faltantes)
+
+### Mail deploy
+
+- Rebuild `expresso-mail:fase44` com migration corrigida (1m42s release)
+- Deploy em 125: `multi-realm validator ready, hosts: 2` + `HTTP API listening 0.0.0.0:8001`
+- Smoke pilot+pilot2 → GET /api/v1/mail/folders → HTTP 200 + INBOX folders → SMOKE PASS
+- `ops/smoke-mail.sh` + smoke-dav estendido a 5/5 probes (calendar→contacts→drive→mail)
+
+### Status runtime multi-realm FINAL
+
+| Service | pilot | pilot2 |
+|---------|-------|--------|
+| auth-rp | ✅ | ✅ |
+| calendar | ✅ | ✅ |
+| contacts | ✅ | ✅ |
+| drive | ✅ | ✅ |
+| mail | ✅ | ✅ |
+| chat/meet | ⚠ compat | ⚠ compat (aud conflict) |
+
+**6 serviços multi-realm 2-tenant em produção — 10 probes E2E PASS a cada 10min.**
