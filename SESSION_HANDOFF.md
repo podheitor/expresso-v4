@@ -180,3 +180,27 @@ Símbolos confirmados no binário (strings): `AUTH__OIDC_ISSUER_TEMPLATE`, `Mult
 `ops/keycloak/remove-hardcoded-tenant-mapper.sh` executado contra realm `expresso` (prod 125): 2 clients (`web`, `dav`), zero mappers hardcoded removidos — realm já compliant com fase4.
 
 **Session ID TaskSync**: `"14"`.
+
+## 2026-04-24 — Fase 10 concluída (pilot multi-realm ativo + per-tenant metrics)
+
+- `bf870e7` ops/pilot-multirealm-activation.md — runbook + format gotchas
+- `29956b7` per-tenant auth metrics: `auth_validation_total{realm,result}` + `auth_realm_cache_size`
+- `9e0606a` Grafana 3 panels (200-202) + 2 Prometheus alerts (ExpressoAuthValidationErrorsHigh, ExpressoAuthNoRealmsLoaded)
+
+**Prod state (125):**
+- auth-rp + calendar rodando image `:fase10b` com multi-realm + metrics wired
+- Prometheus scrape `expresso-auth-rp:8012` healthy
+- Grafana `expresso-overview.json` reloaded (19 panels)
+- Alerts: 14 rules SUCCESS promtool
+
+**E2E validated:**
+- `GET /auth/me` com Host=pilot.expresso.local → 200 `tenant_id=30aa38fd-...`
+- Prom query `auth_validation_total{realm="30aa38fd-...",result="ok"}=2`
+- Prom query `auth_realm_cache_size=1`
+
+**Gotchas documentados:**
+- `AUTH__TENANT_HOSTS` sep = `:` (≠ `=`); format `host:realm,host2:realm2`
+- Template placeholder = `{realm}` (≠ `{tenant}`)
+- Audience default KC direct-grant = `account`
+- Prometheus bind-mount: file replace via cp → inode muda → precisa `docker restart` (reload não basta)
+- expresso-observability Registry: migrado p/ `prometheus::default_registry()` → metrics de libs (auth-client) aparecem no /metrics
