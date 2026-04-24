@@ -12,6 +12,7 @@ pub enum RpError {
     #[error("invalid parameter: {0}")] BadRequest(&'static str),
     #[error(transparent)] Auth(#[from] expresso_auth_client::AuthError),
     #[error(transparent)] Http(#[from] reqwest::Error),
+    #[error("config error: {0}")] Config(String),
 }
 
 impl IntoResponse for RpError {
@@ -24,6 +25,7 @@ impl IntoResponse for RpError {
             RpError::Refresh(_)       => (StatusCode::UNAUTHORIZED,        "refresh_failed"),
             RpError::Discovery(_)     => (StatusCode::SERVICE_UNAVAILABLE, "discovery_failed"),
             RpError::Http(_)          => (StatusCode::BAD_GATEWAY,         "upstream"),
+            RpError::Config(_)        => (StatusCode::INTERNAL_SERVER_ERROR, "config"),
         };
         let body = Json(json!({"error": code, "message": self.to_string()}));
         (status, body).into_response()

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Query, State},
-    http::{header::SET_COOKIE, StatusCode},
+    http::{header::{HOST, SET_COOKIE}, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
@@ -26,8 +26,31 @@ pub async fn logout(
     headers:    HeaderMap,
     Query(q):   Query<LogoutQuery>,
 ) -> Result<Response> {
-    // Best-effort audit: extract access_token from cookie → validate → record.
-    // Errors here are non-fatal: logout must always succeed from user POV.
+    let host = headers.get(HOST).and_then(|h| h.to_str().ok()).unwrap_or("").to_string();
+
+    // Resolve end_session_endpoint per tenant when multi.
+    let (end_session, post_logout_uri) = if app.is_multi() {
+        match app.realm_for_host(&host) {
+            Some(realm) => {
+                let cache = app.multi_provider.as_ref().expect("is_multi");
+                let prov = cache.get_or_fetch(&realm).await?;
+                let es = prov.end_session_endpoint.clone()
+                    .ok_or_else(|| RpError::Discovery("end_session_endpoint absent".into()))?;
+                (es, app.post_logout_for_host(&host))
+            }
+            None => {
+                let es = app.provider.end_session_endpoint.clone()
+                    .ok_or_else(|| RpError::Discovery("end_session_endpoint absent".into()))?;
+                (es, app.cfg.post_logout_redirect_uri.clone())
+            }
+        }
+    } else {
+        let es = app.provider.end_session_endpoint.clone()
+            .ok_or_else(|| RpError::Discovery("end_session_endpoint absent".into()))?;
+        (es, app.cfg.post_logout_redirect_uri.clone())
+    };
+
+    // Best-effort audit.
     if let Some(pool) = app.pool.as_ref() {
         let token = headers.get(COOKIE).and_then(|h| h.to_str().ok()).and_then(|c| {
             c.split(';').map(str::trim).find_map(|kv| {
@@ -55,9 +78,7 @@ pub async fn logout(
         }
     }
 
-    let end_session = app.provider.end_session_endpoint.as_ref()
-        .ok_or_else(|| RpError::Discovery("end_session_endpoint absent".into()))?;
-    let mut url = url::Url::parse(end_session)
+    let mut url = url::Url::parse(&end_session)
         .map_err(|e| RpError::Discovery(e.to_string()))?;
     {
         let mut qp = url.query_pairs_mut();
@@ -65,7 +86,7 @@ pub async fn logout(
         if let Some(h) = q.id_token_hint.as_deref() {
             qp.append_pair("id_token_hint", h);
         }
-        if let Some(pl) = app.cfg.post_logout_redirect_uri.as_deref() {
+        if let Some(pl) = post_logout_uri.as_deref() {
             qp.append_pair("post_logout_redirect_uri", pl);
         }
     }
@@ -77,6 +98,6 @@ pub async fn logout(
         format!("{ACCESS_TOKEN_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0").parse().unwrap());
     h.append(SET_COOKIE,
         "expresso_rt=; HttpOnly; Path=/auth/refresh; SameSite=Lax; Max-Age=0".parse().unwrap());
-    tracing::info!(target: "audit", event = "auth.logout", "user logged out");
+    tracing::info!(target: "audit", event = "auth.logout", host = %host, "user logged out");
     Ok(resp)
 }

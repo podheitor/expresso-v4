@@ -1,8 +1,8 @@
-//! expresso-auth — OIDC Relying Party service.
+//! expresso-auth — OIDC Relying Party service (multi-realm capable, fase #46).
 //!
 //! Routes:
 //!   GET  /auth/login     → 302 to IdP authorization_endpoint (PKCE S256)
-//!   GET  /auth/callback  → exchange code + return TokenResponse
+//!   GET  /auth/callback  → exchange code + return TokenResponse / set cookies
 //!   POST /auth/refresh   → refresh_token flow
 //!   GET  /auth/logout    → 302 to IdP end_session_endpoint
 //!   GET  /auth/me        → validated AuthContext (Bearer required)
@@ -31,7 +31,7 @@ use expresso_auth_client::{MultiRealmValidator, OidcConfig, OidcValidator, Tenan
 
 use crate::{
     config::RpConfig,
-    oidc::discovery::ProviderMetadata,
+    oidc::{discovery::ProviderMetadata, multi_provider::TenantProviderCache},
     state::AppState,
 };
 
@@ -57,18 +57,18 @@ async fn main() -> anyhow::Result<()> {
 
     let cfg = RpConfig::from_env()?;
 
-    // Discover IdP endpoints
+    // Discover IdP endpoints (single-realm fallback).
     let provider = ProviderMetadata::fetch(&cfg.issuer, cfg.http_timeout).await
         .map_err(|e| anyhow::anyhow!("discovery: {e}"))?;
     info!(issuer = %provider.issuer, "provider metadata loaded");
 
-    // Token validator (JWKS-backed) — reuses same issuer/audience config
+    // Single-realm JWKS validator (fallback for /auth/me).
     let validator_cfg = OidcConfig::new(cfg.issuer.clone(), cfg.client_id.clone());
     let validator = Arc::new(
         OidcValidator::new(validator_cfg).await
             .map_err(|e| anyhow::anyhow!("validator init: {e}"))?
     );
-    info!("JWKS loaded");
+    info!("JWKS loaded (single-realm fallback)");
 
     let http = reqwest::Client::builder()
         .timeout(cfg.http_timeout)
@@ -86,22 +86,8 @@ async fn main() -> anyhow::Result<()> {
         _ => { info!("DATABASE_URL unset → audit writes disabled"); None }
     };
 
-    let app_state = Arc::new(AppState {
-        cfg,
-        provider,
-        http,
-        validator: validator.clone(),
-        pending: Mutex::new(HashMap::new()),
-        pool,
-    });
-
-    let login_limiter = std::sync::Arc::new(
-        ratelimit::RateLimiter::new(std::time::Duration::from_secs(60), 20)
-    );
-
-    // Multi-realm opt-in (fase 2 do realm-per-tenant). Ativo quando
-    // AUTH__OIDC_ISSUER_TEMPLATE + AUTH__TENANT_HOSTS setados.
-    let (multi, tenant_resolver): (Option<Arc<MultiRealmValidator>>, Option<Arc<TenantResolver>>) = {
+    // Multi-realm validator (token validation — used by /auth/me + callback).
+    let (multi_validator, tenant_resolver): (Option<Arc<MultiRealmValidator>>, Option<Arc<TenantResolver>>) = {
         let tpl = env::var("AUTH__OIDC_ISSUER_TEMPLATE").ok().filter(|v| !v.is_empty());
         let aud = env::var("AUTH__OIDC_AUDIENCE").ok().filter(|v| !v.is_empty());
         match (tpl, aud) {
@@ -113,13 +99,38 @@ async fn main() -> anyhow::Result<()> {
                 } else {
                     match MultiRealmValidator::new(t.clone(), a.clone()) {
                         Ok(m)  => { info!(template = %t, hosts = r.len(), "multi-realm validator ready"); (Some(Arc::new(m)), Some(Arc::new(r))) }
-                        Err(e) => { tracing::error!(error = %e, "multi-realm init failed"); (None, None) }
+                        Err(e) => { tracing::error!(error = %e, "multi-realm validator init failed"); (None, None) }
                     }
                 }
             }
             _ => (None, None),
         }
     };
+
+    // Multi-realm provider cache (discovery per tenant — used by login/callback/logout).
+    let multi_provider: Option<Arc<TenantProviderCache>> = match cfg.issuer_template.as_deref() {
+        Some(tpl) => match TenantProviderCache::new(tpl.to_string(), cfg.http_timeout) {
+            Ok(c)  => { info!(template = %tpl, "tenant provider cache ready"); Some(Arc::new(c)) }
+            Err(e) => { tracing::error!(error = %e, "tenant provider cache init failed"); None }
+        },
+        None => None,
+    };
+
+    let app_state = Arc::new(AppState {
+        cfg,
+        provider,
+        http,
+        validator: validator.clone(),
+        multi_validator: multi_validator.clone(),
+        tenant_resolver: tenant_resolver.clone(),
+        multi_provider,
+        pending: Mutex::new(HashMap::new()),
+        pool,
+    });
+
+    let login_limiter = std::sync::Arc::new(
+        ratelimit::RateLimiter::new(std::time::Duration::from_secs(60), 20)
+    );
 
     let app = Router::new()
         .route("/health", get(health))
@@ -135,10 +146,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/forgot", post(handlers::forgot::forgot))
         .merge(expresso_observability::metrics_router())
         .with_state(app_state)
-        // Extension for Authenticated extractor (/auth/me)
         .layer(Extension(validator));
-    let app = match multi     { Some(m) => app.layer(Extension(m)), None => app };
-    let app = match tenant_resolver { Some(r) => app.layer(Extension(r)), None => app };
+    let app = match multi_validator { Some(m) => app.layer(Extension(m)), None => app };
+    let app = match tenant_resolver  { Some(r) => app.layer(Extension(r)), None => app };
 
     let addr = resolve_addr()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

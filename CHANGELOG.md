@@ -1,5 +1,27 @@
 # Changelog
 
+## [Sprint #46] — 2026-04-24 — UI web multi-tenant
+
+### Added
+- `expresso-auth-rp`: `TenantProviderCache` (lazy OIDC discovery per realm)
+  resolvendo `authorization_endpoint`/`token_endpoint`/`end_session_endpoint`
+  via Host header — matching backend multi-realm flow.
+- Config `AUTH_RP__ISSUER_TEMPLATE`, `AUTH_RP__REDIRECT_URI_TEMPLATE`,
+  `AUTH_RP__POST_LOGOUT_TEMPLATE` (placeholders `{realm}` + `{host}`).
+- `PendingLogin.realm` + `PendingLogin.redirect_uri` — pinning per-request.
+- Unit tests `oidc::multi_provider::tests` (2 cases).
+
+### Changed
+- `expresso-web` env in prod: `PUBLIC__AUTH_LOGIN=/auth/login` (relative),
+  `PUBLIC__WEB_BASE_URL=""` → browser usa Host atual em todo fluxo OIDC.
+- `compose-auth-rp.yaml` → `image: expresso-auth:fase46` + 3 env vars novas.
+
+### Verified
+- 5/5 smoke probes web (pilot, pilot2, fallback expresso.local).
+- 14/14 backend DAV probes (pilot+pilot2) PASS pós-deploy.
+- Keycloak aceita `redirect_uri=https://{pilot,pilot2}.expresso.local/auth/callback`.
+
+
 Todas as mudanças notáveis. Formato baseado em [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versionamento: sprints numerados sequencialmente (sem semver atualmente; workspace interno).
 

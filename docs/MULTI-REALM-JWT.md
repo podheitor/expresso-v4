@@ -112,3 +112,37 @@ single-realm** nesta entrega:
 4. Certs: multi-SAN ou per-tenant.
 
 Ver [SESSION_HANDOFF.md](../SESSION_HANDOFF.md) para decisão registrada.
+
+## Sprint #46 — UI web multi-tenant ATIVO (2026-04-24)
+
+Refactor estendido ao **Relying Party (`expresso-auth-rp`)** + **reverse proxy**:
+
+- `expresso-auth-rp`: resolve `authorization_endpoint` / `token_endpoint` /
+  `end_session_endpoint` **por Host header** via `TenantProviderCache` (lazy
+  discovery per realm). Falls back a config single-realm quando Host não mapeado.
+- `expresso-web`: `PUBLIC__AUTH_LOGIN=/auth/login` (relative) + `PUBLIC__WEB_BASE_URL=""`
+  → browser usa Host corrente (pilot/pilot2/expresso.local) em todo o fluxo.
+- Nginx: catch-all `server_name _` no vhost 443 continua roteando novos hosts
+  para `expresso-web` + `/auth/*` → `expresso-auth-rp` (zero config change).
+
+### Novas env vars (`expresso-auth-rp`)
+
+| Var                              | Exemplo                                            | Função                         |
+| -------------------------------- | -------------------------------------------------- | ------------------------------ |
+| `AUTH_RP__ISSUER_TEMPLATE`       | `http://auth.expresso.local:8080/realms/{realm}`   | issuer per tenant              |
+| `AUTH_RP__REDIRECT_URI_TEMPLATE` | `https://{host}/auth/callback`                     | callback absoluto per Host     |
+| `AUTH_RP__POST_LOGOUT_TEMPLATE`  | `https://{host}/`                                  | redirect pós-logout per Host   |
+
+### Smoke test web (3 cenários validados)
+1. `GET https://pilot.expresso.local/auth/login` → 303 Keycloak realm pilot, redirect_uri correto.
+2. `GET https://pilot2.expresso.local/auth/login` → 303 Keycloak realm pilot2, redirect_uri correto.
+3. `GET https://expresso.local/auth/login` → 303 realm default `expresso` (legacy fallback).
+
+### Requisitos Keycloak (por realm tenant)
+- Client `expresso-web` com `redirect_uris = [https://<tenant-host>/auth/callback]`.
+- Client `expresso-web` com `web_origins = [https://<tenant-host>]`.
+- Pre-registrado em `pilot.expresso.local` + `pilot2.expresso.local`.
+
+### Limitação conhecida
+- Client `expresso-web` precisa existir em cada realm do tenant. Onboarding
+  automatizado: atualizar `ops/tenant-add.sh` para criar o client via API admin.

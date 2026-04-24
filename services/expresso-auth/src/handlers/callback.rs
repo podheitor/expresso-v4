@@ -1,14 +1,4 @@
-//! GET /auth/callback → token exchange.
-//!
-//! Two response modes:
-//!   - **Browser** (default for top-level navigation): set httpOnly cookies
-//!     `expresso_at` + `expresso_rt` + 303 redirect to `post_login_redirect`
-//!     (or `/`). Used by SPA top-level redirect flow.
-//!   - **JSON** (`?mode=json` or `Accept: application/json`): return
-//!     `TokenResponse` JSON for programmatic clients (mobile, CLI).
-//!
-//! Cookies: `HttpOnly; Path=/; SameSite=Lax`. `Secure` added when
-//! `AUTH_RP__COOKIE_SECURE=1` (set in HTTPS deployments).
+//! GET /auth/callback → token exchange (multi-tenant aware).
 
 use std::sync::Arc;
 
@@ -36,7 +26,6 @@ pub struct CallbackQuery {
     pub state: Option<String>,
     pub error:             Option<String>,
     pub error_description: Option<String>,
-    /// Force JSON response even from a browser navigation.
     pub mode: Option<String>,
 }
 
@@ -62,19 +51,24 @@ pub async fn callback(
     let pending = app.take_pending(&state).await
         .ok_or(RpError::StateNotFound)?;
 
+    // Resolve token_endpoint: per-realm when pending has realm, else static.
+    let token_ep = if let Some(realm) = pending.realm.as_deref() {
+        let cache = app.multi_provider.as_ref()
+            .ok_or_else(|| RpError::Discovery("multi_provider missing for pending realm".into()))?;
+        cache.get_or_fetch(realm).await?.token_endpoint.clone()
+    } else {
+        app.provider.token_endpoint.clone()
+    };
+
     let form = AuthCodeRequest {
         grant_type:    "authorization_code",
         code:          &code,
-        redirect_uri:  &app.cfg.redirect_uri,
+        redirect_uri:  &pending.redirect_uri,
         client_id:     &app.cfg.client_id,
         code_verifier: &pending.code_verifier,
     };
 
-    let resp = app.http
-        .post(&app.provider.token_endpoint)
-        .form(&form)
-        .send()
-        .await?;
+    let resp = app.http.post(&token_ep).form(&form).send().await?;
     if !resp.status().is_success() {
         let body = resp.text().await.unwrap_or_default();
         return Err(RpError::TokenExchange(body));
@@ -82,8 +76,13 @@ pub async fn callback(
     let tokens: TokenResponse = resp.json().await
         .map_err(|e| RpError::TokenExchange(e.to_string()))?;
 
-    // Defense-in-depth: ensure the IdP issued a token we can validate.
-    let ctx = app.validator.validate(&tokens.access_token).await?;
+    // Validate against correct realm validator when multi-tenant.
+    let ctx = if let (Some(realm), Some(mv)) = (pending.realm.as_deref(), app.multi_validator.as_ref()) {
+        let v = mv.for_realm(realm).await?;
+        v.validate(&tokens.access_token).await?
+    } else {
+        app.validator.validate(&tokens.access_token).await?
+    };
 
     tracing::info!(
         target: "audit",
@@ -91,6 +90,7 @@ pub async fn callback(
         user_id = %ctx.user_id,
         tenant_id = %ctx.tenant_id,
         email = %ctx.email,
+        realm = ?pending.realm,
         "user logged in via OIDC"
     );
 
@@ -106,13 +106,11 @@ pub async fn callback(
             http_method: Some("GET".into()),
             http_path:   Some("/auth/callback".into()),
             status_code: Some(200),
-            metadata:    serde_json::json!({}),
+            metadata:    serde_json::json!({"realm": pending.realm}),
         };
         audit::record_async(pool.clone(), entry);
     }
 
-    // gov.br federation: emit structured audit event. cpf_hash is logged only
-    // as a short prefix to avoid propagating the full hash through log sinks.
     if let Some(fed) = crate::oidc::govbr::GovbrFederation::from_ctx(&ctx) {
         tracing::info!(
             target: "audit",
@@ -126,7 +124,6 @@ pub async fn callback(
         );
     }
 
-    // Decide response mode
     let json_mode = q.mode.as_deref() == Some("json")
         || headers.get(ACCEPT)
             .and_then(|h| h.to_str().ok())
