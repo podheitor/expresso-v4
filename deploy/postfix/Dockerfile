@@ -1,5 +1,5 @@
 # Postfix MTA + Dovecot (SASL-only, Keycloak-backed) + TLS
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

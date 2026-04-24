@@ -1,5 +1,5 @@
 # Stage 1: Builder — compile expresso-admin
-FROM rust:latest AS builder
+FROM rust:1-trixie AS builder
 
 WORKDIR /workspace
 
@@ -21,7 +21,7 @@ RUN cargo fetch
 RUN cargo build --release --package expresso-admin
 
 # Stage 2: Runtime — minimal image
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates libssl3 libpq5 \
