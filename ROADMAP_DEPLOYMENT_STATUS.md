@@ -2448,3 +2448,31 @@ Dashboards → Import → Upload JSON → expresso-overview.json
 
 Próximo candidato natural: **#34 Alerting rules** (prometheus alertmanager
 em cima dos mesmos counters).
+
+### #34 — Prometheus alerting rules (pipeline NATS + service health)
+
+Novo artefato `ops/prometheus/alerts/expresso.yml` com 9 regras em 3 grupos
+consumindo os counters shipados em #31/#32. Segue #33 fechando o triângulo
+observability (**métricas → dashboard → alertas**).
+
+Grupos:
+- `expresso-nats-pipeline` (5): `ExpressoNatsPublishErrors` (warn >0.1/s),
+  `ExpressoNatsPublishErrorsCritical` (crit >1/s), `ExpressoEventAuditLagCalendar`
+  / `LagContacts` (warn lag >0.5/s por 10m), `ExpressoEventAuditSilent` (crit
+  consumer parado com produtores ativos).
+- `expresso-service-health` (3): `ExpressoServiceDown` (`up=0` 2m),
+  `ExpressoHttp5xxHigh` (>0.5/s 5m), `ExpressoRateLimitedSpike` (429 >1/s 10m).
+- `expresso-nats-broker` (1): `ExpressoJetStreamStalled` (broker sem crescer
+  com produtores ativos).
+
+**Validação:**
+```
+docker run --rm --entrypoint promtool \
+  -v .../expresso.yml:/w/expresso-alerts.yml \
+  prom/prometheus:latest check rules /w/expresso-alerts.yml
+SUCCESS: 9 rules found
+```
+
+README novo em [ops/prometheus/README.md](ops/prometheus/README.md) com tabela
+de alerts + snippet de integração em `prometheus.yml`. Artefato-only, sem
+rebuild/deploy — basta montar o arquivo e `rule_files` no Prometheus de prod.

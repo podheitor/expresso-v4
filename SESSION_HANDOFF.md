@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** sprint #33 (Grafana dashboard extension). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #34 (Prometheus alerting rules). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #33 shipped (32 sprints)
+## Status da trilha — #2 → #34 shipped (33 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 
@@ -18,6 +18,7 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 | 31 | `138e44f` | `expresso-event-audit` — `/healthz`, `/readyz`, `/metrics` (prometheus) + `event_audit_events_total{stream}` |
 | 32 | `a7b62a5` | Produtores `expresso-calendar` + `expresso-contacts` — `calendar_nats_publish_total{kind,result}` + `contacts_nats_publish_total{kind,result}` (result ∈ ok/err/serialize_err), zero pré-populado |
 | 33 | `c6cf4b8` | Grafana dashboard extension — +5 painéis (produtor publish rate, audit consume, lag, errors, contacts JetStream). Artefato-only, sem deploy. |
+| 34 | `3a14996` | Prometheus alerting rules — `ops/prometheus/alerts/expresso.yml` (9 rules, 3 groups). Validado com promtool. Artefato-only. |
 
 ## Estado em produção (125)
 
@@ -80,7 +81,6 @@ sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
 
 2. **iMIP dispatch** — estender `expresso-event-audit` (ou novo crate) com SMTP via `lettre` + remontagem iCal p/ attendees em `event_created/updated/cancelled`. Escopo grande (~2h), exige config SMTP.
 3. **Realm-per-tenant wizard** — KC admin REST p/ criar realm isolado por tenant. Escopo grande.
-4. **Alerting rules** — prometheus alertmanager: `rate(calendar_nats_publish_total{result!="ok"}[5m]) > 0.1`, lag produtor/consumidor.
 
 ## Workflow TaskSync (retomada)
 

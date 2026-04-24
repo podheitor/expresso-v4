@@ -1,0 +1,133 @@
+# Prometheus alerting rules — Expresso V4
+# Carregar via `rule_files: [ alerts/expresso.yml ]` em prometheus.yml.
+# Counters base: #31 (event-audit) + #32 (publishers). Ship #34.
+groups:
+  - name: expresso-nats-pipeline
+    interval: 30s
+    rules:
+      - alert: ExpressoNatsPublishErrors
+        expr: |
+          sum(rate(calendar_nats_publish_total{result!="ok"}[5m]))
+          + sum(rate(contacts_nats_publish_total{result!="ok"}[5m]))
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: nats-producer
+        annotations:
+          summary: "Publisher NATS com erros (>0.1/s por 5m)"
+          description: "rate(publish{result!=ok}) sustentado acima de 0.1/s. Ver logs do serviço e broker."
+
+      - alert: ExpressoNatsPublishErrorsCritical
+        expr: |
+          sum(rate(calendar_nats_publish_total{result!="ok"}[5m]))
+          + sum(rate(contacts_nats_publish_total{result!="ok"}[5m]))
+          > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: nats-producer
+        annotations:
+          summary: "Publisher NATS em falha severa (>1/s por 5m)"
+          description: "Taxa de erro de publish acima de 1/s. Pipeline provavelmente quebrado."
+
+      - alert: ExpressoEventAuditLagCalendar
+        expr: |
+          sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
+          - sum(rate(event_audit_events_total{stream="EXPRESSO_CALENDAR"}[5m]))
+          > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: event-audit
+        annotations:
+          summary: "event-audit atrasado no stream EXPRESSO_CALENDAR"
+          description: "publish(ok) − audit_consume > 0.5/s por 10m. Checar expresso-event-audit."
+
+      - alert: ExpressoEventAuditLagContacts
+        expr: |
+          sum(rate(contacts_nats_publish_total{result="ok"}[5m]))
+          - sum(rate(event_audit_events_total{stream="EXPRESSO_CONTACTS"}[5m]))
+          > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: event-audit
+        annotations:
+          summary: "event-audit atrasado no stream EXPRESSO_CONTACTS"
+          description: "publish(ok) − audit_consume > 0.5/s por 10m. Checar expresso-event-audit."
+
+      - alert: ExpressoEventAuditSilent
+        expr: |
+          (
+            sum(rate(event_audit_events_total[5m])) == 0
+            or absent(event_audit_events_total)
+          )
+          and
+          (
+            sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
+            + sum(rate(contacts_nats_publish_total{result="ok"}[5m]))
+          ) > 0
+        for: 15m
+        labels:
+          severity: critical
+          component: event-audit
+        annotations:
+          summary: "expresso-event-audit silencioso com publishers ativos"
+          description: "Produtores publicando mas audit sem eventos por 15m — consumer morto ou desconectado."
+
+  - name: expresso-service-health
+    interval: 30s
+    rules:
+      - alert: ExpressoServiceDown
+        expr: up{job=~"expresso-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: service
+        annotations:
+          summary: "Serviço Expresso down: {{ $labels.job }} ({{ $labels.instance }})"
+          description: "up=0 por 2m. Checar container + /readyz."
+
+      - alert: ExpressoHttp5xxHigh
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: service
+        annotations:
+          summary: "5xx rate alto em {{ $labels.service }}"
+          description: "rate(http_requests_total{status=~\"5..\"}) > 0.5/s por 5m."
+
+      - alert: ExpressoRateLimitedSpike
+        expr: |
+          sum by (service) (rate(http_requests_total{status="429"}[5m])) > 1
+        for: 10m
+        labels:
+          severity: info
+          component: rate-limit
+        annotations:
+          summary: "429 spike em {{ $labels.service }}"
+          description: "Rate-limit per-tenant saturado. Avaliar limites ou abuso."
+
+  - name: expresso-nats-broker
+    interval: 30s
+    rules:
+      - alert: ExpressoJetStreamStalled
+        expr: |
+          (
+            (nats_stream_messages{stream=~"EXPRESSO_.*"}
+              - (nats_stream_messages{stream=~"EXPRESSO_.*"} offset 10m)) == 0
+          )
+          and on() (
+            sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
+            + sum(rate(contacts_nats_publish_total{result="ok"}[5m]))
+          ) > 0
+        for: 15m
+        labels:
+          severity: warning
+          component: nats-broker
+        annotations:
+          summary: "Stream {{ $labels.stream }} não cresce com publishers ativos"
+          description: "messages total estável por 10m+ mas produtores com rate>0. Broker pode estar rejeitando."
