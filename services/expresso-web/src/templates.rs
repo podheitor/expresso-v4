@@ -50,6 +50,7 @@ impl Folder {
 #[derive(Debug, Deserialize, Clone)]
 pub struct MessageListItem {
     pub id:              String,
+    #[serde(default)] pub thread_id:       Option<String>,
     #[serde(default)] pub subject:         Option<String>,
     #[serde(default)] pub from_addr:       Option<String>,
     #[serde(default)] pub from_name:       Option<String>,
@@ -80,6 +81,7 @@ impl MessageListItem {
 #[derive(Debug, Deserialize, Clone)]
 pub struct MessageDetail {
     pub id:          String,
+    #[serde(default)] pub thread_id:   Option<String>,
     #[serde(default)] pub subject:     Option<String>,
     #[serde(default)] pub from_addr:   Option<String>,
     #[serde(default)] pub from_name:   Option<String>,
@@ -130,6 +132,16 @@ pub struct MailListTpl {
 pub struct MailComposeTpl {
     pub me:    Me,
     pub error: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "mail_thread.html")]
+pub struct MailThreadTpl {
+    pub me:        Me,
+    pub folders:   Vec<Folder>,
+    pub thread_id: String,
+    pub messages:  Vec<MessageListItem>,
+    pub subject:   String,
 }
 
 

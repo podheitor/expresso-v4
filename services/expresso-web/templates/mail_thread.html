@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ subject }} · Thread · Expresso Mail{% endblock %}
+{% block body %}
+<div class="mail-shell">
+  <aside class="sidebar">
+    <header class="sidebar-header">
+      <span class="app-name">✉ Expresso Mail</span>
+      <a class="btn btn-primary btn-sm" href="/mail/compose" style="margin-top:.5rem;display:block;text-align:center">✎ Nova mensagem</a>
+    </header>
+
+    <nav class="folder-list" aria-label="Pastas">
+      {% for f in folders %}
+      <a class="folder-item" href="/mail?folder={{ f.name }}">
+        <span class="folder-icon">{{ f.icon() }}</span>
+        <span class="folder-name">{{ f.name }}</span>
+        {% if f.unseen_count > 0 %}
+          <span class="badge">{{ f.unseen_count }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div class="sidebar-footer">
+      <a class="link-sm" href="/me">👤 {{ me.email }}</a>
+    </div>
+  </aside>
+
+  <main class="mail-main">
+    <section class="msg-list" aria-label="Mensagens da conversa" style="flex:1 1 100%">
+      <div class="list-toolbar">
+        <a class="link-sm" href="/mail">← Voltar</a>
+        <h1 class="folder-title">🧵 {{ subject }}</h1>
+        <span class="muted">{{ messages.len() }} mensagens</span>
+      </div>
+
+      {% if messages.is_empty() %}
+        <div class="empty-state">Thread vazia</div>
+      {% else %}
+      <ul class="msg-rows">
+        {% for msg in messages %}
+        <li>
+          <a class="msg-row{% if msg.is_unread() %} unread{% endif %}"
+             href="/mail/{{ msg.id }}">
+            <div class="msg-meta">
+              <span class="msg-from">{{ msg.from_display() }}</span>
+              <span class="msg-date">{{ msg.date_display() }}</span>
+            </div>
+            <div class="msg-subject">{{ msg.subject_display() }}</div>
+            {% if !msg.preview_display().is_empty() %}
+              <div class="msg-preview">{{ msg.preview_display() }}</div>
+            {% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

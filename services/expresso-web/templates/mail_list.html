@@ -60,6 +60,10 @@
       {% when Some with (d) %}
         <header class="detail-header">
           <h2>{% match d.subject %}{% when Some with (s) %}{{ s }}{% when None %}(sem assunto){% endmatch %}</h2>
+          {% match d.thread_id %}
+            {% when Some with (tid) %}<a class="link-sm" href="/mail/thread/{{ tid }}">🧵 Ver thread</a>
+            {% when None %}
+          {% endmatch %}
           <div class="detail-from">
             <strong>{% match d.from_name %}{% when Some with (n) %}{{ n }}{% when None %}{% match d.from_addr %}{% when Some with (a) %}{{ a }}{% when None %}—{% endmatch %}{% endmatch %}</strong>
             {% match d.from_addr %}{% when Some with (a) %}<span class="mono muted"> &lt;{{ a }}&gt;</span>{% when None %}{% endmatch %}

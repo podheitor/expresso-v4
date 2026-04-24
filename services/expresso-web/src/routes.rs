@@ -16,7 +16,7 @@ use crate::{
     error::WebResult,
     templates::{
         AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
-        MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
+        MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
         Event, MonthCell, CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl, ContactFormTpl,
         AclRow, CalendarShareTpl, AddrbookShareTpl,
     },
@@ -30,9 +30,10 @@ pub fn router(state: AppState) -> Router {
         .route("/login",         get(login_page))
         .route("/me",            get(me_page))
         .route("/me/security",   get(security_page))
-        .route("/mail",          get(mail_page))
-        .route("/mail/:id",      get(mail_detail_page))
-        .route("/mail/compose",  get(mail_compose_page).post(mail_compose_action))
+        .route("/mail",              get(mail_page))
+        .route("/mail/compose",      get(mail_compose_page).post(mail_compose_action))
+        .route("/mail/thread/:tid",  get(mail_thread_page))
+        .route("/mail/:id",          get(mail_detail_page))
         .route("/drive",            get(drive_page))
         .route("/drive/trash",      get(drive_trash_page))
         .route("/drive/upload",     post(drive_upload_action))
@@ -194,6 +195,35 @@ async fn mail_detail_page(
 
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me, folders, selected, messages, detail, selected_id: Some(id),
+    }))
+}
+
+async fn mail_thread_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(tid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+
+    let folders = get_json::<Vec<Folder>>(
+        &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+
+    let enc_tid = utf8_percent_encode(&tid, NON_ALPHANUMERIC).to_string();
+    let messages = get_json::<Vec<MessageListItem>>(
+        &st, &st.backends.mail,
+        &format!("/api/v1/mail/threads/{enc_tid}"),
+        &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+
+    let subject = messages.iter()
+        .find_map(|m| m.subject.clone())
+        .unwrap_or_else(|| "(sem assunto)".into());
+
+    Ok(askama_axum::IntoResponse::into_response(MailThreadTpl {
+        me, folders, thread_id: tid, messages, subject,
     }))
 }
 
