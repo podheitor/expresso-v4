@@ -2419,3 +2419,32 @@ rate(calendar_nats_publish_total{result!="ok"}[5m]) > 0.1
 sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
   - sum(rate(event_audit_events_total{stream="EXPRESSO_CALENDAR"}[5m]))
 ```
+
+### #33 — Grafana dashboard extension (pipeline NATS)
+
+Segue-se #32 adicionando painéis ao `ops/grafana/expresso-overview.json`
+consumindo os counters dos sprints #31/#32. Escopo pequeno, artefato-only,
+sem rebuild/deploy de serviços.
+
+Novos painéis:
+- `NATS publish rate — produtores` (timeseries) —
+  `sum by (kind,result) (rate(calendar_nats_publish_total[5m]))` + contatos.
+- `event-audit — consumo por stream` (timeseries) —
+  `sum by (stream) (rate(event_audit_events_total[5m]))`.
+- `Lag produtor → consumidor` (timeseries) —
+  `rate(publish{result="ok"}) − rate(audit)` por stream; ~0 = saudável.
+- `Publish errors (5m)` (stat) —
+  `increase(*_nats_publish_total{result!="ok"}[5m])`; base p/ alerting #34.
+- `JetStream EXPRESSO_CONTACTS` (timeseries) — espelha painel de calendar.
+
+Também: `ops/grafana/README.md` atualizado (lista de painéis + scrape
+config de `expresso-event-audit:9191`).
+
+**Verificação** (import no Grafana):
+```
+Dashboards → Import → Upload JSON → expresso-overview.json
+→ 11 painéis exibidos (antes: 6).
+```
+
+Próximo candidato natural: **#34 Alerting rules** (prometheus alertmanager
+em cima dos mesmos counters).

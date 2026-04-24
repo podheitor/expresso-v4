@@ -1,8 +1,8 @@
 # Session Handoff — Expresso v4
 
-**Last session end:** commit `a7b62a5` (sprint trilha #32). Working tree clean, pushed to `origin/main`.
+**Last session end:** sprint #33 (Grafana dashboard extension). Working tree clean, pushed to `origin/main`.
 
-## Status da trilha — #2 → #32 shipped (31 sprints)
+## Status da trilha — #2 → #33 shipped (32 sprints)
 
 Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 
@@ -17,6 +17,7 @@ Pipeline NATS totalmente observável: **produtor → broker → consumidor**.
 | 30 | `bf0913b` | `expresso-admin` — relatório de cobertura TOTP `/users/totp-status` |
 | 31 | `138e44f` | `expresso-event-audit` — `/healthz`, `/readyz`, `/metrics` (prometheus) + `event_audit_events_total{stream}` |
 | 32 | `a7b62a5` | Produtores `expresso-calendar` + `expresso-contacts` — `calendar_nats_publish_total{kind,result}` + `contacts_nats_publish_total{kind,result}` (result ∈ ok/err/serialize_err), zero pré-populado |
+| 33 | `c6cf4b8` | Grafana dashboard extension — +5 painéis (produtor publish rate, audit consume, lag, errors, contacts JetStream). Artefato-only, sem deploy. |
 
 ## Estado em produção (125)
 
@@ -77,7 +78,6 @@ sum(rate(calendar_nats_publish_total{result="ok"}[5m]))
 
 ## Próximos sprints candidatos (não iniciados)
 
-1. **Grafana dashboard extension** — adicionar painéis ao `ops/grafana/expresso-overview.json` consumindo `event_audit_events_total` + `*_nats_publish_total`. Escopo pequeno, baixo risco.
 2. **iMIP dispatch** — estender `expresso-event-audit` (ou novo crate) com SMTP via `lettre` + remontagem iCal p/ attendees em `event_created/updated/cancelled`. Escopo grande (~2h), exige config SMTP.
 3. **Realm-per-tenant wizard** — KC admin REST p/ criar realm isolado por tenant. Escopo grande.
 4. **Alerting rules** — prometheus alertmanager: `rate(calendar_nats_publish_total{result!="ok"}[5m]) > 0.1`, lag produtor/consumidor.
@@ -91,6 +91,6 @@ Session ID usado: `"12"`. User costuma responder `"segue"` / `"autonomous tempor
 
 - Roadmap: [ROADMAP_DEPLOYMENT_STATUS.md](ROADMAP_DEPLOYMENT_STATUS.md) (seções #2→#32)
 - Ops NATS: [ops/nats/](ops/nats/) (smoke.sh, e2e-smoke.sh, tail.sh, README.md)
-- Grafana: [ops/grafana/expresso-overview.json](ops/grafana/expresso-overview.json) (6 painéis, ainda sem painéis dos counters #31/#32)
+- Grafana: [ops/grafana/expresso-overview.json](ops/grafana/expresso-overview.json) (11 painéis, inclui counters #31/#32 a partir de #33)
 - Observability lib: [libs/expresso-observability](libs/expresso-observability)
 - Event audit worker: [services/expresso-event-audit](services/expresso-event-audit)

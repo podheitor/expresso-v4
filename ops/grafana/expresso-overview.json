@@ -3,16 +3,24 @@
   "uid": "expresso-overview",
   "schemaVersion": 39,
   "version": 1,
-  "tags": ["expresso"],
+  "tags": [
+    "expresso"
+  ],
   "timezone": "browser",
   "refresh": "30s",
-  "time": { "from": "now-1h", "to": "now" },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "templating": {
     "list": [
       {
         "name": "service",
         "type": "query",
-        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "query": "label_values(http_requests_total, service)",
         "includeAll": true,
         "multi": true,
@@ -25,8 +33,16 @@
       "id": 1,
       "type": "timeseries",
       "title": "HTTP req/s por serviço",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (service) (rate(http_requests_total{service=~\"$service\"}[1m]))",
@@ -38,8 +54,16 @@
       "id": 2,
       "type": "timeseries",
       "title": "HTTP 4xx/5xx por serviço",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (service,status) (rate(http_requests_total{service=~\"$service\",status=~\"4..|5..\"}[1m]))",
@@ -51,8 +75,16 @@
       "id": 3,
       "type": "stat",
       "title": "429 Rate-limited (último 5m)",
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(increase(http_requests_total{status=\"429\"}[5m]))",
@@ -64,8 +96,16 @@
       "id": 4,
       "type": "timeseries",
       "title": "Status mix (últimos 15m)",
-      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum by (status) (rate(http_requests_total[1m]))",
@@ -77,8 +117,16 @@
       "id": 5,
       "type": "timeseries",
       "title": "JetStream — mensagens (EXPRESSO_CALENDAR)",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "nats_stream_messages{stream=\"EXPRESSO_CALENDAR\"}",
@@ -95,14 +143,144 @@
       "id": 6,
       "type": "stat",
       "title": "/readyz — serviços OK",
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(up{job=~\"expresso-.*\"})",
           "legendFormat": "up"
         }
       ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "NATS publish rate — produtores (calendar+contacts)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind,result) (rate(calendar_nats_publish_total[5m]))",
+          "legendFormat": "calendar {{kind}}/{{result}}"
+        },
+        {
+          "expr": "sum by (kind,result) (rate(contacts_nats_publish_total[5m]))",
+          "legendFormat": "contacts {{kind}}/{{result}}"
+        }
+      ],
+      "description": "Taxa de publicação JetStream por produtor (sprints #32). result ∈ ok/err/serialize_err."
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "event-audit — consumo por stream",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (stream) (rate(event_audit_events_total[5m]))",
+          "legendFormat": "{{stream}}"
+        }
+      ],
+      "description": "Taxa de eventos processados pelo expresso-event-audit (sprint #31)."
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Lag produtor → consumidor (ok - audit)",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(calendar_nats_publish_total{result=\"ok\"}[5m])) - sum(rate(event_audit_events_total{stream=\"EXPRESSO_CALENDAR\"}[5m]))",
+          "legendFormat": "calendar lag"
+        },
+        {
+          "expr": "sum(rate(contacts_nats_publish_total{result=\"ok\"}[5m])) - sum(rate(event_audit_events_total{stream=\"EXPRESSO_CONTACTS\"}[5m]))",
+          "legendFormat": "contacts lag"
+        }
+      ],
+      "description": "Diferença rate(publish ok) − rate(audit consumed). Próximo de 0 = pipeline saudável."
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Publish errors (5m)",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(calendar_nats_publish_total{result!=\"ok\"}[5m])) + sum(increase(contacts_nats_publish_total{result!=\"ok\"}[5m]))",
+          "legendFormat": "errors"
+        }
+      ],
+      "description": "Total de falhas de publish (err+serialize_err) nos últimos 5m."
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "JetStream — mensagens (EXPRESSO_CONTACTS)",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "nats_stream_messages{stream=\"EXPRESSO_CONTACTS\"}",
+          "legendFormat": "messages"
+        },
+        {
+          "expr": "nats_stream_bytes{stream=\"EXPRESSO_CONTACTS\"}",
+          "legendFormat": "bytes"
+        }
+      ],
+      "description": "Espelha painel do EXPRESSO_CALENDAR para o stream de contatos."
     }
   ]
 }
