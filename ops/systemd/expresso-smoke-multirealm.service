@@ -1,0 +1,17 @@
+[Unit]
+Description=Expresso multi-realm smoke test (JWT + /auth/me + Prometheus metric)
+Documentation=file:///opt/expresso/smoke-multirealm.sh
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/expresso/smoke-multirealm.env
+ExecStart=/bin/bash /opt/expresso/smoke-multirealm.sh
+# Fail journal capture: both stdout + exit code
+StandardOutput=journal
+StandardError=journal
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
