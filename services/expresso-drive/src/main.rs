@@ -94,7 +94,33 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let addr  = resolve_addr()?;
-    let state = AppState::new(db, data_root);
+    let state = AppState::new(db.clone(), data_root.clone());
+
+    // tus.io expiration — hourly GC of abandoned uploads + matching .part blobs.
+    if let Some(pool) = db.clone() {
+        let root = data_root.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
+            ticker.tick().await; // fires immediately
+            loop {
+                let repo = domain::upload::UploadRepo::new(&pool);
+                let keys = repo.list_expired_keys().await.unwrap_or_default();
+                match repo.purge_expired().await {
+                    Ok(n) if n > 0 || !keys.is_empty() => {
+                        for k in &keys {
+                            let p = root.join(format!("{k}.part"));
+                            let _ = tokio::fs::remove_file(&p).await;
+                        }
+                        info!(rows = n, blobs = keys.len(), "drive_uploads GC");
+                    }
+                    Ok(_) => {}
+                    Err(e) => warn!(error = %e, "drive_uploads purge failed"),
+                }
+                ticker.tick().await;
+            }
+        });
+    }
+
     let (multi, resolver) = resolve_multi_realm();
     let mut app = api::router(state);
     if let Some(m) = multi    { app = app.layer(axum::extract::Extension(m)); }

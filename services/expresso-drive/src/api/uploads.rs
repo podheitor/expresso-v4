@@ -9,7 +9,7 @@
 //! - DELETE /api/v1/drive/uploads/:id           → abort
 //! - OPTIONS /api/v1/drive/uploads              → discovery
 //!
-//! Extensions suportadas: creation, termination. (concatenation/expiration não.)
+//! Extensions suportadas: creation, termination, expiration. (concatenation não.)
 
 use axum::{
     body::Bytes,
@@ -22,6 +22,7 @@ use axum::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
+use time::OffsetDateTime;
 use tokio::{fs, io::{AsyncSeekExt, AsyncWriteExt}};
 use uuid::Uuid;
 
@@ -34,7 +35,7 @@ use crate::{
 
 const TUS_VERSION:      &str = "1.0.0";
 const TUS_SUPPORTED:    &str = "1.0.0";
-const TUS_EXTENSIONS:   &str = "creation,termination";
+const TUS_EXTENSIONS:   &str = "creation,termination,expiration";
 const MAX_UPLOAD_BYTES: i64  = 50 * 1024 * 1024 * 1024;   // 50 GB hard cap.
 
 pub fn routes() -> Router<AppState> {
@@ -74,6 +75,33 @@ fn parse_metadata(h: Option<&HeaderValue>) -> (Option<String>, Option<String>) {
 
 fn header_i64(h: &HeaderMap, name: &str) -> Option<i64> {
     h.get(name)?.to_str().ok()?.parse().ok()
+}
+
+/// RFC 7231 §7.1.1.1 IMF-fixdate — required by tus.io Upload-Expires.
+/// Example: `Sun, 06 Nov 1994 08:49:37 GMT`.
+fn http_date(dt: OffsetDateTime) -> String {
+    let dt = dt.to_offset(time::UtcOffset::UTC);
+    let wd = match dt.weekday() {
+        time::Weekday::Monday    => "Mon",
+        time::Weekday::Tuesday   => "Tue",
+        time::Weekday::Wednesday => "Wed",
+        time::Weekday::Thursday  => "Thu",
+        time::Weekday::Friday    => "Fri",
+        time::Weekday::Saturday  => "Sat",
+        time::Weekday::Sunday    => "Sun",
+    };
+    let mo = match dt.month() {
+        time::Month::January   => "Jan", time::Month::February => "Feb",
+        time::Month::March     => "Mar", time::Month::April    => "Apr",
+        time::Month::May       => "May", time::Month::June     => "Jun",
+        time::Month::July      => "Jul", time::Month::August   => "Aug",
+        time::Month::September => "Sep", time::Month::October  => "Oct",
+        time::Month::November  => "Nov", time::Month::December => "Dec",
+    };
+    format!(
+        "{wd}, {:02} {mo} {} {:02}:{:02}:{:02} GMT",
+        dt.day(), dt.year(), dt.hour(), dt.minute(), dt.second()
+    )
 }
 
 async fn options_collection() -> Response {
@@ -153,6 +181,7 @@ async fn create_upload(
     h.insert("location", format!("/api/v1/drive/uploads/{}", up.id).parse().unwrap());
     h.insert("upload-offset", "0".parse().unwrap());
     h.insert("upload-length", total.to_string().parse().unwrap());
+    h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
     tracing::info!(target: "audit",
         event = "drive.upload.create",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
@@ -166,10 +195,14 @@ async fn head_upload(st: AppState, ctx: RequestCtx, id: Uuid) -> Result<Response
     let pool = st.db_or_unavailable()?;
     let up = UploadRepo::new(pool).get(ctx.tenant_id, id).await?
         .ok_or(DriveError::NotFound(id))?;
+    if up.is_expired() {
+        return Err(DriveError::Gone(id));
+    }
     let mut h = HeaderMap::new();
     for (k, v) in tus_headers() { h.insert(k, v); }
     h.insert("upload-offset", up.offset_bytes.to_string().parse().unwrap());
     h.insert("upload-length", up.total_size.to_string().parse().unwrap());
+    h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
     h.insert("cache-control", "no-store".parse().unwrap());
     Ok((StatusCode::OK, h).into_response())
 }
@@ -196,6 +229,9 @@ async fn patch_upload(
     let repo = UploadRepo::new(pool);
     let up = repo.get(ctx.tenant_id, id).await?
         .ok_or(DriveError::NotFound(id))?;
+    if up.is_expired() {
+        return Err(DriveError::Gone(id));
+    }
 
     if client_offset != up.offset_bytes {
         return Err(DriveError::Conflict(format!(
@@ -230,6 +266,7 @@ async fn patch_upload(
     let mut h = HeaderMap::new();
     for (k, v) in tus_headers() { h.insert(k, v); }
     h.insert("upload-offset", new_offset.to_string().parse().unwrap());
+    h.insert("upload-expires", http_date(up.expires_at).parse().unwrap());
     Ok((StatusCode::NO_CONTENT, h).into_response())
 }
 
@@ -356,6 +393,20 @@ mod tests {
         let (n, m) = parse_metadata(None);
         assert_eq!(n, None);
         assert_eq!(m, None);
+    }
+
+    #[test]
+    fn http_date_fixed() {
+        // RFC 7231 §7.1.1.1 example: Sun, 06 Nov 1994 08:49:37 GMT
+        let dt = OffsetDateTime::from_unix_timestamp(784111777).unwrap();
+        assert_eq!(http_date(dt), "Sun, 06 Nov 1994 08:49:37 GMT");
+    }
+
+    #[test]
+    fn http_date_normalizes_to_utc() {
+        let east = time::UtcOffset::from_hms(5, 0, 0).unwrap();
+        let dt = OffsetDateTime::from_unix_timestamp(784111777).unwrap().to_offset(east);
+        assert_eq!(http_date(dt), "Sun, 06 Nov 1994 08:49:37 GMT");
     }
 
     #[test]

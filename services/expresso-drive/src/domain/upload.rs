@@ -25,6 +25,13 @@ pub struct UploadSession {
     pub expires_at:    OffsetDateTime,
 }
 
+impl UploadSession {
+    /// True when `expires_at` is in the past (tus.io expiration extension).
+    pub fn is_expired(&self) -> bool {
+        self.expires_at <= OffsetDateTime::now_utc()
+    }
+}
+
 pub struct NewUpload<'a> {
     pub tenant_id:     Uuid,
     pub owner_user_id: Uuid,
@@ -60,12 +67,31 @@ impl<'a> UploadRepo<'a> {
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<UploadSession>> {
         let sql = format!(
             "SELECT {COLS} FROM drive_uploads \
-             WHERE id = $1 AND tenant_id = $2 AND expires_at > now()"
+             WHERE id = $1 AND tenant_id = $2"
         );
         let row: Option<UploadSession> = sqlx::query_as(&sql)
             .bind(id).bind(tenant_id)
             .fetch_optional(self.pool).await?;
         Ok(row)
+    }
+
+    /// List storage keys for expired rows — callers use this to best-effort
+    /// remove the matching `.part` blobs before (or after) invoking the SQL
+    /// purge function. Cross-tenant: no RLS filter, only used by GC task.
+    pub async fn list_expired_keys(&self) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT storage_key FROM drive_uploads WHERE expires_at < now()"
+        )
+        .fetch_all(self.pool).await?;
+        Ok(rows.into_iter().map(|(k,)| k).collect())
+    }
+
+    /// Invoke the server-side `drive_uploads_purge_expired()` function
+    /// (batched 5000 per loop in SQL). Returns total rows deleted.
+    pub async fn purge_expired(&self) -> Result<i64> {
+        let (n,): (i64,) = sqlx::query_as("SELECT drive_uploads_purge_expired()")
+            .fetch_one(self.pool).await?;
+        Ok(n)
     }
 
     /// Retorna novo offset se update bem-sucedido (usa compare-and-set para
@@ -93,5 +119,37 @@ impl<'a> UploadRepo<'a> {
             .bind(id).bind(tenant_id)
             .execute(self.pool).await?;
         Ok(r.rows_affected())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::Duration;
+
+    fn session_with_expiry(offset: Duration) -> UploadSession {
+        UploadSession {
+            id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            owner_user_id: Uuid::nil(),
+            parent_id: None,
+            name: "x".into(),
+            mime_type: None,
+            total_size: 1,
+            offset_bytes: 0,
+            storage_key: "k".into(),
+            created_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + offset,
+        }
+    }
+
+    #[test]
+    fn is_expired_past() {
+        assert!(session_with_expiry(Duration::minutes(-1)).is_expired());
+    }
+
+    #[test]
+    fn is_expired_future() {
+        assert!(!session_with_expiry(Duration::hours(1)).is_expired());
     }
 }

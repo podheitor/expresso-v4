@@ -25,6 +25,9 @@ pub enum DriveError {
     #[error("not found: {0}")]
     NotFound(Uuid),
 
+    #[error("gone: {0}")]
+    Gone(Uuid),
+
     #[error("conflict: {0}")]
     Conflict(String),
 
@@ -46,6 +49,7 @@ impl IntoResponse for DriveError {
         let status = match &self {
             Self::DatabaseUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Self::NotFound(_)         => StatusCode::NOT_FOUND,
+            Self::Gone(_)             => StatusCode::GONE,
             Self::Conflict(_)         => StatusCode::CONFLICT,
             Self::BadRequest(_)       => StatusCode::BAD_REQUEST,
             Self::Forbidden           => StatusCode::FORBIDDEN,
