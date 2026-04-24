@@ -36,3 +36,7 @@ scrape_configs:
   - job_name: alertmanager
     static_configs:
       - targets: ['alertmanager:9093']
+  - job_name: expresso-imip-dispatch
+    metrics_path: /metrics
+    static_configs:
+      - targets: [expresso-imip-dispatch:9192]

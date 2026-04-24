@@ -1,5 +1,5 @@
 {
-  "title": "Expresso — Overview",
+  "title": "Expresso \u2014 Overview",
   "uid": "expresso-overview",
   "schemaVersion": 39,
   "version": 1,
@@ -32,7 +32,7 @@
     {
       "id": 1,
       "type": "timeseries",
-      "title": "HTTP req/s por serviço",
+      "title": "HTTP req/s por servi\u00e7o",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -53,7 +53,7 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "HTTP 4xx/5xx por serviço",
+      "title": "HTTP 4xx/5xx por servi\u00e7o",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -74,7 +74,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "429 Rate-limited (último 5m)",
+      "title": "429 Rate-limited (\u00faltimo 5m)",
       "gridPos": {
         "h": 6,
         "w": 8,
@@ -95,7 +95,7 @@
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Status mix (últimos 15m)",
+      "title": "Status mix (\u00faltimos 15m)",
       "gridPos": {
         "h": 8,
         "w": 16,
@@ -116,7 +116,7 @@
     {
       "id": 5,
       "type": "timeseries",
-      "title": "JetStream — mensagens (EXPRESSO_CALENDAR)",
+      "title": "JetStream \u2014 mensagens (EXPRESSO_CALENDAR)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -142,7 +142,7 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "/readyz — serviços OK",
+      "title": "/readyz \u2014 servi\u00e7os OK",
       "gridPos": {
         "h": 6,
         "w": 12,
@@ -163,7 +163,7 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "NATS publish rate — produtores (calendar+contacts)",
+      "title": "NATS publish rate \u2014 produtores (calendar+contacts)",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -184,12 +184,12 @@
           "legendFormat": "contacts {{kind}}/{{result}}"
         }
       ],
-      "description": "Taxa de publicação JetStream por produtor (sprints #32). result ∈ ok/err/serialize_err."
+      "description": "Taxa de publica\u00e7\u00e3o JetStream por produtor (sprints #32). result \u2208 ok/err/serialize_err."
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "event-audit — consumo por stream",
+      "title": "event-audit \u2014 consumo por stream",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -211,7 +211,7 @@
     {
       "id": 9,
       "type": "timeseries",
-      "title": "Lag produtor → consumidor (ok - audit)",
+      "title": "Lag produtor \u2192 consumidor (ok - audit)",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -232,7 +232,7 @@
           "legendFormat": "contacts lag"
         }
       ],
-      "description": "Diferença rate(publish ok) − rate(audit consumed). Próximo de 0 = pipeline saudável."
+      "description": "Diferen\u00e7a rate(publish ok) \u2212 rate(audit consumed). Pr\u00f3ximo de 0 = pipeline saud\u00e1vel."
     },
     {
       "id": 10,
@@ -254,12 +254,12 @@
           "legendFormat": "errors"
         }
       ],
-      "description": "Total de falhas de publish (err+serialize_err) nos últimos 5m."
+      "description": "Total de falhas de publish (err+serialize_err) nos \u00faltimos 5m."
     },
     {
       "id": 11,
       "type": "timeseries",
-      "title": "JetStream — mensagens (EXPRESSO_CONTACTS)",
+      "title": "JetStream \u2014 mensagens (EXPRESSO_CONTACTS)",
       "gridPos": {
         "h": 6,
         "w": 12,
@@ -281,6 +281,88 @@
         }
       ],
       "description": "Espelha painel do EXPRESSO_CALENDAR para o stream de contatos."
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "iMIP dispatch rate (by method/result)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(imip_dispatch_total[5m])) by (method,result)",
+          "legendFormat": "{{method}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "last",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Calendar iMIP publish rate (producer)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 46,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(calendar_imip_publish_total[5m])) by (method,result)",
+          "legendFormat": "{{method}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "last",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ]
 }

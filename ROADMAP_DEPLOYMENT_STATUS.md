@@ -2661,3 +2661,21 @@ dtstart/dtend + location` no payload NATS, depois wire `expresso-event-audit`
 - DELETE handler (`api/events.rs`) não emite CANCEL iMIP — cancellation ID só após `EventRepo::delete` retornar o evento; ajustar repo para `.delete_and_return()` fica para sprint futura.
 - `EventBus::publish_imip` não é chamado de `caldav/movecopy.rs` (scope minimalista; mover calendário externo é caso de borda).
 - Stream + compose deploy = #40b.
+
+---
+
+## Sprint #40b — deploy expresso-imip-dispatch em produção
+
+**Escopo:** levantar `expresso-imip-dispatch` no host 125 + observabilidade.
+
+**Entrega:**
+- Stream `EXPRESSO_CALENDAR` atualizado: subjects `["expresso.calendar.>","expresso.imip.>"]` (nats stream edit).
+- `~/expresso/compose-phase3.yaml` recebe bloco `expresso-imip-dispatch` na network `expresso_default`, `IMIP_ENABLED=false` (dry-run), expõe `:9192`.
+- Container `expresso-imip-dispatch` rodando (imagem local `expresso-imip-dispatch:latest`); logs mostram `consumer ready, waiting for messages`.
+- Smoke end-to-end: publish JSON em `expresso.imip.request` via nats-box → dispatcher recebe, loga `dry-run (IMIP_ENABLED=false)`, incrementa métrica `imip_dispatch_total{method="REQUEST",result="dry_run"}=1`.
+- `ops/prometheus/prometheus.yml` (+ cópia em `~/expresso-obs/`) adiciona scrape job `expresso-imip-dispatch` → `expresso-imip-dispatch:9192`; target mostra `up` em `/api/v1/targets`.
+- `ops/grafana/expresso-overview.json` ganha 2 painéis: "iMIP dispatch rate (by method/result)" e "Calendar iMIP publish rate (producer)". Total = 13 painéis. Reload via `/api/admin/provisioning/dashboards/reload`.
+
+**Próximo:** habilitar `IMIP_ENABLED=true` com host SMTP real (postfix interno ou externo) exige:
+- `SMTP_HOST=expresso-postfix` + `SMTP_PORT=25` + `SMTP_STARTTLS=false` (MTA local) + `SMTP_FROM=calendar@<domínio>`.
+- Criar teste end-to-end com inbox real (Roundcube) antes de flip.
