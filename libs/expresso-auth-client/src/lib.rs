@@ -13,6 +13,7 @@ mod validator;
 mod keycloak_basic;
 mod tenant_resolver;
 mod multi_validator;
+pub mod metrics;
 
 pub use axum_ext::{Authenticated, AuthRejection, TenantAuthenticated, ACCESS_TOKEN_COOKIE};
 pub use claims::{AuthContext, RawClaims, AudClaim, RolesBlock};

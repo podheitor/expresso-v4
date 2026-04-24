@@ -22,6 +22,8 @@ reqwest      = { workspace = true }
 axum         = { workspace = true }
 sha2         = { workspace = true }
 arc-swap     = "1"
+prometheus   = { workspace = true }
+once_cell    = { workspace = true }
 
 [dev-dependencies]
 tokio-test = "0.4"

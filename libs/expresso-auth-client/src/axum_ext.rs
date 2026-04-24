@@ -50,9 +50,26 @@ impl<S: Send + Sync> FromRequestParts<S> for Authenticated {
         if let (Some(m), Some(r)) = (multi, resolver) {
             if let Some(host) = parts.headers.get(axum::http::header::HOST).and_then(|v| v.to_str().ok()) {
                 if let Some(realm) = r.resolve(host) {
-                    let v = m.for_realm(realm).await.map_err(AuthRejection::from)?;
-                    let ctx = v.validate(token).await.map_err(AuthRejection::from)?;
-                    return Ok(Self(ctx));
+                    let v = match m.for_realm(realm).await {
+                        Ok(v)  => v,
+                        Err(e) => {
+                            crate::metrics::VALIDATION_TOTAL
+                                .with_label_values(&[realm, crate::metrics::result_label(&e)]).inc();
+                            return Err(AuthRejection::from(e));
+                        }
+                    };
+                    match v.validate(token).await {
+                        Ok(ctx) => {
+                            crate::metrics::VALIDATION_TOTAL
+                                .with_label_values(&[realm, "ok"]).inc();
+                            return Ok(Self(ctx));
+                        }
+                        Err(e) => {
+                            crate::metrics::VALIDATION_TOTAL
+                                .with_label_values(&[realm, crate::metrics::result_label(&e)]).inc();
+                            return Err(AuthRejection::from(e));
+                        }
+                    }
                 }
             }
         }

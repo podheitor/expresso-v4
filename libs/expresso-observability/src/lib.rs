@@ -12,7 +12,9 @@ use once_cell::sync::Lazy;
 use prometheus::{Encoder, IntCounterVec, Registry, TextEncoder};
 
 // Global registry — single source across service + custom metrics
-static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+// Use default prometheus registry so metrics registered via
+// `register_int_counter_vec!` / `register_int_gauge!` from any lib show up.
+fn registry_ref() -> &'static Registry { prometheus::default_registry() }
 
 // Built-in HTTP request counter (opt-in via middleware — not auto-wired)
 pub static HTTP_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
@@ -21,18 +23,18 @@ pub static HTTP_REQUESTS_TOTAL: Lazy<IntCounterVec> = Lazy::new(|| {
         &["service", "method", "status"],
     )
     .expect("metric build");
-    REGISTRY.register(Box::new(c.clone())).expect("metric register");
+    registry_ref().register(Box::new(c.clone())).expect("metric register");
     c
 });
 
 // Access global registry to register custom metrics
 pub fn registry() -> &'static Registry {
-    &REGISTRY
+    registry_ref()
 }
 
 // Register counter/histogram into global registry — convenience wrapper
 pub fn register<T: prometheus::core::Collector + Clone + 'static>(metric: T) -> T {
-    REGISTRY
+    registry_ref()
         .register(Box::new(metric.clone()))
         .expect("metric register");
     metric
@@ -40,7 +42,7 @@ pub fn register<T: prometheus::core::Collector + Clone + 'static>(metric: T) -> 
 
 async fn metrics_handler() -> impl IntoResponse {
     let encoder = TextEncoder::new();
-    let metric_families = REGISTRY.gather();
+    let metric_families = registry_ref().gather();
     let mut buf = Vec::new();
     if let Err(e) = encoder.encode(&metric_families, &mut buf) {
         return (StatusCode::INTERNAL_SERVER_ERROR, format!("encode err: {e}")).into_response();

@@ -58,6 +58,7 @@ impl MultiRealmValidator {
         let cfg = OidcConfig::new(issuer.clone(), self.audience.clone());
         let v   = Arc::new(OidcValidator::new(cfg).await?);
         w.insert(realm.to_string(), v.clone());
+        crate::metrics::REALM_CACHE_SIZE.set(w.len() as i64);
         info!(%realm, validators_cached = w.len(), "realm validator ready");
         Ok(v)
     }
