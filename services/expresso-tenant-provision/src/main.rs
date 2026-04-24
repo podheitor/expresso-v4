@@ -1,8 +1,12 @@
 //! expresso-tenant-provision
 //!
 //! CLI idempotente que cria (ou atualiza) um realm Keycloak completo p/ um
-//! tenant Expresso: realm + clients (web, dav, admin) + roles + tenant_id
-//! mapper + usuário admin inicial.
+//! tenant Expresso: realm + clients (web, dav, admin) + roles +
+//! usuário admin inicial.
+//!
+//! Tenant ID = realm name (realm-per-tenant model, sprint #40c). Tokens
+//! emitidos pelo realm carregam tenant via `iss` claim — mapper custom
+//! `tenant_id` removido (era redundante).
 //!
 //! Uso típico:
 //! ```bash
@@ -177,22 +181,6 @@ fn generated_secret() -> String {
     format!("{:032x}{:032x}", ns ^ pid, (ns.wrapping_mul(2654435761)) ^ pid)
 }
 
-fn build_tenant_mapper(tenant_id: &str) -> Value {
-    json!({
-        "name": "tenant_id",
-        "protocol": "openid-connect",
-        "protocolMapper": "oidc-hardcoded-claim-mapper",
-        "config": {
-            "claim.name": "tenant_id",
-            "claim.value": tenant_id,
-            "jsonType.label": "String",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-        }
-    })
-}
-
 fn build_user_body(username: &str, email: &str) -> Value {
     json!({
         "username": username,
@@ -246,13 +234,6 @@ async fn create_client(c: &Client, cli: &Cli, tok: &str, realm: &str, body: &Val
         .and_then(|s| s.rsplit('/').next().map(String::from))
         .context("missing Location on client create")?;
     Ok(id)
-}
-
-async fn add_mapper(c: &Client, cli: &Cli, tok: &str, realm: &str, client_id: &str, mapper: &Value) -> Result<()> {
-    let url = format!("{}/admin/realms/{}/clients/{}/protocol-mappers/models", cli.kc_url, realm, client_id);
-    c.post(&url).bearer_auth(tok).json(mapper).send().await?
-        .error_for_status().context("add mapper")?;
-    Ok(())
 }
 
 async fn list_realm_roles(c: &Client, cli: &Cli, tok: &str, realm: &str) -> Result<Vec<Value>> {
@@ -350,11 +331,6 @@ async fn provision(c: &Client, cli: &Cli, tok: &str) -> Result<Summary> {
         }
         let client_uuid = create_client(c, cli, tok, &cli.realm, body).await?;
         summary.clients_created.push((*cid).into());
-        // Add tenant_id hardcoded mapper.
-        if let Err(e) = add_mapper(c, cli, tok, &cli.realm, &client_uuid,
-                                   &build_tenant_mapper(&cli.realm)).await {
-            warn!(error=%e, cid, "mapper add failed (non-fatal)");
-        }
         info!(cid, %client_uuid, "client created");
     }
 
@@ -449,14 +425,6 @@ mod tests {
         assert_eq!(b["clientId"], "expresso-admin");
         assert_eq!(b["serviceAccountsEnabled"], true);
         assert_eq!(b["standardFlowEnabled"], false);
-    }
-
-    #[test]
-    fn tenant_mapper_targets_all_tokens() {
-        let m = build_tenant_mapper("tenant-foo");
-        assert_eq!(m["config"]["claim.value"], "tenant-foo");
-        assert_eq!(m["config"]["id.token.claim"], "true");
-        assert_eq!(m["config"]["access.token.claim"], "true");
     }
 
     #[test]

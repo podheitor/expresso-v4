@@ -10,6 +10,16 @@ use uuid::Uuid;
 
 use crate::error::{AuthError, Result};
 
+
+/// Extract realm name from a Keycloak `iss` claim of the form
+/// `https://host[:port]/realms/<realm>` (with optional trailing slash).
+/// Returns `None` if the string does not contain `/realms/`.
+pub(crate) fn realm_from_iss(iss: &str) -> Option<&str> {
+    let (_, tail) = iss.rsplit_once("/realms/")?;
+    let realm = tail.split('/').next()?;
+    if realm.is_empty() { None } else { Some(realm) }
+}
+
 /// Raw OIDC claims as emitted by Keycloak. Extra fields are preserved in
 /// `extra` for downstream inspection without changing this struct.
 #[derive(Debug, Clone, Deserialize)]
@@ -111,10 +121,13 @@ impl AuthContext {
     pub fn from_raw(raw: RawClaims, primary_audience: &str) -> Result<Self> {
         let user_id = Uuid::parse_str(&raw.sub)
             .map_err(|e| AuthError::MalformedClaim("sub", e.to_string()))?;
-        let tenant_raw = raw.tenant_id
+        // Tenant derivation: prefer realm name from `iss` (realm-per-tenant model);
+        // fall back to legacy `tenant_id` claim for tokens emitted by single-realm
+        // deployments that still carry the hardcoded-claim mapper.
+        let tenant_id = realm_from_iss(&raw.iss)
+            .and_then(|r| Uuid::parse_str(r.trim()).ok())
+            .or_else(|| raw.tenant_id.as_deref().and_then(|s| Uuid::parse_str(s.trim()).ok()))
             .ok_or(AuthError::MissingClaim("tenant_id"))?;
-        let tenant_id = Uuid::parse_str(tenant_raw.trim())
-            .map_err(|e| AuthError::MalformedClaim("tenant_id", e.to_string()))?;
 
         let email = raw.email.clone().unwrap_or_default();
         let display_name = raw.name
@@ -183,5 +196,79 @@ mod tests {
         let c = ctx(&[]);
         assert!(!c.has_any_role(&["admin"]));
         assert!(!c.has_role("admin"));
+    }
+
+    #[test]
+    fn realm_from_iss_extracts_last_segment() {
+        assert_eq!(super::realm_from_iss("https://kc/realms/acme"), Some("acme"));
+        assert_eq!(super::realm_from_iss("https://kc:8443/realms/acme/"), Some("acme"));
+        assert_eq!(super::realm_from_iss("http://kc:8080/realms/acme/protocol/openid-connect"), Some("acme"));
+        assert_eq!(super::realm_from_iss("https://kc/auth/realms/acme"), Some("acme"));
+    }
+
+    #[test]
+    fn realm_from_iss_rejects_missing_segment() {
+        assert_eq!(super::realm_from_iss("https://kc/"), None);
+        assert_eq!(super::realm_from_iss(""), None);
+        assert_eq!(super::realm_from_iss("https://kc/realms/"), None);
+    }
+
+    #[test]
+    fn from_raw_derives_tenant_from_iss() {
+        let uid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::One("expresso-web".into()),
+            exp: 0,
+            email: None, preferred_username: None, name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None, amr: None,
+            govbr_cpf_hash: None, govbr_confiabilidades: None,
+        };
+        let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
+        assert_eq!(c.tenant_id, tid);
+    }
+
+    #[test]
+    fn from_raw_falls_back_to_legacy_claim() {
+        let uid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: "https://kc/not-a-realm-url".into(),
+            aud: AudClaim::One("expresso-web".into()),
+            exp: 0,
+            email: None, preferred_username: None, name: None,
+            tenant_id: Some(tid.to_string()),
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None, amr: None,
+            govbr_cpf_hash: None, govbr_confiabilidades: None,
+        };
+        let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
+        assert_eq!(c.tenant_id, tid);
+    }
+
+    #[test]
+    fn from_raw_errors_when_no_tenant_source() {
+        let uid = Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: "https://kc/realms/not-a-uuid".into(),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None, preferred_username: None, name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None, amr: None,
+            govbr_cpf_hash: None, govbr_confiabilidades: None,
+        };
+        let r = AuthContext::from_raw(raw, "expresso-web");
+        assert!(matches!(r, Err(AuthError::MissingClaim("tenant_id"))));
     }
 }
