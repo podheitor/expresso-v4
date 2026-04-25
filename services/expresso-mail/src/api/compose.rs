@@ -1,6 +1,13 @@
-//! Send email endpoint
+//! Send email endpoint.
+//!
+//! From-spoof guard: os endpoints aceitavam `from` arbitrário do cliente e
+//! submetiam direto ao relay SMTP — qualquer usuário autenticado podia
+//! enviar mail como qualquer outro (inclusive cross-tenant). Agora
+//! `assert_from_is_authenticated_user` verifica que `req.from` bate com o
+//! email do usuário autenticado (case-insensitive) antes de enviar.
 
 use axum::{Router, routing::post, extract::State, Json, http::StatusCode};
+use expresso_core::begin_tenant_tx;
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
     message::{header::ContentType, Mailbox, Message, MultiPart, SinglePart},
@@ -9,7 +16,36 @@ use lettre::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{error::{MailError, Result}, state::AppState};
+use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
+
+/// Rejeita com 403 se `claimed_from` não bater com o email do usuário
+/// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
+/// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
+/// NULL-bypass em `users`.
+async fn assert_from_is_authenticated_user(
+    state:       &AppState,
+    ctx:         &RequestCtx,
+    claimed_from: &str,
+) -> Result<()> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<String> = sqlx::query_scalar(
+        r#"SELECT email FROM users
+            WHERE tenant_id = $1 AND id = $2
+            LIMIT 1"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let actual = row.ok_or(MailError::Forbidden)?;
+    if actual.trim().eq_ignore_ascii_case(claimed_from.trim()) {
+        Ok(())
+    } else {
+        Err(MailError::Forbidden)
+    }
+}
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -33,8 +69,11 @@ pub struct SendRequest {
 /// POST /api/v1/mail/send
 pub async fn send_message(
     State(state): State<AppState>,
-    Json(req): Json<SendRequest>,
+    ctx:          RequestCtx,
+    Json(req):    Json<SendRequest>,
 ) -> Result<StatusCode> {
+    assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
+
     let from_addr: Address = req.from.parse()
         .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
 
@@ -126,8 +165,11 @@ pub struct SendItipRequest {
 
 pub async fn send_itip(
     State(state): State<AppState>,
+    ctx:          RequestCtx,
     Json(req):    Json<SendItipRequest>,
 ) -> Result<StatusCode> {
+    assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
+
     let method = req.method.trim().to_ascii_uppercase();
     match method.as_str() {
         "REQUEST" | "REPLY" | "CANCEL" | "REFRESH" => {}
