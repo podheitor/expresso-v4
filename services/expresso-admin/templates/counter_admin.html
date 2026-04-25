@@ -37,7 +37,12 @@
             <small>event <code>{{ r.event_id }}</code></small><br>
             <small>tenant <code>{{ r.tenant_id }}</code></small>
           </td>
-          <td>{{ r.attendee_email }}</td>
+          <td>
+            {{ r.attendee_email }}
+            {% if r.comment.is_some() %}
+              <br><small class="comment">&ldquo;{{ r.comment.as_ref().unwrap() }}&rdquo;</small>
+            {% endif %}
+          </td>
           <td><code>{{ r.proposed_dtstart }}</code></td>
           <td><code>{{ r.proposed_dtend }}</code></td>
           <td>{{ r.received_sequence }}</td>

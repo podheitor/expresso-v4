@@ -31,6 +31,7 @@ pub struct CounterRow {
     pub proposed_dtstart:  String,
     pub proposed_dtend:    String,
     pub received_sequence: String,
+    pub comment:           Option<String>,
     pub created_at_fmt:    String,
 }
 
@@ -61,7 +62,7 @@ pub async fn page(
     let sql = r#"
         SELECT p.id, p.tenant_id, p.event_id, p.attendee_email,
                p.proposed_dtstart, p.proposed_dtend,
-               p.received_sequence, p.created_at,
+               p.received_sequence, p.comment, p.created_at,
                COALESCE(e.summary, '(no summary)') AS event_summary
           FROM scheduling_counter_proposals p
           LEFT JOIN calendar_events e ON e.id = p.event_id
@@ -82,6 +83,8 @@ pub async fn page(
                 proposed_dtstart:  fmt_opt_ts(r.try_get::<Option<OffsetDateTime>, _>("proposed_dtstart").unwrap_or(None)),
                 proposed_dtend:    fmt_opt_ts(r.try_get::<Option<OffsetDateTime>, _>("proposed_dtend").unwrap_or(None)),
                 received_sequence: r.try_get::<Option<i32>, _>("received_sequence").unwrap_or(None).map(|v| v.to_string()).unwrap_or("—".into()),
+                comment:           r.try_get::<Option<String>, _>("comment").unwrap_or(None)
+                                    .filter(|s| !s.trim().is_empty()),
                 created_at_fmt:    r.try_get::<OffsetDateTime, _>("created_at")
                     .ok()
                     .and_then(|t| t.format(&time::format_description::well_known::Rfc3339).ok())
