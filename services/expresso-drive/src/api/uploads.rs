@@ -38,6 +38,20 @@ const TUS_SUPPORTED:    &str = "1.0.0";
 const TUS_EXTENSIONS:   &str = "creation,termination,expiration";
 const MAX_UPLOAD_BYTES: i64  = 50 * 1024 * 1024 * 1024;   // 50 GB hard cap.
 
+/// POSIX NAME_MAX. Sistemas de arquivos modernos toleram até 255 bytes;
+/// metadata pode ter UTF-8 multibyte, então conta bytes (não chars).
+pub const MAX_FILENAME_BYTES: usize = 255;
+
+/// Cap conservador pra `mime_type` — IANA registra MIMEs até ~120 chars
+/// (longo é `application/vnd.openxmlformats…`). 255 cobre tudo + parameters
+/// e protege coluna do DB de payload absurdo.
+pub const MAX_MIME_BYTES: usize = 255;
+
+/// Cap por chunk PATCH. tus.io recomenda 5–8 MiB; clientes razoáveis
+/// ficam em <=16 MiB. Acima disso é abuso — body: Bytes lê tudo em RAM
+/// antes de escrever no .part file (sem streaming aqui).
+pub const MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/drive/uploads",
@@ -151,6 +165,13 @@ async fn create_upload(
     let (name_md, mime_md) = parse_metadata(headers.get("upload-metadata"));
     let name = name_md.ok_or_else(|| DriveError::BadRequest("Upload-Metadata filename required".into()))?;
     let fname = sanitize_name(&name)?;
+    if let Some(ref m) = mime_md {
+        if m.len() > MAX_MIME_BYTES {
+            return Err(DriveError::BadRequest(format!(
+                "mime_type too long: {} bytes (max {})", m.len(), MAX_MIME_BYTES
+            )));
+        }
+    }
 
     let parent_id = headers.get("upload-parent-id")
         .and_then(|v| v.to_str().ok())
@@ -221,6 +242,12 @@ async fn patch_upload(
         return Err(DriveError::BadRequest(
             "Content-Type must be application/offset+octet-stream".into()
         ));
+    }
+    if body.len() > MAX_CHUNK_BYTES {
+        return Err(DriveError::BadRequest(format!(
+            "chunk too large: {} bytes (max {} per PATCH)",
+            body.len(), MAX_CHUNK_BYTES
+        )));
     }
     let client_offset = header_i64(&headers, "upload-offset")
         .ok_or_else(|| DriveError::BadRequest("Upload-Offset required".into()))?;
@@ -364,6 +391,11 @@ fn sanitize_name(raw: &str) -> Result<String> {
     if t.is_empty() || t.contains('/') || t.contains('\\') || t.contains('\0') {
         return Err(DriveError::BadRequest("invalid filename".into()));
     }
+    if t.len() > MAX_FILENAME_BYTES {
+        return Err(DriveError::BadRequest(format!(
+            "filename too long: {} bytes (max {})", t.len(), MAX_FILENAME_BYTES
+        )));
+    }
     Ok(t.to_string())
 }
 
@@ -415,5 +447,25 @@ mod tests {
         assert!(sanitize_name("a\\b").is_err());
         assert!(sanitize_name("").is_err());
         assert_eq!(sanitize_name("ok.txt").unwrap(), "ok.txt");
+    }
+
+    #[test]
+    fn sanitize_rejects_oversize_filename() {
+        let s = "a".repeat(MAX_FILENAME_BYTES + 1);
+        let err = format!("{:?}", sanitize_name(&s).unwrap_err());
+        assert!(err.contains("too long"), "got: {err}");
+    }
+
+    #[test]
+    fn sanitize_accepts_boundary_filename() {
+        let s = "a".repeat(MAX_FILENAME_BYTES);
+        assert!(sanitize_name(&s).is_ok());
+    }
+
+    #[test]
+    fn caps_are_sane() {
+        assert!(MAX_CHUNK_BYTES <= MAX_UPLOAD_BYTES as usize);
+        assert!(MAX_FILENAME_BYTES >= 100);
+        assert!(MAX_MIME_BYTES >= 100);
     }
 }
