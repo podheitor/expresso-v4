@@ -16,6 +16,12 @@ pub struct AppConfig {
     /// URL of the search service (e.g. "http://localhost:8007")
     #[serde(default)]
     pub search_url: String,
+    /// Shared service token for `expresso-search`. Quando setado, o
+    /// expresso-search exige `Authorization: Bearer <token>` nos endpoints
+    /// /api/v1/*, e callers (mail/ingest) o enviam. Vazio = auth desligada
+    /// (somente dev) — em prod precisa ser configurado nos dois lados.
+    #[serde(default)]
+    pub search_token: String,
     /// URL of the calendar service (e.g. "http://localhost:8002").
     /// When set, `expresso-mail` forwards iMIP REPLY parts to
     /// `{calendar_url}/api/v1/scheduling/inbox` on delivery.

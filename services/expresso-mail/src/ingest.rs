@@ -193,7 +193,8 @@ pub async fn process(
         }
 
         // Fire-and-forget: notify search service
-        let search_url = state.cfg().search_url.clone();
+        let search_url   = state.cfg().search_url.clone();
+        let search_token = state.cfg().search_token.clone();
         if !search_url.is_empty() {
             let doc = serde_json::json!({
                 "document_id": format!("{}/{}", mailbox_id, uid),
@@ -203,11 +204,13 @@ pub async fn process(
                 "body": parsed.preview_text,
             });
             tokio::spawn(async move {
-                let _ = reqwest::Client::new()
+                let mut req = reqwest::Client::new()
                     .post(format!("{}/api/v1/index", search_url))
-                    .json(&doc)
-                    .send()
-                    .await;
+                    .json(&doc);
+                if !search_token.is_empty() {
+                    req = req.bearer_auth(&search_token);
+                }
+                let _ = req.send().await;
             });
         }
     }
