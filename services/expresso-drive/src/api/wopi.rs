@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::env;
 use std::path::PathBuf;
-use time::OffsetDateTime;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
 
@@ -144,19 +144,44 @@ async fn check_file_info_impl(
     }
 
     let version = file.sha256.as_deref().unwrap_or("0").to_string();
+    let display_name = lookup_display_name(pool, claims.tenant_id, claims.user_id)
+        .await
+        .unwrap_or_else(|| claims.user_id.to_string());
+    let last_modified = file.updated_at.format(&Rfc3339).ok();
+
     Ok(Json(CheckFileInfo {
         base_file_name:              file.name,
         owner_id:                    file.owner_user_id.to_string(),
         size:                        file.size_bytes,
         user_id:                     claims.user_id.to_string(),
-        user_friendly_name:          claims.user_id.to_string(),
+        user_friendly_name:          display_name,
         version,
         user_can_write:              true,
         user_can_not_write_relative: true,
         supports_update:             true,
         supports_locks:              true,
-        last_modified_time:          None,
+        last_modified_time:          last_modified,
     }))
+}
+
+/// Best-effort lookup of `users.display_name` for the given user. Falls back
+/// to the caller's default (typically the user_id) when the user row is gone
+/// or the query errors — WOPI CheckFileInfo is not the place to surface DB
+/// errors, since Collabora hard-fails the document open on any non-200.
+async fn lookup_display_name(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    user_id:   Uuid,
+) -> Option<String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT display_name FROM users WHERE id = $1 AND tenant_id = $2"
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
 }
 
 // ---------- GetFile ----------
@@ -304,7 +329,8 @@ async fn put_file_impl(
 
     let mut out = HeaderMap::new();
     out.insert("X-WOPI-ItemVersion", sha.parse().unwrap());
-    Ok((StatusCode::OK, out, Json(serde_json::json!({"LastModifiedTime": null}))).into_response())
+    let last_modified = updated.updated_at.format(&Rfc3339).ok();
+    Ok((StatusCode::OK, out, Json(serde_json::json!({"LastModifiedTime": last_modified}))).into_response())
 }
 
 /// POST /wopi/files/:id — Lock/Unlock/RefreshLock/GetLock/UnlockAndRelock.
