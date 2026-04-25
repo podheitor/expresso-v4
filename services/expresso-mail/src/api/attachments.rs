@@ -1,5 +1,9 @@
-//! Attachment list + download endpoints
-//! Reads raw .eml from body_path, parses MIME parts via mail-parser
+//! Attachment list + download endpoints.
+//! Reads raw .eml from body_path, parses MIME parts via mail-parser.
+//!
+//! Tenant scoping: `fetch_body_path` abre tx via `begin_tenant_tx` e junta
+//! `messages`→`mailboxes` filtrando `tenant_id` + `user_id` — sem isso
+//! qualquer usuário autenticado baixava attachments de qualquer tenant.
 
 use axum::{
     Router,
@@ -9,11 +13,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use expresso_core::begin_tenant_tx;
 use mail_parser::{MessageParser, MimeHeaders};
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{error::{MailError, Result}, state::AppState};
+use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -50,15 +55,24 @@ async fn load_raw(state: &AppState, body_path: &str) -> Result<Vec<u8>> {
         .map_err(|e| MailError::InvalidMessage(format!("failed to read raw message: {e}")))
 }
 
-/// Fetch body_path for message id from DB
-async fn fetch_body_path(state: &AppState, id: Uuid) -> Result<String> {
+/// Fetch body_path for message id from DB, scoped to tenant+user.
+async fn fetch_body_path(state: &AppState, ctx: &RequestCtx, id: Uuid) -> Result<String> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let path: Option<String> = sqlx::query_scalar(
-        "SELECT body_path FROM messages WHERE id = $1",
+        r#"SELECT m.body_path
+             FROM messages  m
+             JOIN mailboxes mb ON mb.id = m.mailbox_id
+            WHERE m.id         = $1
+              AND m.tenant_id  = $2
+              AND mb.tenant_id = $2
+              AND mb.user_id   = $3"#,
     )
     .bind(id)
-    .fetch_optional(state.db())
-    .await
-    .map_err(expresso_core::CoreError::Database)?;
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
     path.ok_or(MailError::MessageNotFound(id))
 }
@@ -76,9 +90,10 @@ fn format_ct(ct: &mail_parser::ContentType) -> String {
 /// GET /api/v1/mail/messages/:id/attachments — list attachment metadata
 async fn list_attachments(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
 ) -> Result<Json<Vec<AttachmentMeta>>> {
-    let body_path = fetch_body_path(&state, id).await?;
+    let body_path = fetch_body_path(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
     let msg = MessageParser::default()
         .parse(&raw)
@@ -106,10 +121,11 @@ async fn list_attachments(
 
 /// GET /api/v1/mail/messages/:id/attachments/:index — download binary
 async fn download_attachment(
-    State(state): State<AppState>,
+    State(state):      State<AppState>,
+    ctx:               RequestCtx,
     Path((id, index)): Path<(Uuid, usize)>,
 ) -> Result<Response> {
-    let body_path = fetch_body_path(&state, id).await?;
+    let body_path = fetch_body_path(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
     let msg = MessageParser::default()
         .parse(&raw)
