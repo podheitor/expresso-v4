@@ -2,8 +2,16 @@
 //!
 //! Token entregue uma vez ao criador; apenas sha256(token) persistido.
 //! Revogação por id; expiração por timestamp.
+//!
+//! Tenant scoping: cada método autenticado abre uma transação via
+//! `begin_tenant_tx` para que as policies de RLS de `drive_shares`
+//! filtrem por `current_setting('app.tenant_id')`. As cláusulas
+//! `WHERE tenant_id = $1` permanecem como defense-in-depth — caso o
+//! deployment use uma role com BYPASSRLS, o filtro explícito ainda
+//! protege. `resolve` continua fora desse esquema porque o endpoint
+//! público não tem contexto de tenant (usa SECURITY DEFINER fn).
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -53,6 +61,7 @@ impl<'a> ShareRepo<'a> {
         created_by: Uuid,
         expires_at: OffsetDateTime,
     ) -> Result<Share> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "INSERT INTO drive_shares (tenant_id, file_id, token_hash, created_by, expires_at) \
              VALUES ($1,$2,$3,$4,$5) \
@@ -61,11 +70,13 @@ impl<'a> ShareRepo<'a> {
         let row = sqlx::query_as(&sql)
             .bind(tenant_id).bind(file_id).bind(token_hash)
             .bind(created_by).bind(expires_at)
-            .fetch_one(self.pool).await?;
+            .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn list_for_file(&self, tenant_id: Uuid, file_id: Uuid) -> Result<Vec<Share>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_shares \
              WHERE tenant_id = $1 AND file_id = $2 \
@@ -73,17 +84,20 @@ impl<'a> ShareRepo<'a> {
         );
         let rows = sqlx::query_as(&sql)
             .bind(tenant_id).bind(file_id)
-            .fetch_all(self.pool).await?;
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
     pub async fn revoke(&self, tenant_id: Uuid, id: Uuid) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query(
             "UPDATE drive_shares SET revoked_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
         )
         .bind(id).bind(tenant_id)
-        .execute(self.pool).await?;
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(r.rows_affected())
     }
 
