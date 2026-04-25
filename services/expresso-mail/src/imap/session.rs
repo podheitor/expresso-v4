@@ -376,17 +376,41 @@ async fn cmd_select(
     .ok()
     .flatten();
 
+    // Primeira mensagem não-vista — subquery que conta mensagens recebidas antes
+    // da mais antiga sem \Seen, produzindo o seq number (1-based) correto.
+    // Executada apenas se há mailbox válido e feita em paralelo não-bloqueante
+    // ao match abaixo seria complexo; mantemos sequencial para simplicidade.
     match row {
         Some((mailbox_id, uid_validity_raw, next_uid_raw, count)) => {
             let exists = count as u32;
             let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
             let uid_next    = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
+
+            // RFC 3501 §7.3.1 SHOULD: UNSEEN — seq (1-based) da 1ª msg sem \Seen.
+            // Subquery conta msgs com received_at < menor received_at de msgs sem \Seen.
+            let first_unseen: Option<NonZeroU32> = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) + 1 FROM messages \
+                 WHERE mailbox_id = $1 AND tenant_id = $2 \
+                   AND received_at < COALESCE((\
+                     SELECT MIN(received_at) FROM messages \
+                     WHERE mailbox_id = $1 AND tenant_id = $2 \
+                       AND NOT '\\Seen' = ANY(flags)\
+                   ), 'infinity'::timestamptz)",
+            )
+            .bind(mailbox_id)
+            .bind(tenant_id)
+            .fetch_optional(state.db())
+            .await
+            .ok()
+            .flatten()
+            .and_then(|n| NonZeroU32::new(n as u32));
+
             *sess = SessionState::Selected;
             *selected = Some(SelectedMailbox { mailbox_id, exists });
 
             // RFC 3501 §7.3.1: FLAGS, EXISTS, RECENT, UIDVALIDITY, UIDNEXT e
             // PERMANENTFLAGS são todos obrigatórios/SHOULD na resposta SELECT.
-            vec![
+            let mut out = vec![
                 Response::Data(Data::Flags(vec![
                     Flag::Seen,
                     Flag::Answered,
@@ -409,8 +433,14 @@ async fn cmd_select(
                     ]),
                     "Limited",
                 ),
-                ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"),
-            ]
+            ];
+            // Emite UNSEEN apenas se há de fato msgs não-vistas (seq <= exists).
+            // Quando todas as msgs são vistas, COUNT(*)+1 > exists — omitido.
+            if let Some(seq) = first_unseen.filter(|s| s.get() <= exists) {
+                out.push(untagged_ok(Code::Unseen(seq), "first unseen"));
+            }
+            out.push(ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"));
+            out
         }
         None => vec![no_tagged(tag, "mailbox not found")],
     }
