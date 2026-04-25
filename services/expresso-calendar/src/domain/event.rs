@@ -1,6 +1,11 @@
 //! Calendar event domain model + repository.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para
+//! que a policy RLS de `calendar_events` filtre por
+//! `current_setting('app.tenant_id')` antes mesmo do `WHERE tenant_id = $1`
+//! explícito (defense-in-depth). Fecha o último repo do serviço calendar.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -69,6 +74,7 @@ impl<'a> EventRepo<'a> {
         let parsed = ical::parse_vevent(raw)?;
         let etag   = ical::compute_etag(raw);
 
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO calendar_events
@@ -94,16 +100,17 @@ impl<'a> EventRepo<'a> {
         .bind(&parsed.status)
         .bind(parsed.sequence)
         .bind(&parsed.organizer_email)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
-
+        tx.commit().await?;
         Ok(row)
     }
 
 
     /// Fetch single event by id within tenant scope.
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Event> {
-        sqlx::query_as::<_, Event>(
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row = sqlx::query_as::<_, Event>(
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
@@ -114,9 +121,11 @@ impl<'a> EventRepo<'a> {
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?
-        .ok_or(CalendarError::EventNotFound(id))
+        .ok_or(CalendarError::EventNotFound(id))?;
+        tx.commit().await?;
+        Ok(row)
     }
 
 
@@ -128,6 +137,7 @@ impl<'a> EventRepo<'a> {
         q: &EventQuery,
     ) -> Result<Vec<Event>> {
         let limit = q.limit.unwrap_or(1000).clamp(1, 10_000);
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Event>(
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
@@ -147,9 +157,9 @@ impl<'a> EventRepo<'a> {
         .bind(q.from)
         .bind(q.to)
         .bind(limit)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
-
+        tx.commit().await?;
         Ok(rows)
     }
 
@@ -163,7 +173,8 @@ impl<'a> EventRepo<'a> {
         let parsed = ical::parse_vevent(raw)?;
         let etag   = ical::compute_etag(raw);
 
-        sqlx::query_as::<_, Event>(
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row = sqlx::query_as::<_, Event>(
             r#"
             UPDATE calendar_events SET
                 uid             = $3,
@@ -207,23 +218,27 @@ impl<'a> EventRepo<'a> {
         .bind(&parsed.rrule)
         .bind(&parsed.status)
         .bind(&parsed.organizer_email)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?
-        .ok_or(CalendarError::EventNotFound(id))
+        .ok_or(CalendarError::EventNotFound(id))?;
+        tx.commit().await?;
+        Ok(row)
     }
 
     /// Delete event by id.
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let res = sqlx::query(
             r#"DELETE FROM calendar_events WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await?;
         if res.rows_affected() == 0 {
             return Err(CalendarError::EventNotFound(id));
         }
+        tx.commit().await?;
         Ok(())
     }
 
@@ -237,6 +252,7 @@ impl<'a> EventRepo<'a> {
         let parsed = ical::parse_vevent(raw)?;
         let etag   = ical::compute_etag(raw);
 
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
             r#"
             INSERT INTO calendar_events
@@ -284,9 +300,9 @@ impl<'a> EventRepo<'a> {
         .bind(&parsed.status)
         .bind(parsed.sequence)
         .bind(&parsed.organizer_email)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
-
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -297,7 +313,8 @@ impl<'a> EventRepo<'a> {
         calendar_id: Uuid,
         uid: &str,
     ) -> Result<Event> {
-        sqlx::query_as::<_, Event>(
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row = sqlx::query_as::<_, Event>(
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
@@ -309,9 +326,11 @@ impl<'a> EventRepo<'a> {
         .bind(tenant_id)
         .bind(calendar_id)
         .bind(uid)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?
-        .ok_or_else(|| CalendarError::BadRequest(format!("event uid not found: {uid}")))
+        .ok_or_else(|| CalendarError::BadRequest(format!("event uid not found: {uid}")))?;
+        tx.commit().await?;
+        Ok(row)
     }
 
     /// Locate an event by UID across ALL calendars in the tenant.
@@ -322,6 +341,7 @@ impl<'a> EventRepo<'a> {
         tenant_id: Uuid,
         uid: &str,
     ) -> Result<Option<Event>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Event>(
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
@@ -334,8 +354,9 @@ impl<'a> EventRepo<'a> {
         )
         .bind(tenant_id)
         .bind(uid)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -349,6 +370,7 @@ impl<'a> EventRepo<'a> {
         if uids.is_empty() {
             return Ok(Vec::new());
         }
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Event>(
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
@@ -361,8 +383,9 @@ impl<'a> EventRepo<'a> {
         .bind(tenant_id)
         .bind(calendar_id)
         .bind(uids)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
@@ -373,6 +396,7 @@ impl<'a> EventRepo<'a> {
         calendar_id: Uuid,
         uid: &str,
     ) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let res = sqlx::query(
             r#"DELETE FROM calendar_events
                 WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3"#,
@@ -380,11 +404,12 @@ impl<'a> EventRepo<'a> {
         .bind(tenant_id)
         .bind(calendar_id)
         .bind(uid)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await?;
         if res.rows_affected() == 0 {
             return Err(CalendarError::BadRequest(format!("event uid not found: {uid}")));
         }
+        tx.commit().await?;
         Ok(())
     }
 
