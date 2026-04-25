@@ -10,7 +10,7 @@
 //!   as 404 Not Found (removed).
 
 use axum::{body::Body, http::StatusCode, response::Response};
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -75,6 +75,7 @@ async fn write_changed_since(
     calendar_id: Uuid,
     from_ctag:   i64,
 ) -> Result<()> {
+    let mut tx = begin_tenant_tx(pool, principal.tenant_id).await?;
     let rows = sqlx::query(
         r#"
         SELECT uid, etag
@@ -88,8 +89,9 @@ async fn write_changed_since(
     .bind(principal.tenant_id)
     .bind(calendar_id)
     .bind(from_ctag)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     for r in rows {
         let uid:  String = r.get("uid");
@@ -106,6 +108,7 @@ async fn write_tombstones_since(
     calendar_id: Uuid,
     from_ctag:   i64,
 ) -> Result<()> {
+    let mut tx = begin_tenant_tx(pool, principal.tenant_id).await?;
     let rows = sqlx::query(
         r#"
         SELECT uid
@@ -119,8 +122,9 @@ async fn write_tombstones_since(
     .bind(principal.tenant_id)
     .bind(calendar_id)
     .bind(from_ctag)
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     for r in rows {
         let uid: String = r.get("uid");
