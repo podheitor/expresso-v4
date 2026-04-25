@@ -18,7 +18,7 @@ use imap_codec::{
         command::{Command, CommandBody},
         core::{Atom, AString, IString, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem},
-        flag::{Flag, FlagFetch, FlagNameAttribute},
+        flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm},
         mailbox::Mailbox as ImapMailbox,
         response::{
             Bye, Code, Data, Greeting, Response, Status, StatusBody,
@@ -27,6 +27,8 @@ use imap_codec::{
         IntoStatic,
     },
 };
+use chrono::{DateTime as ChronoDateTime, FixedOffset, Utc};
+use imap_codec::imap_types::datetime::DateTime as ImapDateTime;
 use sqlx::Row;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -359,6 +361,8 @@ async fn cmd_select(
             *sess = SessionState::Selected;
             *selected = Some(SelectedMailbox { mailbox_id, exists });
 
+            // RFC 3501 §7.3.1: FLAGS, EXISTS, RECENT, UIDVALIDITY, UIDNEXT e
+            // PERMANENTFLAGS são todos obrigatórios/SHOULD na resposta SELECT.
             vec![
                 Response::Data(Data::Flags(vec![
                     Flag::Seen,
@@ -371,6 +375,17 @@ async fn cmd_select(
                 Response::Data(Data::Recent(0)),
                 untagged_ok(Code::UidValidity(uid_validity), "UIDs valid"),
                 untagged_ok(Code::UidNext(uid_next), "predicted next UID"),
+                untagged_ok(
+                    Code::PermanentFlags(vec![
+                        FlagPerm::Flag(Flag::Seen),
+                        FlagPerm::Flag(Flag::Answered),
+                        FlagPerm::Flag(Flag::Flagged),
+                        FlagPerm::Flag(Flag::Deleted),
+                        FlagPerm::Flag(Flag::Draft),
+                        FlagPerm::Asterisk,
+                    ]),
+                    "Limited",
+                ),
                 ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"),
             ]
         }
@@ -390,7 +405,7 @@ async fn cmd_fetch(
 
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-         uid, subject, from_addr, from_name, date, flags, size_bytes \
+         uid, subject, from_addr, from_name, date, flags, size_bytes, received_at \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $4 \
          ORDER BY received_at ASC OFFSET $2 LIMIT $3",
     )
@@ -402,10 +417,11 @@ async fn cmd_fetch(
     .await
     .unwrap_or_default();
 
-    let w_flags = wants(macro_or, "FLAGS");
-    let w_envelope = wants(macro_or, "ENVELOPE");
-    let w_size = wants(macro_or, "RFC822.SIZE");
-    let w_uid = wants(macro_or, "UID");
+    let w_flags        = wants(macro_or, "FLAGS");
+    let w_envelope     = wants(macro_or, "ENVELOPE");
+    let w_size         = wants(macro_or, "RFC822.SIZE");
+    let w_uid          = wants(macro_or, "UID");
+    let w_internaldate = wants(macro_or, "INTERNALDATE");
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -440,6 +456,18 @@ async fn cmd_fetch(
                 from_addr.as_deref(),
                 from_name.as_deref(),
             )));
+        }
+        if w_internaldate {
+            // INTERNALDATE = received_at (TIMESTAMPTZ) convertido para
+            // imap_types::DateTime via chrono::DateTime<FixedOffset> (UTC+0).
+            // RFC 3501 §2.3.3: "the internal date and time of the message".
+            let ts: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
+            if let Some(t) = ts {
+                let fixed: ChronoDateTime<FixedOffset> = t.with_timezone(&FixedOffset::east_opt(0).unwrap());
+                if let Ok(imap_dt) = ImapDateTime::try_from(fixed) {
+                    items.push(MessageDataItem::InternalDate(imap_dt));
+                }
+            }
         }
 
         if let Ok(v) = Vec1::try_from(items) {
