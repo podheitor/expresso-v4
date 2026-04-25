@@ -133,7 +133,7 @@ async fn dispatch(
     let tag = cmd.tag.clone();
     match &cmd.body {
         CommandBody::Capability => cmd_capability(tag),
-        CommandBody::Noop => vec![ok_tagged(tag, None, "NOOP completed")],
+        CommandBody::Noop => cmd_noop(state, tag, selected).await,
         CommandBody::Logout => cmd_logout(tag),
         CommandBody::Login { username, password } => {
             let user = astring_to_string(username);
@@ -442,6 +442,39 @@ async fn cmd_expunge(
     .await;
 
     vec![ok_tagged(tag, None, "EXPUNGE completed")]
+}
+
+/// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover
+/// new messages without re-SELECTing. If a mailbox is currently selected we
+/// re-query its message count and emit an untagged `* N EXISTS` when it
+/// changed since SELECT, then update the cached count so subsequent FETCH
+/// sequence math stays consistent. Outside the selected state, NOOP is a
+/// pure liveness probe and we just return OK.
+async fn cmd_noop(
+    state: &AppState,
+    tag: Tag<'static>,
+    selected: &mut Option<SelectedMailbox>,
+) -> Vec<Response<'static>> {
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(2);
+    if let Some(sel) = selected.as_mut() {
+        let count: Option<i64> = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM messages WHERE mailbox_id = $1",
+        )
+        .bind(sel.mailbox_id)
+        .fetch_optional(state.db())
+        .await
+        .ok()
+        .flatten();
+        if let Some(c) = count {
+            let new_exists = c as u32;
+            if new_exists != sel.exists {
+                sel.exists = new_exists;
+                out.push(Response::Data(Data::Exists(new_exists)));
+            }
+        }
+    }
+    out.push(ok_tagged(tag, None, "NOOP completed"));
+    out
 }
 
 /// CLOSE — RFC 3501 §6.4.2: silently expunge `\Deleted` messages from the
