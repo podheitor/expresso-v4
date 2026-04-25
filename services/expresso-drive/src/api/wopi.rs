@@ -24,7 +24,7 @@ use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::{
-    domain::{FileRepo, NewVersion, QuotaRepo, VersionRepo},
+    domain::{AcquireOutcome, FileRepo, NewVersion, QuotaRepo, VersionRepo, WopiLockRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -140,7 +140,7 @@ async fn check_file_info(
         user_can_write:              true,
         user_can_not_write_relative: true,
         supports_update:             true,
-        supports_locks:              false,
+        supports_locks:              true,
         last_modified_time:          None,
     }))
 }
@@ -184,6 +184,23 @@ async fn put_file(
 ) -> Result<Response> {
     let claims = authorize(id, &q)?;
     let pool   = state.db_or_unavailable()?;
+
+    // Lock enforcement (MS-WOPI PutFile): when the file is locked, the
+    // request MUST present the matching X-WOPI-Lock; mismatch → 409 with
+    // the current lock token. PUT on an unlocked file is allowed (e.g.
+    // creating a new doc / saving without prior LOCK).
+    let active_lock = WopiLockRepo::new(pool)
+        .get_active(claims.tenant_id, id).await?;
+    if let Some(active) = active_lock.as_ref() {
+        let supplied = header_str(&headers, "X-WOPI-Lock").unwrap_or_default();
+        if supplied != active.lock_token {
+            return Ok(lock_resp(
+                StatusCode::CONFLICT,
+                &active.lock_token,
+                Some("put: lock mismatch"),
+            ));
+        }
+    }
 
     // Quota
     let quota = QuotaRepo::new(pool).get(claims.tenant_id).await?;
@@ -247,12 +264,104 @@ async fn put_file(
     Ok((StatusCode::OK, out, Json(serde_json::json!({"LastModifiedTime": null}))).into_response())
 }
 
-/// POST /wopi/files/:id — Lock/Unlock/RefreshLock/UnlockAndRelock.
-/// MVP sem suporte real — respondemos 501 NotImplemented mantendo WOPI happy.
-async fn wopi_post(headers: HeaderMap) -> Response {
-    let op = headers.get("X-WOPI-Override").and_then(|v| v.to_str().ok()).unwrap_or("");
-    tracing::debug!(override_op = op, "WOPI op sem suporte — no-op");
-    (StatusCode::OK, [("X-WOPI-Lock", "")]).into_response()
+/// POST /wopi/files/:id — Lock/Unlock/RefreshLock/GetLock/UnlockAndRelock.
+///
+/// Dispatches on `X-WOPI-Override`. Lock semantics follow MS-WOPI:
+/// - LOCK    : acquire when free OR refresh when X-WOPI-Lock matches;
+///             409 + X-WOPI-Lock when a different active lock exists.
+///             When X-WOPI-OldLock is present, semantics shift to
+///             UnlockAndRelock (Collabora uses both spellings).
+/// - UNLOCK  : release when X-WOPI-Lock matches; 409 otherwise.
+/// - REFRESH_LOCK : extend expiry when X-WOPI-Lock matches; 409 otherwise.
+/// - GET_LOCK     : return current X-WOPI-Lock (empty when none).
+async fn wopi_post(
+    State(state): State<AppState>,
+    Path(id):     Path<Uuid>,
+    Query(q):     Query<TokenQuery>,
+    headers:      HeaderMap,
+) -> Result<Response> {
+    let claims = authorize(id, &q)?;
+    let pool   = state.db_or_unavailable()?;
+    let locks  = WopiLockRepo::new(pool);
+
+    let op   = header_str(&headers, "X-WOPI-Override").unwrap_or_default();
+    let lock = header_str(&headers, "X-WOPI-Lock").unwrap_or_default();
+    let old  = header_str(&headers, "X-WOPI-OldLock");
+
+    match op.as_str() {
+        "GET_LOCK" => {
+            let cur = locks.get_active(claims.tenant_id, id).await?;
+            let token = cur.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+            Ok(lock_resp(StatusCode::OK, token, None))
+        }
+        "LOCK" => {
+            if lock.is_empty() {
+                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
+            }
+            let outcome = match old.as_deref() {
+                Some(o) if !o.is_empty() =>
+                    locks.unlock_and_relock(claims.tenant_id, id, o, &lock, claims.user_id).await?,
+                _ =>
+                    locks.acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?,
+            };
+            match outcome {
+                AcquireOutcome::Held(_) =>
+                    Ok(lock_resp(StatusCode::OK, &lock, None)),
+                AcquireOutcome::Conflict(existing) => {
+                    let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                    Ok(lock_resp(StatusCode::CONFLICT, cur, Some("lock mismatch")))
+                }
+            }
+        }
+        "REFRESH_LOCK" => {
+            if lock.is_empty() {
+                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
+            }
+            let outcome = locks
+                .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?;
+            match outcome {
+                AcquireOutcome::Held(_) =>
+                    Ok(lock_resp(StatusCode::OK, &lock, None)),
+                AcquireOutcome::Conflict(existing) => {
+                    let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                    Ok(lock_resp(StatusCode::CONFLICT, cur, Some("refresh: lock mismatch")))
+                }
+            }
+        }
+        "UNLOCK" => {
+            if lock.is_empty() {
+                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
+            }
+            if locks.release(claims.tenant_id, id, &lock).await? {
+                Ok(lock_resp(StatusCode::OK, "", None))
+            } else {
+                let cur = locks.get_active(claims.tenant_id, id).await?
+                    .map(|l| l.lock_token).unwrap_or_default();
+                Ok(lock_resp(StatusCode::CONFLICT, &cur, Some("unlock: lock mismatch")))
+            }
+        }
+        other => {
+            tracing::debug!(override_op = other, "WOPI op unsupported");
+            Err(DriveError::BadRequest(format!("unsupported X-WOPI-Override: {other}")))
+        }
+    }
+}
+
+fn header_str(h: &HeaderMap, name: &str) -> Option<String> {
+    h.get(name).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
+}
+
+fn lock_resp(status: StatusCode, lock_token: &str, reason: Option<&str>) -> Response {
+    let mut h = HeaderMap::new();
+    if let Ok(v) = lock_token.parse() {
+        h.insert("X-WOPI-Lock", v);
+    }
+    if let Some(r) = reason {
+        if let Ok(v) = r.parse() {
+            h.insert("X-WOPI-LockFailureReason", v);
+        }
+    }
+    (status, h).into_response()
 }
 
 #[cfg(test)]
