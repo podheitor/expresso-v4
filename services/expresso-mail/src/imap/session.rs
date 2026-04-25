@@ -16,9 +16,9 @@ use imap_codec::{
     encode::Encoder,
     imap_types::{
         command::{Command, CommandBody},
-        core::{AString, IString, NString, Tag, Text, Vec1},
+        core::{Atom, AString, IString, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem},
-        flag::{Flag, FlagFetch},
+        flag::{Flag, FlagFetch, FlagNameAttribute},
         mailbox::Mailbox as ImapMailbox,
         response::{
             Bye, Code, Data, Greeting, Response, Status, StatusBody,
@@ -295,21 +295,28 @@ async fn cmd_list(
     .unwrap_or_default();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
-    for (name, _special_use) in &rows {
+    for (name, special_use) in &rows {
         let mailbox = ImapMailbox::try_from(name.to_owned())
             .unwrap_or_else(|_| ImapMailbox::Inbox);
+
+        // Emite RFC 6154 special-use attribute se presente (e.g. "\\Sent" → Atom "Sent").
+        // DB armazena com backslash; Atom não aceita backslash — strip antes.
+        // From<Atom> for FlagNameAttribute produz a extension attribute correta.
+        let items: Vec<FlagNameAttribute<'static>> = special_use
+            .as_deref()
+            .and_then(|s| {
+                let bare = s.trim().trim_start_matches('\\');
+                if bare.is_empty() { return None; }
+                Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
+            })
+            .into_iter()
+            .collect();
+
         out.push(Response::Data(Data::List {
-            items: vec![],
+            items,
             delimiter: Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
             mailbox,
         }));
-
-
-
-
-
-
-
     }
     out.push(ok_tagged(tag, None, "LIST completed"));
     out
@@ -515,8 +522,10 @@ async fn cmd_noop(
 ) -> Vec<Response<'static>> {
     let mut out: Vec<Response<'static>> = Vec::with_capacity(2);
     if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
+        // Usa message_count (trigger-maintained em mailboxes) em vez de COUNT(*) —
+        // evita full scan em mailboxes com muitas mensagens durante polling de NOOP.
         let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+            "SELECT message_count FROM mailboxes WHERE id = $1 AND tenant_id = $2",
         )
         .bind(sel.mailbox_id)
         .bind(tid)
