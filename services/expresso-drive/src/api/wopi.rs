@@ -8,7 +8,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
@@ -32,10 +32,21 @@ use crate::{
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// Hard cap em PutFile body — Office docs raramente passam de centenas de MB,
+/// e o handler lê o body todo em RAM antes de promover. Sem cap, um cliente
+/// com token WOPI válido (ou descoberto) consegue saturar memória do drive.
+/// 256 MiB é folgado pra docs reais e protege contra DoS antes da quota check.
+pub const MAX_PUTFILE_BYTES: usize = 256 * 1024 * 1024;
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/wopi/files/:id",          get(check_file_info).post(wopi_post))
-        .route("/wopi/files/:id/contents", get(get_file).post(put_file))
+        .route(
+            "/wopi/files/:id/contents",
+            get(get_file)
+                .post(put_file)
+                .layer(DefaultBodyLimit::max(MAX_PUTFILE_BYTES)),
+        )
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,7 +299,18 @@ async fn put_file_impl(
     body:    Bytes,
 ) -> Result<Response> {
     let claims = authorize(id, &q)?;
-    let pool   = state.db_or_unavailable()?;
+
+    // Defense-in-depth body cap (DefaultBodyLimit já corta no extractor;
+    // mantemos check explícito p/ proteger contra mudanças de layer + dar
+    // erro estável p/ teste).
+    if body.len() > MAX_PUTFILE_BYTES {
+        return Err(DriveError::BadRequest(format!(
+            "body too large: {} bytes (max {})",
+            body.len(), MAX_PUTFILE_BYTES
+        )));
+    }
+
+    let pool = state.db_or_unavailable()?;
 
     // Lock enforcement (MS-WOPI PutFile): when the file is locked, the
     // request MUST present the matching X-WOPI-Lock; mismatch → 409 with
@@ -539,5 +561,12 @@ mod tests {
         let fid = Uuid::new_v4();
         let tok = sign_token(b"s", fid, Uuid::new_v4(), Uuid::new_v4(), -10);
         assert!(verify_token(b"s", &tok, fid).is_none());
+    }
+
+    #[test]
+    fn putfile_cap_sane_bounds() {
+        // Cap suficiente p/ docs reais e bem abaixo do quota hard cap (50 GB).
+        assert!(MAX_PUTFILE_BYTES >= 64 * 1024 * 1024);
+        assert!(MAX_PUTFILE_BYTES <= 1024 * 1024 * 1024);
     }
 }
