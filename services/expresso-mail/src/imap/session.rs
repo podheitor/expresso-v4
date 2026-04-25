@@ -189,11 +189,17 @@ async fn dispatch(
             }
             cmd_list(state, tag, reference, user_id.unwrap(), tenant_id.unwrap()).await
         }
-        CommandBody::Select { mailbox, .. } | CommandBody::Examine { mailbox, .. } => {
+        CommandBody::Select { mailbox, .. } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected).await
+            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, false).await
+        }
+        CommandBody::Examine { mailbox, .. } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, true).await
         }
         CommandBody::Fetch {
             sequence_set,
@@ -355,6 +361,7 @@ async fn cmd_select(
     tenant_id: Uuid,
     sess: &mut SessionState,
     selected: &mut Option<SelectedMailbox>,
+    read_only: bool,
 ) -> Vec<Response<'static>> {
     let mbox_name = mailbox_to_string(mailbox);
 
@@ -439,7 +446,12 @@ async fn cmd_select(
             if let Some(seq) = first_unseen.filter(|s| s.get() <= exists) {
                 out.push(untagged_ok(Code::Unseen(seq), "first unseen"));
             }
-            out.push(ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"));
+            let (access_code, done_msg) = if read_only {
+                (Code::ReadOnly, "EXAMINE completed")
+            } else {
+                (Code::ReadWrite, "SELECT completed")
+            };
+            out.push(ok_tagged(tag, Some(access_code), done_msg));
             out
         }
         None => vec![no_tagged(tag, "mailbox not found")],
@@ -562,18 +574,35 @@ async fn cmd_store(
     let (start, end) = sequence_range(sequence_set, sel.exists);
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
 
+    // RFC 3501 §2.3.1: sequence numbers are 1-based ordinal positions ordered
+    // by arrival (received_at ASC), not UID values. The CTE assigns seq via
+    // ROW_NUMBER() so the UPDATE targets the correct rows regardless of uid gaps
+    // (deletions leave holes in uid sequences but not in seq positions).
     let sql = match kind {
         imap_codec::imap_types::flag::StoreType::Add => {
-            "UPDATE messages SET flags = array_cat(flags, $1::text[]) \
-             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
+            "WITH ordered AS (\
+               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+               FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+             ) \
+             UPDATE messages SET flags = array_cat(flags, $1::text[]) \
+             WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
         }
         imap_codec::imap_types::flag::StoreType::Remove => {
-            "UPDATE messages SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
-             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
+            "WITH ordered AS (\
+               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+               FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+             ) \
+             UPDATE messages \
+             SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
+             WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
         }
         imap_codec::imap_types::flag::StoreType::Replace => {
-            "UPDATE messages SET flags = $1::text[] \
-             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
+            "WITH ordered AS (\
+               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+               FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+             ) \
+             UPDATE messages SET flags = $1::text[] \
+             WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
         }
     };
 
