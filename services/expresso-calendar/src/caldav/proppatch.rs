@@ -79,7 +79,7 @@ pub async fn handle(
             }
             for p in &remove_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.remove_calendar(cid, &p.namespace, &p.local).await;
+                    let _ = repo.remove_calendar(principal.tenant_id, cid, &p.namespace, &p.local).await;
                 }
             }
         }

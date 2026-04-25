@@ -116,7 +116,7 @@ async fn propfind_home(
         for cal in calendars {
             let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
             let dead = if req.allprop {
-                dead_repo.list_for_calendar(cal.id).await.unwrap_or_default()
+                dead_repo.list_for_calendar(principal.tenant_id, cal.id).await.unwrap_or_default()
             } else { Vec::new() };
             append_collection_response(
                 &mut out, &href, /*is_home=*/false,
@@ -218,7 +218,7 @@ async fn propfind_calendar(
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/">"#);
 
     let dead = if req.allprop {
-        DeadPropRepo::new(pool).list_for_calendar(cal.id).await.unwrap_or_default()
+        DeadPropRepo::new(pool).list_for_calendar(principal.tenant_id, cal.id).await.unwrap_or_default()
     } else { Vec::new() };
     let href = format!("/caldav/{}/{}/", principal.user_id, cal.id);
     append_collection_response(
