@@ -2,8 +2,12 @@
 //!
 //! Events on the address book are path-addressed by UID (`<uid>.vcf`).
 //! All writes parse the vCard to populate denormalised columns + etag.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para que
+//! a policy RLS de `contacts` filtre por `current_setting('app.tenant_id')`
+//! antes mesmo do `WHERE tenant_id = $1` explícito (defense-in-depth).
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -49,6 +53,7 @@ impl<'a> ContactRepo<'a> {
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag   = vcard::compute_etag(raw);
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
             INSERT INTO contacts (
@@ -71,23 +76,27 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.organization)
         .bind(parsed.email)
         .bind(parsed.phone)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Contact> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"SELECT * FROM contacts WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn list(&self, tenant_id: Uuid, addressbook_id: Uuid) -> Result<Vec<Contact>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Contact>(
             r#"
             SELECT * FROM contacts
@@ -97,8 +106,9 @@ impl<'a> ContactRepo<'a> {
         )
         .bind(tenant_id)
         .bind(addressbook_id)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
@@ -110,6 +120,7 @@ impl<'a> ContactRepo<'a> {
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag   = vcard::compute_etag(raw);
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
             UPDATE contacts SET
@@ -137,17 +148,20 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.organization)
         .bind(parsed.email)
         .bind(parsed.phone)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(r#"DELETE FROM contacts WHERE tenant_id = $1 AND id = $2"#)
             .bind(tenant_id)
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -158,6 +172,7 @@ impl<'a> ContactRepo<'a> {
         addressbook_id: Uuid,
         uid:            &str,
     ) -> Result<Contact> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"SELECT * FROM contacts
                WHERE tenant_id = $1 AND addressbook_id = $2 AND uid = $3"#,
@@ -165,8 +180,9 @@ impl<'a> ContactRepo<'a> {
         .bind(tenant_id)
         .bind(addressbook_id)
         .bind(uid)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -176,6 +192,7 @@ impl<'a> ContactRepo<'a> {
         addressbook_id: Uuid,
         uids:           &[String],
     ) -> Result<Vec<Contact>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Contact>(
             r#"SELECT * FROM contacts
                WHERE tenant_id = $1 AND addressbook_id = $2 AND uid = ANY($3)
@@ -184,8 +201,9 @@ impl<'a> ContactRepo<'a> {
         .bind(tenant_id)
         .bind(addressbook_id)
         .bind(uids)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
@@ -198,6 +216,7 @@ impl<'a> ContactRepo<'a> {
     ) -> Result<Contact> {
         let parsed = vcard::parse(raw).map_err(ContactsError::InvalidVCard)?;
         let etag   = vcard::compute_etag(raw);
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Contact>(
             r#"
             INSERT INTO contacts (
@@ -229,8 +248,9 @@ impl<'a> ContactRepo<'a> {
         .bind(parsed.organization)
         .bind(parsed.email)
         .bind(parsed.phone)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -240,6 +260,7 @@ impl<'a> ContactRepo<'a> {
         addressbook_id: Uuid,
         uid:            &str,
     ) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
             r#"DELETE FROM contacts
                WHERE tenant_id = $1 AND addressbook_id = $2 AND uid = $3"#,
@@ -247,8 +268,9 @@ impl<'a> ContactRepo<'a> {
         .bind(tenant_id)
         .bind(addressbook_id)
         .bind(uid)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 }
