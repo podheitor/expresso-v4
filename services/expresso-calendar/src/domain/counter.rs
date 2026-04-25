@@ -3,7 +3,18 @@
 //! Stores attendee counter-proposals until the organizer decides via the admin
 //! UI. Accept → update event DTSTART/DTEND (SEQUENCE auto-bumps via event::update).
 //! Reject → mark resolved; caller may dispatch DECLINECOUNTER iMIP externally.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para
+//! consistência com os outros repos do serviço e p/ deixar
+//! `current_setting('app.tenant_id')` populado caso a tabela ganhe RLS
+//! no futuro — a migration de `scheduling_counter_proposals` ainda não
+//! tem ENABLE ROW LEVEL SECURITY, então o `WHERE tenant_id = $1` continua
+//! sendo o único guardrail efetivo hoje. `resolve` passou a receber
+//! `tenant_id` (API change) — antes atualizava só por `id`, sem guardrail
+//! algum; sem call sites externos no momento (apenas `insert` é chamado
+//! em `api/scheduling.rs`).
 
+use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use time::OffsetDateTime;
@@ -49,6 +60,7 @@ impl<'a> CounterRepo<'a> {
         received_sequence: Option<i32>,
         raw_ical:          Option<&str>,
     ) -> Result<CounterProposal> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let p = sqlx::query_as::<_, CounterProposal>(
             r#"
             INSERT INTO scheduling_counter_proposals
@@ -68,12 +80,14 @@ impl<'a> CounterRepo<'a> {
         .bind(comment)
         .bind(received_sequence)
         .bind(raw_ical)
-        .fetch_one(self.pool).await?;
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
         Ok(p)
     }
 
     /// List pending proposals for a tenant (newest first).
     pub async fn list_pending(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<CounterProposal>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, CounterProposal>(
             r#"
             SELECT id, tenant_id, event_id, attendee_email, proposed_dtstart,
@@ -87,12 +101,14 @@ impl<'a> CounterRepo<'a> {
         )
         .bind(tenant_id)
         .bind(limit)
-        .fetch_all(self.pool).await?;
+        .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
     /// Fetch one by id scoped to tenant.
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<CounterProposal>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query_as::<_, CounterProposal>(
             r#"
             SELECT id, tenant_id, event_id, attendee_email, proposed_dtstart,
@@ -104,21 +120,27 @@ impl<'a> CounterRepo<'a> {
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_optional(self.pool).await?;
+        .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         Ok(r)
     }
 
     /// Mark proposal as resolved (accepted or rejected).
-    pub async fn resolve(&self, id: Uuid, new_status: &str, resolved_by: Option<Uuid>) -> Result<()> {
+    /// API: `tenant_id` now required (was missing — no guardrail on cross-tenant
+    /// id collisions). Sem call sites externos no momento.
+    pub async fn resolve(&self, tenant_id: Uuid, id: Uuid, new_status: &str, resolved_by: Option<Uuid>) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
             r#"UPDATE scheduling_counter_proposals
-                  SET status = $2, resolved_at = NOW(), resolved_by = $3
-                WHERE id = $1 AND status = 'pending'"#,
+                  SET status = $3, resolved_at = NOW(), resolved_by = $4
+                WHERE tenant_id = $1 AND id = $2 AND status = 'pending'"#,
         )
+        .bind(tenant_id)
         .bind(id)
         .bind(new_status)
         .bind(resolved_by)
-        .execute(self.pool).await?;
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(())
     }
 }
