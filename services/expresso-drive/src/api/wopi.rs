@@ -114,6 +114,14 @@ struct CheckFileInfo {
     supports_update:        bool,
     supports_locks:         bool,
     last_modified_time:     Option<String>,
+    /// Breadcrumb labels rendered by Collabora's chrome above the document
+    /// (MS-WOPI [MS-WOPI] §3.3.5.1.1). `BreadcrumbBrandName` is the leftmost
+    /// segment ("Expresso Drive") and `BreadcrumbFolderName` is the parent
+    /// folder of the file (or "Meu Drive" when the file lives at the root).
+    /// They are best-effort: when the parent fetch fails we still respond
+    /// 200 so Collabora can open the doc — the breadcrumb just collapses.
+    breadcrumb_brand_name:  String,
+    breadcrumb_folder_name: String,
 }
 
 async fn check_file_info(
@@ -148,6 +156,9 @@ async fn check_file_info_impl(
         .await
         .unwrap_or_else(|| claims.user_id.to_string());
     let last_modified = file.updated_at.format(&Rfc3339).ok();
+    let breadcrumb_folder = lookup_parent_name(pool, claims.tenant_id, file.parent_id)
+        .await
+        .unwrap_or_else(|| "Meu Drive".to_string());
 
     Ok(Json(CheckFileInfo {
         base_file_name:              file.name,
@@ -161,7 +172,33 @@ async fn check_file_info_impl(
         supports_update:             true,
         supports_locks:              true,
         last_modified_time:          last_modified,
+        breadcrumb_brand_name:       "Expresso Drive".to_string(),
+        breadcrumb_folder_name:      breadcrumb_folder,
     }))
+}
+
+/// Resolve the breadcrumb folder label. `None` parent_id means the file
+/// is at the root → caller falls back to "Meu Drive". For nested files we
+/// fetch the parent folder's `name` directly. RLS via `begin_tenant_tx` is
+/// not strictly required here (the FileRepo path already validated tenant),
+/// but the explicit `tenant_id` predicate keeps this resilient if RLS is
+/// ever disabled in the deployment role.
+async fn lookup_parent_name(
+    pool: &expresso_core::DbPool,
+    tenant_id: Uuid,
+    parent_id: Option<Uuid>,
+) -> Option<String> {
+    let parent_id = parent_id?;
+    sqlx::query_scalar::<_, String>(
+        "SELECT name FROM drive_files \
+           WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL"
+    )
+    .bind(parent_id)
+    .bind(tenant_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
 }
 
 /// Best-effort lookup of `users.display_name` for the given user. Falls back
