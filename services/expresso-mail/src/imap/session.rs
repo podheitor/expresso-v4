@@ -24,6 +24,7 @@ use imap_codec::{
             Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
             StatusKind, Tagged,
         },
+        status::{StatusDataItem, StatusDataItemName},
         IntoStatic,
     },
 };
@@ -62,6 +63,7 @@ enum SessionState {
 struct SelectedMailbox {
     mailbox_id: Uuid,
     exists: u32,
+    read_only: bool,
 }
 
 pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
@@ -200,6 +202,12 @@ async fn dispatch(
                 return vec![no_tagged(tag, "not authenticated")];
             }
             cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, true).await
+        }
+        CommandBody::Status { mailbox, item_names } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_status(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), item_names.as_ref()).await
         }
         CommandBody::Fetch {
             sequence_set,
@@ -413,7 +421,7 @@ async fn cmd_select(
             .and_then(|n| NonZeroU32::new(n as u32));
 
             *sess = SessionState::Selected;
-            *selected = Some(SelectedMailbox { mailbox_id, exists });
+            *selected = Some(SelectedMailbox { mailbox_id, exists, read_only });
 
             // RFC 3501 §7.3.1: FLAGS, EXISTS, RECENT, UIDVALIDITY, UIDNEXT e
             // PERMANENTFLAGS são todos obrigatórios/SHOULD na resposta SELECT.
@@ -456,6 +464,65 @@ async fn cmd_select(
         }
         None => vec![no_tagged(tag, "mailbox not found")],
     }
+}
+
+/// STATUS — RFC 3501 §6.3.10: returns per-mailbox counters without SELECTing.
+/// Clients use this to refresh unread badges on folders they aren't currently viewing.
+/// Reads trigger-maintained counters from `mailboxes` (O(1)) for MESSAGES/UNSEEN;
+/// RECENT is always 0 (we don't track the \Recent flag per-session).
+async fn cmd_status(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    uid: Uuid,
+    tenant_id: Uuid,
+    item_names: &[StatusDataItemName],
+) -> Vec<Response<'static>> {
+    let mbox_name = mailbox_to_string(mailbox);
+
+    let row: Option<(i64, i64, i64, i64)> = sqlx::query_as(
+        "SELECT uid_validity, next_uid, message_count, unseen_count \
+         FROM mailboxes \
+         WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3",
+    )
+    .bind(uid)
+    .bind(&mbox_name)
+    .bind(tenant_id)
+    .fetch_optional(state.db())
+    .await
+    .ok()
+    .flatten();
+
+    let (uid_validity_raw, next_uid_raw, msg_count, unseen_count) = match row {
+        None => return vec![no_tagged(tag, "mailbox not found")],
+        Some(r) => r,
+    };
+
+    let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
+    let uid_next     = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
+
+    let mut items: Vec<StatusDataItem> = Vec::with_capacity(item_names.len());
+    for name in item_names {
+        let item = match name {
+            StatusDataItemName::Messages    => StatusDataItem::Messages(msg_count as u32),
+            StatusDataItemName::Recent      => StatusDataItem::Recent(0),
+            StatusDataItemName::UidNext     => StatusDataItem::UidNext(uid_next),
+            StatusDataItemName::UidValidity => StatusDataItem::UidValidity(uid_validity),
+            StatusDataItemName::Unseen      => StatusDataItem::Unseen(unseen_count as u32),
+            // Deleted/Size/DeletedStorage/HighestModSeq not tracked — skip silently.
+            _ => continue,
+        };
+        items.push(item);
+    }
+
+    let mbox_static = ImapMailbox::try_from(mbox_name).unwrap_or(ImapMailbox::Inbox);
+    vec![
+        Response::Data(Data::Status {
+            mailbox: mbox_static,
+            items: std::borrow::Cow::Owned(items),
+        }),
+        ok_tagged(tag, None, "STATUS completed"),
+    ]
 }
 
 async fn cmd_fetch(
@@ -673,13 +740,10 @@ async fn cmd_noop(
     out
 }
 
-/// CLOSE — RFC 3501 §6.4.2: silently expunge `\Deleted` messages from the
-/// selected mailbox and return to authenticated state. Crucially, NO untagged
-/// EXPUNGE responses are sent (that is the whole point vs. a plain EXPUNGE):
-/// clients use CLOSE to drop a mailbox without paying for a per-message
-/// stream. Always treat the mailbox as read-write here — `cmd_select` grants
-/// `Code::ReadWrite` unconditionally, so we never enter the read-only branch
-/// where the spec says CLOSE skips the expunge.
+/// CLOSE — RFC 3501 §6.4.2: silently expunge `\Deleted` messages and return
+/// to authenticated state. No untagged EXPUNGE responses are sent. When the
+/// mailbox was opened read-only via EXAMINE, the spec explicitly requires that
+/// no messages be removed — the DELETE is skipped in that case.
 async fn cmd_close(
     state: &AppState,
     tag: Tag<'static>,
@@ -688,14 +752,16 @@ async fn cmd_close(
     tenant_id: Option<Uuid>,
 ) -> Vec<Response<'static>> {
     if let (Some(sel), Some(tid)) = (selected.as_ref(), tenant_id) {
-        let _ = sqlx::query(
-            "DELETE FROM messages \
-             WHERE mailbox_id = $1 AND tenant_id = $2 AND '\\Deleted' = ANY(flags)",
-        )
-        .bind(sel.mailbox_id)
-        .bind(tid)
-        .execute(state.db())
-        .await;
+        if !sel.read_only {
+            let _ = sqlx::query(
+                "DELETE FROM messages \
+                 WHERE mailbox_id = $1 AND tenant_id = $2 AND '\\Deleted' = ANY(flags)",
+            )
+            .bind(sel.mailbox_id)
+            .bind(tid)
+            .execute(state.db())
+            .await;
+        }
     }
     *selected = None;
     if *sess == SessionState::Selected {
