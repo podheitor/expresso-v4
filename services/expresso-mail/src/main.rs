@@ -1,9 +1,11 @@
-//! expresso-mail — SMTP intake + IMAP stub + REST API for webmail
+//! expresso-mail — SMTP/LMTP/Submission intake, IMAP4rev1 server, webmail REST API.
 //!
-//! Listeners:
-//!   - :8001  HTTP REST (webmail API)
-//!   - :25    SMTP (inbound MTA reception)
-//!   - :143   IMAP (stub — Phase 2)
+//! Listeners (ports are config-driven; defaults shown):
+//!   - :8001  HTTP REST (webmail API + /mail/send + iTIP dispatch)
+//!   - :25    SMTP — inbound MTA reception
+//!   - :587   SMTP Submission — STARTTLS + AUTH PLAIN/LOGIN (only when TLS wired)
+//!   - :24    LMTP — Postfix → app delivery
+//!   - :143   IMAP4rev1 — LOGIN, LIST, SELECT, FETCH, STORE, EXPUNGE, CLOSE, NOOP
 
 mod api;
 mod bootstrap;
@@ -148,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
     let lmtp_state = state.clone();
     set.spawn(async move { lmtp::serve(lmtp_state, lmtp_addr).await });
 
-    // IMAP (stub)
+    // IMAP4rev1
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;
     let imap_state = state.clone();
     set.spawn(async move { imap::serve(imap_state, imap_addr).await });
