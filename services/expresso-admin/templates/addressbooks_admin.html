@@ -17,7 +17,9 @@
       <td class="mono small">{{ r.id }}</td>
       <td>
         <a class="btn small" href="/addressbooks/{{ r.tenant_id }}/{{ r.id }}/edit">editar</a>
-        <form method="post" action="/addressbooks/{{ r.tenant_id }}/{{ r.id }}/delete" style="display:inline" onsubmit="return confirm('Excluir livro {{ r.name }}? Contatos serão removidos em cascata.');">
+        <form method="post" action="/addressbooks/{{ r.tenant_id }}/{{ r.id }}/delete" style="display:inline"
+              onsubmit="var n = prompt('Para excluir, redigite o nome do livro ({{ r.name }}). Contatos serão removidos em cascata.'); if (n === null) return false; this.confirm_name.value = n; return true;">
+          <input type="hidden" name="confirm_name" value="">
           <button class="btn small danger" type="submit">excluir</button>
         </form>
       </td>

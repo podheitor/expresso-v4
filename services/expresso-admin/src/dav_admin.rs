@@ -147,15 +147,43 @@ pub async fn calendar_edit_action(
     Ok(Redirect::to("/calendars").into_response())
 }
 
+/// Confirmação anti-fat-finger pra delete de calendar/addressbook. Mesmo
+/// padrão dos sprints #119 e #123: o admin redigita o `name` da coleção; sem
+/// match, audit `*.rejected` e 400. Calendários carregam eventos em cascata,
+/// addressbooks carregam contatos — perda silenciosa por click acidental é
+/// inaceitável.
+#[derive(Deserialize)]
+pub struct DavDeleteForm { pub confirm_name: String }
+
 pub async fn calendar_delete_action(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    Form(f): Form<DavDeleteForm>,
 ) -> Result<impl IntoResponse, AdminError> {
     if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
         return Ok(deny.into_response());
     }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+
+    let actual: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM calendars WHERE tenant_id = $1 AND id = $2"
+    ).bind(tenant_id).bind(id).fetch_optional(pool).await.map_err(|e| AdminError(e.into()))?;
+    let Some((name,)) = actual else {
+        return Err(AdminError(anyhow::anyhow!("calendar not found")));
+    };
+    if f.confirm_name.trim() != name {
+        crate::audit::record(
+            &st, &headers, &axum::http::Method::POST,
+            &format!("/calendars/{tenant_id}/{id}/delete"),
+            "admin.calendar.delete.rejected", Some("calendar"), Some(id.to_string()), Some(400),
+            serde_json::json!({ "tenant_id": tenant_id, "reason": "confirm_name_mismatch" }),
+        ).await;
+        return Err(AdminError(anyhow::anyhow!(
+            "confirmation failed: re-type the calendar name exactly to confirm delete"
+        )));
+    }
+
     sqlx::query("DELETE FROM calendars WHERE tenant_id = $1 AND id = $2")
         .bind(tenant_id).bind(id)
         .execute(pool).await.map_err(|e| AdminError(e.into()))?;
@@ -163,7 +191,7 @@ pub async fn calendar_delete_action(
         &st, &headers, &axum::http::Method::POST,
         &format!("/calendars/{tenant_id}/{id}/delete"),
         "admin.calendar.delete", Some("calendar"), Some(id.to_string()), Some(302),
-        serde_json::json!({ "tenant_id": tenant_id }),
+        serde_json::json!({ "tenant_id": tenant_id, "name": name }),
     ).await;
     Ok(Redirect::to("/calendars").into_response())
 }
@@ -258,11 +286,31 @@ pub async fn addressbook_delete_action(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
+    Form(f): Form<DavDeleteForm>,
 ) -> Result<impl IntoResponse, AdminError> {
     if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
         return Ok(deny.into_response());
     }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+
+    let actual: Option<(String,)> = sqlx::query_as(
+        "SELECT name FROM addressbooks WHERE tenant_id = $1 AND id = $2"
+    ).bind(tenant_id).bind(id).fetch_optional(pool).await.map_err(|e| AdminError(e.into()))?;
+    let Some((name,)) = actual else {
+        return Err(AdminError(anyhow::anyhow!("addressbook not found")));
+    };
+    if f.confirm_name.trim() != name {
+        crate::audit::record(
+            &st, &headers, &axum::http::Method::POST,
+            &format!("/addressbooks/{tenant_id}/{id}/delete"),
+            "admin.addressbook.delete.rejected", Some("addressbook"), Some(id.to_string()), Some(400),
+            serde_json::json!({ "tenant_id": tenant_id, "reason": "confirm_name_mismatch" }),
+        ).await;
+        return Err(AdminError(anyhow::anyhow!(
+            "confirmation failed: re-type the addressbook name exactly to confirm delete"
+        )));
+    }
+
     sqlx::query("DELETE FROM addressbooks WHERE tenant_id = $1 AND id = $2")
         .bind(tenant_id).bind(id)
         .execute(pool).await.map_err(|e| AdminError(e.into()))?;
@@ -270,7 +318,7 @@ pub async fn addressbook_delete_action(
         &st, &headers, &axum::http::Method::POST,
         &format!("/addressbooks/{tenant_id}/{id}/delete"),
         "admin.addressbook.delete", Some("addressbook"), Some(id.to_string()), Some(302),
-        serde_json::json!({ "tenant_id": tenant_id }),
+        serde_json::json!({ "tenant_id": tenant_id, "name": name }),
     ).await;
     Ok(Redirect::to("/addressbooks").into_response())
 }
