@@ -28,6 +28,9 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 
 use crate::state::AppState;
+use crate::imap::metrics::{
+    command_label, IMAP_COMMANDS_TOTAL, IMAP_LOGINS_TOTAL, IMAP_SESSIONS_TOTAL,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionState {
@@ -76,12 +79,17 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
                     let tag_s = cmd.tag.as_ref().to_owned();
                     buf.drain(..consumed);
 
-                    debug!(tag = %tag_s, cmd = ?cmd.body.name(), "imap ←");
+                    let cmd_name = cmd.body.name();
+                    debug!(tag = %tag_s, cmd = ?cmd_name, "imap ←");
 
                     let responses = dispatch(
                         &state, &cmd, &mut sess, &mut user_id, &mut tenant_id, &mut selected,
                     )
                     .await;
+
+                    IMAP_COMMANDS_TOTAL
+                        .with_label_values(&[command_label(cmd_name), outcome_of(&responses)])
+                        .inc();
 
                     for resp in &responses {
                         writer.write_all(&resp_codec.encode(resp).dump()).await?;
@@ -100,6 +108,7 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
                     break;
                 }
                 Err(CommandDecodeError::Failed) => {
+                    IMAP_SESSIONS_TOTAL.with_label_values(&["parse_error"]).inc();
                     writer.write_all(b"* BAD parse error\r\n").await?;
                     buf.clear();
                     break;
@@ -232,9 +241,11 @@ async fn cmd_login(
             *sess = SessionState::Authenticated;
             *user_id = Some(uid);
             *tenant_id = Some(tid);
+            IMAP_LOGINS_TOTAL.with_label_values(&["success"]).inc();
             vec![ok_tagged(tag, None, "LOGIN completed")]
         }
         None => {
+            IMAP_LOGINS_TOTAL.with_label_values(&["failure"]).inc();
             warn!(user = %user, "IMAP login failed");
             vec![no_tagged(tag, "LOGIN failed")]
         }
@@ -440,6 +451,22 @@ async fn cmd_expunge(
 }
 
 // ─── Response helpers ────────────────────────────────────────────────────────
+
+/// Map a dispatch's response sequence to a single outcome label for the
+/// `mail_imap_commands_total` counter. The first tagged Status drives the
+/// label; absent it (untagged-only chatter) we treat as `ok`.
+fn outcome_of(responses: &[Response<'static>]) -> &'static str {
+    for r in responses {
+        if let Response::Status(Status::Tagged(t)) = r {
+            return match t.body.kind {
+                StatusKind::Ok  => "ok",
+                StatusKind::No  => "no",
+                StatusKind::Bad => "bad",
+            };
+        }
+    }
+    "ok"
+}
 
 fn ok_tagged(tag: Tag<'static>, code: Option<Code<'static>>, text: &str) -> Response<'static> {
     Response::Status(Status::Tagged(Tagged {
