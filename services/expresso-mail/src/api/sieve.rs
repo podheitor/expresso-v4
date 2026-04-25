@@ -9,6 +9,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
@@ -36,13 +37,15 @@ async fn get_sieve(
     State(state): State<AppState>,
     ctx: RequestCtx,
 ) -> Result<Json<SieveRules>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(
         "SELECT enabled, script
          FROM user_sieve WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
-    .fetch_optional(state.db()).await?;
+    .fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
 
     let rules = match row {
         Some(r) => SieveRules { enabled: r.get("enabled"), script: r.get("script") },
@@ -63,6 +66,7 @@ async fn put_sieve(
         }
     }
 
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     sqlx::query(
         "INSERT INTO user_sieve (user_id, tenant_id, enabled, script, updated_at)
          VALUES ($1, $2, $3, $4, now())
@@ -75,7 +79,8 @@ async fn put_sieve(
     .bind(ctx.tenant_id)
     .bind(rules.enabled)
     .bind(&rules.script)
-    .execute(state.db()).await?;
+    .execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(Json(rules))
 }

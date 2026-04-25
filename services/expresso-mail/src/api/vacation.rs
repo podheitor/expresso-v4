@@ -9,10 +9,10 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use time::OffsetDateTime;
-use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::error::{MailError, Result};
@@ -75,14 +75,15 @@ async fn get_vacation(
     State(state): State<AppState>,
     ctx: RequestCtx,
 ) -> Result<Json<Vacation>> {
-    let pool = state.db();
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row  = sqlx::query(
         "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script
          FROM user_vacation WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
-    .fetch_optional(pool).await?;
+    .fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
     let v = match row {
         Some(r) => Vacation {
             enabled:       r.get("enabled"),
@@ -108,7 +109,7 @@ async fn put_vacation(
     }
     v.sieve_script = render_script(&v);
 
-    let pool = state.db();
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     sqlx::query(
         "INSERT INTO user_vacation
             (user_id, tenant_id, enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at)
@@ -132,7 +133,8 @@ async fn put_vacation(
     .bind(&v.body)
     .bind(v.interval_days)
     .bind(&v.sieve_script)
-    .execute(pool).await?;
+    .execute(&mut *tx).await?;
+    tx.commit().await?;
 
     Ok(Json(v))
 }
