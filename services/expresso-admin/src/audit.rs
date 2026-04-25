@@ -351,6 +351,31 @@ pub async fn purge(
 
 // --- CSV export ---------------------------------------------------------
 
+/// Escape a field for CSV output.
+///
+/// Combines RFC 4180 quoting (comma/quote/CR/LF) with a guard against
+/// CSV/Excel formula injection: campos que começam com `=`, `+`, `-`, `@`,
+/// `\t` ou `\r` recebem um prefixo `'` para que Excel/Google Sheets/LibreOffice
+/// tratem o conteúdo como string literal em vez de fórmula. Sem essa proteção,
+/// um atacante que controle qualquer campo do audit (action, resource,
+/// metadata) consegue executar fórmulas — incluindo HYPERLINK pra exfiltrar
+/// dados — quando um super_admin abre o CSV exportado.
+fn csv_escape(f: &str) -> String {
+    let starts_dangerous = f.as_bytes().first()
+        .is_some_and(|b| matches!(*b, b'=' | b'+' | b'-' | b'@' | b'\t' | b'\r'));
+    let needs_quote = starts_dangerous
+        || f.contains(',') || f.contains('"') || f.contains('\n') || f.contains('\r');
+    if !needs_quote {
+        return f.to_string();
+    }
+    let replaced = f.replace('"', "\"\"");
+    if starts_dangerous {
+        format!("\"'{replaced}\"")
+    } else {
+        format!("\"{replaced}\"")
+    }
+}
+
 /// GET /audit.csv — SuperAdmin-only. Same filters as `/audit.json` but capped
 /// at 50k rows per request. Returns `text/csv; charset=utf-8`.
 pub async fn csv(
@@ -390,17 +415,6 @@ pub async fn csv(
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("db: {e}")).into_response(),
     };
 
-    // RFC 4180: quote fields containing comma, quote, CR or LF; escape quote by doubling.
-    fn esc(f: &str) -> String {
-        let needs = f.contains(',') || f.contains('"') || f.contains('\n') || f.contains('\r');
-        if needs {
-            let replaced = f.replace('"', "\"\"");
-            format!("\"{replaced}\"")
-        } else {
-            f.to_string()
-        }
-    }
-
     let mut buf = String::with_capacity(rows.len() * 128);
     buf.push_str("id,created_at,tenant_id,user_id,action,resource,status,metadata\r\n");
     for r in rows {
@@ -418,21 +432,21 @@ pub async fn csv(
             .unwrap_or_default();
         let metadata_str = serde_json::to_string(&metadata).unwrap_or_default();
 
-        buf.push_str(&esc(&id.to_string()));
+        buf.push_str(&csv_escape(&id.to_string()));
         buf.push(',');
-        buf.push_str(&esc(&created_at_str));
+        buf.push_str(&csv_escape(&created_at_str));
         buf.push(',');
-        buf.push_str(&esc(&tenant_id.to_string()));
+        buf.push_str(&csv_escape(&tenant_id.to_string()));
         buf.push(',');
-        buf.push_str(&esc(&user_id.map(|u| u.to_string()).unwrap_or_default()));
+        buf.push_str(&csv_escape(&user_id.map(|u| u.to_string()).unwrap_or_default()));
         buf.push(',');
-        buf.push_str(&esc(&action));
+        buf.push_str(&csv_escape(&action));
         buf.push(',');
-        buf.push_str(&esc(&resource.unwrap_or_default()));
+        buf.push_str(&csv_escape(&resource.unwrap_or_default()));
         buf.push(',');
-        buf.push_str(&esc(&status));
+        buf.push_str(&csv_escape(&status));
         buf.push(',');
-        buf.push_str(&esc(&metadata_str));
+        buf.push_str(&csv_escape(&metadata_str));
         buf.push_str("\r\n");
     }
 
@@ -450,4 +464,56 @@ pub async fn csv(
         ],
         buf,
     ).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::csv_escape;
+
+    #[test]
+    fn plain_field_unchanged() {
+        assert_eq!(csv_escape("hello"), "hello");
+        assert_eq!(csv_escape("user@example.com"), "user@example.com");
+    }
+
+    #[test]
+    fn rfc4180_quoting_preserved() {
+        assert_eq!(csv_escape("a,b"), "\"a,b\"");
+        assert_eq!(csv_escape("she said \"hi\""), "\"she said \"\"hi\"\"\"");
+        assert_eq!(csv_escape("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn formula_prefix_neutralized() {
+        // Cada char perigoso vira string literal via prefixo `'` dentro de
+        // field quoted — Excel/Sheets não avaliam.
+        assert_eq!(csv_escape("=1+1"),         "\"'=1+1\"");
+        assert_eq!(csv_escape("+CMD()"),       "\"'+CMD()\"");
+        assert_eq!(csv_escape("-2+3"),         "\"'-2+3\"");
+        assert_eq!(csv_escape("@SUM(A1)"),     "\"'@SUM(A1)\"");
+        assert_eq!(csv_escape("\tinjected"),   "\"'\tinjected\"");
+        assert_eq!(csv_escape("\rinjected"),   "\"'\rinjected\"");
+    }
+
+    #[test]
+    fn formula_prefix_with_embedded_quote() {
+        // Combina guard + escape de aspas (RFC 4180 doubling).
+        assert_eq!(csv_escape("=HYPERLINK(\"x\")"),
+                   "\"'=HYPERLINK(\"\"x\"\")\"");
+    }
+
+    #[test]
+    fn dangerous_char_only_at_start() {
+        // `=` no meio do campo é inofensivo (Excel só avalia se for o
+        // primeiro char) — não precisa de prefixo, mas comma força quote.
+        assert_eq!(csv_escape("a=b"),   "a=b");
+        assert_eq!(csv_escape("a,=b"),  "\"a,=b\"");
+        // E-mail com @ no meio: comum, não-perigoso.
+        assert_eq!(csv_escape("u@d.com"), "u@d.com");
+    }
+
+    #[test]
+    fn empty_field() {
+        assert_eq!(csv_escape(""), "");
+    }
 }
