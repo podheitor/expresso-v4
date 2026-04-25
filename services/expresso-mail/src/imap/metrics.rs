@@ -85,6 +85,7 @@ pub fn command_label(name: &str) -> &'static str {
         "CLOSE"      => "CLOSE",
         "LOGOUT"     => "LOGOUT",
         "NOOP"       => "NOOP",
+        "IDLE"       => "IDLE",
         _            => "OTHER",
     }
 }

@@ -21,7 +21,7 @@ use imap_codec::{
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm},
         mailbox::Mailbox as ImapMailbox,
         response::{
-            Bye, Code, Data, Greeting, Response, Status, StatusBody,
+            Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
             StatusKind, Tagged,
         },
         IntoStatic,
@@ -91,7 +91,7 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
         }
         buf.extend_from_slice(&tmp[..n]);
 
-        loop {
+        'decode: loop {
             match cmd_codec.decode(&buf) {
                 Ok((remaining, cmd)) => {
                     let consumed = buf.len() - remaining.len();
@@ -101,6 +101,26 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
 
                     let cmd_name = cmd.body.name();
                     debug!(tag = %tag_s, cmd = ?cmd_name, "imap ←");
+
+                    // IDLE (RFC 2177) — tratado inline, não via dispatch.
+                    // handle_idle() envia "+ idling", espera DONE do cliente
+                    // (com polls de 28s para push de EXISTS), envia OK ao fim.
+                    if let CommandBody::Idle = &cmd.body {
+                        let outcome = if sess == SessionState::NotAuthenticated {
+                            let resp = no_tagged(cmd.tag.clone(), "not authenticated");
+                            writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                            "no"
+                        } else {
+                            handle_idle(
+                                cmd.tag.clone(), &mut reader, &mut writer,
+                                &resp_codec, &state, &mut selected, tenant_id,
+                            ).await?;
+                            "ok"
+                        };
+                        IMAP_COMMANDS_TOTAL.with_label_values(&["IDLE", outcome]).inc();
+                        buf.clear();
+                        break 'decode;
+                    }
 
                     let responses = dispatch(
                         &state, &cmd, &mut sess, &mut user_id, &mut tenant_id, &mut selected,
@@ -119,19 +139,19 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
                         return Ok(());
                     }
                 }
-                Err(CommandDecodeError::Incomplete) => break,
+                Err(CommandDecodeError::Incomplete) => break 'decode,
                 Err(CommandDecodeError::LiteralFound { length, .. }) => {
                     // Accept literal continuation
                     let cont = format!("+ Ready for {} bytes\r\n", length);
                     writer.write_all(cont.as_bytes()).await?;
                     // Keep reading — literal data will be appended to buf
-                    break;
+                    break 'decode;
                 }
                 Err(CommandDecodeError::Failed) => {
                     IMAP_SESSIONS_TOTAL.with_label_values(&["parse_error"]).inc();
                     writer.write_all(b"* BAD parse error\r\n").await?;
                     buf.clear();
-                    break;
+                    break 'decode;
                 }
             }
         }
@@ -214,7 +234,10 @@ async fn dispatch(
 // ─── Command handlers ───────────────────────────────────────────────────────
 
 fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
-    let caps = Vec1::try_from(vec![imap_codec::imap_types::response::Capability::Imap4Rev1]).unwrap();
+    let caps = Vec1::try_from(vec![
+        Capability::Imap4Rev1,
+        Capability::Idle,
+    ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
         ok_tagged(tag, None, "CAPABILITY completed"),
@@ -620,6 +643,62 @@ async fn cmd_close(
         *sess = SessionState::Authenticated;
     }
     vec![ok_tagged(tag, None, "CLOSE completed")]
+}
+
+/// IDLE RFC 2177: envia "+ idling", espera DONE do cliente.
+/// Enquanto aguarda, a cada 28s verifica se message_count mudou e envia
+/// * N EXISTS se houver novos emails — elimina o polling NOOP do cliente.
+/// DONE do cliente pode chegar em qualquer burst de leitura; aceita como
+/// prefixo case-insensitive (clientes enviam "DONE\r\n").
+async fn handle_idle(
+    tag:       Tag<'static>,
+    reader:    &mut tokio::net::tcp::OwnedReadHalf,
+    writer:    &mut tokio::net::tcp::OwnedWriteHalf,
+    resp_codec: &ResponseCodec,
+    state:     &AppState,
+    selected:  &mut Option<SelectedMailbox>,
+    tenant_id: Option<Uuid>,
+) -> anyhow::Result<()> {
+    writer.write_all(b"+ idling\r\n").await?;
+
+    let mut ibuf = [0u8; 32];
+    loop {
+        tokio::select! {
+            result = reader.read(&mut ibuf) => {
+                let n = result?;
+                if n == 0 { return Ok(()); }
+                // DONE pode chegar sozinho ou colado com o próximo comando.
+                // Basta detectar "done" no início do buffer recebido.
+                let chunk = std::str::from_utf8(&ibuf[..n]).unwrap_or("").trim();
+                if chunk.to_ascii_uppercase().starts_with("DONE") {
+                    let ok = ok_tagged(tag, None, "IDLE done");
+                    writer.write_all(&resp_codec.encode(&ok).dump()).await?;
+                    return Ok(());
+                }
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(28)) => {
+                if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
+                    let count: Option<i64> = sqlx::query_scalar(
+                        "SELECT message_count FROM mailboxes WHERE id = $1 AND tenant_id = $2",
+                    )
+                    .bind(sel.mailbox_id)
+                    .bind(tid)
+                    .fetch_optional(state.db())
+                    .await
+                    .ok()
+                    .flatten();
+                    if let Some(c) = count {
+                        let new_exists = c as u32;
+                        if new_exists != sel.exists {
+                            sel.exists = new_exists;
+                            let resp = Response::Data(Data::Exists(new_exists));
+                            writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Busca os bytes do corpo da mensagem a partir do body_path armazenado no DB.
