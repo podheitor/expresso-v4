@@ -14,8 +14,18 @@ use uuid::Uuid;
 use crate::api::context::RequestCtx;
 use crate::domain::{Contact, ContactRepo};
 use crate::events::ContactsEvent;
-use crate::error::Result;
+use crate::error::{ContactsError, Result};
 use crate::state::AppState;
+
+/// Cap pra vCard individual (create/update). 64 KiB cobre cartões com
+/// PHOTO base64 embutido (típico ~50 KiB). Acima disso é abuso —
+/// engasga storage, parser, e cada export.vcf concat downstream.
+pub const MAX_CONTACT_VCARD_BYTES: usize = 64 * 1024;
+
+/// Cap pra import em batch (multi-VCARD). Mais largo pra cobrir
+/// migração real de Outlook/Google Contacts (milhares de cartões
+/// num único upload).
+pub const MAX_IMPORT_VCF_BYTES: usize = 4 * 1024 * 1024;
 
 /// Gate: require OWNER/WRITE/ADMIN on the addressbook.
 async fn assert_can_write(
@@ -60,6 +70,7 @@ async fn create(
     Path(book_id): Path<Uuid>,
     raw: String,
 ) -> Result<Response> {
+    validate_vcard(&raw, MAX_CONTACT_VCARD_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).create(ctx.tenant_id, book_id, &raw).await?;
@@ -108,6 +119,7 @@ async fn update(
     _headers: HeaderMap,
     raw: String,
 ) -> Result<Response> {
+    validate_vcard(&raw, MAX_CONTACT_VCARD_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
     let c    = ContactRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
@@ -166,9 +178,7 @@ async fn import_vcf(
     raw: String,
 ) -> Result<Response> {
     use crate::domain::vcard;
-    if raw.trim().is_empty() {
-        return Err(crate::error::ContactsError::InvalidVCard("empty body".into()));
-    }
+    validate_vcard(&raw, MAX_IMPORT_VCF_BYTES)?;
     let blocks = vcard::split_vcards(&raw);
     if blocks.is_empty() {
         return Err(crate::error::ContactsError::InvalidVCard("no VCARD blocks found".into()));
@@ -193,4 +203,57 @@ async fn import_vcf(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap())
+}
+
+/// Gate aplicado em todos endpoints que aceitam vCard raw. Tamanho
+/// primeiro pra rejeitar abuso antes de tocar o parser. `empty body`
+/// já era rejeitado no import — agora unificado pros 3 endpoints.
+fn validate_vcard(raw: &str, max_bytes: usize) -> Result<()> {
+    if raw.trim().is_empty() {
+        return Err(ContactsError::InvalidVCard("empty body".into()));
+    }
+    if raw.len() > max_bytes {
+        return Err(ContactsError::InvalidVCard(format!(
+            "vcard payload too large: {} bytes (max {})",
+            raw.len(), max_bytes
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_empty() {
+        let err = format!("{:?}", validate_vcard("", MAX_CONTACT_VCARD_BYTES).unwrap_err());
+        assert!(err.contains("empty body"), "got: {err}");
+    }
+
+    #[test]
+    fn accepts_small_vcard() {
+        let s = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:abc\r\nFN:John\r\nEND:VCARD\r\n";
+        assert!(validate_vcard(s, MAX_CONTACT_VCARD_BYTES).is_ok());
+    }
+
+    #[test]
+    fn rejects_oversize_contact() {
+        let s = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
+        let err = format!("{:?}", validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).unwrap_err());
+        assert!(err.contains("too large"), "got: {err}");
+    }
+
+    #[test]
+    fn import_cap_higher_than_contact_cap() {
+        let s = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
+        assert!(validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).is_err());
+        assert!(validate_vcard(&s, MAX_IMPORT_VCF_BYTES).is_ok());
+    }
+
+    #[test]
+    fn boundary_contact_accepted() {
+        let s = "x".repeat(MAX_CONTACT_VCARD_BYTES);
+        assert!(validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).is_ok());
+    }
 }
