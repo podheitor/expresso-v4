@@ -26,6 +26,7 @@ use imap_codec::{
         },
         status::{StatusDataItem, StatusDataItemName},
         extensions::binary::LiteralOrLiteral8,
+        extensions::uidplus::{UidElement, UidSet},
         IntoStatic,
     },
 };
@@ -246,6 +247,12 @@ async fn dispatch(
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
             cmd_expunge(state, tag, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+        }
+        CommandBody::Copy { sequence_set, mailbox, uid, .. } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_ref().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
         }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
@@ -837,6 +844,140 @@ async fn cmd_store(
     }
 
     vec![ok_tagged(tag, None, "STORE completed")]
+}
+
+/// COPY / UID COPY — RFC 3501 §6.4.7 + RFC 4315 (UIDPLUS COPYUID).
+/// Duplicates messages from the selected mailbox into a destination folder,
+/// sharing the original body_path (S3 objects are immutable; no S3 copy needed).
+/// Returns COPYUID so UID-PUSH clients know the destination UIDs immediately.
+async fn cmd_copy(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    dst_mailbox: &ImapMailbox<'_>,
+    uid: bool,
+    sel: &SelectedMailbox,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let dst_name = mailbox_to_string(dst_mailbox);
+
+    // Query source messages — uid mode filters by UID range; seq mode uses
+    // ROW_NUMBER() CTE to map ordinal positions to rows.
+    let src_rows = if uid {
+        let (start, end) = sequence_range(sequence_set, u32::MAX);
+        sqlx::query(
+            "SELECT uid, flags, size_bytes, body_path \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
+             AND uid >= $3 AND uid <= $4 ORDER BY uid ASC",
+        )
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .bind(start as i64)
+        .bind(end as i64)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    } else {
+        let (start, end) = sequence_range(sequence_set, sel.exists);
+        sqlx::query(
+            "SELECT uid, flags, size_bytes, body_path FROM (\
+               SELECT uid, flags, size_bytes, body_path, \
+                      ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $4\
+             ) AS ordered WHERE seq >= $2 AND seq <= $3 ORDER BY seq ASC",
+        )
+        .bind(sel.mailbox_id)
+        .bind(start as i64)
+        .bind(end as i64)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    };
+
+    if src_rows.is_empty() {
+        return vec![ok_tagged(tag, None, "COPY completed")];
+    }
+
+    // Lock destination mailbox to serialise concurrent COPY/APPEND on same target.
+    let mut tx = match state.db().begin().await {
+        Ok(t) => t,
+        Err(_) => return vec![no_tagged(tag, "internal error")],
+    };
+
+    let dst_row: Option<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT id, uid_validity, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3 FOR UPDATE",
+    )
+    .bind(user_id)
+    .bind(&dst_name)
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .ok()
+    .flatten();
+
+    let (dst_mailbox_id, dst_uid_validity_raw, initial_next_uid) = match dst_row {
+        None => {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "mailbox not found")];
+        }
+        Some(r) => r,
+    };
+
+    let mut src_uids: Vec<NonZeroU32> = Vec::with_capacity(src_rows.len());
+    let mut dst_uids: Vec<NonZeroU32> = Vec::with_capacity(src_rows.len());
+
+    for (i, row) in src_rows.iter().enumerate() {
+        let src_uid_val: i64 = row.get("uid");
+        let dst_uid_val = initial_next_uid + i as i64;
+        let flags: Vec<String> = row.get("flags");
+        let size_bytes: i32 = row.get("size_bytes");
+        let body_path: String = row.get("body_path");
+
+        if sqlx::query(
+            "INSERT INTO messages (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+        )
+        .bind(Uuid::new_v4())
+        .bind(dst_mailbox_id)
+        .bind(tenant_id)
+        .bind(dst_uid_val)
+        .bind(&flags)
+        .bind(size_bytes)
+        .bind(&body_path)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "internal error")];
+        }
+
+        src_uids.push(NonZeroU32::new(src_uid_val as u32).unwrap_or(NonZeroU32::MIN));
+        dst_uids.push(NonZeroU32::new(dst_uid_val as u32).unwrap_or(NonZeroU32::MIN));
+    }
+
+    if tx.commit().await.is_err() {
+        return vec![no_tagged(tag, "internal error")];
+    }
+
+    let dst_uid_validity = NonZeroU32::new(dst_uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
+    vec![ok_tagged(
+        tag,
+        Some(Code::CopyUid {
+            uid_validity: dst_uid_validity,
+            source: build_uid_set(src_uids),
+            destination: build_uid_set(dst_uids),
+        }),
+        "COPY completed",
+    )]
+}
+
+fn build_uid_set(uids: Vec<NonZeroU32>) -> UidSet {
+    let elements: Vec<UidElement> = uids.into_iter().map(UidElement::Single).collect();
+    UidSet(Vec1::try_from(elements).expect("non-empty uid set"))
 }
 
 async fn cmd_expunge(
