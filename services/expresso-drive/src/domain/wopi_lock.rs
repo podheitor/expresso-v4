@@ -4,9 +4,18 @@
 //! RefreshLock to keep them alive. Expired locks are treated as absent
 //! by every read (no GC needed for correctness; a future periodic purge
 //! can clean up rows for ergonomics).
+//!
+//! Tenant scoping: cada método autenticado abre uma transação via
+//! `begin_tenant_tx` para que a policy de RLS de `drive_wopi_locks`
+//! filtre por `current_setting('app.tenant_id')`. As cláusulas
+//! `WHERE tenant_id = $1` permanecem como defense-in-depth. Em
+//! `acquire_or_refresh` e `unlock_and_relock`, a leitura do lock
+//! ativo no caminho de conflito reusa a mesma tx — assim o cliente
+//! recebe o `X-WOPI-Lock` consistente com o estado que bloqueou o
+//! upsert.
 
-use expresso_core::DbPool;
-use sqlx::FromRow;
+use expresso_core::{begin_tenant_tx, DbPool};
+use sqlx::{FromRow, Postgres, Transaction};
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
@@ -41,13 +50,9 @@ impl<'a> WopiLockRepo<'a> {
     /// Returns the lock row if present AND not expired. An expired lock is
     /// treated as absent (caller can overwrite it via `acquire`).
     pub async fn get_active(&self, tenant_id: Uuid, file_id: Uuid) -> Result<Option<WopiLock>> {
-        let sql = format!(
-            "SELECT {COLS} FROM drive_wopi_locks \
-             WHERE tenant_id = $1 AND file_id = $2 AND expires_at > now()"
-        );
-        let row: Option<WopiLock> = sqlx::query_as(&sql)
-            .bind(tenant_id).bind(file_id)
-            .fetch_optional(self.pool).await?;
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row = fetch_active(&mut tx, tenant_id, file_id).await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -62,6 +67,8 @@ impl<'a> WopiLockRepo<'a> {
         token:     &str,
         user_id:   Uuid,
     ) -> Result<AcquireOutcome> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+
         // Single-statement upsert: insert when absent or when active lock
         // belongs to the same token (refresh); reject when a different
         // active token already holds the file. ON CONFLICT branch covers
@@ -84,15 +91,19 @@ impl<'a> WopiLockRepo<'a> {
         );
         let row: Option<WopiLock> = sqlx::query_as(&sql)
             .bind(file_id).bind(tenant_id).bind(token).bind(user_id)
-            .fetch_optional(self.pool).await?;
-        match row {
-            Some(lock) => Ok(AcquireOutcome::Held(lock)),
+            .fetch_optional(&mut *tx).await?;
+        let outcome = match row {
+            Some(lock) => AcquireOutcome::Held(lock),
             None => {
-                // Different active lock blocked the upsert.
-                let existing = self.get_active(tenant_id, file_id).await?;
-                Ok(AcquireOutcome::Conflict(existing))
+                // Different active lock blocked the upsert. Read it within
+                // the same tx so the X-WOPI-Lock surfaced to the client
+                // matches the row that actually blocked us.
+                let existing = fetch_active(&mut tx, tenant_id, file_id).await?;
+                AcquireOutcome::Conflict(existing)
             }
-        }
+        };
+        tx.commit().await?;
+        Ok(outcome)
     }
 
     /// Atomic UnlockAndRelock: only succeeds when the active lock matches
@@ -105,6 +116,7 @@ impl<'a> WopiLockRepo<'a> {
         new_token: &str,
         user_id:   Uuid,
     ) -> Result<AcquireOutcome> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_wopi_locks \
                 SET lock_token  = $4, \
@@ -117,11 +129,16 @@ impl<'a> WopiLockRepo<'a> {
         );
         let row: Option<WopiLock> = sqlx::query_as(&sql)
             .bind(tenant_id).bind(file_id).bind(old_token).bind(new_token).bind(user_id)
-            .fetch_optional(self.pool).await?;
-        match row {
-            Some(lock) => Ok(AcquireOutcome::Held(lock)),
-            None => Ok(AcquireOutcome::Conflict(self.get_active(tenant_id, file_id).await?)),
-        }
+            .fetch_optional(&mut *tx).await?;
+        let outcome = match row {
+            Some(lock) => AcquireOutcome::Held(lock),
+            None => {
+                let existing = fetch_active(&mut tx, tenant_id, file_id).await?;
+                AcquireOutcome::Conflict(existing)
+            }
+        };
+        tx.commit().await?;
+        Ok(outcome)
     }
 
     /// Release a lock. Returns Ok(true) when removed, Ok(false) when the
@@ -132,15 +149,35 @@ impl<'a> WopiLockRepo<'a> {
         file_id:   Uuid,
         token:     &str,
     ) -> Result<bool> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query(
             "DELETE FROM drive_wopi_locks \
               WHERE tenant_id = $1 AND file_id = $2 \
                 AND lock_token = $3 AND expires_at > now()"
         )
         .bind(tenant_id).bind(file_id).bind(token)
-        .execute(self.pool).await?;
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(r.rows_affected() > 0)
     }
+}
+
+/// Internal: read the active lock using an existing transaction. Shared
+/// between `get_active` and the conflict-fallback paths so the client's
+/// `X-WOPI-Lock` value is consistent with the row that blocked the upsert.
+async fn fetch_active(
+    tx:        &mut Transaction<'_, Postgres>,
+    tenant_id: Uuid,
+    file_id:   Uuid,
+) -> Result<Option<WopiLock>> {
+    let sql = format!(
+        "SELECT {COLS} FROM drive_wopi_locks \
+         WHERE tenant_id = $1 AND file_id = $2 AND expires_at > now()"
+    );
+    let row: Option<WopiLock> = sqlx::query_as(&sql)
+        .bind(tenant_id).bind(file_id)
+        .fetch_optional(&mut **tx).await?;
+    Ok(row)
 }
 
 /// Result of an acquire/refresh attempt.
