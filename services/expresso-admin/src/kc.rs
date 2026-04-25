@@ -3,8 +3,18 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use serde_json::json;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use crate::templates::{KcRealm, KcUser};
+
+/// Skew defensivo subtraído do `expires_in` antes de declarar token válido.
+/// 30s cobre clock-skew + RTT pra próximas chamadas downstream.
+const TOKEN_REFRESH_SKEW: Duration = Duration::from_secs(30);
+
+/// Hard cap no cache mesmo se KC mandar `expires_in` enorme. KC default é
+/// 60s (token de admin tem TTL curto), mas defendemos contra config abusiva.
+const TOKEN_MAX_TTL: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone)]
 pub struct KcConfig {
@@ -26,11 +36,19 @@ impl KcConfig {
 }
 
 #[derive(Deserialize)]
-struct TokenResp { access_token: String }
+struct TokenResp {
+    access_token: String,
+    #[serde(default)]
+    expires_in:   u64,
+}
+
+#[derive(Clone)]
+struct CachedToken { value: String, expires_at: Instant }
 
 pub struct KcClient {
-    cfg: KcConfig,
-    http: reqwest::Client,
+    cfg:   KcConfig,
+    http:  reqwest::Client,
+    cache: Mutex<Option<CachedToken>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -54,10 +72,21 @@ pub struct UpdateUser {
 
 impl KcClient {
     pub fn new(cfg: KcConfig) -> Self {
-        Self { cfg, http: reqwest::Client::new() }
+        Self { cfg, http: reqwest::Client::new(), cache: Mutex::new(None) }
     }
 
+    /// Token cacheado em memória — KC default `expires_in`=60s no admin-cli.
+    /// Sem cache, cada page-load do painel disparava 5+ password-grants.
+    /// Reduz: (a) latency, (b) KC load, (c) admin password no fio.
     async fn token(&self) -> Result<String> {
+        let mut guard = self.cache.lock().await;
+        let now = Instant::now();
+        if let Some(c) = guard.as_ref() {
+            if c.expires_at > now {
+                return Ok(c.value.clone());
+            }
+        }
+
         let url = format!("{}/realms/master/protocol/openid-connect/token", self.cfg.base_url);
         let r: TokenResp = self.http.post(&url)
             .form(&[
@@ -69,7 +98,18 @@ impl KcClient {
             .send().await.context("kc token req")?
             .error_for_status().context("kc token status")?
             .json().await.context("kc token json")?;
-        Ok(r.access_token)
+
+        let ttl = Duration::from_secs(r.expires_in.max(1)).min(TOKEN_MAX_TTL);
+        let expires_at = now + ttl.saturating_sub(TOKEN_REFRESH_SKEW);
+        let value = r.access_token;
+        *guard = Some(CachedToken { value: value.clone(), expires_at });
+        Ok(value)
+    }
+
+    /// Invalida cache — usado quando uma request bate 401/403 indicando
+    /// token expirou antes do nosso skew prever. Próxima chamada faz refresh.
+    pub async fn invalidate_token(&self) {
+        *self.cache.lock().await = None;
     }
 
     pub async fn users(&self) -> Result<Vec<KcUser>> {
