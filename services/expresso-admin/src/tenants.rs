@@ -174,19 +174,46 @@ pub async fn edit_action(
     Ok(Redirect::to("/tenants").into_response())
 }
 
+/// Confirmação anti-fat-finger pra delete de tenant. O super-admin precisa
+/// re-digitar o slug do tenant — POST sem o campo (ou com slug errado) é
+/// rejeitado antes de tocar a tabela. Comparação byte-a-byte case-sensitive
+/// já que slugs são lowercase ASCII por construção (`valid_slug`).
+#[derive(Deserialize)]
+pub struct DeleteForm { pub confirm_slug: String }
+
 pub async fn delete_action(
     State(st): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<uuid::Uuid>,
+    Form(f): Form<DeleteForm>,
 ) -> Result<Response, AdminError> {
     if let Some(r) = auth::require_super_admin(&st, &headers).await { return Ok(r); }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+
+    let actual_slug: Option<(String,)> = sqlx::query_as(
+        "SELECT slug FROM tenants WHERE id = $1"
+    ).bind(id).fetch_optional(pool).await.map_err(|e| AdminError(e.into()))?;
+
+    let Some((slug,)) = actual_slug else {
+        return Err(AdminError(anyhow::anyhow!("tenant not found")));
+    };
+    if f.confirm_slug.trim() != slug {
+        audit::record(
+            &st, &headers, &axum::http::Method::POST, &format!("/tenants/{id}/delete"),
+            "admin.tenant.delete.rejected", Some("tenant"), Some(id.to_string()), Some(400),
+            serde_json::json!({ "reason": "confirm_slug_mismatch" }),
+        ).await;
+        return Err(AdminError(anyhow::anyhow!(
+            "confirmation failed: re-type tenant slug exactly to confirm delete"
+        )));
+    }
+
     sqlx::query("DELETE FROM tenants WHERE id = $1")
         .bind(id).execute(pool).await.map_err(|e| AdminError(e.into()))?;
     audit::record(
         &st, &headers, &axum::http::Method::POST, &format!("/tenants/{id}/delete"),
         "admin.tenant.delete", Some("tenant"), Some(id.to_string()), Some(302),
-        serde_json::json!({}),
+        serde_json::json!({ "slug": slug }),
     ).await;
     Ok(Redirect::to("/tenants").into_response())
 }

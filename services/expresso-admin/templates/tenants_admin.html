@@ -27,7 +27,8 @@
         <a class="btn small" href="/tenants/{{ r.id }}/edit">editar</a>
         <a class="btn small" href="/tenants/{{ r.id }}/config">config</a>
         <form method="post" action="/tenants/{{ r.id }}/delete" style="display:inline"
-              onsubmit="return confirm('Excluir tenant {{ r.name }}? Usuários e TODOS os dados do tenant serão removidos em cascata. Confirma?');">
+              onsubmit="var s = prompt('Para excluir, redigite o slug do tenant ({{ r.slug }}). Usuários e TODOS os dados serão removidos em cascata.'); if (s === null) return false; this.confirm_slug.value = s; return true;">
+          <input type="hidden" name="confirm_slug" value="">
           <button class="btn small danger" type="submit">excluir</button>
         </form>
       </td>
