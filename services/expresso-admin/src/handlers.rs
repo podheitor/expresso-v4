@@ -2,13 +2,14 @@
 
 use axum::{
     extract::{Path, State},
-    response::{IntoResponse, Redirect},
+    response::{IntoResponse, Redirect, Response},
     Form,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::{
+    auth,
     kc::{KcClient, NewUser, UpdateUser},
     templates::{DashboardTpl, RealmTpl, ServiceRow, UserFormTpl, UserRow, UsersTpl},
     AdminError, AppState,
@@ -109,7 +110,8 @@ pub async fn user_create(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Form(f): Form<UserCreateForm>,
-) -> Result<Redirect, AdminError> {
+) -> Result<Response, AdminError> {
+    if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
     let nu = NewUser {
         username:   f.username.trim().to_string(),
         email:      f.email.trim().to_string(),
@@ -126,7 +128,7 @@ pub async fn user_create(
         serde_json::json!({ "username": nu.username, "email": nu.email, "enabled": nu.enabled }),
     ).await;
     let _ = created;
-    Ok(Redirect::to("/users"))
+    Ok(Redirect::to("/users").into_response())
 }
 
 #[derive(Deserialize)]
@@ -147,7 +149,8 @@ pub async fn user_update(
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
     Form(f): Form<UserUpdateForm>,
-) -> Result<Redirect, AdminError> {
+) -> Result<Response, AdminError> {
+    if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
     let patch = UpdateUser {
         email:      Some(f.email.trim().to_string()),
         first_name: Some(f.first_name.trim().to_string()),
@@ -164,49 +167,52 @@ pub async fn user_update(
         "admin.user.update", Some("user"), Some(id.clone()), Some(302),
         serde_json::json!({ "email": f.email, "enabled": f.enabled.is_some(), "password_changed": pw_changed }),
     ).await;
-    Ok(Redirect::to("/users"))
+    Ok(Redirect::to("/users").into_response())
 }
 
 pub async fn user_delete(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
-) -> Result<Redirect, AdminError> {
+) -> Result<Response, AdminError> {
+    if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
     st.kc.delete_user(&id).await?;
     crate::audit::record(
         &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/delete"),
         "admin.user.delete", Some("user"), Some(id.clone()), Some(302),
         serde_json::json!({}),
     ).await;
-    Ok(Redirect::to("/users"))
+    Ok(Redirect::to("/users").into_response())
 }
 
 pub async fn user_totp_enroll(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
-) -> Result<Redirect, AdminError> {
+) -> Result<Response, AdminError> {
+    if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
     st.kc.enroll_totp(&id).await?;
     crate::audit::record(
         &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/totp/enroll"),
         "admin.user.totp.enroll", Some("user"), Some(id.clone()), Some(302),
         serde_json::json!({}),
     ).await;
-    Ok(Redirect::to("/users"))
+    Ok(Redirect::to("/users").into_response())
 }
 
 pub async fn user_totp_reset(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
-) -> Result<Redirect, AdminError> {
+) -> Result<Response, AdminError> {
+    if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
     let removed = st.kc.reset_totp(&id).await?;
     crate::audit::record(
         &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/totp/reset"),
         "admin.user.totp.reset", Some("user"), Some(id.clone()), Some(302),
         serde_json::json!({"removed": removed}),
     ).await;
-    Ok(Redirect::to("/users"))
+    Ok(Redirect::to("/users").into_response())
 }
 
 /// GET /users/totp-status — coverage report for ops.
