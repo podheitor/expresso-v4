@@ -16,7 +16,7 @@ use imap_codec::{
     encode::Encoder,
     imap_types::{
         command::{Command, CommandBody},
-        core::{Atom, AString, IString, NString, Tag, Text, Vec1},
+        core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem},
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm},
         mailbox::Mailbox as ImapMailbox,
@@ -405,7 +405,7 @@ async fn cmd_fetch(
 
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-         uid, subject, from_addr, from_name, date, flags, size_bytes, received_at \
+         uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $4 \
          ORDER BY received_at ASC OFFSET $2 LIMIT $3",
     )
@@ -422,6 +422,7 @@ async fn cmd_fetch(
     let w_size         = wants(macro_or, "RFC822.SIZE");
     let w_uid          = wants(macro_or, "UID");
     let w_internaldate = wants(macro_or, "INTERNALDATE");
+    let w_body         = wants(macro_or, "BODYEXT");
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -466,6 +467,23 @@ async fn cmd_fetch(
                 let fixed: ChronoDateTime<FixedOffset> = t.with_timezone(&FixedOffset::east_opt(0).unwrap());
                 if let Ok(imap_dt) = ImapDateTime::try_from(fixed) {
                     items.push(MessageDataItem::InternalDate(imap_dt));
+                }
+            }
+        }
+        if w_body {
+            // BODY[] — busca o .eml completo do body_path e retorna como
+            // BODY[]{size}\r\n...bytes... via NString(Literal). section=None
+            // significa BODY[] (mensagem inteira); origin=None = sem partial.
+            let body_path: Option<String> = row.try_get("body_path").ok();
+            if let Some(path) = body_path {
+                let raw = fetch_body_bytes(state, &path).await;
+                if let Some(bytes) = raw {
+                    let data = NString::from(Literal::unvalidated(bytes));
+                    items.push(MessageDataItem::BodyExt {
+                        section: None,
+                        origin:  None,
+                        data,
+                    });
                 }
             }
         }
@@ -602,6 +620,21 @@ async fn cmd_close(
         *sess = SessionState::Authenticated;
     }
     vec![ok_tagged(tag, None, "CLOSE completed")]
+}
+
+/// Busca os bytes do corpo da mensagem a partir do body_path armazenado no DB.
+/// - `s3://bucket/key` → lê via ObjectStore (MinIO/S3)
+/// - `/path/to/file`   → lê via sistema de arquivos (dev/fallback)
+/// Retorna None silenciosamente se o store não estiver configurado ou a leitura falhar.
+async fn fetch_body_bytes(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
+    if let Some(idx) = body_path.strip_prefix("s3://").and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1)) {
+        let key = &body_path[idx..];
+        state.store()?.get(key).await.ok()
+    } else if body_path.starts_with('/') {
+        tokio::fs::read(body_path).await.ok()
+    } else {
+        None
+    }
 }
 
 // ─── Response helpers ────────────────────────────────────────────────────────
