@@ -170,17 +170,37 @@ pub async fn user_update(
     Ok(Redirect::to("/users").into_response())
 }
 
+/// Confirmação anti-fat-finger pra delete de user. O super-admin precisa
+/// re-digitar o username do user — POST sem o campo (ou username errado) é
+/// rejeitado antes de tocar o KC. Mesmo padrão do tenant delete (#119).
+#[derive(Deserialize)]
+pub struct UserDeleteForm { pub confirm_username: String }
+
 pub async fn user_delete(
     State(st): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
     Path(id): Path<String>,
+    Form(f): Form<UserDeleteForm>,
 ) -> Result<Response, AdminError> {
     if let Some(deny) = auth::require_super_admin(&st, &headers).await { return Ok(deny); }
+
+    let user = st.kc.user(&id).await?;
+    if f.confirm_username.trim() != user.username {
+        crate::audit::record(
+            &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/delete"),
+            "admin.user.delete.rejected", Some("user"), Some(id.clone()), Some(400),
+            serde_json::json!({ "reason": "confirm_username_mismatch" }),
+        ).await;
+        return Err(AdminError(anyhow::anyhow!(
+            "confirmation failed: re-type the username exactly to confirm delete"
+        )));
+    }
+
     st.kc.delete_user(&id).await?;
     crate::audit::record(
         &st, &headers, &axum::http::Method::POST, &format!("/users/{id}/delete"),
         "admin.user.delete", Some("user"), Some(id.clone()), Some(302),
-        serde_json::json!({}),
+        serde_json::json!({ "username": user.username }),
     ).await;
     Ok(Redirect::to("/users").into_response())
 }

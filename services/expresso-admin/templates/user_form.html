@@ -30,7 +30,9 @@
   </div>
 </form>
 {% match user_id %}{% when Some with (id) %}
-<form method="post" action="/users/{{ id }}/delete" class="form danger-zone" onsubmit="return confirm('Apagar usuário?');">
+<form method="post" action="/users/{{ id }}/delete" class="form danger-zone"
+      onsubmit="var u = prompt('Para excluir, redigite o username ({{ username }}). Mailbox, calendars e contatos do usuário serão removidos em cascata.'); if (u === null) return false; this.confirm_username.value = u; return true;">
+  <input type="hidden" name="confirm_username" value="">
   <button type="submit" class="btn danger">Apagar usuário</button>
 </form>
 {% when None %}{% endmatch %}
