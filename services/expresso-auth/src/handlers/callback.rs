@@ -131,9 +131,17 @@ pub async fn callback(
             .unwrap_or(false);
 
     if json_mode {
+        // Mesma defesa do ramo HTML: nunca devolve um redirect arbitrário,
+        // pois o cliente SPA tipicamente faz `window.location = …` sem
+        // checar de novo. Mantém o campo Some/None pra preservar o shape.
+        let safe = pending
+            .post_login_redirect
+            .as_deref()
+            .filter(|s| is_safe_local_redirect(s))
+            .map(str::to_string);
         Ok(Json(CallbackResponse {
             tokens,
-            post_login_redirect: pending.post_login_redirect,
+            post_login_redirect: safe,
         }).into_response())
     } else {
         let secure = std::env::var("AUTH_RP__COOKIE_SECURE").ok().as_deref() == Some("1");
@@ -156,7 +164,17 @@ pub async fn callback(
             ))
         } else { None };
 
-        let target = pending.post_login_redirect.unwrap_or_else(|| "/".to_string());
+        // post_login_redirect vem de `?redirect_uri=...` no /auth/login —
+        // entrada do usuário, e o atacante pode usar /auth/login?redirect_uri=
+        // https://evil.com pra phishing pós-login (vítima logou de verdade,
+        // a URL final parece confiável). Só aceitamos caminhos relativos
+        // mesma-origem; qualquer outra coisa cai pra `/`.
+        let target = pending
+            .post_login_redirect
+            .as_deref()
+            .filter(|s| is_safe_local_redirect(s))
+            .unwrap_or("/")
+            .to_string();
         let mut resp = Redirect::to(&target).into_response();
         resp.headers_mut().append(SET_COOKIE, at_cookie.parse().unwrap());
         if let Some(rt) = rt_cookie {
@@ -164,5 +182,63 @@ pub async fn callback(
         }
         *resp.status_mut() = StatusCode::SEE_OTHER;
         Ok(resp)
+    }
+}
+
+/// True quando `s` é um caminho relativo seguro (mesma origem) — i.e.
+/// começa com `/`, não é protocol-relative (`//host`), não usa `\`
+/// (algumas implementações normalizam pra `/` e podem virar `\\host`),
+/// e não tem CR/LF (header injection).
+fn is_safe_local_redirect(s: &str) -> bool {
+    if !s.starts_with('/') { return false; }
+    // Protocol-relative: `//evil.com/path` — Redirect::to em axum
+    // deixaria o browser pular pra outro host.
+    if s.starts_with("//") || s.starts_with("/\\") { return false; }
+    // Backslash → alguns browsers (IE/edge legados) tratam como `/`,
+    // então `/\\evil.com` viraria `//evil.com`. Bloqueia tudo com `\`.
+    if s.contains('\\') { return false; }
+    // Newlines em Location: header → injeção.
+    if s.contains('\r') || s.contains('\n') { return false; }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_safe_local_redirect;
+
+    #[test]
+    fn accepts_relative_paths() {
+        assert!(is_safe_local_redirect("/"));
+        assert!(is_safe_local_redirect("/inbox"));
+        assert!(is_safe_local_redirect("/inbox?folder=42"));
+        assert!(is_safe_local_redirect("/path/to/page#anchor"));
+    }
+
+    #[test]
+    fn rejects_absolute_urls() {
+        assert!(!is_safe_local_redirect("https://evil.com/x"));
+        assert!(!is_safe_local_redirect("http://evil.com"));
+        assert!(!is_safe_local_redirect("javascript:alert(1)"));
+        assert!(!is_safe_local_redirect("data:text/html,<x>"));
+    }
+
+    #[test]
+    fn rejects_protocol_relative_and_backslash_tricks() {
+        assert!(!is_safe_local_redirect("//evil.com/x"));
+        assert!(!is_safe_local_redirect("/\\evil.com"));
+        assert!(!is_safe_local_redirect("/path\\with-bs"));
+    }
+
+    #[test]
+    fn rejects_crlf_injection() {
+        assert!(!is_safe_local_redirect("/path\r\nLocation: https://evil"));
+        assert!(!is_safe_local_redirect("/path\nfoo"));
+    }
+
+    #[test]
+    fn rejects_empty_and_relative_no_slash() {
+        assert!(!is_safe_local_redirect(""));
+        assert!(!is_safe_local_redirect("inbox"));
+        assert!(!is_safe_local_redirect("./inbox"));
     }
 }
