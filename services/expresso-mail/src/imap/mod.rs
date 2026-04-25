@@ -5,6 +5,7 @@
 //!  TcpListener → per-connection task → ImapSession state machine
 //!  imap-codec handles framing / serialization; imap-types handles data structures.
 
+mod lockout;
 mod metrics;
 mod session;
 

@@ -33,10 +33,22 @@ use tokio::net::TcpStream;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
+use std::sync::OnceLock;
+
 use crate::state::AppState;
+use crate::imap::lockout::LoginLockout;
 use crate::imap::metrics::{
     command_label, IMAP_COMMANDS_TOTAL, IMAP_LOGINS_TOTAL, IMAP_SESSIONS_TOTAL,
 };
+
+/// Singleton de lockout por-username — cross-connection (defesa contra
+/// brute-force distribuído no mesmo username vindo de N clientes).
+/// Defaults: 10 falhas/60s → 5min lockout (mesmo perfil do #105).
+static LOGIN_LOCKOUT: OnceLock<LoginLockout> = OnceLock::new();
+
+fn login_lockout() -> &'static LoginLockout {
+    LOGIN_LOCKOUT.get_or_init(LoginLockout::default)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionState {
@@ -226,6 +238,17 @@ async fn cmd_login(
     user_id: &mut Option<Uuid>,
     tenant_id: &mut Option<Uuid>,
 ) -> Vec<Response<'static>> {
+    let lock = login_lockout();
+    if lock.is_locked_out(user) {
+        // Trata como falha sem bater no DB — economiza bcrypt round e
+        // garante que rajada de tentativas pós-lockout não custa nada.
+        // Retornamos a mesma mensagem genérica do path normal pra não
+        // expor pro atacante que ele bateu no lockout vs. senha errada.
+        IMAP_LOGINS_TOTAL.with_label_values(&["locked_out"]).inc();
+        warn!(user = %user, "IMAP login refused (locked out)");
+        return vec![no_tagged(tag, "LOGIN failed")];
+    }
+
     let row: Option<(Uuid, Uuid)> = sqlx::query_as(
         "SELECT id, tenant_id FROM users WHERE lower(email) = lower($1) AND password_hash = crypt($2, password_hash) LIMIT 1",
     )
@@ -241,10 +264,12 @@ async fn cmd_login(
             *sess = SessionState::Authenticated;
             *user_id = Some(uid);
             *tenant_id = Some(tid);
+            lock.clear_failures(user);
             IMAP_LOGINS_TOTAL.with_label_values(&["success"]).inc();
             vec![ok_tagged(tag, None, "LOGIN completed")]
         }
         None => {
+            lock.record_failure(user);
             IMAP_LOGINS_TOTAL.with_label_values(&["failure"]).inc();
             warn!(user = %user, "IMAP login failed");
             vec![no_tagged(tag, "LOGIN failed")]
