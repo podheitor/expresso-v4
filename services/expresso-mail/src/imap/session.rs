@@ -254,6 +254,12 @@ async fn dispatch(
             }
             cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_ref().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
         }
+        CommandBody::ExpungeUid { sequence_set } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_expunge_uid(state, tag, sequence_set, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+        }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
             vec![bad_tagged(tag, &msg)]
@@ -996,6 +1002,33 @@ async fn cmd_expunge(
     .await;
 
     vec![ok_tagged(tag, None, "EXPUNGE completed")]
+}
+
+/// UID EXPUNGE — RFC 4315 §4.4: expunge only the \Deleted messages whose
+/// UID falls within the given set. Required when UIDPLUS is advertised.
+/// Sequence numbers in sequence_set are UID values; `*` = u32::MAX (all).
+async fn cmd_expunge_uid(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    sel: &SelectedMailbox,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let (start, end) = sequence_range(sequence_set, u32::MAX);
+    let _ = sqlx::query(
+        "DELETE FROM messages \
+         WHERE mailbox_id = $1 AND tenant_id = $2 \
+           AND '\\Deleted' = ANY(flags) \
+           AND uid >= $3 AND uid <= $4",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .bind(start as i64)
+    .bind(end as i64)
+    .execute(state.db())
+    .await;
+
+    vec![ok_tagged(tag, None, "UID EXPUNGE completed")]
 }
 
 /// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover
