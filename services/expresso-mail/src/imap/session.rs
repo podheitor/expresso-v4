@@ -18,7 +18,7 @@ use imap_codec::{
         command::{Command, CommandBody},
         core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
-        flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm},
+        flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
         mailbox::Mailbox as ImapMailbox,
         response::{
             Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
@@ -256,7 +256,7 @@ async fn dispatch(
         CommandBody::Store {
             sequence_set,
             kind,
-            response: _,
+            response,
             flags,
             uid,
             ..
@@ -264,7 +264,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_store(state, tag, sequence_set, kind, flags, *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_store(state, tag, sequence_set, kind, response, flags, *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Close => cmd_close(state, tag, sess, selected, *tenant_id).await,
         CommandBody::Expunge => {
@@ -1028,11 +1028,15 @@ async fn cmd_fetch(
     out
 }
 
+/// STORE / UID STORE — RFC 3501 §6.4.6.
+/// Updates flags on matching messages. Returns untagged `* N FETCH (FLAGS ...)`
+/// per message unless the command used the `.SILENT` suffix (StoreResponse::Silent).
 async fn cmd_store(
     state: &AppState,
     tag: Tag<'static>,
     sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
     kind: &imap_codec::imap_types::flag::StoreType,
+    response: &StoreResponse,
     flags: &[Flag<'_>],
     uid: bool,
     sel: &SelectedMailbox,
@@ -1040,43 +1044,39 @@ async fn cmd_store(
 ) -> Vec<Response<'static>> {
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
 
-    if uid {
-        // UID STORE: sequence_set holds UID values. uid_clause() handles multi-range
-        // (e.g. UID STORE 100,200,300 +FLAGS \Seen) correctly.
-        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
-        let sql = match kind {
+    // Compute the WHERE clause once; reused for both UPDATE and post-SELECT.
+    let range_clause: String = if uid {
+        uid_clause(&sequence_ranges(sequence_set, u32::MAX))
+    } else {
+        seq_clause(&sequence_ranges(sequence_set, sel.exists))
+    };
+
+    // Run the UPDATE.
+    let update_sql: String = if uid {
+        match kind {
             imap_codec::imap_types::flag::StoreType::Add => format!(
                 "UPDATE messages SET flags = array_cat(flags, $1::text[]) \
-                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({range_clause})"
             ),
             imap_codec::imap_types::flag::StoreType::Remove => format!(
                 "UPDATE messages \
                  SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
-                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({range_clause})"
             ),
             imap_codec::imap_types::flag::StoreType::Replace => format!(
                 "UPDATE messages SET flags = $1::text[] \
-                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({range_clause})"
             ),
-        };
-        let _ = sqlx::query(&sql)
-            .bind(&flag_strs)
-            .bind(sel.mailbox_id)
-            .bind(tenant_id)
-            .execute(state.db())
-            .await;
+        }
     } else {
-        // STORE: sequence_set holds ordinal positions (1-based). seq_clause()
-        // handles multi-range (e.g. STORE 1:3,5,7:9 +FLAGS \Seen).
-        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
-        let sql = match kind {
+        match kind {
             imap_codec::imap_types::flag::StoreType::Add => format!(
                 "WITH ordered AS (\
                    SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
                    FROM messages WHERE mailbox_id = $2 AND tenant_id = $3\
                  ) \
                  UPDATE messages SET flags = array_cat(flags, $1::text[]) \
-                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+                 WHERE id IN (SELECT id FROM ordered WHERE ({range_clause}))"
             ),
             imap_codec::imap_types::flag::StoreType::Remove => format!(
                 "WITH ordered AS (\
@@ -1085,7 +1085,7 @@ async fn cmd_store(
                  ) \
                  UPDATE messages \
                  SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
-                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+                 WHERE id IN (SELECT id FROM ordered WHERE ({range_clause}))"
             ),
             imap_codec::imap_types::flag::StoreType::Replace => format!(
                 "WITH ordered AS (\
@@ -1093,18 +1093,58 @@ async fn cmd_store(
                    FROM messages WHERE mailbox_id = $2 AND tenant_id = $3\
                  ) \
                  UPDATE messages SET flags = $1::text[] \
-                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+                 WHERE id IN (SELECT id FROM ordered WHERE ({range_clause}))"
             ),
+        }
+    };
+    let _ = sqlx::query(&update_sql)
+        .bind(&flag_strs)
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .execute(state.db())
+        .await;
+
+    // RFC 3501 §6.4.6: unless .SILENT, return * N FETCH (FLAGS ...) for each row.
+    let mut out: Vec<Response<'static>> = Vec::new();
+    if matches!(*response, StoreResponse::Answer) {
+        // Re-SELECT the affected rows to read back the post-update flag state.
+        let select_sql = if uid {
+            format!(
+                "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+                 FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({range_clause}) \
+                 ORDER BY received_at ASC"
+            )
+        } else {
+            format!(
+                "SELECT seq, flags FROM (\
+                   SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+                   FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+                 ) sub WHERE ({range_clause}) ORDER BY seq ASC"
+            )
         };
-        let _ = sqlx::query(&sql)
-            .bind(&flag_strs)
+        let rows = sqlx::query(&select_sql)
             .bind(sel.mailbox_id)
             .bind(tenant_id)
-            .execute(state.db())
-            .await;
+            .fetch_all(state.db())
+            .await
+            .unwrap_or_default();
+
+        for row in &rows {
+            let seq_num: i64 = row.get("seq");
+            let seq = NonZeroU32::new(seq_num as u32).unwrap_or(NonZeroU32::MIN);
+            let flags_val: Vec<String> = row.get("flags");
+            let flag_items: Vec<FlagFetch<'static>> = flags_val
+                .iter()
+                .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
+                .collect();
+            if let Ok(items) = Vec1::try_from(vec![MessageDataItem::Flags(flag_items)]) {
+                out.push(Response::Data(Data::Fetch { seq, items }));
+            }
+        }
     }
 
-    vec![ok_tagged(tag, None, "STORE completed")]
+    out.push(ok_tagged(tag, None, "STORE completed"));
+    out
 }
 
 /// COPY / UID COPY — RFC 3501 §6.4.7 + RFC 4315 (UIDPLUS COPYUID).
