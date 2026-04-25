@@ -1153,12 +1153,31 @@ fn build_uid_set(uids: Vec<NonZeroU32>) -> UidSet {
     UidSet(Vec1::try_from(elements).expect("non-empty uid set"))
 }
 
+/// EXPUNGE — RFC 3501 §6.4.3.
+/// For each \Deleted message, emits `* N EXPUNGE` where N is the
+/// current sequence number of that message (accounting for preceding
+/// EXPUNGEs in the same command which shift later numbers down by 1).
+/// After all untagged responses the messages are physically deleted.
 async fn cmd_expunge(
     state: &AppState,
     tag: Tag<'static>,
     sel: &SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
+    // Fetch seq positions of \Deleted messages (within the full mailbox).
+    let seq_rows = sqlx::query(
+        "SELECT seq FROM (\
+           SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+           FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+         ) sub \
+         WHERE '\\Deleted' = ANY(flags) ORDER BY seq ASC",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
     let _ = sqlx::query(
         "DELETE FROM messages \
          WHERE mailbox_id = $1 AND tenant_id = $2 AND '\\Deleted' = ANY(flags)",
@@ -1168,12 +1187,24 @@ async fn cmd_expunge(
     .execute(state.db())
     .await;
 
-    vec![ok_tagged(tag, None, "EXPUNGE completed")]
+    // RFC 3501 §7.4.1: each expunge shifts subsequent sequence numbers down by 1.
+    // The i-th deleted message (0-indexed) had original seq S; by the time
+    // that response is sent, i earlier messages are already gone, so emit S-i.
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 1);
+    for (i, row) in seq_rows.iter().enumerate() {
+        let orig: i64 = row.get("seq");
+        let adj = (orig as usize).saturating_sub(i);
+        if let Some(n) = NonZeroU32::new(adj as u32) {
+            out.push(Response::Data(Data::Expunge(n)));
+        }
+    }
+    out.push(ok_tagged(tag, None, "EXPUNGE completed"));
+    out
 }
 
 /// UID EXPUNGE — RFC 4315 §4.4: expunge only the \Deleted messages whose
 /// UID falls within the given set. Required when UIDPLUS is advertised.
-/// Sequence numbers in sequence_set are UID values; `*` = u32::MAX (all).
+/// Emits `* N EXPUNGE` per message as RFC 3501 §7.4.1 requires.
 async fn cmd_expunge_uid(
     state: &AppState,
     tag: Tag<'static>,
@@ -1182,6 +1213,22 @@ async fn cmd_expunge_uid(
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let (start, end) = sequence_range(sequence_set, u32::MAX);
+
+    let seq_rows = sqlx::query(
+        "SELECT seq FROM (\
+           SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags \
+           FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+         ) sub \
+         WHERE '\\Deleted' = ANY(flags) AND uid >= $3 AND uid <= $4 ORDER BY seq ASC",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .bind(start as i64)
+    .bind(end as i64)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
     let _ = sqlx::query(
         "DELETE FROM messages \
          WHERE mailbox_id = $1 AND tenant_id = $2 \
@@ -1195,7 +1242,16 @@ async fn cmd_expunge_uid(
     .execute(state.db())
     .await;
 
-    vec![ok_tagged(tag, None, "UID EXPUNGE completed")]
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 1);
+    for (i, row) in seq_rows.iter().enumerate() {
+        let orig: i64 = row.get("seq");
+        let adj = (orig as usize).saturating_sub(i);
+        if let Some(n) = NonZeroU32::new(adj as u32) {
+            out.push(Response::Data(Data::Expunge(n)));
+        }
+    }
+    out.push(ok_tagged(tag, None, "UID EXPUNGE completed"));
+    out
 }
 
 /// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover
