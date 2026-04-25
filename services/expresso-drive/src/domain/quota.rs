@@ -1,6 +1,12 @@
 //! Drive per-tenant quota.
+//!
+//! Tenant scoping: `get` abre transação via `begin_tenant_tx` para que a
+//! policy RLS de `drive_quotas` filtre por `current_setting('app.tenant_id')`
+//! e os dois SELECTs (linha de quota + função `drive_quota_used`) rodem
+//! contra um snapshot consistente. `WHERE tenant_id = $1` permanece como
+//! defense-in-depth.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -29,17 +35,19 @@ impl<'a> QuotaRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
 
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(
             "SELECT max_bytes FROM drive_quotas WHERE tenant_id = $1"
         )
         .bind(tenant_id)
-        .fetch_optional(self.pool).await?
+        .fetch_optional(&mut *tx).await?
         .unwrap_or((None,));
         let (used,): (Option<i64>,) = sqlx::query_as(
             "SELECT drive_quota_used($1)"
         )
         .bind(tenant_id)
-        .fetch_one(self.pool).await?;
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
         Ok(Quota {
             max_bytes:  max.unwrap_or(DEFAULT_QUOTA_BYTES),
             used_bytes: used.unwrap_or(0),
