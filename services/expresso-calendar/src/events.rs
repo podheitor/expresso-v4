@@ -57,6 +57,12 @@ pub enum Event {
         event_id:       Uuid,
         proposal_id:    Uuid,
         attendee_email: String,
+        /// Free-form rationale parsed from the iCal COMMENT property
+        /// (RFC 5546 §3.2.7 + RFC 5545 §3.8.1.4). Skipped from the JSON
+        /// envelope when absent so older SSE/JetStream consumers that
+        /// don't know the field stay forward-compatible.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        comment:        Option<String>,
     },
 }
 

@@ -268,6 +268,7 @@ async fn handle_counter(
                     event_id:       ev.id,
                     proposal_id:    p.id,
                     attendee_email: a.email.clone(),
+                    comment:        comment.clone(),
                 });
             }
             Err(e) => tracing::warn!(error=%e, uid=%parsed.uid, "COUNTER persist failed (non-fatal)"),
