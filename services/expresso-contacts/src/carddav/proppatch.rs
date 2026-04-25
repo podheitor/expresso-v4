@@ -70,7 +70,7 @@ pub async fn handle(
             }
             for p in &remove_props {
                 if !is_live_prop(&p.namespace, &p.local) {
-                    let _ = repo.remove_addressbook(id, &p.namespace, &p.local).await;
+                    let _ = repo.remove_addressbook(principal.tenant_id, id, &p.namespace, &p.local).await;
                 }
             }
         }

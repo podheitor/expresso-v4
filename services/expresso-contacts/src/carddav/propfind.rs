@@ -108,7 +108,7 @@ async fn propfind_home(
         for ab in books {
             let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
             let dead = if req.allprop {
-                dead_repo.list_for_addressbook(ab.id).await.unwrap_or_default()
+                dead_repo.list_for_addressbook(principal.tenant_id, ab.id).await.unwrap_or_default()
             } else { Vec::new() };
             append_collection_response(
                 &mut out, &href, /*is_home=*/false,
@@ -140,7 +140,7 @@ async fn propfind_addressbook(
     out.push_str(r#"<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav"  >"#);
 
     let dead = if req.allprop {
-        DeadPropRepo::new(pool).list_for_addressbook(ab.id).await.unwrap_or_default()
+        DeadPropRepo::new(pool).list_for_addressbook(principal.tenant_id, ab.id).await.unwrap_or_default()
     } else { Vec::new() };
     let href = format!("/carddav/{}/{}/", principal.user_id, ab.id);
     append_collection_response(

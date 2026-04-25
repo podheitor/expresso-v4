@@ -1,6 +1,13 @@
 //! WebDAV RFC 4918 §15 "dead" property store — v1 scope: addressbook collection.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` e filtra
+//! `WHERE tenant_id = $1 AND addressbook_id = $2`. `remove_addressbook` e
+//! `list_for_addressbook` passaram a receber `tenant_id` (API change) —
+//! antes atualizavam/liam só por `addressbook_id`, sem guardrail. Migration
+//! de `addressbook_dead_properties` ainda não tem ENABLE ROW LEVEL SECURITY;
+//! `begin_tenant_tx` fica pronto p/ quando a RLS for adicionada.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -28,6 +35,7 @@ impl<'a> DeadPropRepo<'a> {
         local_name:     &str,
         value:          &str,
     ) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
             r#"
             INSERT INTO addressbook_dead_properties
@@ -42,46 +50,58 @@ impl<'a> DeadPropRepo<'a> {
         .bind(namespace)
         .bind(local_name)
         .bind(value)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
+    /// API: `tenant_id` now required — antes filtrava só por addressbook_id.
     pub async fn remove_addressbook(
         &self,
+        tenant_id:      Uuid,
         addressbook_id: Uuid,
         namespace:      &str,
         local_name:     &str,
     ) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(
             r#"
             DELETE FROM addressbook_dead_properties
-            WHERE addressbook_id = $1 AND namespace = $2 AND local_name = $3
+            WHERE tenant_id = $1 AND addressbook_id = $2
+              AND namespace = $3 AND local_name = $4
             "#,
         )
+        .bind(tenant_id)
         .bind(addressbook_id)
         .bind(namespace)
         .bind(local_name)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
+    /// API: `tenant_id` now required — antes filtrava só por addressbook_id.
     pub async fn list_for_addressbook(
         &self,
+        tenant_id:      Uuid,
         addressbook_id: Uuid,
     ) -> Result<Vec<DeadProp>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query(
             r#"
             SELECT namespace, local_name, xml_value
             FROM addressbook_dead_properties
-            WHERE addressbook_id = $1
+            WHERE tenant_id = $1 AND addressbook_id = $2
             ORDER BY namespace, local_name
             "#,
         )
+        .bind(tenant_id)
         .bind(addressbook_id)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows
             .into_iter()
             .map(|r| DeadProp {
