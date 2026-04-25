@@ -366,13 +366,21 @@ where
                 }
             }
         } else if upper.starts_with("MAIL FROM:") {
-            if env.authed_user.is_none() {
+            let Some(authed) = env.authed_user.as_deref() else {
                 writer
                     .write_all(b"530 5.7.0 Authentication required\r\n")
                     .await?;
                 continue;
+            };
+            let from = extract_angle(&line[10..]);
+            if !from_matches_authed(&from, authed) {
+                warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
+                writer
+                    .write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n")
+                    .await?;
+                continue;
             }
-            env.from = Some(extract_angle(&line[10..]));
+            env.from = Some(from);
             env.rcpts.clear();
             writer.write_all(b"250 OK\r\n").await?;
         } else if upper.starts_with("RCPT TO:") {
@@ -435,6 +443,19 @@ fn extract_angle(s: &str) -> String {
     } else {
         s.to_string()
     }
+}
+
+/// True if MAIL FROM matches the authenticated user (case-insensitive,
+/// whitespace-trimmed). Empty MAIL FROM (`<>` bounce) is rejected — submission
+/// clients should never send bounces. The authed credential may be a bare
+/// username (Keycloak-side) rather than a full email; we reject when authed
+/// has no `@` so we never accept a partial-string match.
+fn from_matches_authed(from: &str, authed: &str) -> bool {
+    let f = from.trim();
+    let a = authed.trim();
+    if f.is_empty() || a.is_empty() { return false; }
+    if !a.contains('@') { return false; }
+    f.eq_ignore_ascii_case(a)
 }
 
 /// Decode AUTH PLAIN credential: base64("\0user\0pass")
