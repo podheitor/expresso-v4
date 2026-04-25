@@ -128,8 +128,23 @@ async fn main() -> anyhow::Result<()> {
         pool,
     });
 
+    // Trust X-Forwarded-For SOMENTE quando deploy está atrás de proxy
+    // que reescreve o header (nginx/traefik/envoy). Default off — sem
+    // isso, atacante incrementa XFF a cada request e fura o limite.
+    let trust_proxy = std::env::var("AUTH_RP__TRUST_PROXY")
+        .ok().as_deref() == Some("1");
+
     let login_limiter = std::sync::Arc::new(
-        ratelimit::RateLimiter::new(std::time::Duration::from_secs(60), 20)
+        ratelimit::RateLimiter::with_trust_proxy(
+            std::time::Duration::from_secs(60), 20, trust_proxy,
+        )
+    );
+    // /auth/forgot dispara emails via KC SMTP — limite mais agressivo
+    // pra impedir email-bombing de inbox alheia + abuso do relay.
+    let forgot_limiter = std::sync::Arc::new(
+        ratelimit::RateLimiter::with_trust_proxy(
+            std::time::Duration::from_secs(60), 5, trust_proxy,
+        )
     );
 
     let app = Router::new()
@@ -143,7 +158,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/me",       get(handlers::me::me))
         .route("/auth/impersonate/end", post(handlers::impersonate::end))
         .route("/auth/impersonate/:target_user_id", post(handlers::impersonate::start))
-        .route("/auth/forgot", post(handlers::forgot::forgot))
+        .route("/auth/forgot", post(handlers::forgot::forgot)
+            .layer(axum::middleware::from_fn_with_state(forgot_limiter.clone(), ratelimit::rate_limit_mw)))
         .merge(expresso_observability::metrics_router())
         .with_state(app_state)
         .layer(Extension(validator));

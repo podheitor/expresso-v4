@@ -23,14 +23,25 @@ use serde_json::json;
 
 #[derive(Debug)]
 pub struct RateLimiter {
-    window:     Duration,
-    max:        usize,
-    buckets:    Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
+    window:          Duration,
+    max:             usize,
+    /// Quando true, o middleware confia no primeiro hop de
+    /// `X-Forwarded-For` ao decidir a chave do bucket. Caso contrário usa
+    /// ConnectInfo (peer addr). Ligar APENAS quando o serviço estiver
+    /// atrás de um proxy reverso que sobrescreve o header — caso contrário
+    /// um atacante incrementa o XFF a cada request e ganha um bucket novo,
+    /// anulando o limite.
+    trust_forwarded: bool,
+    buckets:         Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
 }
 
 impl RateLimiter {
     pub fn new(window: Duration, max: usize) -> Self {
-        Self { window, max, buckets: Mutex::new(HashMap::new()) }
+        Self::with_trust_proxy(window, max, false)
+    }
+
+    pub fn with_trust_proxy(window: Duration, max: usize, trust_forwarded: bool) -> Self {
+        Self { window, max, trust_forwarded, buckets: Mutex::new(HashMap::new()) }
     }
 
     /// Returns true if request under limit, false if exceeded.
@@ -57,12 +68,18 @@ pub async fn rate_limit_mw(
     next: Next,
 ) -> Response
 {
-    // Prefer X-Forwarded-For (first hop) when behind a proxy.
-    let ip = headers.get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .and_then(|s| s.trim().parse::<IpAddr>().ok())
-        .unwrap_or(addr.ip());
+    // XFF só conta quando o operador opt-in via `trust_forwarded` —
+    // sem isso, o atacante poderia gerar IPs falsos no header e fugir
+    // do limite. Caminho default: peer addr da conexão.
+    let ip = if limiter.trust_forwarded {
+        headers.get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .and_then(|s| s.trim().parse::<IpAddr>().ok())
+            .unwrap_or(addr.ip())
+    } else {
+        addr.ip()
+    };
 
     if limiter.check(ip) {
         next.run(req).await
@@ -112,5 +129,16 @@ mod tests {
         assert!(!rl.check(ip));
         std::thread::sleep(Duration::from_millis(80));
         assert!(rl.check(ip));
+    }
+
+    #[test]
+    fn trust_proxy_flag_default_off() {
+        // Garantir que o construtor padrão NÃO confia no XFF — operador
+        // tem que opt-in explicitamente. Defesa contra deploy direto na
+        // internet sem proxy reverso.
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        assert!(!rl.trust_forwarded);
+        let rl2 = RateLimiter::with_trust_proxy(Duration::from_secs(60), 1, true);
+        assert!(rl2.trust_forwarded);
     }
 }
