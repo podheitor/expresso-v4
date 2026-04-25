@@ -647,10 +647,10 @@ async fn cmd_status(
 /// of messages matching all criteria in `criteria` (implicit AND of the top-level
 /// Vec; individual SearchKey may contain nested AND/OR/NOT).
 ///
-/// Flag-based criteria (Seen/Unseen/Flagged/…) are evaluated in Rust after
-/// fetching all messages. Date/content criteria (Since/Before/Body/…) default
-/// to true (conservative: may return extra results rather than missing matching
-/// ones). This covers the common case of client polling for UNSEEN messages.
+/// Flag criteria are evaluated exactly. Since/Before/On are evaluated against
+/// `received_at` (RFC 3501 §2.3.3 internal date). SentSince/SentBefore/SentOn
+/// and content criteria (Body/Text/Subject/…) conservatively return true to
+/// avoid missing matching messages without full MIME parsing.
 async fn cmd_search(
     state: &AppState,
     tag: Tag<'static>,
@@ -660,7 +660,7 @@ async fn cmd_search(
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let rows = sqlx::query(
-        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags \
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, received_at \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -674,7 +674,8 @@ async fn cmd_search(
         let seq_val: i64 = row.get("seq");
         let uid_val: i64 = row.get("uid");
         let flags: Vec<String> = row.get("flags");
-        if criteria.iter().all(|key| search_key_matches(key, &flags)) {
+        let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
+        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref())) {
             let n = if uid {
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
             } else {
@@ -690,7 +691,11 @@ async fn cmd_search(
     ]
 }
 
-fn search_key_matches(key: &SearchKey<'_>, flags: &[String]) -> bool {
+fn search_key_matches(
+    key: &SearchKey<'_>,
+    flags: &[String],
+    recv: Option<&ChronoDateTime<Utc>>,
+) -> bool {
     let has = |f: &str| flags.iter().any(|x| x == f);
     match key {
         SearchKey::All     => true,
@@ -706,11 +711,19 @@ fn search_key_matches(key: &SearchKey<'_>, flags: &[String]) -> bool {
         SearchKey::Undeleted => !has("\\Deleted"),
         SearchKey::Draft     => has("\\Draft"),
         SearchKey::Undraft   => !has("\\Draft"),
+        // Internal-date criteria: compare against received_at (UTC midnight boundary).
+        // SentSince/SentBefore/SentOn require envelope Date parsing — conservative true.
+        SearchKey::Since(date) => recv.map_or(true, |r| r.date_naive() >= *date.as_ref()),
+        SearchKey::Before(date) => recv.map_or(true, |r| r.date_naive() < *date.as_ref()),
+        SearchKey::On(date) => recv.map_or(true, |r| r.date_naive() == *date.as_ref()),
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags),
-        SearchKey::Or(a, b)   => search_key_matches(a.as_ref(), flags) || search_key_matches(b.as_ref(), flags),
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags)),
-        // Date/content/size criteria — default to true (conservative: may include extras)
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv),
+        SearchKey::Or(a, b)   => {
+            search_key_matches(a.as_ref(), flags, recv)
+                || search_key_matches(b.as_ref(), flags, recv)
+        }
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv)),
+        // Content/size/envelope criteria — conservative true (no MIME parsing)
         _ => true,
     }
 }
