@@ -191,6 +191,55 @@ pub async fn require_super_admin(st: &AppState, headers: &axum::http::HeaderMap)
     }
 }
 
+/// True when the caller has `super_admin` (case-insensitive, with or without
+/// underscore). Super-admins may operate across tenants; everyone else is
+/// confined to their own tenant_id.
+pub fn is_super_admin(roles: &[String]) -> bool {
+    roles.iter().any(|r| {
+        r.eq_ignore_ascii_case("super_admin") || r.eq_ignore_ascii_case("superadmin")
+    })
+}
+
+/// Validates a tenant-scoped admin operation: super-admins pass through,
+/// everyone else must operate on their *own* tenant_id (URL path must match
+/// the principal's tenant). Returns a 403 response on mismatch.
+///
+/// Called at the top of every per-tenant DAV-admin handler — without it, a
+/// tenant_admin can supply an arbitrary tenant_id in the URL path and the
+/// underlying SQL (which only filters by the path-supplied id) will operate
+/// on another tenant's rows. Defense-in-depth: prefer this over relying on
+/// audit-log forensics to spot the abuse after the fact.
+pub async fn require_tenant_match(
+    st:        &AppState,
+    headers:   &axum::http::HeaderMap,
+    requested: uuid::Uuid,
+) -> Option<Response> {
+    let p = principal_for(st, headers).await;
+    if is_super_admin(&p.roles) {
+        return None;
+    }
+    match p.tenant_id {
+        Some(t) if t == requested => None,
+        _ => {
+            tracing::warn!(
+                user = ?p.user_id,
+                principal_tenant = ?p.tenant_id,
+                requested_tenant = %requested,
+                "cross-tenant admin op blocked"
+            );
+            Some((
+                StatusCode::FORBIDDEN,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                "<!doctype html><meta charset=utf-8><title>403</title>\
+                 <body style=\"font-family:system-ui;padding:2rem\">\
+                 <h1>403 — Operação cross-tenant negada</h1>\
+                 <p>Apenas <code>super_admin</code> pode operar fora do próprio tenant.</p>\
+                 </body>",
+            ).into_response())
+        }
+    }
+}
+
 /// Fetch the full principal (sub + email + roles) via `/auth/me`. Empty struct on failure.
 pub async fn principal_for(st: &AppState, headers: &axum::http::HeaderMap) -> MeResp {
     let Some(cookie) = headers.get(axum::http::header::COOKIE).cloned() else {

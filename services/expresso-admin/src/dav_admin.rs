@@ -18,6 +18,17 @@ use crate::{
     AdminError, AppState,
 };
 
+/// `None` when the caller is super-admin (sees every tenant); otherwise the
+/// caller's own tenant_id (list views show only that tenant). Used as a
+/// nullable bind so a single query covers both cases.
+async fn caller_tenant_scope(
+    st:      &AppState,
+    headers: &axum::http::HeaderMap,
+) -> Option<uuid::Uuid> {
+    let p = crate::auth::principal_for(st, headers).await;
+    if crate::auth::is_super_admin(&p.roles) { None } else { p.tenant_id }
+}
+
 fn to_dav_row(
     id: uuid::Uuid,
     tenant_id: uuid::Uuid,
@@ -46,16 +57,19 @@ fn to_dav_row(
 
 pub async fn calendars_list(
     State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, AdminError> {
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+    let scope = caller_tenant_scope(&st, &headers).await;
     let rows = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String, String, String, Option<String>, Option<String>, bool, i64)>(
         r#"SELECT c.id, c.tenant_id, t.name AS tenant_name, u.email AS owner_email,
                   c.name, c.description, c.color, c.is_default, c.ctag
              FROM calendars c
              JOIN tenants t ON t.id = c.tenant_id
              JOIN users   u ON u.id = c.owner_user_id
+            WHERE $1::UUID IS NULL OR c.tenant_id = $1
             ORDER BY t.name, u.email, c.is_default DESC, c.name"#,
-    ).fetch_all(pool).await.map_err(|e| AdminError(e.into()))?;
+    ).bind(scope).fetch_all(pool).await.map_err(|e| AdminError(e.into()))?;
 
     let rows = rows.into_iter().map(|(id, tid, tname, oe, n, d, col, dflt, ct)|
         to_dav_row(id, tid, tname, oe, n, d, col, dflt, ct)
@@ -65,8 +79,12 @@ pub async fn calendars_list(
 
 pub async fn calendar_edit_form(
     State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny);
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     let row = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>, bool)>(
         r#"SELECT t.name, u.email, c.name, c.description, c.color, c.is_default
@@ -107,6 +125,9 @@ pub async fn calendar_edit_action(
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
     Form(f): Form<CalendarEditForm>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny);
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     let dflt = f.is_default.is_some();
     let desc = if f.description.trim().is_empty() { None } else { Some(f.description.trim().to_string()) };
@@ -131,6 +152,9 @@ pub async fn calendar_delete_action(
     headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny.into_response());
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     sqlx::query("DELETE FROM calendars WHERE tenant_id = $1 AND id = $2")
         .bind(tenant_id).bind(id)
@@ -141,23 +165,26 @@ pub async fn calendar_delete_action(
         "admin.calendar.delete", Some("calendar"), Some(id.to_string()), Some(302),
         serde_json::json!({ "tenant_id": tenant_id }),
     ).await;
-    Ok(Redirect::to("/calendars"))
+    Ok(Redirect::to("/calendars").into_response())
 }
 
 // ── Addressbooks ──
 
 pub async fn addressbooks_list(
     State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, AdminError> {
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
+    let scope = caller_tenant_scope(&st, &headers).await;
     let rows = sqlx::query_as::<_, (uuid::Uuid, uuid::Uuid, String, String, String, Option<String>, bool, i64)>(
         r#"SELECT a.id, a.tenant_id, t.name AS tenant_name, u.email AS owner_email,
                   a.name, a.description, a.is_default, a.ctag
              FROM addressbooks a
              JOIN tenants t ON t.id = a.tenant_id
              JOIN users   u ON u.id = a.owner_user_id
+            WHERE $1::UUID IS NULL OR a.tenant_id = $1
             ORDER BY t.name, u.email, a.is_default DESC, a.name"#,
-    ).fetch_all(pool).await.map_err(|e| AdminError(e.into()))?;
+    ).bind(scope).fetch_all(pool).await.map_err(|e| AdminError(e.into()))?;
     let rows = rows.into_iter().map(|(id, tid, tname, oe, n, d, dflt, ct)|
         to_dav_row(id, tid, tname, oe, n, d, None, dflt, ct)
     ).collect();
@@ -166,8 +193,12 @@ pub async fn addressbooks_list(
 
 pub async fn addressbook_edit_form(
     State(st): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny);
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     let row = sqlx::query_as::<_, (String, String, String, Option<String>)>(
         r#"SELECT t.name, u.email, a.name, a.description
@@ -203,6 +234,9 @@ pub async fn addressbook_edit_action(
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
     Form(f): Form<AddressbookEditForm>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny);
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     let desc = if f.description.trim().is_empty() { None } else { Some(f.description.trim().to_string()) };
     sqlx::query(
@@ -225,6 +259,9 @@ pub async fn addressbook_delete_action(
     headers: axum::http::HeaderMap,
     Path((tenant_id, id)): Path<(uuid::Uuid, uuid::Uuid)>,
 ) -> Result<impl IntoResponse, AdminError> {
+    if let Some(deny) = crate::auth::require_tenant_match(&st, &headers, tenant_id).await {
+        return Ok(deny.into_response());
+    }
     let pool = st.db.as_ref().ok_or_else(|| AdminError(anyhow::anyhow!("database unavailable")))?;
     sqlx::query("DELETE FROM addressbooks WHERE tenant_id = $1 AND id = $2")
         .bind(tenant_id).bind(id)
@@ -235,5 +272,5 @@ pub async fn addressbook_delete_action(
         "admin.addressbook.delete", Some("addressbook"), Some(id.to_string()), Some(302),
         serde_json::json!({ "tenant_id": tenant_id }),
     ).await;
-    Ok(Redirect::to("/addressbooks"))
+    Ok(Redirect::to("/addressbooks").into_response())
 }
