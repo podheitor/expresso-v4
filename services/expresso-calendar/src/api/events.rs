@@ -14,6 +14,18 @@ use crate::domain::{Event, EventQuery, EventRepo};
 use crate::error::{CalendarError, Result};
 use crate::state::AppState;
 
+/// Cap pro VCALENDAR de UM evento (create/update). Eventos reais com
+/// participantes/VALARM/recurrence ficam em poucos KiB; 256 KiB cobre
+/// até agendas insanas. Acima disso é abuso — engasga storage,
+/// parser, e cada delivery iTIP downstream.
+pub const MAX_EVENT_ICS_BYTES: usize = 256 * 1024;
+
+/// Cap pro VCALENDAR de IMPORT em batch (multi-VEVENT). Mais largo
+/// pra cobrir migrações reais (anos de calendário compactado num
+/// único upload), mas ainda finito — 2 MiB cobre dezenas de milhares
+/// de eventos típicos.
+pub const MAX_IMPORT_ICS_BYTES: usize = 2 * 1024 * 1024;
+
 /// Gate: require OWNER/WRITE/ADMIN on the calendar, else 403.
 async fn assert_can_write(
     pool: &expresso_core::DbPool,
@@ -71,9 +83,7 @@ async fn create(
     Path(cal_id): Path<Uuid>,
     raw: String,
 ) -> Result<Response> {
-    if raw.trim().is_empty() {
-        return Err(CalendarError::BadRequest("empty body".into()));
-    }
+    validate_ics(&raw, MAX_EVENT_ICS_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     let ev = EventRepo::new(pool).create(ctx.tenant_id, cal_id, &raw).await?;
@@ -122,9 +132,7 @@ async fn update(
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
     raw: String,
 ) -> Result<Response> {
-    if raw.trim().is_empty() {
-        return Err(CalendarError::BadRequest("empty body".into()));
-    }
+    validate_ics(&raw, MAX_EVENT_ICS_BYTES)?;
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
     let ev = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
@@ -201,9 +209,7 @@ async fn import_ics(
 ) -> Result<Response> {
     use crate::domain::ical;
 
-    if raw.trim().is_empty() {
-        return Err(CalendarError::BadRequest("empty body".into()));
-    }
+    validate_ics(&raw, MAX_IMPORT_ICS_BYTES)?;
     let blocks = ical::split_vcalendar_to_events(&raw);
     if blocks.is_empty() {
         return Err(CalendarError::BadRequest("no VEVENT blocks found in payload".into()));
@@ -305,4 +311,68 @@ async fn list_attendees(
         "rsvp":     a.rsvp,
     })).collect();
     Ok((StatusCode::OK, Json(body)).into_response())
+}
+
+/// Gate aplicado em todos os endpoints que aceitam VCALENDAR raw.
+/// Tamanho primeiro pra rejeitar abuso antes de tocar o parser.
+fn validate_ics(raw: &str, max_bytes: usize) -> Result<()> {
+    if raw.trim().is_empty() {
+        return Err(CalendarError::BadRequest("empty body".into()));
+    }
+    if raw.len() > max_bytes {
+        return Err(CalendarError::BadRequest(format!(
+            "ics payload too large: {} bytes (max {})",
+            raw.len(), max_bytes
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_empty() {
+        let err = format!("{:?}", validate_ics("", MAX_EVENT_ICS_BYTES).unwrap_err());
+        assert!(err.contains("empty body"), "got: {err}");
+        let err = format!("{:?}", validate_ics("   \n  ", MAX_EVENT_ICS_BYTES).unwrap_err());
+        assert!(err.contains("empty body"), "got: {err}");
+    }
+
+    #[test]
+    fn accepts_small_event() {
+        let s = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:abc\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(validate_ics(s, MAX_EVENT_ICS_BYTES).is_ok());
+    }
+
+    #[test]
+    fn rejects_oversize_event() {
+        let s = "x".repeat(MAX_EVENT_ICS_BYTES + 1);
+        let err = format!("{:?}", validate_ics(&s, MAX_EVENT_ICS_BYTES).unwrap_err());
+        assert!(err.contains("too large"), "got: {err}");
+    }
+
+    #[test]
+    fn import_cap_higher_than_event_cap() {
+        // Garantir que payload entre EVENT_MAX e IMPORT_MAX passa só
+        // pelo caminho de import (semântica intencional: bulk import
+        // pode ser maior que evento individual).
+        let s = "x".repeat(MAX_EVENT_ICS_BYTES + 1);
+        assert!(validate_ics(&s, MAX_EVENT_ICS_BYTES).is_err());
+        assert!(validate_ics(&s, MAX_IMPORT_ICS_BYTES).is_ok());
+    }
+
+    #[test]
+    fn rejects_oversize_import() {
+        let s = "x".repeat(MAX_IMPORT_ICS_BYTES + 1);
+        let err = format!("{:?}", validate_ics(&s, MAX_IMPORT_ICS_BYTES).unwrap_err());
+        assert!(err.contains("too large"), "got: {err}");
+    }
+
+    #[test]
+    fn boundary_event_accepted() {
+        let s = "x".repeat(MAX_EVENT_ICS_BYTES);
+        assert!(validate_ics(&s, MAX_EVENT_ICS_BYTES).is_ok());
+    }
 }
