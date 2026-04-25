@@ -314,23 +314,60 @@ async fn download_version(
     Ok(attachment_response(&filename, ver.mime_type.as_deref(), bytes))
 }
 
-fn attachment_response(name: &str, mime: Option<&str>, bytes: Vec<u8>) -> Response {
+pub(crate) fn attachment_response(name: &str, mime: Option<&str>, bytes: Vec<u8>) -> Response {
     let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        mime.unwrap_or("application/octet-stream").parse().unwrap(),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", name.replace('"', "_")).parse().unwrap(),
-    );
+    let ct: axum::http::HeaderValue = mime
+        .and_then(|m| m.parse().ok())
+        .unwrap_or_else(|| axum::http::HeaderValue::from_static("application/octet-stream"));
+    headers.insert(header::CONTENT_TYPE, ct);
+
+    // Build a safe `filename=` parameter: ASCII printable only, no quotes,
+    // backslashes or control chars. Non-conforming bytes become `_`. Also
+    // emit the RFC 5987 `filename*` form so clients can recover the
+    // original UTF-8 name. Both are header-injection-safe by construction.
+    let cd = build_content_disposition(name);
+    let cd_val = axum::http::HeaderValue::from_str(&cd)
+        .unwrap_or_else(|_| axum::http::HeaderValue::from_static("attachment"));
+    headers.insert(header::CONTENT_DISPOSITION, cd_val);
+
     (StatusCode::OK, headers, bytes).into_response()
+}
+
+fn build_content_disposition(name: &str) -> String {
+    let ascii: String = name.chars().map(|c| {
+        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
+    }).collect();
+    let ascii = if ascii.is_empty() { "download".to_string() } else { ascii };
+    let pct = percent_encode_filename(name);
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{pct}")
+}
+
+/// RFC 5987 percent-encoding for the `filename*` parameter. Encodes every
+/// byte that is not in `attr-char` per RFC 5987 §3.2.1.
+fn percent_encode_filename(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() * 3);
+    for b in name.as_bytes() {
+        let c = *b;
+        let attr_char = c.is_ascii_alphanumeric()
+            || matches!(c, b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~');
+        if attr_char {
+            out.push(c as char);
+        } else {
+            out.push_str(&format!("%{c:02X}"));
+        }
+    }
+    out
 }
 
 fn sanitize_name(raw: &str) -> Result<String> {
     let s = raw.trim();
     if s.is_empty() || s.contains('/') || s.contains('\\') || s == "." || s == ".." {
         return Err(DriveError::BadRequest("invalid name".into()));
+    }
+    // Reject ASCII control chars (incl. CR, LF, NUL, TAB). Non-ASCII printables
+    // are fine — `build_content_disposition` handles encoding for headers.
+    if s.chars().any(|c| (c as u32) < 0x20 || c == '\u{7f}') {
+        return Err(DriveError::BadRequest("name has control characters".into()));
     }
     if s.len() > 255 {
         return Err(DriveError::BadRequest("name too long".into()));

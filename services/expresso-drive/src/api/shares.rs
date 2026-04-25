@@ -143,15 +143,9 @@ async fn public_download(
         event = "drive.share.download",
         share_id = %resolved.id, tenant_id = %resolved.tenant_id, file_id = %resolved.file_id);
 
-    use axum::http::{header, HeaderMap};
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CONTENT_TYPE,
-        file.mime_type.as_deref().unwrap_or("application/octet-stream").parse().unwrap(),
-    );
-    headers.insert(
-        header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{}\"", file.name.replace('"', "_")).parse().unwrap(),
-    );
-    Ok((StatusCode::OK, headers, bytes).into_response())
+    Ok(crate::api::files::attachment_response(
+        &file.name,
+        file.mime_type.as_deref(),
+        bytes,
+    ))
 }
