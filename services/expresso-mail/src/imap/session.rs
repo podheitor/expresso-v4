@@ -888,7 +888,9 @@ async fn cmd_fetch(
     let w_flags        = wants(macro_or, "FLAGS");
     let w_envelope     = wants(macro_or, "ENVELOPE");
     let w_size         = wants(macro_or, "RFC822.SIZE");
-    let w_uid          = wants(macro_or, "UID");
+    // RFC 3501 §6.4.8 + RFC 4315 §3: UID MUST be in every UID FETCH response,
+    // even when the client didn't explicitly request it.
+    let w_uid          = uid || wants(macro_or, "UID");
     let w_internaldate = wants(macro_or, "INTERNALDATE");
 
     // Determine which body sections the client wants.
