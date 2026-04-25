@@ -13,7 +13,7 @@
 
 use axum::{
     body::Bytes,
-    extract::{Path, State},
+    extract::{DefaultBodyLimit, Path, State},
     http::{header::HeaderName, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{head as head_route, post as post_route},
@@ -58,6 +58,7 @@ pub fn routes() -> Router<AppState> {
             post_route(create_upload_h).options(options_collection))
         .route("/api/v1/drive/uploads/:id",
             head_route(head_upload_h).patch(patch_upload_h).delete(delete_upload_h))
+        .layer(DefaultBodyLimit::max(MAX_CHUNK_BYTES))
 }
 
 fn tus_headers() -> Vec<(HeaderName, HeaderValue)> {
