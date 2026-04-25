@@ -1,6 +1,13 @@
 //! Calendar (collection) domain model + repository.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para que
+//! a policy RLS de `calendars` / `calendar_acl` filtre por
+//! `current_setting('app.tenant_id')` antes mesmo do `WHERE tenant_id = $1`
+//! explícito (defense-in-depth). Em `access_level`, os dois SELECTs
+//! (owner_user_id + calendar_acl) agora rodam no mesmo snapshot — evita
+//! race em ACL handoff (transferência de owner concorrente com revoke).
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -65,6 +72,9 @@ impl<'a> CalendarRepo<'a> {
         owner_user_id: Uuid,
         input: &NewCalendar,
     ) -> Result<Calendar> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let row = sqlx::query_as::<_, Calendar>(
             r#"
             INSERT INTO calendars
@@ -81,10 +91,10 @@ impl<'a> CalendarRepo<'a> {
         .bind(&input.color)
         .bind(&input.timezone)
         .bind(input.is_default)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
-
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(row)
     }
 
@@ -97,6 +107,9 @@ impl<'a> CalendarRepo<'a> {
         owner_user_id: Uuid,
         input: &NewCalendar,
     ) -> Result<Calendar> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let row = sqlx::query_as::<_, Calendar>(
             r#"
             INSERT INTO calendars
@@ -114,9 +127,10 @@ impl<'a> CalendarRepo<'a> {
         .bind(&input.color)
         .bind(&input.timezone)
         .bind(input.is_default)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(row)
     }
 
@@ -126,6 +140,9 @@ impl<'a> CalendarRepo<'a> {
         tenant_id: Uuid,
         owner_user_id: Uuid,
     ) -> Result<Vec<Calendar>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let rows = sqlx::query_as::<_, Calendar>(
             r#"
             SELECT id, tenant_id, owner_user_id, name, description, color,
@@ -137,16 +154,19 @@ impl<'a> CalendarRepo<'a> {
         )
         .bind(tenant_id)
         .bind(owner_user_id)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
-
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(rows)
     }
 
     /// Fetch a single calendar by id within tenant scope.
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Calendar> {
-        sqlx::query_as::<_, Calendar>(
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
+        let row = sqlx::query_as::<_, Calendar>(
             r#"
             SELECT id, tenant_id, owner_user_id, name, description, color,
                    timezone, ctag, is_default, created_at, updated_at
@@ -156,10 +176,12 @@ impl<'a> CalendarRepo<'a> {
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(CalendarError::from)?
-        .ok_or(CalendarError::CalendarNotFound(id.to_string()))
+        .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
+        tx.commit().await.map_err(CalendarError::from)?;
+        Ok(row)
     }
 
     /// Partial update — COALESCE keeps existing values when patch field is NULL.
@@ -169,6 +191,9 @@ impl<'a> CalendarRepo<'a> {
         id: Uuid,
         patch: &UpdateCalendar,
     ) -> Result<Calendar> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let row = sqlx::query_as::<_, Calendar>(
             r#"
             UPDATE calendars SET
@@ -189,42 +214,50 @@ impl<'a> CalendarRepo<'a> {
         .bind(&patch.color)
         .bind(&patch.timezone)
         .bind(patch.is_default)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(CalendarError::from)?
         .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
-
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(row)
     }
 
     /// Delete calendar and cascade events.
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let res = sqlx::query(
             r#"DELETE FROM calendars WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .execute(self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
 
         if res.rows_affected() == 0 {
             return Err(CalendarError::CalendarNotFound(id.to_string()));
         }
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(())
     }
 
     /// Current ctag (used by CalDAV PROPFIND).
     pub async fn ctag(&self, tenant_id: Uuid, id: Uuid) -> Result<i64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let (ctag,): (i64,) = sqlx::query_as(
             r#"SELECT ctag FROM calendars WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(CalendarError::from)?
         .ok_or(CalendarError::CalendarNotFound(id.to_string()))?;
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(ctag)
     }
 
@@ -234,6 +267,9 @@ impl<'a> CalendarRepo<'a> {
         tenant_id: Uuid,
         user_id: Uuid,
     ) -> Result<Vec<Calendar>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let rows = sqlx::query_as::<_, Calendar>(
             r#"
             SELECT id, tenant_id, owner_user_id, name, description, color,
@@ -248,32 +284,46 @@ impl<'a> CalendarRepo<'a> {
         )
         .bind(tenant_id)
         .bind(user_id)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(rows)
     }
 
     /// Effective access level for user on calendar:
     /// returns "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
+    ///
+    /// Os dois SELECTs (owner em `calendars` + privilege em `calendar_acl`)
+    /// rodam na MESMA tx, dentro do mesmo snapshot — evita race em ACL handoff
+    /// (transferência de owner concorrente com revoke de ACL poderia retornar
+    /// None mesmo quando o user ainda tinha acesso).
     pub async fn access_level(
         &self,
         tenant_id: Uuid,
         cal_id: Uuid,
         user_id: Uuid,
     ) -> Result<Option<String>> {
-        // owner shortcut
+        let mut tx = begin_tenant_tx(self.pool, tenant_id)
+            .await
+            .map_err(CalendarError::from)?;
         let owner: Option<(Uuid,)> = sqlx::query_as(
             "SELECT owner_user_id FROM calendars WHERE id = $1 AND tenant_id = $2",
         )
         .bind(cal_id)
         .bind(tenant_id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
         match owner {
-            None => return Ok(None),
-            Some((o,)) if o == user_id => return Ok(Some("OWNER".into())),
+            None => {
+                tx.commit().await.map_err(CalendarError::from)?;
+                return Ok(None);
+            }
+            Some((o,)) if o == user_id => {
+                tx.commit().await.map_err(CalendarError::from)?;
+                return Ok(Some("OWNER".into()));
+            }
             _ => {}
         }
         let acl: Option<(String,)> = sqlx::query_as(
@@ -283,9 +333,10 @@ impl<'a> CalendarRepo<'a> {
         .bind(cal_id)
         .bind(tenant_id)
         .bind(user_id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(CalendarError::from)?;
+        tx.commit().await.map_err(CalendarError::from)?;
         Ok(acl.map(|(p,)| p))
     }
 }
