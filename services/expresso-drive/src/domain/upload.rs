@@ -1,6 +1,17 @@
 //! Drive resumable uploads repository — tus.io server state.
+//!
+//! Tenant scoping: métodos que carregam um `tenant_id` (insert/get/
+//! advance_offset/delete) abrem transação via `begin_tenant_tx` para que
+//! a policy RLS de `drive_uploads` filtre por
+//! `current_setting('app.tenant_id')`. Os filtros `WHERE tenant_id = $1`
+//! permanecem como defense-in-depth.
+//!
+//! `list_expired_keys` e `purge_expired` são cross-tenant por design
+//! (rodam dentro do GC task em main.rs, sem contexto de tenant) e
+//! continuam usando o pool diretamente — o deployment depende de uma
+//! role com BYPASSRLS para esse caminho.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::Serialize;
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -51,6 +62,7 @@ impl<'a> UploadRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
 
     pub async fn insert(&self, n: &NewUpload<'_>) -> Result<UploadSession> {
+        let mut tx = begin_tenant_tx(self.pool, n.tenant_id).await?;
         let sql = format!(
             "INSERT INTO drive_uploads (tenant_id, owner_user_id, parent_id, name, \
                 mime_type, total_size, storage_key) \
@@ -60,18 +72,21 @@ impl<'a> UploadRepo<'a> {
         let row: UploadSession = sqlx::query_as(&sql)
             .bind(n.tenant_id).bind(n.owner_user_id).bind(n.parent_id)
             .bind(n.name).bind(n.mime_type).bind(n.total_size).bind(n.storage_key)
-            .fetch_one(self.pool).await?;
+            .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<UploadSession>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {COLS} FROM drive_uploads \
              WHERE id = $1 AND tenant_id = $2"
         );
         let row: Option<UploadSession> = sqlx::query_as(&sql)
             .bind(id).bind(tenant_id)
-            .fetch_optional(self.pool).await?;
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -103,6 +118,7 @@ impl<'a> UploadRepo<'a> {
         expected:     i64,
         new_offset:   i64,
     ) -> Result<Option<i64>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row: Option<(i64,)> = sqlx::query_as(
             "UPDATE drive_uploads \
                 SET offset_bytes = $4 \
@@ -110,14 +126,17 @@ impl<'a> UploadRepo<'a> {
               RETURNING offset_bytes"
         )
         .bind(id).bind(tenant_id).bind(expected).bind(new_offset)
-        .fetch_optional(self.pool).await?;
+        .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row.map(|(o,)| o))
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query("DELETE FROM drive_uploads WHERE id = $1 AND tenant_id = $2")
             .bind(id).bind(tenant_id)
-            .execute(self.pool).await?;
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(r.rows_affected())
     }
 }
