@@ -237,11 +237,13 @@ async fn handle_counter(
     body:   &str,
 ) -> Result<Json<InboxResp>> {
     // RFC 5546 §3.2.7: organizer receives a proposal; MUST NOT auto-apply.
-    // MVP: acknowledge + log; a future UI row lets the organizer accept
-    // (by re-sending REQUEST with bumped SEQUENCE) or reject (DECLINECOUNTER).
+    // We persist the proposal (with the attendee's COMMENT, if any) so the
+    // organizer-facing UI can render the rationale and decide: accept by
+    // re-sending REQUEST with bumped SEQUENCE, or reject via DECLINECOUNTER.
     use crate::domain::counter::CounterRepo;
     let attendees = itip::parse_attendees(body);
     let att = attendees.into_iter().next();
+    let comment = itip::parse_comment(body);
     let event_opt = repo.find_by_uid_in_tenant(ctx.tenant_id, &parsed.uid).await?;
     let matched = event_opt.is_some();
 
@@ -255,7 +257,7 @@ async fn handle_counter(
             &a.email,
             parsed.dtstart,
             parsed.dtend,
-            None,                        // COMMENT parsing TBD
+            comment.as_deref(),
             Some(parsed.sequence),
             Some(body),
         ).await {

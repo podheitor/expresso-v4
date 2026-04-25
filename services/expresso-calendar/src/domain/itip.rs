@@ -64,6 +64,51 @@ pub fn parse_attendees(raw: &str) -> Vec<Attendee> {
     out
 }
 
+/// Extract the COMMENT property from the first VEVENT, if any. Used by the
+/// COUNTER inbox path so the proposal stored in `event_counter_proposals`
+/// carries the rationale the attendee wrote ("Could we move this 30min?").
+/// Returns `None` for empty or absent COMMENT. Honours iCal line unfolding
+/// (RFC 5545 §3.1) — multi-line COMMENTs are joined back into one string.
+/// Escape sequences (`\n`, `\,`, `\;`, `\\`) are decoded per RFC 5545 §3.3.11.
+pub fn parse_comment(raw: &str) -> Option<String> {
+    let lines = unfold(raw);
+    let mut in_event = false;
+    for line in lines {
+        let trimmed = line.trim_end_matches('\r');
+        let upper = trimmed.to_ascii_uppercase();
+        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
+        if upper == "END:VEVENT"   { break; }
+        if !in_event { continue; }
+
+        // COMMENT may carry params (LANGUAGE=en-US:hello). Match the property
+        // name up to ';' or ':' and ignore params — we only want the value.
+        let (head, value) = trimmed.split_once(':')?;
+        let name = head.split(';').next()?.to_ascii_uppercase();
+        if name != "COMMENT" { continue; }
+        let decoded = decode_text(value);
+        if decoded.is_empty() { return None; }
+        return Some(decoded);
+    }
+    None
+}
+
+fn decode_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' { out.push(c); continue; }
+        match chars.next() {
+            Some('n') | Some('N') => out.push('\n'),
+            Some(',')             => out.push(','),
+            Some(';')             => out.push(';'),
+            Some('\\')            => out.push('\\'),
+            Some(other)           => { out.push('\\'); out.push(other); }
+            None                  => out.push('\\'),
+        }
+    }
+    out
+}
+
 /// Wrap a stored VEVENT (raw VCALENDAR) with `METHOD:REQUEST` so SMTP/Mail
 /// clients recognise it as a scheduling invitation. Replaces any existing
 /// METHOD line. Returns the full VCALENDAR text.
@@ -329,5 +374,30 @@ END:VCALENDAR\r\n";
         let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nSUMMARY:x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         let out = set_status(raw, "CANCELLED").unwrap();
         assert!(out.contains("STATUS:CANCELLED"));
+    }
+
+    #[test]
+    fn parse_comment_decodes_escapes_and_unfolds() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\n\
+                   COMMENT:Could we shift 30min?\\n-- thx\\, Bob\r\n\
+                   END:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(parse_comment(raw).as_deref(), Some("Could we shift 30min?\n-- thx, Bob"));
+    }
+
+    #[test]
+    fn parse_comment_skips_params_and_unfolds_continuation() {
+        // RFC 5545 §3.1 line folding: leading SP/TAB joins continuation onto
+        // the previous logical line. parse_comment must see the joined value.
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\n\
+                   COMMENT;LANGUAGE=en-US:hello\r\n there\r\n\
+                   END:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(parse_comment(raw).as_deref(), Some("hellothere"));
+    }
+
+    #[test]
+    fn parse_comment_returns_none_when_absent_or_empty() {
+        assert_eq!(parse_comment(SAMPLE), None);
+        let empty = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nCOMMENT:\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(parse_comment(empty), None);
     }
 }
