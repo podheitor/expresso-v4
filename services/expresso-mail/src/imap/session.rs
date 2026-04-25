@@ -568,6 +568,7 @@ async fn cmd_select(
                     Flag::Flagged,
                     Flag::Deleted,
                     Flag::Draft,
+                    Flag::Recent, // RFC 3501 §2.3.2: server-managed system flag
                 ])),
                 Response::Data(Data::Exists(exists)),
                 Response::Data(Data::Recent(0)),
@@ -678,7 +679,7 @@ async fn cmd_search(
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let rows = sqlx::query(
-        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, received_at \
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, received_at, size_bytes \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -693,7 +694,8 @@ async fn cmd_search(
         let uid_val: i64 = row.get("uid");
         let flags: Vec<String> = row.get("flags");
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
-        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref())) {
+        let size: Option<i32> = row.try_get("size_bytes").ok();
+        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref(), size)) {
             let n = if uid {
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
             } else {
@@ -713,6 +715,7 @@ fn search_key_matches(
     key: &SearchKey<'_>,
     flags: &[String],
     recv: Option<&ChronoDateTime<Utc>>,
+    size: Option<i32>,
 ) -> bool {
     let has = |f: &str| flags.iter().any(|x| x == f);
     match key {
@@ -734,14 +737,18 @@ fn search_key_matches(
         SearchKey::Since(date) => recv.map_or(true, |r| r.date_naive() >= *date.as_ref()),
         SearchKey::Before(date) => recv.map_or(true, |r| r.date_naive() < *date.as_ref()),
         SearchKey::On(date) => recv.map_or(true, |r| r.date_naive() == *date.as_ref()),
+        // Size criteria: size_bytes comes from DB (set by APPEND/ingest).
+        // Conservative true when size_bytes is NULL (e.g. old messages before APPEND sprint).
+        SearchKey::Larger(n)  => size.map_or(true, |s| (s as u64) > (*n as u64)),
+        SearchKey::Smaller(n) => size.map_or(true, |s| (s as u64) < (*n as u64)),
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv),
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size),
         SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv)
-                || search_key_matches(b.as_ref(), flags, recv)
+            search_key_matches(a.as_ref(), flags, recv, size)
+                || search_key_matches(b.as_ref(), flags, recv, size)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv)),
-        // Content/size/envelope criteria — conservative true (no MIME parsing)
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size)),
+        // Content/envelope criteria — conservative true (no MIME parsing)
         _ => true,
     }
 }
