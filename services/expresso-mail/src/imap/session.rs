@@ -285,6 +285,24 @@ async fn dispatch(
             }
             cmd_expunge_uid(state, tag, sequence_set, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
+        CommandBody::Create { mailbox } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_create(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap()).await
+        }
+        CommandBody::Delete { mailbox } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_delete(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap()).await
+        }
+        CommandBody::Rename { from, to } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_rename(state, tag, from, to, user_id.unwrap(), tenant_id.unwrap()).await
+        }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
             vec![bad_tagged(tag, &msg)]
@@ -1265,6 +1283,97 @@ async fn cmd_expunge_uid(
     }
     out.push(ok_tagged(tag, None, "UID EXPUNGE completed"));
     out
+}
+
+/// CREATE — RFC 3501 §6.3.3: create a new mailbox with default uid_validity.
+/// Returns NO when the name already exists; ON CONFLICT DO NOTHING is the
+/// guard (UNIQUE (user_id, folder_name) in the schema).
+async fn cmd_create(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let name = mailbox_to_string(mailbox);
+    let rows = sqlx::query(
+        "INSERT INTO mailboxes (user_id, tenant_id, folder_name) \
+         VALUES ($1, $2, $3) ON CONFLICT (user_id, folder_name) DO NOTHING \
+         RETURNING id",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&name)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    if rows.is_empty() {
+        return vec![no_tagged(tag, "mailbox already exists")];
+    }
+    vec![ok_tagged(tag, None, "CREATE completed")]
+}
+
+/// DELETE — RFC 3501 §6.3.4: permanently remove a mailbox.
+/// ON DELETE CASCADE on messages removes all messages automatically.
+/// INBOX deletion is prohibited by the RFC.
+async fn cmd_delete(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let name = mailbox_to_string(mailbox);
+    if name.eq_ignore_ascii_case("INBOX") {
+        return vec![no_tagged(tag, "cannot delete INBOX")];
+    }
+    let result = sqlx::query(
+        "DELETE FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&name)
+    .execute(state.db())
+    .await;
+
+    match result {
+        Ok(r) if r.rows_affected() > 0 => vec![ok_tagged(tag, None, "DELETE completed")],
+        _ => vec![no_tagged(tag, "no such mailbox")],
+    }
+}
+
+/// RENAME — RFC 3501 §6.3.5: rename an existing mailbox.
+/// RENAME INBOX requires moving all messages to the new name and re-creating
+/// an empty INBOX; that is not implemented — clients rarely need it.
+async fn cmd_rename(
+    state: &AppState,
+    tag: Tag<'static>,
+    from: &ImapMailbox<'_>,
+    to: &ImapMailbox<'_>,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let src = mailbox_to_string(from);
+    let dst = mailbox_to_string(to);
+    if src.eq_ignore_ascii_case("INBOX") {
+        return vec![no_tagged(tag, "RENAME INBOX not supported")];
+    }
+    let result = sqlx::query(
+        "UPDATE mailboxes SET folder_name = $4 \
+         WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .execute(state.db())
+    .await;
+
+    match result {
+        Ok(r) if r.rows_affected() > 0 => vec![ok_tagged(tag, None, "RENAME completed")],
+        _ => vec![no_tagged(tag, "no such mailbox")],
+    }
 }
 
 /// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover

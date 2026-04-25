@@ -56,7 +56,8 @@ pub fn init() {
     for cmd in [
         "CAPABILITY", "LOGIN", "LIST", "SELECT", "EXAMINE", "FETCH",
         "STORE", "EXPUNGE", "CLOSE", "LOGOUT", "NOOP", "IDLE", "STATUS",
-        "APPEND", "COPY", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB", "OTHER",
+        "APPEND", "COPY", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB",
+        "CREATE", "DELETE", "RENAME", "OTHER",
     ] {
         for outcome in ["ok", "no", "bad"] {
             IMAP_COMMANDS_TOTAL.with_label_values(&[cmd, outcome]).inc_by(0);
@@ -94,6 +95,9 @@ pub fn command_label(name: &str) -> &'static str {
         "SUBSCRIBE"   => "SUBSCRIBE",
         "UNSUBSCRIBE" => "UNSUBSCRIBE",
         "LSUB"        => "LSUB",
+        "CREATE"      => "CREATE",
+        "DELETE"      => "DELETE",
+        "RENAME"      => "RENAME",
         _             => "OTHER",
     }
 }
@@ -115,6 +119,9 @@ mod tests {
         assert_eq!(command_label("SUBSCRIBE"),   "SUBSCRIBE");
         assert_eq!(command_label("UNSUBSCRIBE"), "UNSUBSCRIBE");
         assert_eq!(command_label("LSUB"),        "LSUB");
+        assert_eq!(command_label("CREATE"),      "CREATE");
+        assert_eq!(command_label("DELETE"),      "DELETE");
+        assert_eq!(command_label("RENAME"),      "RENAME");
     }
 
     #[test]
