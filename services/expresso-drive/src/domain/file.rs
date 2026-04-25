@@ -3,8 +3,12 @@
 //! Files + folders tracked in `drive_files`. Content bytes live on the
 //! filesystem under `<data_root>/<storage_key>`. Soft-delete via `deleted_at`
 //! → items remain visible under /drive/trash until purged.
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para
+//! que a policy RLS de `drive_files` filtre por `current_setting('app.tenant_id')`.
+//! As cláusulas `WHERE tenant_id = $1` permanecem como defense-in-depth.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -56,6 +60,7 @@ impl<'a> FileRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
 
     pub async fn insert(&self, f: &NewFile) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, f.tenant_id).await?;
         let sql = format!(
             "INSERT INTO drive_files \
              (tenant_id, owner_user_id, parent_id, name, kind, mime_type, \
@@ -73,20 +78,23 @@ impl<'a> FileRepo<'a> {
             .bind(f.size_bytes)
             .bind(&f.sha256)
             .bind(&f.storage_key)
-            .fetch_one(self.pool)
+            .fetch_one(&mut *tx)
             .await
             .map_err(map_conflict)?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_files \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL"
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
             .bind(id).bind(tenant_id)
-            .fetch_optional(self.pool).await?;
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
 
@@ -95,6 +103,7 @@ impl<'a> FileRepo<'a> {
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
     ) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_files \
              WHERE tenant_id = $1 \
@@ -104,11 +113,13 @@ impl<'a> FileRepo<'a> {
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
             .bind(tenant_id).bind(parent_id)
-            .fetch_all(self.pool).await?;
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
     pub async fn list_trash(&self, tenant_id: Uuid) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_files \
              WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
@@ -116,7 +127,8 @@ impl<'a> FileRepo<'a> {
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
             .bind(tenant_id)
-            .fetch_all(self.pool).await?;
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
@@ -127,6 +139,7 @@ impl<'a> FileRepo<'a> {
         parent_id: Option<Uuid>,
         name:      &str,
     ) -> Result<Option<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_files \
              WHERE tenant_id = $1 \
@@ -136,7 +149,8 @@ impl<'a> FileRepo<'a> {
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
             .bind(tenant_id).bind(parent_id).bind(name)
-            .fetch_optional(self.pool).await?;
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -151,6 +165,7 @@ impl<'a> FileRepo<'a> {
         sha256:      Option<&str>,
         mime_type:   Option<&str>,
     ) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_files \
                 SET storage_key = $3, size_bytes = $4, sha256 = $5, \
@@ -161,23 +176,27 @@ impl<'a> FileRepo<'a> {
         let row: Option<DriveFile> = sqlx::query_as(&sql)
             .bind(id).bind(tenant_id)
             .bind(storage_key).bind(size_bytes).bind(sha256).bind(mime_type)
-            .fetch_optional(self.pool).await?;
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
 
     pub async fn soft_delete(&self, tenant_id: Uuid, id: Uuid) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let r = sqlx::query(
             "UPDATE drive_files SET deleted_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
         )
         .bind(id).bind(tenant_id)
-        .execute(self.pool).await?;
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
         Ok(r.rows_affected())
     }
 
     /// Clear deleted_at → move back to live tree. Conflict if a live
     /// sibling already holds the name (unique partial index raises 23505).
     pub async fn restore(&self, tenant_id: Uuid, id: Uuid) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "UPDATE drive_files SET deleted_at = NULL, updated_at = now() \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL \
@@ -185,21 +204,24 @@ impl<'a> FileRepo<'a> {
         );
         let row: Option<DriveFile> = sqlx::query_as(&sql)
             .bind(id).bind(tenant_id)
-            .fetch_optional(self.pool).await
+            .fetch_optional(&mut *tx).await
             .map_err(map_conflict)?;
+        tx.commit().await?;
         row.ok_or(DriveError::NotFound(id))
     }
 
     /// Hard delete → caller must unlink the storage blob. Only soft-deleted
     /// rows may be purged to avoid accidental data loss.
     pub async fn purge(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<String>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row: Option<(Option<String>,)> = sqlx::query_as(
             "DELETE FROM drive_files \
              WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL \
              RETURNING storage_key",
         )
         .bind(id).bind(tenant_id)
-        .fetch_optional(self.pool).await?;
+        .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
         Ok(row.and_then(|(k,)| k))
     }
 }
