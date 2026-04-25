@@ -857,7 +857,7 @@ async fn cmd_fetch(
     let rows = if uid {
         let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
         sqlx::query(&format!(
-            "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+            "SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
              uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
              FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}) \
              ORDER BY received_at ASC",
@@ -870,9 +870,9 @@ async fn cmd_fetch(
     } else {
         let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
         sqlx::query(&format!(
-            "SELECT seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+            "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
              FROM ( \
-               SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+               SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
                       uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
                FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
              ) sub WHERE ({seq_w}) \
@@ -897,10 +897,12 @@ async fn cmd_fetch(
     // BODY[]       / BODY.PEEK[]       → want_full_body
     // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative:
     //   MIME part parsing is not implemented; returning full body is RFC-safe as fallback)
-    let (mut want_full_body, mut want_header, mut want_text) = (false, false, false);
+    let (mut want_full_body, mut want_header, mut want_text, mut set_seen) = (false, false, false, false);
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
-            if let MessageDataItemName::BodyExt { section, .. } = name {
+            if let MessageDataItemName::BodyExt { section, peek, .. } = name {
+                // Non-peek body fetch implicitly sets \Seen (RFC 3501 §6.4.5).
+                if !peek { set_seen = true; }
                 match section {
                     None                      => want_full_body = true,
                     Some(Section::Header(_))  => want_header = true,
@@ -917,6 +919,7 @@ async fn cmd_fetch(
         let seq_num: i64 = row.get("seq");
         let seq = NonZeroU32::new(seq_num as u32).unwrap_or(NonZeroU32::MIN);
         let mut items: Vec<MessageDataItem<'static>> = Vec::new();
+        let msg_id: Uuid = row.get("id");
 
         if w_uid {
             let uid_val: i64 = row.get("uid");
@@ -924,8 +927,31 @@ async fn cmd_fetch(
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN),
             ));
         }
-        if w_flags {
-            let flags_val: Vec<String> = row.get("flags");
+
+        // Flags are fetched unconditionally: needed for \Seen implicit-set
+        // check even when the client did not request FLAGS in the item list.
+        let mut flags_val: Vec<String> = row.get("flags");
+
+        // RFC 3501 §6.4.5: non-peek body fetch MUST implicitly set \Seen.
+        // We update the DB first, then update flags_val so the FLAGS response
+        // (if emitted) reflects the new state without a second DB round-trip.
+        let mut seen_was_set = false;
+        if set_seen && !flags_val.iter().any(|f| f == "\\Seen") {
+            let _ = sqlx::query(
+                "UPDATE messages \
+                 SET flags = array_cat(flags, ARRAY['\\Seen']::text[]) \
+                 WHERE id = $1 AND NOT '\\Seen' = ANY(flags)",
+            )
+            .bind(msg_id)
+            .execute(state.db())
+            .await;
+            flags_val.push("\\Seen".to_string());
+            seen_was_set = true;
+        }
+
+        // Emit FLAGS when explicitly requested OR when \Seen was just set
+        // (RFC 3501 §7.4.2: server SHOULD report updated flags).
+        if w_flags || seen_was_set {
             let flags: Vec<FlagFetch<'static>> = flags_val
                 .iter()
                 .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
