@@ -177,13 +177,7 @@ async fn dispatch(
             }
             cmd_store(state, tag, sequence_set, kind, flags, selected.as_ref().unwrap()).await
         }
-        CommandBody::Close => {
-            *selected = None;
-            if *sess == SessionState::Selected {
-                *sess = SessionState::Authenticated;
-            }
-            vec![ok_tagged(tag, None, "CLOSE completed")]
-        }
+        CommandBody::Close => cmd_close(state, tag, sess, selected).await,
         CommandBody::Expunge => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
@@ -448,6 +442,34 @@ async fn cmd_expunge(
     .await;
 
     vec![ok_tagged(tag, None, "EXPUNGE completed")]
+}
+
+/// CLOSE — RFC 3501 §6.4.2: silently expunge `\Deleted` messages from the
+/// selected mailbox and return to authenticated state. Crucially, NO untagged
+/// EXPUNGE responses are sent (that is the whole point vs. a plain EXPUNGE):
+/// clients use CLOSE to drop a mailbox without paying for a per-message
+/// stream. Always treat the mailbox as read-write here — `cmd_select` grants
+/// `Code::ReadWrite` unconditionally, so we never enter the read-only branch
+/// where the spec says CLOSE skips the expunge.
+async fn cmd_close(
+    state: &AppState,
+    tag: Tag<'static>,
+    sess: &mut SessionState,
+    selected: &mut Option<SelectedMailbox>,
+) -> Vec<Response<'static>> {
+    if let Some(sel) = selected.as_ref() {
+        let _ = sqlx::query(
+            "DELETE FROM messages WHERE mailbox_id = $1 AND '\\Deleted' = ANY(flags)",
+        )
+        .bind(sel.mailbox_id)
+        .execute(state.db())
+        .await;
+    }
+    *selected = None;
+    if *sess == SessionState::Selected {
+        *sess = SessionState::Authenticated;
+    }
+    vec![ok_tagged(tag, None, "CLOSE completed")]
 }
 
 // ─── Response helpers ────────────────────────────────────────────────────────
