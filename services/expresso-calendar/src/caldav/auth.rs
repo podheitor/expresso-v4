@@ -6,6 +6,15 @@
 //! 2. Else if `CALENDAR_DEV_AUTH=1` → dev mode: resolve user by email, accept
 //!    any password. Never enabled in production.
 //! 3. Else → 401.
+//!
+//! Tenant scoping: `users.email` is per-tenant unique (`UNIQUE(tenant_id, email)`),
+//! NOT globally. Resolving by email alone could pick an arbitrary tenant's row
+//! if two tenants share an email. We resolve the tenant from the `Host` header
+//! via `TenantResolver` (realm name = tenant UUID per the realm-per-tenant
+//! convention) and filter the lookup by that tenant. If no resolver is wired
+//! or the host is unmapped, we detect ambiguity (>1 row) and reject.
+
+use std::sync::Arc;
 
 use axum::{
     async_trait,
@@ -14,7 +23,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use expresso_auth_client::KcBasicError;
+use expresso_auth_client::{KcBasicError, TenantResolver};
 use uuid::Uuid;
 
 use crate::state::AppState;
@@ -39,10 +48,12 @@ impl FromRequestParts<AppState> for CalDavPrincipal {
 
         let (user, pass) = decode_basic(header_val).ok_or(AuthError::Malformed)?;
 
+        let tenant_hint = resolve_tenant_from_host(parts);
+
         // 1) Keycloak path (production).
         if let Some(kc) = state.kc_basic() {
             match kc.authenticate(&user, &pass).await {
-                Ok(_)                                     => return resolve_user(state, &user).await,
+                Ok(_)                                     => return resolve_user(state, &user, tenant_hint).await,
                 Err(KcBasicError::InvalidCredentials)     => return Err(AuthError::Forbidden),
                 Err(KcBasicError::Unreachable(_))         => return Err(AuthError::Unavailable),
                 Err(KcBasicError::Upstream(_))            => return Err(AuthError::Unavailable),
@@ -51,7 +62,7 @@ impl FromRequestParts<AppState> for CalDavPrincipal {
 
         // 2) Dev path.
         if std::env::var("CALENDAR_DEV_AUTH").ok().as_deref() == Some("1") {
-            return resolve_user(state, &user).await;
+            return resolve_user(state, &user, tenant_hint).await;
         }
 
         // 3) No auth backend configured.
@@ -59,18 +70,53 @@ impl FromRequestParts<AppState> for CalDavPrincipal {
     }
 }
 
-async fn resolve_user(state: &AppState, user: &str) -> Result<CalDavPrincipal, AuthError> {
+/// Resolve `Host` header → realm via `TenantResolver` → tenant UUID.
+/// Returns `None` when resolver is not wired, host header is missing/invalid,
+/// host is not mapped, or the realm name does not parse as a UUID.
+fn resolve_tenant_from_host(parts: &Parts) -> Option<Uuid> {
+    let resolver = parts.extensions.get::<Arc<TenantResolver>>()?;
+    let host = parts.headers.get(header::HOST).and_then(|v| v.to_str().ok())?;
+    let realm = resolver.resolve(host)?;
+    Uuid::parse_str(realm.trim()).ok()
+}
+
+async fn resolve_user(
+    state:       &AppState,
+    user:        &str,
+    tenant_hint: Option<Uuid>,
+) -> Result<CalDavPrincipal, AuthError> {
     let pool = state.db().ok_or(AuthError::Unavailable)?;
-    // Accept either email or username column match (Keycloak may return either).
-    let row: Option<(Uuid, Uuid)> = sqlx::query_as(
-        r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 1"#,
+
+    if let Some(tenant_id) = tenant_hint {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"SELECT id FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1"#,
+        )
+        .bind(tenant_id)
+        .bind(user)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| AuthError::Unavailable)?;
+        let (user_id,) = row.ok_or(AuthError::Forbidden)?;
+        return Ok(CalDavPrincipal { tenant_id, user_id });
+    }
+
+    // No host→tenant mapping: detect ambiguity. If exactly one tenant owns
+    // this email, accept it; otherwise refuse rather than guess.
+    let rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
+        r#"SELECT tenant_id, id FROM users WHERE email = $1 LIMIT 2"#,
     )
     .bind(user)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await
     .map_err(|_| AuthError::Unavailable)?;
-    let (tenant_id, user_id) = row.ok_or(AuthError::Forbidden)?;
-    Ok(CalDavPrincipal { tenant_id, user_id })
+    match rows.as_slice() {
+        [(tenant_id, user_id)] => Ok(CalDavPrincipal { tenant_id: *tenant_id, user_id: *user_id }),
+        []                     => Err(AuthError::Forbidden),
+        _                      => {
+            tracing::warn!(email = %user, "ambiguous CalDAV login: email exists in multiple tenants and no Host→tenant mapping wired");
+            Err(AuthError::Forbidden)
+        }
+    }
 }
 
 /// Decode `Basic <b64(user:pass)>` → (user, pass).
