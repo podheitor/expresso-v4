@@ -15,6 +15,10 @@ use tokio::{
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
+use std::sync::OnceLock;
+use std::time::Duration;
+use expresso_auth_client::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
+
 use crate::{ingest, state::AppState};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
@@ -475,39 +479,54 @@ fn decode_plain(b64: &str) -> Option<(String, String)> {
 /// Authenticate user+pass via Keycloak direct-access grant.
 /// Uses env AUTH__SUBMISSION_REALM + AUTH__SUBMISSION_CLIENT_ID +
 /// AUTH__SUBMISSION_CLIENT_SECRET + AUTH__KC_URL.
-/// Returns Ok(()) on 200.
-async fn authenticate(state: &AppState, user: &str, pass: &str) -> anyhow::Result<()> {
-    let kc_url = std::env::var("AUTH__KC_URL")
+///
+/// Backed por `KcBasicAuthenticator` (lib expresso-auth-client) — ganha
+/// cache de credenciais (TTL 60s, dedup PROPFIND-style burst) + lockout
+/// per-username (10 fails/60s → 5min). Mesmo modelo do CalDAV/IMAP
+/// fechado no sprint #105; até então o submission re-batia no KC a
+/// cada AUTH PLAIN sem freio nenhum (brute-force aberto).
+///
+/// Single global authenticator: o lockout vale across-connections, que
+/// é o que importa contra distributed brute-force vindo de N MUAs
+/// numa botnet usando o mesmo username.
+static KC_AUTH: OnceLock<KcBasicAuthenticator> = OnceLock::new();
+
+fn kc_authenticator() -> anyhow::Result<&'static KcBasicAuthenticator> {
+    if let Some(a) = KC_AUTH.get() {
+        return Ok(a);
+    }
+    let url = std::env::var("AUTH__KC_URL")
         .unwrap_or_else(|_| "http://expresso-keycloak:8080".to_string());
     let realm = std::env::var("AUTH__SUBMISSION_REALM")
         .map_err(|_| anyhow::anyhow!("AUTH__SUBMISSION_REALM env not set"))?;
     let client_id = std::env::var("AUTH__SUBMISSION_CLIENT_ID")
         .unwrap_or_else(|_| "expresso-dav".to_string());
     let client_secret = std::env::var("AUTH__SUBMISSION_CLIENT_SECRET").ok();
+    let cfg = KcBasicConfig {
+        url, realm, client_id, client_secret,
+        cache_ttl:        Duration::from_secs(60),
+        http_timeout:     Duration::from_secs(10),
+        max_failures:     10,
+        failure_window:   Duration::from_secs(60),
+        lockout_duration: Duration::from_secs(5 * 60),
+    };
+    // Race entre threads: `set` falha quando outro já populou — pegamos
+    // o valor existente em vez de retornar erro.
+    let _ = KC_AUTH.set(KcBasicAuthenticator::new(cfg));
+    Ok(KC_AUTH.get().expect("KC_AUTH set above"))
+}
 
+async fn authenticate(state: &AppState, user: &str, pass: &str) -> anyhow::Result<()> {
     let _ = state; // reserved for future per-tenant resolver
-
-    let url = format!("{kc_url}/realms/{realm}/protocol/openid-connect/token");
-    let mut form = vec![
-        ("grant_type", "password"),
-        ("client_id", client_id.as_str()),
-        ("username", user),
-        ("password", pass),
-    ];
-    if let Some(ref s) = client_secret {
-        form.push(("client_secret", s.as_str()));
-    }
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()?;
-    let resp = client.post(&url).form(&form).send().await?;
-    if resp.status().is_success() {
-        Ok(())
-    } else {
-        let st = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("kc auth rejected: {} — {}", st, body.chars().take(200).collect::<String>())
+    let a = kc_authenticator()?;
+    match a.authenticate(user, pass).await {
+        Ok(_) => Ok(()),
+        Err(KcBasicError::InvalidCredentials) =>
+            anyhow::bail!("kc auth rejected: invalid credentials"),
+        Err(KcBasicError::Unreachable(s)) =>
+            anyhow::bail!("kc unreachable: {s}"),
+        Err(KcBasicError::Upstream(s)) =>
+            anyhow::bail!("kc upstream: {s}"),
     }
 }
 
