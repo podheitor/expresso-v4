@@ -17,7 +17,7 @@ use imap_codec::{
     imap_types::{
         command::{Command, CommandBody},
         core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
-        fetch::{MacroOrMessageDataItemNames, MessageDataItem},
+        fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm},
         mailbox::Mailbox as ImapMailbox,
         response::{
@@ -891,7 +891,27 @@ async fn cmd_fetch(
     let w_size         = wants(macro_or, "RFC822.SIZE");
     let w_uid          = wants(macro_or, "UID");
     let w_internaldate = wants(macro_or, "INTERNALDATE");
-    let w_body         = wants(macro_or, "BODYEXT");
+
+    // Determine which body sections the client wants.
+    // BODY[HEADER] / BODY.PEEK[HEADER] → want_header
+    // BODY[TEXT]   / BODY.PEEK[TEXT]   → want_text
+    // BODY[]       / BODY.PEEK[]       → want_full_body
+    // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative:
+    //   MIME part parsing is not implemented; returning full body is RFC-safe as fallback)
+    let (mut want_full_body, mut want_header, mut want_text) = (false, false, false);
+    if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
+        for name in names.iter() {
+            if let MessageDataItemName::BodyExt { section, .. } = name {
+                match section {
+                    None                      => want_full_body = true,
+                    Some(Section::Header(_))  => want_header = true,
+                    Some(Section::Text(_))    => want_text = true,
+                    _                         => want_full_body = true,
+                }
+            }
+        }
+    }
+    let need_body = want_full_body || want_header || want_text;
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -939,20 +959,37 @@ async fn cmd_fetch(
                 }
             }
         }
-        if w_body {
-            // BODY[] — busca o .eml completo do body_path e retorna como
-            // BODY[]{size}\r\n...bytes... via NString(Literal). section=None
-            // significa BODY[] (mensagem inteira); origin=None = sem partial.
+        if need_body {
             let body_path: Option<String> = row.try_get("body_path").ok();
             if let Some(path) = body_path {
-                let raw = fetch_body_bytes(state, &path).await;
-                if let Some(bytes) = raw {
-                    let data = NString::from(Literal::unvalidated(bytes));
-                    items.push(MessageDataItem::BodyExt {
-                        section: None,
-                        origin:  None,
-                        data,
-                    });
+                if let Some(raw) = fetch_body_bytes(state, &path).await {
+                    // BODY[HEADER] — RFC 3501 §6.4.5: header lines up to and
+                    // including the blank separator (\r\n\r\n).
+                    if want_header {
+                        let hdr = email_header_bytes(&raw);
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Header(None)),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(hdr)),
+                        });
+                    }
+                    // BODY[TEXT] — everything after the blank separator.
+                    if want_text {
+                        let txt = email_text_bytes(&raw);
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Text(None)),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(txt)),
+                        });
+                    }
+                    // BODY[] or fallback for unrecognised section specs.
+                    if want_full_body {
+                        items.push(MessageDataItem::BodyExt {
+                            section: None,
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(raw)),
+                        });
+                    }
                 }
             }
         }
@@ -1511,6 +1548,27 @@ async fn fetch_body_bytes(state: &AppState, body_path: &str) -> Option<Vec<u8>> 
         tokio::fs::read(body_path).await.ok()
     } else {
         None
+    }
+}
+
+/// Return the header section of an RFC 2822 message (up to and including the
+/// blank-line separator \r\n\r\n). If no separator is found, the whole message
+/// is treated as header. Per RFC 3501 §6.4.5 BODY[HEADER] semantics.
+fn email_header_bytes(raw: &[u8]) -> Vec<u8> {
+    if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+        raw[..pos + 4].to_vec()
+    } else {
+        raw.to_vec()
+    }
+}
+
+/// Return the body section of an RFC 2822 message (everything after the
+/// blank-line separator \r\n\r\n). Per RFC 3501 §6.4.5 BODY[TEXT] semantics.
+fn email_text_bytes(raw: &[u8]) -> Vec<u8> {
+    if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+        raw[pos + 4..].to_vec()
+    } else {
+        Vec::new()
     }
 }
 
