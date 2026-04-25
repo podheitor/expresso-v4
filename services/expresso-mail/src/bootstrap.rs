@@ -83,6 +83,8 @@ pub async fn ensure_dev_bootstrap(state: &AppState) -> anyhow::Result<()> {
         .await?;
     }
 
+    tx.commit().await?;
+
     tracing::info!(%tenant_id, %user_id, %admin_email, "mail bootstrap ensured");
     Ok(())
 }
