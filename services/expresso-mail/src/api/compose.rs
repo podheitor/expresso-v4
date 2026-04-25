@@ -32,6 +32,12 @@ pub const MAX_RECIPIENTS_PER_MESSAGE: usize = 100;
 pub const MAX_BODY_BYTES:             usize = 1024 * 1024;
 pub const MAX_SUBJECT_BYTES:          usize = 998;
 
+/// VCALENDAR payload cap pro send_itip. Convites reais (com participantes,
+/// VALARM, recurrence rules) ficam em poucos KiB; 256 KiB cobre até
+/// agendas insanas. Acima disso é abuso — ICS gigante engasga MUAs e
+/// vira amplificador via mailing-list de calendário.
+pub const MAX_ICS_BYTES: usize = 256 * 1024;
+
 /// Rejeita com 403 se `claimed_from` não bater com o email do usuário
 /// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
 /// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
@@ -183,6 +189,7 @@ pub async fn send_itip(
     ctx:          RequestCtx,
     Json(req):    Json<SendItipRequest>,
 ) -> Result<StatusCode> {
+    validate_itip_request(&req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
 
     let method = req.method.trim().to_ascii_uppercase();
@@ -282,6 +289,46 @@ fn validate_send_request(req: &SendRequest) -> Result<()> {
     Ok(())
 }
 
+/// Gate aplicado em /mail/send-itip antes do bind ao relay. Reusa os caps
+/// de subject/recipients do /mail/send + cap próprio pro VCALENDAR.
+fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
+    if req.subject.len() > MAX_SUBJECT_BYTES {
+        return Err(MailError::InvalidMessage(format!(
+            "subject too large: {} bytes (max {})",
+            req.subject.len(), MAX_SUBJECT_BYTES
+        )));
+    }
+    if req.subject.contains('\r') || req.subject.contains('\n') {
+        return Err(MailError::InvalidMessage(
+            "subject must not contain CR or LF".into()
+        ));
+    }
+    if req.to.is_empty() {
+        return Err(MailError::InvalidMessage("no recipients".into()));
+    }
+    if req.to.len() > MAX_RECIPIENTS_PER_MESSAGE {
+        return Err(MailError::InvalidMessage(format!(
+            "too many recipients: {} (max {})",
+            req.to.len(), MAX_RECIPIENTS_PER_MESSAGE
+        )));
+    }
+    if req.ics.len() > MAX_ICS_BYTES {
+        return Err(MailError::InvalidMessage(format!(
+            "ics payload too large: {} bytes (max {})",
+            req.ics.len(), MAX_ICS_BYTES
+        )));
+    }
+    if let Some(b) = req.body_text.as_deref() {
+        if b.len() > MAX_BODY_BYTES {
+            return Err(MailError::InvalidMessage(format!(
+                "body too large: {} bytes (max {})",
+                b.len(), MAX_BODY_BYTES
+            )));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,5 +403,60 @@ mod tests {
         r.body_html = Some(half);
         let err = format!("{:?}", validate_send_request(&r).unwrap_err());
         assert!(err.contains("body too large"), "got: {err}");
+    }
+
+    fn itip_req() -> SendItipRequest {
+        SendItipRequest {
+            from:      "alice@acme.test".into(),
+            to:        vec!["bob@acme.test".into()],
+            subject:   "Meeting".into(),
+            method:    "REQUEST".into(),
+            body_text: None,
+            ics:       "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n".into(),
+        }
+    }
+
+    #[test]
+    fn itip_ok_default() {
+        assert!(validate_itip_request(&itip_req()).is_ok());
+    }
+
+    #[test]
+    fn itip_rejects_empty_recipients() {
+        let mut r = itip_req();
+        r.to.clear();
+        let err = format!("{:?}", validate_itip_request(&r).unwrap_err());
+        assert!(err.contains("no recipients"), "got: {err}");
+    }
+
+    #[test]
+    fn itip_rejects_excess_recipients() {
+        let mut r = itip_req();
+        r.to = vec!["x@y.z".to_string(); MAX_RECIPIENTS_PER_MESSAGE + 1];
+        let err = format!("{:?}", validate_itip_request(&r).unwrap_err());
+        assert!(err.contains("too many recipients"), "got: {err}");
+    }
+
+    #[test]
+    fn itip_rejects_oversize_ics() {
+        let mut r = itip_req();
+        r.ics = "x".repeat(MAX_ICS_BYTES + 1);
+        let err = format!("{:?}", validate_itip_request(&r).unwrap_err());
+        assert!(err.contains("ics payload too large"), "got: {err}");
+    }
+
+    #[test]
+    fn itip_rejects_crlf_in_subject() {
+        let mut r = itip_req();
+        r.subject = "Meet\r\nBcc: evil@x.y".into();
+        let err = format!("{:?}", validate_itip_request(&r).unwrap_err());
+        assert!(err.contains("CR or LF"), "got: {err}");
+    }
+
+    #[test]
+    fn itip_accepts_boundary_ics() {
+        let mut r = itip_req();
+        r.ics = "x".repeat(MAX_ICS_BYTES);
+        assert!(validate_itip_request(&r).is_ok());
     }
 }
