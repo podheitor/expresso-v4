@@ -84,7 +84,14 @@ pub async fn search(
     }
     let hits = store
         .search(&params.q, &params.tenant_id, params.limit)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            // bad_query: tag → input do usuário inválido; não vazar detalhes do schema.
+            if e.to_string().starts_with("bad_query:") {
+                (StatusCode::BAD_REQUEST, "invalid query syntax".to_string())
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, "search failed".to_string())
+            }
+        })?;
     let count = hits.len();
     Ok(Json(SearchResponse { hits, count }))
 }

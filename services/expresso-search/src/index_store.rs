@@ -160,7 +160,8 @@ impl IndexStore {
         if !trimmed.is_empty() {
             let lowered = trimmed.to_ascii_lowercase();
             if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
-                anyhow::bail!("query must not reference tenant_id or document_id fields");
+                // Tag como bad_query para que o handler retorne 400 sem vazar detalhes.
+                anyhow::bail!("bad_query: query must not reference internal fields");
             }
         }
 
@@ -178,7 +179,12 @@ impl IndexStore {
                 &i.index,
                 vec![i.f_subject, i.f_body, i.f_from_addr],
             );
-            let user_query = parser.parse_query(trimmed)?;
+            // Tag QueryParserError como bad_query — erros de sintaxe são input
+            // do usuário (400), não falha interna (500); sem tag, o handler
+            // vaza nomes de campos do schema via e.to_string().
+            let user_query = parser
+                .parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
             Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
                 (Occur::Must, user_query),
@@ -282,5 +288,26 @@ mod tests {
         // Tentativa de pivot cross-tenant via query string deve falhar.
         let res = store.search(&format!("hello OR tenant_id:{TENANT_B}"), TENANT_A, 10);
         assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
+    }
+
+    #[tokio::test]
+    async fn rejects_unknown_field_as_bad_query() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+        // Campo inexistente → QueryParserError → deve ser tagged bad_query (→ 400).
+        let res = store.search("nonexistent_field:hello", TENANT_A, 10);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
+    }
+
+    #[tokio::test]
+    async fn rejects_malformed_query_syntax_as_bad_query() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+        // Parêntese sem fechar → QueryParserError::SyntaxError → bad_query.
+        let res = store.search("(subject:hello AND", TENANT_A, 10);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
     }
 }
