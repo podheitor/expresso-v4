@@ -18,6 +18,19 @@ use crate::api::context::RequestCtx;
 use crate::error::{MailError, Result};
 use crate::state::AppState;
 
+/// Limites duros pros campos do auto-reply.
+///
+/// `subject` casa com RFC 5322 §2.1.1 (998 chars/line) e protege o
+/// header `Subject:` quando o auto-reply for emitido. CR/LF no subject
+/// são bloqueados na validação — header smuggling clássico (atacante
+/// injeta `Bcc:` ou body alheio via field do form).
+///
+/// `body` 8 KiB cobre uma mensagem de OOO razoável; acima é abuso —
+/// cada delivery copia o body inteiro pro reply outbound, então sem
+/// limite vira amplificador de bandwidth via mailing-lists/spam.
+pub const MAX_VACATION_SUBJECT_BYTES: usize = 998;
+pub const MAX_VACATION_BODY_BYTES:    usize = 8 * 1024;
+
 pub fn routes() -> Router<AppState> {
     Router::new().route("/mail/vacation", get(get_vacation).put(put_vacation))
 }
@@ -104,9 +117,7 @@ async fn put_vacation(
     ctx: RequestCtx,
     Json(mut v): Json<Vacation>,
 ) -> Result<Json<Vacation>> {
-    if v.interval_days < 1 || v.interval_days > 365 {
-        return Err(MailError::BadRequest("interval_days out of range".into()));
-    }
+    validate(&v)?;
     v.sieve_script = render_script(&v);
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -139,9 +150,40 @@ async fn put_vacation(
     Ok(Json(v))
 }
 
+/// Gate aplicado em PUT /mail/vacation. Ordem: tamanho → CR/LF →
+/// interval. Tamanho primeiro pra rejeitar abuso antes de tocar
+/// memória/regex desnecessários.
+fn validate(v: &Vacation) -> Result<()> {
+    if v.subject.len() > MAX_VACATION_SUBJECT_BYTES {
+        return Err(MailError::BadRequest(format!(
+            "subject too large: {} bytes (max {})",
+            v.subject.len(), MAX_VACATION_SUBJECT_BYTES
+        )));
+    }
+    if v.body.len() > MAX_VACATION_BODY_BYTES {
+        return Err(MailError::BadRequest(format!(
+            "body too large: {} bytes (max {})",
+            v.body.len(), MAX_VACATION_BODY_BYTES
+        )));
+    }
+    if v.subject.contains('\r') || v.subject.contains('\n') {
+        return Err(MailError::BadRequest(
+            "subject must not contain CR or LF".into()
+        ));
+    }
+    if v.interval_days < 1 || v.interval_days > 365 {
+        return Err(MailError::BadRequest("interval_days out of range".into()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ok_vacation() -> Vacation {
+        Vacation { enabled: true, ..Vacation::default() }
+    }
 
     #[test]
     fn disabled_renders_empty() {
@@ -169,5 +211,63 @@ mod tests {
     fn clamps_interval_days() {
         let v = Vacation { enabled: true, interval_days: 999, ..Vacation::default() };
         assert!(render_script(&v).contains(":days 365"));
+    }
+
+    #[test]
+    fn validate_default_ok() {
+        assert!(validate(&ok_vacation()).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_oversize_subject() {
+        let v = Vacation {
+            subject: "x".repeat(MAX_VACATION_SUBJECT_BYTES + 1),
+            ..ok_vacation()
+        };
+        let err = format!("{:?}", validate(&v).unwrap_err());
+        assert!(err.contains("subject too large"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_oversize_body() {
+        let v = Vacation {
+            body: "x".repeat(MAX_VACATION_BODY_BYTES + 1),
+            ..ok_vacation()
+        };
+        let err = format!("{:?}", validate(&v).unwrap_err());
+        assert!(err.contains("body too large"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_crlf_in_subject() {
+        // Header smuggling clássico — subject vai pro header `Subject:`
+        // do auto-reply emitido.
+        let v = Vacation {
+            subject: "Out\r\nBcc: attacker@evil.com".into(),
+            ..ok_vacation()
+        };
+        let err = format!("{:?}", validate(&v).unwrap_err());
+        assert!(err.contains("CR or LF"), "got: {err}");
+
+        let v = Vacation { subject: "line1\nline2".into(), ..ok_vacation() };
+        assert!(validate(&v).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_bad_interval() {
+        let v = Vacation { interval_days: 0,    ..ok_vacation() };
+        assert!(validate(&v).is_err());
+        let v = Vacation { interval_days: 1000, ..ok_vacation() };
+        assert!(validate(&v).is_err());
+    }
+
+    #[test]
+    fn validate_accepts_boundary_subject_and_body() {
+        let v = Vacation {
+            subject: "x".repeat(MAX_VACATION_SUBJECT_BYTES),
+            body:    "y".repeat(MAX_VACATION_BODY_BYTES),
+            ..ok_vacation()
+        };
+        assert!(validate(&v).is_ok());
     }
 }
