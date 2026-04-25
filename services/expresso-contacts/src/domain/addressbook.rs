@@ -1,6 +1,12 @@
 //! Addressbook collection — persistence layer (CardDAV-aware).
+//!
+//! Tenant scoping: cada método abre transação via `begin_tenant_tx` para que
+//! a policy RLS de `addressbooks` filtre por `current_setting('app.tenant_id')`
+//! antes mesmo do `WHERE tenant_id = $1` explícito (defense-in-depth).
+//! Bonus em `access_level`: os dois SELECTs (owner_user_id + addressbook_acl)
+//! agora rodam num snapshot consistente, evitando race em ACL handoff.
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -56,6 +62,7 @@ impl<'a> AddressbookRepo<'a> {
         owner_user_id: Uuid,
         input: NewAddressbook,
     ) -> Result<Addressbook> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Addressbook>(
             r#"
             INSERT INTO addressbooks (tenant_id, owner_user_id, name, description, is_default)
@@ -68,8 +75,9 @@ impl<'a> AddressbookRepo<'a> {
         .bind(input.name)
         .bind(input.description)
         .bind(input.is_default)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -82,6 +90,7 @@ impl<'a> AddressbookRepo<'a> {
         owner_user_id: Uuid,
         input: NewAddressbook,
     ) -> Result<Addressbook> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Addressbook>(
             r#"
             INSERT INTO addressbooks (id, tenant_id, owner_user_id, name, description, is_default)
@@ -95,12 +104,14 @@ impl<'a> AddressbookRepo<'a> {
         .bind(input.name)
         .bind(input.description)
         .bind(input.is_default)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn list_for_owner(&self, tenant_id: Uuid, owner: Uuid) -> Result<Vec<Addressbook>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Addressbook>(
             r#"SELECT * FROM addressbooks
                WHERE tenant_id = $1 AND owner_user_id = $2
@@ -108,19 +119,22 @@ impl<'a> AddressbookRepo<'a> {
         )
         .bind(tenant_id)
         .bind(owner)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
     pub async fn get(&self, tenant_id: Uuid, id: Uuid) -> Result<Addressbook> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Addressbook>(
             r#"SELECT * FROM addressbooks WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -130,6 +144,7 @@ impl<'a> AddressbookRepo<'a> {
         id: Uuid,
         input: UpdateAddressbook,
     ) -> Result<Addressbook> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let row = sqlx::query_as::<_, Addressbook>(
             r#"
             UPDATE addressbooks SET
@@ -145,33 +160,39 @@ impl<'a> AddressbookRepo<'a> {
         .bind(input.name)
         .bind(input.description)
         .bind(input.is_default)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         sqlx::query(r#"DELETE FROM addressbooks WHERE tenant_id = $1 AND id = $2"#)
             .bind(tenant_id)
             .bind(id)
-            .execute(self.pool)
+            .execute(&mut *tx)
             .await?;
+        tx.commit().await?;
         Ok(())
     }
 
     pub async fn ctag(&self, tenant_id: Uuid, id: Uuid) -> Result<i64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (ctag,): (i64,) = sqlx::query_as(
             r#"SELECT ctag FROM addressbooks WHERE tenant_id = $1 AND id = $2"#,
         )
         .bind(tenant_id)
         .bind(id)
-        .fetch_one(self.pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(ctag)
     }
 
     /// Owned + shared via addressbook_acl.
     pub async fn list_accessible(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<Addressbook>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, Addressbook>(
             r#"SELECT * FROM addressbooks
                WHERE tenant_id = $1
@@ -182,28 +203,40 @@ impl<'a> AddressbookRepo<'a> {
         )
         .bind(tenant_id)
         .bind(user_id)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(rows)
     }
 
     /// "OWNER" | "READ" | "WRITE" | "ADMIN" | None.
+    ///
+    /// Os dois SELECTs (owner em `addressbooks` + privilege em `addressbook_acl`)
+    /// rodam na MESMA tx, dentro do mesmo snapshot — evita race em ACL handoff
+    /// (ex.: transferência de owner concorrente com revoke de ACL).
     pub async fn access_level(
         &self,
         tenant_id: Uuid,
         addrbook_id: Uuid,
         user_id: Uuid,
     ) -> Result<Option<String>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let owner: Option<(Uuid,)> = sqlx::query_as(
             "SELECT owner_user_id FROM addressbooks WHERE id = $1 AND tenant_id = $2",
         )
         .bind(addrbook_id)
         .bind(tenant_id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
         match owner {
-            None => return Ok(None),
-            Some((o,)) if o == user_id => return Ok(Some("OWNER".into())),
+            None => {
+                tx.commit().await?;
+                return Ok(None);
+            }
+            Some((o,)) if o == user_id => {
+                tx.commit().await?;
+                return Ok(Some("OWNER".into()));
+            }
             _ => {}
         }
         let acl: Option<(String,)> = sqlx::query_as(
@@ -213,8 +246,9 @@ impl<'a> AddressbookRepo<'a> {
         .bind(addrbook_id)
         .bind(tenant_id)
         .bind(user_id)
-        .fetch_optional(self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(acl.map(|(p,)| p))
     }
 }
