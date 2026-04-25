@@ -346,6 +346,13 @@ async fn cmd_select(
             *sess = SessionState::Selected;
             *selected = Some(SelectedMailbox { mailbox_id, exists });
 
+            // RFC 3501 §7.3.1: UIDVALIDITY e UIDNEXT são obrigatórios na
+            // resposta SELECT. Sem eles Thunderbird/Apple Mail desativam
+            // sincronização por UID e regridem para seq-based (mais lento e
+            // propenso a erros após EXPUNGE).
+            let uid_validity = mailbox_uid_validity(&mailbox_id);
+            let uid_next = query_uid_next(state, mailbox_id, tenant_id).await;
+
             vec![
                 Response::Data(Data::Flags(vec![
                     Flag::Seen,
@@ -356,11 +363,35 @@ async fn cmd_select(
                 ])),
                 Response::Data(Data::Exists(exists)),
                 Response::Data(Data::Recent(0)),
+                untagged_ok(Code::UidValidity(uid_validity), "UIDs valid"),
+                untagged_ok(Code::UidNext(uid_next), "predicted next UID"),
                 ok_tagged(tag, Some(Code::ReadWrite), "SELECT completed"),
             ]
         }
         None => vec![no_tagged(tag, "mailbox not found")],
     }
+}
+
+/// Deriva um UIDVALIDITY estável dos primeiros 4 bytes do UUID do mailbox.
+/// Estável enquanto o mailbox_id não mudar (nunca muda após criação).
+fn mailbox_uid_validity(mailbox_id: &Uuid) -> NonZeroU32 {
+    let b = mailbox_id.as_bytes();
+    let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
+    NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN)
+}
+
+/// Retorna MAX(uid)+1 para o mailbox, ou 1 se vazio.
+/// Não armazenado no DB — aprox. válida para UIDNEXT; recalculada a cada SELECT.
+async fn query_uid_next(state: &AppState, mailbox_id: Uuid, tenant_id: Uuid) -> NonZeroU32 {
+    let next: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(uid), 0) + 1 FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+    )
+    .bind(mailbox_id)
+    .bind(tenant_id)
+    .fetch_one(state.db())
+    .await
+    .unwrap_or(1);
+    NonZeroU32::new(next as u32).unwrap_or(NonZeroU32::MIN)
 }
 
 async fn cmd_fetch(
@@ -577,6 +608,14 @@ fn outcome_of(responses: &[Response<'static>]) -> &'static str {
     "ok"
 }
 
+fn untagged_ok(code: Code<'static>, text: &str) -> Response<'static> {
+    Response::Status(Status::Untagged(StatusBody {
+        kind: StatusKind::Ok,
+        code: Some(code),
+        text: Text::try_from(text.to_owned()).unwrap(),
+    }))
+}
+
 fn ok_tagged(tag: Tag<'static>, code: Option<Code<'static>>, text: &str) -> Response<'static> {
     Response::Status(Status::Tagged(Tagged {
         tag,
@@ -738,5 +777,33 @@ fn build_envelope(
         bcc: vec![],
         in_reply_to: NString(None),
         message_id: NString(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uid_validity_stable_and_nonzero() {
+        let id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
+        let v1 = mailbox_uid_validity(&id);
+        let v2 = mailbox_uid_validity(&id);
+        assert_eq!(v1, v2, "UIDVALIDITY must be deterministic");
+        assert!(v1.get() > 0);
+    }
+
+    #[test]
+    fn uid_validity_differs_per_mailbox() {
+        let a = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let b = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
+        assert_ne!(mailbox_uid_validity(&a), mailbox_uid_validity(&b));
+    }
+
+    #[test]
+    fn uid_validity_all_zero_uuid_uses_min() {
+        let nil = Uuid::nil();
+        let v = mailbox_uid_validity(&nil);
+        assert_eq!(v, NonZeroU32::MIN);
     }
 }
