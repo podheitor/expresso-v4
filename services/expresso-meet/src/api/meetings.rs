@@ -26,12 +26,42 @@ use crate::error::{MeetError, Result};
 use crate::jitsi::IssueRequest;
 use crate::state::AppState;
 
+/// Cap pra title — vai pro DB e UI; não tem necessidade de ser longo.
+pub const MAX_TITLE_BYTES: usize = 200;
+
+/// Cap pra room_name — vira parte da URL do Jitsi e claim `room` no JWT.
+/// Jitsi tolera nomes longos mas isso infla token e cria URLs absurdas.
+pub const MAX_ROOM_NAME_BYTES: usize = 64;
+
+/// Cap pra password do meeting — vai pro DB. Não é hashed (compartilhado
+/// com participantes), então não-secreto, mas cap previne payload abuso.
+pub const MAX_PASSWORD_BYTES: usize = 128;
+
+/// Cap pro display_name/email override em mint_token — vão direto pro JWT.
+/// Nome longo infla token; email longo é abuso (RFC 5321 já limita 254).
+pub const MAX_DISPLAY_NAME_BYTES: usize = 100;
+pub const MAX_EMAIL_BYTES: usize = 254;
+
+/// Cap pra invite list. Cada UUID dispara um INSERT de participante;
+/// 100 cobre uso real (call-de-equipe gigante) e bloqueia loop de abuso.
+pub const MAX_INVITE_LEN: usize = 100;
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/meetings", post(create).get(list))
         .route("/api/v1/meetings/:id", get(get_one).delete(archive))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
+}
+
+/// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
+/// Bloqueia `/`, `..`, ` ` e qualquer coisa que vire confuso na join URL ou
+/// que precise URL-encoding no claim do JWT. Jitsi internamente normaliza,
+/// mas defesa-em-profundidade aqui evita surpresas downstream.
+fn valid_room_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= MAX_ROOM_NAME_BYTES
+        && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,6 +102,23 @@ async fn create(
     if body.title.trim().is_empty() {
         return Err(MeetError::BadRequest("title required".into()));
     }
+    if body.title.len() > MAX_TITLE_BYTES {
+        return Err(MeetError::BadRequest(format!(
+            "title too long: {} bytes (max {})", body.title.len(), MAX_TITLE_BYTES
+        )));
+    }
+    if let Some(p) = body.password.as_ref() {
+        if p.len() > MAX_PASSWORD_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "password too long: {} bytes (max {})", p.len(), MAX_PASSWORD_BYTES
+            )));
+        }
+    }
+    if body.invite.len() > MAX_INVITE_LEN {
+        return Err(MeetError::BadRequest(format!(
+            "too many invitees: {} (max {})", body.invite.len(), MAX_INVITE_LEN
+        )));
+    }
     let pool  = state.db_or_unavailable()?;
     let jitsi = state.jitsi_or_unavailable()?;
 
@@ -79,6 +126,11 @@ async fn create(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| jitsi.generate_room_name());
+    if !valid_room_name(&room_name) {
+        return Err(MeetError::BadRequest(
+            "invalid room_name: ASCII alphanumeric + '-' '_' only, max 64 bytes".into()
+        ));
+    }
 
     let repo = MeetingRepo::new(pool);
     let meeting = repo.create(ctx.tenant_id, ctx.user_id, NewMeeting {
@@ -223,6 +275,21 @@ async fn mint_token(
         return Err(MeetError::BadRequest("target is not a participant".into()));
     }
 
+    if let Some(d) = body.display_name.as_deref() {
+        if d.len() > MAX_DISPLAY_NAME_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+            )));
+        }
+    }
+    if let Some(e) = body.email.as_deref() {
+        if e.len() > MAX_EMAIL_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+            )));
+        }
+    }
+
     let m = repo.get(ctx.tenant_id, id).await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
 
@@ -288,4 +355,45 @@ async fn list_participants(
     }
     let rows = repo.list_participants(ctx.tenant_id, id).await?;
     Ok(Json(rows))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_name_accepts_ascii_alphanum() {
+        assert!(valid_room_name("standup-2026-04"));
+        assert!(valid_room_name("room_42"));
+        assert!(valid_room_name("ABC123"));
+    }
+
+    #[test]
+    fn room_name_rejects_special_chars() {
+        assert!(!valid_room_name(""));
+        assert!(!valid_room_name("a/b"));        // path traversal
+        assert!(!valid_room_name(".."));         // path traversal
+        assert!(!valid_room_name("a b"));        // space
+        assert!(!valid_room_name("café"));       // unicode (would need URL-encode)
+        assert!(!valid_room_name("a\nb"));       // newline injection
+    }
+
+    #[test]
+    fn room_name_rejects_oversize() {
+        let s = "a".repeat(MAX_ROOM_NAME_BYTES + 1);
+        assert!(!valid_room_name(&s));
+    }
+
+    #[test]
+    fn room_name_accepts_boundary() {
+        let s = "a".repeat(MAX_ROOM_NAME_BYTES);
+        assert!(valid_room_name(&s));
+    }
+
+    #[test]
+    fn caps_are_sane() {
+        assert!(MAX_TITLE_BYTES >= 50);
+        assert!(MAX_INVITE_LEN  >= 10);
+        assert!(MAX_EMAIL_BYTES >= 254);  // RFC 5321 baseline
+    }
 }
