@@ -18,6 +18,20 @@ use uuid::Uuid;
 
 use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
 
+/// Limites duros pro endpoint de envio.
+///
+/// Sem isso, qualquer usuário autenticado vira spam-cannon: enviar pra
+/// 100k recipients num shot, body de 50 MiB, etc. — usando o relay SMTP
+/// do tenant e custando reputação de IP/domínio.
+///
+/// 100 recipients combina to+cc+bcc; cobre listas internas legítimas
+/// sem virar BCC-bomb. 1 MiB de body cobre HTML rich + assinatura;
+/// anexos grandes vão por outro fluxo. 998 bytes de subject = limite
+/// de linha do RFC 5322.
+pub const MAX_RECIPIENTS_PER_MESSAGE: usize = 100;
+pub const MAX_BODY_BYTES:             usize = 1024 * 1024;
+pub const MAX_SUBJECT_BYTES:          usize = 998;
+
 /// Rejeita com 403 se `claimed_from` não bater com o email do usuário
 /// autenticado (case-insensitive, trim). A consulta usa `begin_tenant_tx`
 /// + `WHERE tenant_id = $1 AND id = $2` — defense-in-depth contra RLS
@@ -72,6 +86,7 @@ pub async fn send_message(
     ctx:          RequestCtx,
     Json(req):    Json<SendRequest>,
 ) -> Result<StatusCode> {
+    validate_send_request(&req)?;
     assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
 
     let from_addr: Address = req.from.parse()
@@ -227,4 +242,119 @@ pub async fn send_itip(
 
     tracing::info!(from=%req.from, to=?req.to, method=%method, "itip dispatched");
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Gate aplicado em /mail/send antes do bind ao relay SMTP. Ordem dos
+/// checks: subject → recipients → body. Mantém o de baixo custo (len)
+/// antes do que poderia alocar (Vec scan).
+fn validate_send_request(req: &SendRequest) -> Result<()> {
+    if req.subject.len() > MAX_SUBJECT_BYTES {
+        return Err(MailError::InvalidMessage(format!(
+            "subject too large: {} bytes (max {})",
+            req.subject.len(), MAX_SUBJECT_BYTES
+        )));
+    }
+    if req.subject.contains('\r') || req.subject.contains('\n') {
+        return Err(MailError::InvalidMessage(
+            "subject must not contain CR or LF".into()
+        ));
+    }
+    let recipient_count = req.to.len()
+        + req.cc.as_ref().map_or(0, Vec::len)
+        + req.bcc.as_ref().map_or(0, Vec::len);
+    if recipient_count == 0 {
+        return Err(MailError::InvalidMessage("no recipients".into()));
+    }
+    if recipient_count > MAX_RECIPIENTS_PER_MESSAGE {
+        return Err(MailError::InvalidMessage(format!(
+            "too many recipients: {} (max {})",
+            recipient_count, MAX_RECIPIENTS_PER_MESSAGE
+        )));
+    }
+    let body_total = req.body_text.as_deref().map_or(0, str::len)
+        + req.body_html.as_deref().map_or(0, str::len);
+    if body_total > MAX_BODY_BYTES {
+        return Err(MailError::InvalidMessage(format!(
+            "body too large: {} bytes (max {})",
+            body_total, MAX_BODY_BYTES
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req() -> SendRequest {
+        SendRequest {
+            from:        "alice@acme.test".into(),
+            to:          vec!["bob@acme.test".into()],
+            cc:          None,
+            bcc:         None,
+            subject:     "hi".into(),
+            body_text:   Some("hello".into()),
+            body_html:   None,
+            reply_to_id: None,
+        }
+    }
+
+    #[test]
+    fn ok_default() {
+        assert!(validate_send_request(&req()).is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_recipients() {
+        let mut r = req();
+        r.to.clear();
+        let err = format!("{:?}", validate_send_request(&r).unwrap_err());
+        assert!(err.contains("no recipients"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_excess_recipients() {
+        let mut r = req();
+        r.to  = vec!["x@y.z".to_string(); 60];
+        r.cc  = Some(vec!["x@y.z".to_string(); 30]);
+        r.bcc = Some(vec!["x@y.z".to_string(); 20]); // total 110 > 100
+        let err = format!("{:?}", validate_send_request(&r).unwrap_err());
+        assert!(err.contains("too many recipients"), "got: {err}");
+    }
+
+    #[test]
+    fn accepts_max_recipients_exact() {
+        let mut r = req();
+        r.to  = vec!["x@y.z".to_string(); 50];
+        r.cc  = Some(vec!["x@y.z".to_string(); 30]);
+        r.bcc = Some(vec!["x@y.z".to_string(); 20]); // total 100
+        assert!(validate_send_request(&r).is_ok());
+    }
+
+    #[test]
+    fn rejects_oversize_subject() {
+        let mut r = req();
+        r.subject = "x".repeat(MAX_SUBJECT_BYTES + 1);
+        let err = format!("{:?}", validate_send_request(&r).unwrap_err());
+        assert!(err.contains("subject too large"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_crlf_in_subject() {
+        let mut r = req();
+        r.subject = "Hi\r\nBcc: evil@x.y".into();
+        let err = format!("{:?}", validate_send_request(&r).unwrap_err());
+        assert!(err.contains("CR or LF"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_oversize_body_combined() {
+        // Sum de text+html. Cada um sozinho passaria, juntos não.
+        let mut r = req();
+        let half = "x".repeat(MAX_BODY_BYTES * 2 / 3);
+        r.body_text = Some(half.clone());
+        r.body_html = Some(half);
+        let err = format!("{:?}", validate_send_request(&r).unwrap_err());
+        assert!(err.contains("body too large"), "got: {err}");
+    }
 }
