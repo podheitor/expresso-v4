@@ -3,7 +3,10 @@ mod files;
 mod health;
 mod shares;
 mod wopi;
+mod wopi_metrics;
 mod uploads;
+
+pub use wopi_metrics::init as init_wopi_metrics;
 
 use axum::Router;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};

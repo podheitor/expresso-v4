@@ -23,6 +23,7 @@ use time::OffsetDateTime;
 use tokio::{fs, io::AsyncWriteExt};
 use uuid::Uuid;
 
+use super::wopi_metrics;
 use crate::{
     domain::{AcquireOutcome, FileRepo, NewVersion, QuotaRepo, VersionRepo, WopiLockRepo},
     error::{DriveError, Result},
@@ -120,6 +121,19 @@ async fn check_file_info(
     Path(id):     Path<Uuid>,
     Query(q):     Query<TokenQuery>,
 ) -> Result<Json<CheckFileInfo>> {
+    let r = check_file_info_impl(state, id, q).await;
+    wopi_metrics::record("check_file_info", match &r {
+        Ok(_)  => "ok",
+        Err(e) => wopi_metrics::outcome_for_err(e),
+    });
+    r
+}
+
+async fn check_file_info_impl(
+    state: AppState,
+    id:    Uuid,
+    q:     TokenQuery,
+) -> Result<Json<CheckFileInfo>> {
     let claims = authorize(id, &q)?;
     let pool   = state.db_or_unavailable()?;
     let repo   = FileRepo::new(pool);
@@ -152,6 +166,19 @@ async fn get_file(
     Path(id):     Path<Uuid>,
     Query(q):     Query<TokenQuery>,
 ) -> Result<Response> {
+    let r = get_file_impl(state, id, q).await;
+    wopi_metrics::record("get_file", match &r {
+        Ok(_)  => "ok",
+        Err(e) => wopi_metrics::outcome_for_err(e),
+    });
+    r
+}
+
+async fn get_file_impl(
+    state: AppState,
+    id:    Uuid,
+    q:     TokenQuery,
+) -> Result<Response> {
     let claims = authorize(id, &q)?;
     let pool   = state.db_or_unavailable()?;
     let file   = FileRepo::new(pool).get(claims.tenant_id, id).await?;
@@ -181,6 +208,22 @@ async fn put_file(
     Query(q):     Query<TokenQuery>,
     headers:      HeaderMap,
     body:         Bytes,
+) -> Result<Response> {
+    let r = put_file_impl(state, id, q, headers, body).await;
+    wopi_metrics::record("put_file", match &r {
+        Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
+        Ok(_)  => "ok",
+        Err(e) => wopi_metrics::outcome_for_err(e),
+    });
+    r
+}
+
+async fn put_file_impl(
+    state:   AppState,
+    id:      Uuid,
+    q:       TokenQuery,
+    headers: HeaderMap,
+    body:    Bytes,
 ) -> Result<Response> {
     let claims = authorize(id, &q)?;
     let pool   = state.db_or_unavailable()?;
@@ -280,9 +323,30 @@ async fn wopi_post(
     Query(q):     Query<TokenQuery>,
     headers:      HeaderMap,
 ) -> Result<Response> {
-    let claims = authorize(id, &q)?;
-    let pool   = state.db_or_unavailable()?;
-    let locks  = WopiLockRepo::new(pool);
+    let (op, r) = wopi_post_impl(state, id, q, headers).await;
+    wopi_metrics::record(op, match &r {
+        Ok(resp) if resp.status() == StatusCode::CONFLICT => "conflict",
+        Ok(_)  => "ok",
+        Err(e) => wopi_metrics::outcome_for_err(e),
+    });
+    r
+}
+
+async fn wopi_post_impl(
+    state:   AppState,
+    id:      Uuid,
+    q:       TokenQuery,
+    headers: HeaderMap,
+) -> (&'static str, Result<Response>) {
+    let claims = match authorize(id, &q) {
+        Ok(c) => c,
+        Err(e) => return ("other", Err(e)),
+    };
+    let pool = match state.db_or_unavailable() {
+        Ok(p) => p,
+        Err(e) => return ("other", Err(e)),
+    };
+    let locks = WopiLockRepo::new(pool);
 
     let op   = header_str(&headers, "X-WOPI-Override").unwrap_or_default();
     let lock = header_str(&headers, "X-WOPI-Lock").unwrap_or_default();
@@ -290,59 +354,73 @@ async fn wopi_post(
 
     match op.as_str() {
         "GET_LOCK" => {
-            let cur = locks.get_active(claims.tenant_id, id).await?;
-            let token = cur.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
-            Ok(lock_resp(StatusCode::OK, token, None))
+            let r: Result<Response> = async {
+                let cur = locks.get_active(claims.tenant_id, id).await?;
+                let token = cur.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                Ok(lock_resp(StatusCode::OK, token, None))
+            }.await;
+            ("get_lock", r)
         }
         "LOCK" => {
-            if lock.is_empty() {
-                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
-            }
-            let outcome = match old.as_deref() {
-                Some(o) if !o.is_empty() =>
-                    locks.unlock_and_relock(claims.tenant_id, id, o, &lock, claims.user_id).await?,
-                _ =>
-                    locks.acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?,
-            };
-            match outcome {
-                AcquireOutcome::Held(_) =>
-                    Ok(lock_resp(StatusCode::OK, &lock, None)),
-                AcquireOutcome::Conflict(existing) => {
-                    let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
-                    Ok(lock_resp(StatusCode::CONFLICT, cur, Some("lock mismatch")))
+            let is_relock = old.as_deref().map(|s| !s.is_empty()).unwrap_or(false);
+            let label: &'static str = if is_relock { "unlock_and_relock" } else { "lock" };
+            let r: Result<Response> = async {
+                if lock.is_empty() {
+                    return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
                 }
-            }
+                let outcome = match old.as_deref() {
+                    Some(o) if !o.is_empty() =>
+                        locks.unlock_and_relock(claims.tenant_id, id, o, &lock, claims.user_id).await?,
+                    _ =>
+                        locks.acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?,
+                };
+                match outcome {
+                    AcquireOutcome::Held(_) =>
+                        Ok(lock_resp(StatusCode::OK, &lock, None)),
+                    AcquireOutcome::Conflict(existing) => {
+                        let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                        Ok(lock_resp(StatusCode::CONFLICT, cur, Some("lock mismatch")))
+                    }
+                }
+            }.await;
+            (label, r)
         }
         "REFRESH_LOCK" => {
-            if lock.is_empty() {
-                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
-            }
-            let outcome = locks
-                .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?;
-            match outcome {
-                AcquireOutcome::Held(_) =>
-                    Ok(lock_resp(StatusCode::OK, &lock, None)),
-                AcquireOutcome::Conflict(existing) => {
-                    let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
-                    Ok(lock_resp(StatusCode::CONFLICT, cur, Some("refresh: lock mismatch")))
+            let r: Result<Response> = async {
+                if lock.is_empty() {
+                    return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
                 }
-            }
+                let outcome = locks
+                    .acquire_or_refresh(claims.tenant_id, id, &lock, claims.user_id).await?;
+                match outcome {
+                    AcquireOutcome::Held(_) =>
+                        Ok(lock_resp(StatusCode::OK, &lock, None)),
+                    AcquireOutcome::Conflict(existing) => {
+                        let cur = existing.as_ref().map(|l| l.lock_token.as_str()).unwrap_or("");
+                        Ok(lock_resp(StatusCode::CONFLICT, cur, Some("refresh: lock mismatch")))
+                    }
+                }
+            }.await;
+            ("refresh_lock", r)
         }
         "UNLOCK" => {
-            if lock.is_empty() {
-                return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
-            }
-            if locks.release(claims.tenant_id, id, &lock).await? {
-                Ok(lock_resp(StatusCode::OK, "", None))
-            } else {
-                let cur = locks.get_active(claims.tenant_id, id).await?
-                    .map(|l| l.lock_token).unwrap_or_default();
-                Ok(lock_resp(StatusCode::CONFLICT, &cur, Some("unlock: lock mismatch")))
-            }
+            let r: Result<Response> = async {
+                if lock.is_empty() {
+                    return Err(DriveError::BadRequest("X-WOPI-Lock required".into()));
+                }
+                if locks.release(claims.tenant_id, id, &lock).await? {
+                    Ok(lock_resp(StatusCode::OK, "", None))
+                } else {
+                    let cur = locks.get_active(claims.tenant_id, id).await?
+                        .map(|l| l.lock_token).unwrap_or_default();
+                    Ok(lock_resp(StatusCode::CONFLICT, &cur, Some("unlock: lock mismatch")))
+                }
+            }.await;
+            ("unlock", r)
         }
         other => {
             tracing::debug!(override_op = other, "WOPI op unsupported");
-            Err(DriveError::BadRequest(format!("unsupported X-WOPI-Override: {other}")))
+            ("other", Err(DriveError::BadRequest(format!("unsupported X-WOPI-Override: {other}"))))
         }
     }
 }

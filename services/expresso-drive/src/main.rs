@@ -111,6 +111,8 @@ async fn main() -> anyhow::Result<()> {
     let addr  = resolve_addr()?;
     let state = AppState::new(db.clone(), data_root.clone());
 
+    api::init_wopi_metrics();
+
     // tus.io expiration — hourly GC of abandoned uploads + matching .part blobs.
     if let Some(pool) = db.clone() {
         let root = data_root.clone();
