@@ -25,6 +25,7 @@ use imap_codec::{
             StatusKind, Tagged,
         },
         status::{StatusDataItem, StatusDataItemName},
+        extensions::binary::LiteralOrLiteral8,
         IntoStatic,
     },
 };
@@ -209,6 +210,12 @@ async fn dispatch(
             }
             cmd_status(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), item_names.as_ref()).await
         }
+        CommandBody::Append { mailbox, flags, message, .. } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_append(state, tag, mailbox, flags, message, user_id.unwrap(), tenant_id.unwrap()).await
+        }
         CommandBody::Fetch {
             sequence_set,
             macro_or_item_names,
@@ -253,6 +260,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
     let caps = Vec1::try_from(vec![
         Capability::Imap4Rev1,
         Capability::Idle,
+        Capability::UidPlus,
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -525,6 +533,103 @@ async fn cmd_status(
         }),
         ok_tagged(tag, None, "STATUS completed"),
     ]
+}
+
+/// APPEND — RFC 3501 §6.3.11 + RFC 4315 (UIDPLUS).
+/// Stores a message verbatim into the target mailbox. The raw bytes are
+/// written to object store; the DB row is inserted atomically with a
+/// `FOR UPDATE` lock on the mailbox row to avoid uid collision under
+/// concurrent APPENDs. The trigger `trg_messages_sync_mailbox_stats`
+/// updates message_count/unseen_count/next_uid after the INSERT.
+async fn cmd_append(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    flags: &[Flag<'_>],
+    message: &LiteralOrLiteral8<'_>,
+    uid: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let mbox_name = mailbox_to_string(mailbox);
+
+    // Extract raw bytes from either Literal or Literal8 (BINARY extension).
+    let raw_bytes: &[u8] = match message {
+        LiteralOrLiteral8::Literal(l)  => l.as_ref(),
+        LiteralOrLiteral8::Literal8(l) => l.as_ref(),
+    };
+
+    let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
+
+    // Begin transaction; lock mailbox row to serialise concurrent APPENDs.
+    let mut tx = match state.db().begin().await {
+        Ok(t) => t,
+        Err(_) => return vec![no_tagged(tag, "internal error")],
+    };
+
+    let row: Option<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT id, uid_validity, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3 FOR UPDATE",
+    )
+    .bind(uid)
+    .bind(&mbox_name)
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .ok()
+    .flatten();
+
+    let (mailbox_id, uid_validity_raw, new_uid_raw) = match row {
+        None => {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "mailbox not found")];
+        }
+        Some(r) => r,
+    };
+
+    let msg_id = Uuid::new_v4();
+    let body_path = if let Some(store) = state.store() {
+        let key = format!("raw/{msg_id}.eml");
+        if store.put(&key, raw_bytes.to_vec(), Some("message/rfc822")).await.is_err() {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "storage error")];
+        }
+        format!("s3://{}/{key}", store.bucket())
+    } else {
+        format!("/tmp/{msg_id}.eml")
+    };
+
+    let insert = sqlx::query(
+        "INSERT INTO messages \
+         (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+    )
+    .bind(msg_id)
+    .bind(mailbox_id)
+    .bind(tenant_id)
+    .bind(new_uid_raw)
+    .bind(&flag_strs)
+    .bind(raw_bytes.len() as i32)
+    .bind(&body_path)
+    .execute(&mut *tx)
+    .await;
+
+    if insert.is_err() {
+        let _ = tx.rollback().await;
+        return vec![no_tagged(tag, "internal error")];
+    }
+
+    if tx.commit().await.is_err() {
+        return vec![no_tagged(tag, "internal error")];
+    }
+
+    let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
+    let appended_uid = NonZeroU32::new(new_uid_raw as u32).unwrap_or(NonZeroU32::MIN);
+
+    vec![ok_tagged(
+        tag,
+        Some(Code::AppendUid { uid_validity, uid: appended_uid }),
+        "APPEND completed",
+    )]
 }
 
 async fn cmd_fetch(
