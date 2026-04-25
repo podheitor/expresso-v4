@@ -205,6 +205,24 @@ async fn dispatch(
             }
             cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected, true).await
         }
+        CommandBody::Subscribe { mailbox } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_subscribe(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), true).await
+        }
+        CommandBody::Unsubscribe { mailbox } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_subscribe(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), false).await
+        }
+        CommandBody::Lsub { reference, .. } => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_lsub(state, tag, reference, user_id.unwrap(), tenant_id.unwrap()).await
+        }
         CommandBody::Status { mailbox, item_names } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
@@ -381,6 +399,76 @@ async fn cmd_list(
         }));
     }
     out.push(ok_tagged(tag, None, "LIST completed"));
+    out
+}
+
+/// SUBSCRIBE / UNSUBSCRIBE — RFC 3501 §6.3.6-7.
+/// Marks a mailbox as subscribed (true) or unsubscribed (false).
+/// Idempotent — toggling an already-subscribed/unsubscribed mailbox is a no-op.
+async fn cmd_subscribe(
+    state: &AppState,
+    tag: Tag<'static>,
+    mailbox: &ImapMailbox<'_>,
+    uid: Uuid,
+    tenant_id: Uuid,
+    subscribe: bool,
+) -> Vec<Response<'static>> {
+    let mbox_name = mailbox_to_string(mailbox);
+    let _ = sqlx::query(
+        "UPDATE mailboxes SET subscribed = $1 \
+         WHERE user_id = $2 AND folder_name = $3 AND tenant_id = $4",
+    )
+    .bind(subscribe)
+    .bind(uid)
+    .bind(&mbox_name)
+    .bind(tenant_id)
+    .execute(state.db())
+    .await;
+
+    let msg = if subscribe { "SUBSCRIBE completed" } else { "UNSUBSCRIBE completed" };
+    vec![ok_tagged(tag, None, msg)]
+}
+
+/// LSUB — RFC 3501 §6.3.9: list only subscribed mailboxes.
+/// Same format as LIST responses but uses Data::Lsub.
+async fn cmd_lsub(
+    state: &AppState,
+    tag: Tag<'static>,
+    _reference: &ImapMailbox<'_>,
+    uid: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT folder_name, special_use FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND subscribed = TRUE \
+         ORDER BY folder_name",
+    )
+    .bind(uid)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
+    for (name, special_use) in &rows {
+        let mailbox = ImapMailbox::try_from(name.to_owned())
+            .unwrap_or_else(|_| ImapMailbox::Inbox);
+        let items: Vec<FlagNameAttribute<'static>> = special_use
+            .as_deref()
+            .and_then(|s| {
+                let bare = s.trim().trim_start_matches('\\');
+                if bare.is_empty() { return None; }
+                Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
+            })
+            .into_iter()
+            .collect();
+        out.push(Response::Data(Data::Lsub {
+            items,
+            delimiter: Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
+            mailbox,
+        }));
+    }
+    out.push(ok_tagged(tag, None, "LSUB completed"));
     out
 }
 
