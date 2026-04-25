@@ -1,6 +1,12 @@
 //! IMAP session state machine — one per TCP connection.
 //! Handles core IMAP4rev1 commands: CAPABILITY, LOGIN, LIST, SELECT,
 //! FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP.
+//!
+//! Tenant scoping: após LOGIN, `tenant_id` é propagado para todo handler
+//! subsequente e cada query aplica `AND tenant_id = $` explícito. Sem isso,
+//! um mailbox_id ou user_id vazado (via misconfig/log/debug endpoint) daria
+//! acesso cross-tenant — a RLS de `mailboxes`/`messages` é NULL-bypass e
+//! não bloqueia operações IMAP que rodam fora de `begin_tenant_tx`.
 
 use std::num::NonZeroU32;
 
@@ -133,7 +139,7 @@ async fn dispatch(
     let tag = cmd.tag.clone();
     match &cmd.body {
         CommandBody::Capability => cmd_capability(tag),
-        CommandBody::Noop => cmd_noop(state, tag, selected).await,
+        CommandBody::Noop => cmd_noop(state, tag, selected, *tenant_id).await,
         CommandBody::Logout => cmd_logout(tag),
         CommandBody::Login { username, password } => {
             let user = astring_to_string(username);
@@ -147,13 +153,13 @@ async fn dispatch(
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_list(state, tag, reference, user_id.unwrap()).await
+            cmd_list(state, tag, reference, user_id.unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Select { mailbox, .. } | CommandBody::Examine { mailbox, .. } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_select(state, tag, mailbox, user_id.unwrap(), sess, selected).await
+            cmd_select(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), sess, selected).await
         }
         CommandBody::Fetch {
             sequence_set,
@@ -163,7 +169,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_fetch(state, tag, sequence_set, macro_or_item_names, selected.as_ref().unwrap()).await
+            cmd_fetch(state, tag, sequence_set, macro_or_item_names, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Store {
             sequence_set,
@@ -175,14 +181,14 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_store(state, tag, sequence_set, kind, flags, selected.as_ref().unwrap()).await
+            cmd_store(state, tag, sequence_set, kind, flags, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
-        CommandBody::Close => cmd_close(state, tag, sess, selected).await,
+        CommandBody::Close => cmd_close(state, tag, sess, selected, *tenant_id).await,
         CommandBody::Expunge => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_expunge(state, tag, selected.as_ref().unwrap()).await
+            cmd_expunge(state, tag, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
@@ -251,11 +257,14 @@ async fn cmd_list(
     tag: Tag<'static>,
     _reference: &ImapMailbox<'_>,
     uid: Uuid,
+    tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT folder_name, special_use FROM mailboxes WHERE user_id = $1 ORDER BY folder_name",
+        "SELECT folder_name, special_use FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 ORDER BY folder_name",
     )
     .bind(uid)
+    .bind(tenant_id)
     .fetch_all(state.db())
     .await
     .unwrap_or_default();
@@ -286,16 +295,21 @@ async fn cmd_select(
     tag: Tag<'static>,
     mailbox: &ImapMailbox<'_>,
     uid: Uuid,
+    tenant_id: Uuid,
     sess: &mut SessionState,
     selected: &mut Option<SelectedMailbox>,
 ) -> Vec<Response<'static>> {
     let mbox_name = mailbox_to_string(mailbox);
 
     let row: Option<(Uuid, i64)> = sqlx::query_as(
-        "SELECT id, (SELECT COUNT(*) FROM messages WHERE mailbox_id = mailboxes.id) FROM mailboxes WHERE user_id = $1 AND folder_name = $2",
+        "SELECT id, (SELECT COUNT(*) FROM messages \
+                      WHERE mailbox_id = mailboxes.id AND tenant_id = $3) \
+         FROM mailboxes \
+         WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3",
     )
     .bind(uid)
     .bind(&mbox_name)
+    .bind(tenant_id)
     .fetch_optional(state.db())
     .await
     .ok()
@@ -330,18 +344,20 @@ async fn cmd_fetch(
     sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
     macro_or: &MacroOrMessageDataItemNames<'_>,
     sel: &SelectedMailbox,
+    tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let (start, end) = sequence_range(sequence_set, sel.exists);
 
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
          uid, subject, from_addr, from_name, date, flags, size_bytes \
-         FROM messages WHERE mailbox_id = $1 \
+         FROM messages WHERE mailbox_id = $1 AND tenant_id = $4 \
          ORDER BY received_at ASC OFFSET $2 LIMIT $3",
     )
     .bind(sel.mailbox_id)
     .bind((start - 1) as i64)
     .bind((end - start + 1) as i64)
+    .bind(tenant_id)
     .fetch_all(state.db())
     .await
     .unwrap_or_default();
@@ -402,19 +418,23 @@ async fn cmd_store(
     kind: &imap_codec::imap_types::flag::StoreType,
     flags: &[Flag<'_>],
     sel: &SelectedMailbox,
+    tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let (start, end) = sequence_range(sequence_set, sel.exists);
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
 
     let sql = match kind {
         imap_codec::imap_types::flag::StoreType::Add => {
-            "UPDATE messages SET flags = array_cat(flags, $1::text[]) WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+            "UPDATE messages SET flags = array_cat(flags, $1::text[]) \
+             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
         }
         imap_codec::imap_types::flag::StoreType::Remove => {
-            "UPDATE messages SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+            "UPDATE messages SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
+             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
         }
         imap_codec::imap_types::flag::StoreType::Replace => {
-            "UPDATE messages SET flags = $1::text[] WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4"
+            "UPDATE messages SET flags = $1::text[] \
+             WHERE mailbox_id = $2 AND uid >= $3 AND uid <= $4 AND tenant_id = $5"
         }
     };
 
@@ -423,6 +443,7 @@ async fn cmd_store(
         .bind(sel.mailbox_id)
         .bind(start as i64)
         .bind(end as i64)
+        .bind(tenant_id)
         .execute(state.db())
         .await;
 
@@ -433,11 +454,14 @@ async fn cmd_expunge(
     state: &AppState,
     tag: Tag<'static>,
     sel: &SelectedMailbox,
+    tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let _ = sqlx::query(
-        "DELETE FROM messages WHERE mailbox_id = $1 AND '\\Deleted' = ANY(flags)",
+        "DELETE FROM messages \
+         WHERE mailbox_id = $1 AND tenant_id = $2 AND '\\Deleted' = ANY(flags)",
     )
     .bind(sel.mailbox_id)
+    .bind(tenant_id)
     .execute(state.db())
     .await;
 
@@ -454,13 +478,15 @@ async fn cmd_noop(
     state: &AppState,
     tag: Tag<'static>,
     selected: &mut Option<SelectedMailbox>,
+    tenant_id: Option<Uuid>,
 ) -> Vec<Response<'static>> {
     let mut out: Vec<Response<'static>> = Vec::with_capacity(2);
-    if let Some(sel) = selected.as_mut() {
+    if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
         let count: Option<i64> = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM messages WHERE mailbox_id = $1",
+            "SELECT COUNT(*) FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
         )
         .bind(sel.mailbox_id)
+        .bind(tid)
         .fetch_optional(state.db())
         .await
         .ok()
@@ -489,12 +515,15 @@ async fn cmd_close(
     tag: Tag<'static>,
     sess: &mut SessionState,
     selected: &mut Option<SelectedMailbox>,
+    tenant_id: Option<Uuid>,
 ) -> Vec<Response<'static>> {
-    if let Some(sel) = selected.as_ref() {
+    if let (Some(sel), Some(tid)) = (selected.as_ref(), tenant_id) {
         let _ = sqlx::query(
-            "DELETE FROM messages WHERE mailbox_id = $1 AND '\\Deleted' = ANY(flags)",
+            "DELETE FROM messages \
+             WHERE mailbox_id = $1 AND tenant_id = $2 AND '\\Deleted' = ANY(flags)",
         )
         .bind(sel.mailbox_id)
+        .bind(tid)
         .execute(state.db())
         .await;
     }
