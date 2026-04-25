@@ -7,6 +7,8 @@ use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use expresso_core::begin_tenant_tx;
+
 use crate::state::AppState;
 
 #[derive(Debug)]
@@ -60,25 +62,39 @@ pub async fn process(
     let recipients = normalized_recipients(rcpts);
 
     for rcpt in recipients {
-        let mut tx = state.db().begin().await?;
-
-        let user_row: Option<(Uuid, Uuid)> = sqlx::query_as(
+        // Recipient resolution runs without a tenant session var — inbound
+        // delivery legitimately crosses tenants, one rcpt at a time.
+        let mut probe = state.db().begin().await?;
+        let user_rows: Vec<(Uuid, Uuid)> = sqlx::query_as(
             r#"
             SELECT id, tenant_id
             FROM users
             WHERE lower(email) = $1
-            LIMIT 1
+            LIMIT 2
             "#,
         )
         .bind(&rcpt)
-        .fetch_optional(&mut *tx)
+        .fetch_all(&mut *probe)
         .await?;
+        probe.commit().await?;
 
-        let Some((user_id, tenant_id)) = user_row else {
-            tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
-            tx.commit().await?;
-            continue;
+        let (user_id, tenant_id) = match user_rows.as_slice() {
+            [(uid, tid)] => (*uid, *tid),
+            []           => {
+                tracing::warn!(rcpt = %rcpt, "recipient not found; dropping delivery");
+                continue;
+            }
+            _            => {
+                // users.email is per-tenant unique; the same address in two
+                // tenants is legal schema-wise. Refuse rather than guess.
+                tracing::error!(rcpt = %rcpt, "recipient ambiguous across tenants; dropping delivery");
+                continue;
+            }
         };
+
+        // Now arm the tenant session var for the rest of this delivery so RLS
+        // can shadow-check every write below.
+        let mut tx = begin_tenant_tx(state.db(), tenant_id).await?;
 
         // Sieve evaluation — fetch user script, evaluate, determine target folder/action.
         let target_folder: String = match apply_sieve(&mut tx, user_id, raw).await {
@@ -95,36 +111,7 @@ pub async fn process(
             }
         };
 
-        let inbox_row: Option<(Uuid, i64)> = sqlx::query_as(
-            r#"
-            SELECT id, next_uid
-            FROM mailboxes
-            WHERE user_id = $1 AND folder_name = $2
-            FOR UPDATE
-            "#,
-        )
-        .bind(user_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        let (mailbox_id, uid) = match inbox_row {
-            Some(row) => row,
-            None => {
-                let created_id: Uuid = sqlx::query_scalar(
-                    r#"
-                    INSERT INTO mailboxes (user_id, tenant_id, folder_name, special_use, subscribed)
-                    VALUES ($1, $2, 'INBOX', '\Inbox', true)
-                    RETURNING id
-                    "#,
-                )
-                .bind(user_id)
-                .bind(tenant_id)
-                .fetch_one(&mut *tx)
-                .await?;
-
-                (created_id, 1)
-            }
-        };
+        let (mailbox_id, uid) = lock_or_create_mailbox(&mut tx, tenant_id, user_id, &target_folder).await?;
 
         let thread_id = resolve_thread_id(&mut tx, tenant_id, &parsed).await?;
 
@@ -226,6 +213,82 @@ pub async fn process(
     }
 
     Ok(delivered)
+}
+
+/// Lock the target folder's mailbox row (FOR UPDATE) and return (id, next_uid).
+/// Auto-creates INBOX when missing; for non-INBOX folders returned by Sieve,
+/// falls back to INBOX rather than silently materializing a folder the user
+/// has no UI for. The lookup is filtered by `tenant_id` for defense-in-depth
+/// in addition to RLS.
+async fn lock_or_create_mailbox(
+    tx:        &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    tenant_id: Uuid,
+    user_id:   Uuid,
+    target:    &str,
+) -> anyhow::Result<(Uuid, i64)> {
+    let row: Option<(Uuid, i64)> = sqlx::query_as(
+        r#"
+        SELECT id, next_uid
+        FROM mailboxes
+        WHERE tenant_id = $1 AND user_id = $2 AND folder_name = $3
+        FOR UPDATE
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(target)
+    .fetch_optional(&mut **tx)
+    .await?;
+
+    if let Some(r) = row { return Ok(r); }
+
+    // Target folder not found. For INBOX, auto-create. For everything else,
+    // fall through to INBOX so the message isn't lost.
+    if target.eq_ignore_ascii_case("INBOX") {
+        let created: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO mailboxes (user_id, tenant_id, folder_name, special_use, subscribed)
+            VALUES ($1, $2, 'INBOX', '\Inbox', true)
+            RETURNING id
+            "#,
+        )
+        .bind(user_id)
+        .bind(tenant_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        return Ok((created, 1));
+    }
+
+    tracing::warn!(
+        user_id = %user_id, tenant_id = %tenant_id, target_folder = target,
+        "Sieve target folder missing; falling back to INBOX",
+    );
+    let inbox: Option<(Uuid, i64)> = sqlx::query_as(
+        r#"
+        SELECT id, next_uid
+        FROM mailboxes
+        WHERE tenant_id = $1 AND user_id = $2 AND folder_name = 'INBOX'
+        FOR UPDATE
+        "#,
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    if let Some(r) = inbox { return Ok(r); }
+
+    let created: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO mailboxes (user_id, tenant_id, folder_name, special_use, subscribed)
+        VALUES ($1, $2, 'INBOX', '\Inbox', true)
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok((created, 1))
 }
 
 /// Resolve thread_id: lookup existing thread by in_reply_to/references, or create new.
