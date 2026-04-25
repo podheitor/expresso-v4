@@ -148,18 +148,60 @@ async fn download_attachment(
 
     let body = part.contents().to_vec();
 
+    // Both `ct` (MIME from headers) and `filename` (attachment-name parameter)
+    // are attacker-controlled — any inbound email can set them. Without
+    // sanitization, a CR/LF in the filename forces axum to return 500 when
+    // it tries to build the response (HeaderValue rejects the bad bytes), so
+    // a malicious sender could brick attachment downloads in the recipient's
+    // inbox. Build header-safe values here.
+    let ct_safe = sanitize_header_token(&ct, "application/octet-stream");
+    let cd_safe = build_content_disposition(&filename);
+
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, ct),
-            (
-                header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}\"", filename.replace('"', "_")),
-            ),
+            (header::CONTENT_TYPE, ct_safe),
+            (header::CONTENT_DISPOSITION, cd_safe),
         ],
         body,
     )
         .into_response())
+}
+
+/// Replace bytes that are not safe for an HTTP header *value* (anything <0x20
+/// except TAB, plus DEL) with `_`. Falls back to `default` when the result
+/// is empty after sanitizing.
+fn sanitize_header_token(raw: &str, default: &str) -> String {
+    let cleaned: String = raw.chars().map(|c| {
+        let b = c as u32;
+        if b == 0x09 || (0x20..0x7f).contains(&b) { c } else { '_' }
+    }).collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() { default.to_string() } else { trimmed.to_string() }
+}
+
+fn build_content_disposition(name: &str) -> String {
+    let ascii: String = name.chars().map(|c| {
+        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
+    }).collect();
+    let ascii = if ascii.trim().is_empty() { "attachment".into() } else { ascii };
+    let pct = percent_encode_filename(name);
+    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{pct}")
+}
+
+fn percent_encode_filename(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() * 3);
+    for b in name.as_bytes() {
+        let c = *b;
+        let attr_char = c.is_ascii_alphanumeric()
+            || matches!(c, b'!' | b'#' | b'$' | b'&' | b'+' | b'-' | b'.' | b'^' | b'_' | b'`' | b'|' | b'~');
+        if attr_char {
+            out.push(c as char);
+        } else {
+            out.push_str(&format!("%{c:02X}"));
+        }
+    }
+    out
 }
 
 #[cfg(test)]
