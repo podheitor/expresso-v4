@@ -326,9 +326,13 @@ async fn cmd_select(
 ) -> Vec<Response<'static>> {
     let mbox_name = mailbox_to_string(mailbox);
 
-    let row: Option<(Uuid, i64)> = sqlx::query_as(
-        "SELECT id, (SELECT COUNT(*) FROM messages \
-                      WHERE mailbox_id = mailboxes.id AND tenant_id = $3) \
+    // Lê uid_validity, next_uid e message_count diretamente da tabela
+    // mailboxes — ambos mantidos pelo DB (uid_validity imutável desde criação;
+    // next_uid e message_count atualizados por trigger em INSERT/DELETE).
+    // A correlated subquery COUNT(*) que estava aqui ignorava o counter de
+    // trigger e relançava a UIDVALIDITY derivada do UUID (incorreto).
+    let row: Option<(Uuid, i64, i64, i64)> = sqlx::query_as(
+        "SELECT id, uid_validity, next_uid, message_count \
          FROM mailboxes \
          WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3",
     )
@@ -341,17 +345,12 @@ async fn cmd_select(
     .flatten();
 
     match row {
-        Some((mailbox_id, count)) => {
+        Some((mailbox_id, uid_validity_raw, next_uid_raw, count)) => {
             let exists = count as u32;
+            let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
+            let uid_next    = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
             *sess = SessionState::Selected;
             *selected = Some(SelectedMailbox { mailbox_id, exists });
-
-            // RFC 3501 §7.3.1: UIDVALIDITY e UIDNEXT são obrigatórios na
-            // resposta SELECT. Sem eles Thunderbird/Apple Mail desativam
-            // sincronização por UID e regridem para seq-based (mais lento e
-            // propenso a erros após EXPUNGE).
-            let uid_validity = mailbox_uid_validity(&mailbox_id);
-            let uid_next = query_uid_next(state, mailbox_id, tenant_id).await;
 
             vec![
                 Response::Data(Data::Flags(vec![
@@ -370,28 +369,6 @@ async fn cmd_select(
         }
         None => vec![no_tagged(tag, "mailbox not found")],
     }
-}
-
-/// Deriva um UIDVALIDITY estável dos primeiros 4 bytes do UUID do mailbox.
-/// Estável enquanto o mailbox_id não mudar (nunca muda após criação).
-fn mailbox_uid_validity(mailbox_id: &Uuid) -> NonZeroU32 {
-    let b = mailbox_id.as_bytes();
-    let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]);
-    NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN)
-}
-
-/// Retorna MAX(uid)+1 para o mailbox, ou 1 se vazio.
-/// Não armazenado no DB — aprox. válida para UIDNEXT; recalculada a cada SELECT.
-async fn query_uid_next(state: &AppState, mailbox_id: Uuid, tenant_id: Uuid) -> NonZeroU32 {
-    let next: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(uid), 0) + 1 FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
-    )
-    .bind(mailbox_id)
-    .bind(tenant_id)
-    .fetch_one(state.db())
-    .await
-    .unwrap_or(1);
-    NonZeroU32::new(next as u32).unwrap_or(NonZeroU32::MIN)
 }
 
 async fn cmd_fetch(
@@ -777,33 +754,5 @@ fn build_envelope(
         bcc: vec![],
         in_reply_to: NString(None),
         message_id: NString(None),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uid_validity_stable_and_nonzero() {
-        let id = Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap();
-        let v1 = mailbox_uid_validity(&id);
-        let v2 = mailbox_uid_validity(&id);
-        assert_eq!(v1, v2, "UIDVALIDITY must be deterministic");
-        assert!(v1.get() > 0);
-    }
-
-    #[test]
-    fn uid_validity_differs_per_mailbox() {
-        let a = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
-        let b = Uuid::parse_str("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb").unwrap();
-        assert_ne!(mailbox_uid_validity(&a), mailbox_uid_validity(&b));
-    }
-
-    #[test]
-    fn uid_validity_all_zero_uuid_uses_min() {
-        let nil = Uuid::nil();
-        let v = mailbox_uid_validity(&nil);
-        assert_eq!(v, NonZeroU32::MIN);
     }
 }
