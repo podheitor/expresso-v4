@@ -4,10 +4,14 @@
 //! emails within a tenant. Cancelled events are excluded. RRULE expansion is
 //! NOT performed here — only the master VEVENT dtstart/dtend are returned
 //! (recurrence expansion is a separate follow-up; see ROADMAP Sprint 8-9).
+//!
+//! Tenant scoping: `lookup` abre transação via `begin_tenant_tx` para
+//! defense-in-depth — o JOIN usa `WHERE e.tenant_id = $1 AND u.tenant_id = $1`
+//! explícitos, e RLS de `calendar_events`/`calendars`/`users` filtra junto.
 
 use std::collections::BTreeMap;
 
-use expresso_core::DbPool;
+use expresso_core::{begin_tenant_tx, DbPool};
 use serde::Serialize;
 use sqlx::FromRow;
 use time::OffsetDateTime;
@@ -72,6 +76,7 @@ impl<'a> FreeBusyRepo<'a> {
 
         // Join users → calendars → events; return per-email rows within range.
         // status filter: exclude CANCELLED; treat NULL status as busy.
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, BusyRow>(
             r#"
             SELECT lower(u.email) AS email,
@@ -94,8 +99,9 @@ impl<'a> FreeBusyRepo<'a> {
         .bind(&lowered)
         .bind(from)
         .bind(to)
-        .fetch_all(self.pool)
+        .fetch_all(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         for r in rows {
             // Base duration from master VEVENT.
