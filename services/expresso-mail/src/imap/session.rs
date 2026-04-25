@@ -855,31 +855,30 @@ async fn cmd_fetch(
     // UID FETCH: sequence_set holds UID values; * resolves to u32::MAX (all).
     // Seq FETCH: sequence_set holds ordinal positions (1-based); * = exists.
     let rows = if uid {
-        let (start, end) = sequence_range(sequence_set, u32::MAX);
-        sqlx::query(
+        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
+        sqlx::query(&format!(
             "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
              uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
-             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND uid >= $3 AND uid <= $4 \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}) \
              ORDER BY received_at ASC",
-        )
+        ))
         .bind(sel.mailbox_id)
         .bind(tenant_id)
-        .bind(start as i64)
-        .bind(end as i64)
         .fetch_all(state.db())
         .await
         .unwrap_or_default()
     } else {
-        let (start, end) = sequence_range(sequence_set, sel.exists);
-        sqlx::query(
-            "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-             uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
-             FROM messages WHERE mailbox_id = $1 AND tenant_id = $4 \
-             ORDER BY received_at ASC OFFSET $2 LIMIT $3",
-        )
+        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
+        sqlx::query(&format!(
+            "SELECT seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+             FROM ( \
+               SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
+                      uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
+             ) sub WHERE ({seq_w}) \
+             ORDER BY seq ASC",
+        ))
         .bind(sel.mailbox_id)
-        .bind((start - 1) as i64)
-        .bind((end - start + 1) as i64)
         .bind(tenant_id)
         .fetch_all(state.db())
         .await
@@ -1016,69 +1015,64 @@ async fn cmd_store(
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
 
     if uid {
-        // UID STORE: sequence_set holds UID values. Filter by uid column directly;
-        // no CTE needed since UIDs are stable identifiers, not positional.
-        // * resolves to u32::MAX to cover all possible UIDs.
-        let (start, end) = sequence_range(sequence_set, u32::MAX);
+        // UID STORE: sequence_set holds UID values. uid_clause() handles multi-range
+        // (e.g. UID STORE 100,200,300 +FLAGS \Seen) correctly.
+        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
         let sql = match kind {
-            imap_codec::imap_types::flag::StoreType::Add => {
+            imap_codec::imap_types::flag::StoreType::Add => format!(
                 "UPDATE messages SET flags = array_cat(flags, $1::text[]) \
-                 WHERE mailbox_id = $2 AND tenant_id = $5 AND uid >= $3 AND uid <= $4"
-            }
-            imap_codec::imap_types::flag::StoreType::Remove => {
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+            ),
+            imap_codec::imap_types::flag::StoreType::Remove => format!(
                 "UPDATE messages \
                  SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
-                 WHERE mailbox_id = $2 AND tenant_id = $5 AND uid >= $3 AND uid <= $4"
-            }
-            imap_codec::imap_types::flag::StoreType::Replace => {
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+            ),
+            imap_codec::imap_types::flag::StoreType::Replace => format!(
                 "UPDATE messages SET flags = $1::text[] \
-                 WHERE mailbox_id = $2 AND tenant_id = $5 AND uid >= $3 AND uid <= $4"
-            }
+                 WHERE mailbox_id = $2 AND tenant_id = $3 AND ({uid_w})"
+            ),
         };
-        let _ = sqlx::query(sql)
+        let _ = sqlx::query(&sql)
             .bind(&flag_strs)
             .bind(sel.mailbox_id)
-            .bind(start as i64)
-            .bind(end as i64)
             .bind(tenant_id)
             .execute(state.db())
             .await;
     } else {
-        // STORE: sequence_set holds ordinal positions (1-based). CTE maps seq →
-        // row so the UPDATE targets correct rows despite uid gaps from deletes.
-        let (start, end) = sequence_range(sequence_set, sel.exists);
+        // STORE: sequence_set holds ordinal positions (1-based). seq_clause()
+        // handles multi-range (e.g. STORE 1:3,5,7:9 +FLAGS \Seen).
+        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
         let sql = match kind {
-            imap_codec::imap_types::flag::StoreType::Add => {
+            imap_codec::imap_types::flag::StoreType::Add => format!(
                 "WITH ordered AS (\
                    SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
-                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $3\
                  ) \
                  UPDATE messages SET flags = array_cat(flags, $1::text[]) \
-                 WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
-            }
-            imap_codec::imap_types::flag::StoreType::Remove => {
+                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+            ),
+            imap_codec::imap_types::flag::StoreType::Remove => format!(
                 "WITH ordered AS (\
                    SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
-                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $3\
                  ) \
                  UPDATE messages \
                  SET flags = (SELECT array_agg(e) FROM unnest(flags) e WHERE NOT e = ANY($1::text[])) \
-                 WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
-            }
-            imap_codec::imap_types::flag::StoreType::Replace => {
+                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+            ),
+            imap_codec::imap_types::flag::StoreType::Replace => format!(
                 "WITH ordered AS (\
                    SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
-                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $5\
+                   FROM messages WHERE mailbox_id = $2 AND tenant_id = $3\
                  ) \
                  UPDATE messages SET flags = $1::text[] \
-                 WHERE id IN (SELECT id FROM ordered WHERE seq >= $3 AND seq <= $4)"
-            }
+                 WHERE id IN (SELECT id FROM ordered WHERE ({seq_w}))"
+            ),
         };
-        let _ = sqlx::query(sql)
+        let _ = sqlx::query(&sql)
             .bind(&flag_strs)
             .bind(sel.mailbox_id)
-            .bind(start as i64)
-            .bind(end as i64)
             .bind(tenant_id)
             .execute(state.db())
             .await;
@@ -1106,31 +1100,27 @@ async fn cmd_copy(
     // Query source messages — uid mode filters by UID range; seq mode uses
     // ROW_NUMBER() CTE to map ordinal positions to rows.
     let src_rows = if uid {
-        let (start, end) = sequence_range(sequence_set, u32::MAX);
-        sqlx::query(
+        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
+        sqlx::query(&format!(
             "SELECT uid, flags, size_bytes, body_path \
              FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
-             AND uid >= $3 AND uid <= $4 ORDER BY uid ASC",
-        )
+             AND ({uid_w}) ORDER BY uid ASC",
+        ))
         .bind(sel.mailbox_id)
         .bind(tenant_id)
-        .bind(start as i64)
-        .bind(end as i64)
         .fetch_all(state.db())
         .await
         .unwrap_or_default()
     } else {
-        let (start, end) = sequence_range(sequence_set, sel.exists);
-        sqlx::query(
+        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
+        sqlx::query(&format!(
             "SELECT uid, flags, size_bytes, body_path FROM (\
                SELECT uid, flags, size_bytes, body_path, \
                       ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
-               FROM messages WHERE mailbox_id = $1 AND tenant_id = $4\
-             ) AS ordered WHERE seq >= $2 AND seq <= $3 ORDER BY seq ASC",
-        )
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+             ) AS ordered WHERE ({seq_w}) ORDER BY seq ASC",
+        ))
         .bind(sel.mailbox_id)
-        .bind(start as i64)
-        .bind(end as i64)
         .bind(tenant_id)
         .fetch_all(state.db())
         .await
@@ -1280,33 +1270,28 @@ async fn cmd_expunge_uid(
     sel: &SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
-    let (start, end) = sequence_range(sequence_set, u32::MAX);
+    let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
 
-    let seq_rows = sqlx::query(
+    let seq_rows = sqlx::query(&format!(
         "SELECT seq FROM (\
            SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags \
            FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
          ) sub \
-         WHERE '\\Deleted' = ANY(flags) AND uid >= $3 AND uid <= $4 ORDER BY seq ASC",
-    )
+         WHERE '\\Deleted' = ANY(flags) AND ({uid_w}) ORDER BY seq ASC",
+    ))
     .bind(sel.mailbox_id)
     .bind(tenant_id)
-    .bind(start as i64)
-    .bind(end as i64)
     .fetch_all(state.db())
     .await
     .unwrap_or_default();
 
-    let _ = sqlx::query(
+    let _ = sqlx::query(&format!(
         "DELETE FROM messages \
          WHERE mailbox_id = $1 AND tenant_id = $2 \
-           AND '\\Deleted' = ANY(flags) \
-           AND uid >= $3 AND uid <= $4",
-    )
+           AND '\\Deleted' = ANY(flags) AND ({uid_w})",
+    ))
     .bind(sel.mailbox_id)
     .bind(tenant_id)
-    .bind(start as i64)
-    .bind(end as i64)
     .execute(state.db())
     .await;
 
@@ -1674,28 +1659,55 @@ fn parse_flag(s: &str) -> Option<Flag<'static>> {
     }
 }
 
-fn sequence_range(
+/// Expand a SequenceSet into a list of (start, end) inclusive ranges.
+/// `exists` resolves `*` (Asterisk) — pass `u32::MAX` for UID mode,
+/// `sel.exists` for seq mode. Ranges with swapped endpoints are normalised.
+fn sequence_ranges(
     seq_set: &imap_codec::imap_types::sequence::SequenceSet,
     exists: u32,
-) -> (u32, u32) {
-    let mut start = 1u32;
-    let mut end = exists;
-
-    for seq in seq_set.0.as_ref() {
+) -> Vec<(u32, u32)> {
+    seq_set.0.as_ref().iter().map(|seq| {
         match seq {
             imap_codec::imap_types::sequence::Sequence::Single(val) => {
-                let n = seq_or_uid_val(val, exists);
-                start = n;
-                end = n;
+                let n = seq_or_uid_val(val, exists).max(1).min(exists);
+                (n, n)
             }
             imap_codec::imap_types::sequence::Sequence::Range(from, to) => {
-                start = seq_or_uid_val(from, exists);
-                end = seq_or_uid_val(to, exists);
+                let a = seq_or_uid_val(from, exists);
+                let b = seq_or_uid_val(to, exists);
+                let s = a.min(b).max(1);
+                let e = a.max(b).min(exists);
+                (s, e)
             }
         }
-    }
-    (start.max(1), end.min(exists).max(start))
+    }).collect()
 }
+
+/// Build a SQL fragment matching uid against a set of (start,end) ranges.
+/// The result is safe to embed in a format! query because the values are
+/// all u32 integers (no user-controlled strings). Falls back to FALSE when
+/// the list is empty so the query returns zero rows rather than all rows.
+fn uid_clause(ranges: &[(u32, u32)]) -> String {
+    if ranges.is_empty() {
+        return "FALSE".to_string();
+    }
+    ranges.iter()
+        .map(|(s, e)| format!("(uid >= {s} AND uid <= {e})"))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+/// Same as uid_clause but for seq (ROW_NUMBER alias) columns.
+fn seq_clause(ranges: &[(u32, u32)]) -> String {
+    if ranges.is_empty() {
+        return "FALSE".to_string();
+    }
+    ranges.iter()
+        .map(|(s, e)| format!("(seq >= {s} AND seq <= {e})"))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
 
 fn seq_or_uid_val(val: &imap_codec::imap_types::sequence::SeqOrUid, exists: u32) -> u32 {
     match val {
