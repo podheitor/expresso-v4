@@ -56,7 +56,7 @@ pub fn init() {
     for cmd in [
         "CAPABILITY", "LOGIN", "LIST", "SELECT", "EXAMINE", "FETCH",
         "STORE", "EXPUNGE", "CLOSE", "LOGOUT", "NOOP", "IDLE", "STATUS",
-        "APPEND", "COPY", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB", "OTHER",
+        "APPEND", "COPY", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB", "OTHER",
     ] {
         for outcome in ["ok", "no", "bad"] {
             IMAP_COMMANDS_TOTAL.with_label_values(&[cmd, outcome]).inc_by(0);
@@ -90,6 +90,7 @@ pub fn command_label(name: &str) -> &'static str {
         "STATUS"     => "STATUS",
         "APPEND"      => "APPEND",
         "COPY"        => "COPY",
+        "SEARCH"      => "SEARCH",
         "SUBSCRIBE"   => "SUBSCRIBE",
         "UNSUBSCRIBE" => "UNSUBSCRIBE",
         "LSUB"        => "LSUB",
@@ -103,19 +104,23 @@ mod tests {
 
     #[test]
     fn known_commands_map_directly() {
-        assert_eq!(command_label("LOGIN"),  "LOGIN");
-        assert_eq!(command_label("login"),  "LOGIN");
-        assert_eq!(command_label("Fetch"),  "FETCH");
-        assert_eq!(command_label("STATUS"), "STATUS");
-        assert_eq!(command_label("IDLE"),   "IDLE");
-        assert_eq!(command_label("APPEND"), "APPEND");
-        assert_eq!(command_label("COPY"),   "COPY");
+        assert_eq!(command_label("LOGIN"),       "LOGIN");
+        assert_eq!(command_label("login"),       "LOGIN");
+        assert_eq!(command_label("Fetch"),       "FETCH");
+        assert_eq!(command_label("STATUS"),      "STATUS");
+        assert_eq!(command_label("IDLE"),        "IDLE");
+        assert_eq!(command_label("APPEND"),      "APPEND");
+        assert_eq!(command_label("COPY"),        "COPY");
+        assert_eq!(command_label("SEARCH"),      "SEARCH");
+        assert_eq!(command_label("SUBSCRIBE"),   "SUBSCRIBE");
+        assert_eq!(command_label("UNSUBSCRIBE"), "UNSUBSCRIBE");
+        assert_eq!(command_label("LSUB"),        "LSUB");
     }
 
     #[test]
     fn unknown_collapses_to_other() {
-        assert_eq!(command_label("APPEND"),   "OTHER");
         assert_eq!(command_label("garbage"),  "OTHER");
+        assert_eq!(command_label("XFOO"),     "OTHER");
         assert_eq!(command_label(""),         "OTHER");
     }
 }

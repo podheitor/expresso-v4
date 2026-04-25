@@ -27,6 +27,7 @@ use imap_codec::{
         status::{StatusDataItem, StatusDataItemName},
         extensions::binary::LiteralOrLiteral8,
         extensions::uidplus::{UidElement, UidSet},
+        search::SearchKey,
         IntoStatic,
     },
 };
@@ -228,6 +229,12 @@ async fn dispatch(
                 return vec![no_tagged(tag, "not authenticated")];
             }
             cmd_status(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), item_names.as_ref()).await
+        }
+        CommandBody::Search { criteria, uid, .. } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_search(state, tag, criteria.as_ref(), *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Append { mailbox, flags, message, .. } => {
             if *sess == SessionState::NotAuthenticated {
@@ -634,6 +641,78 @@ async fn cmd_status(
         }),
         ok_tagged(tag, None, "STATUS completed"),
     ]
+}
+
+/// SEARCH — RFC 3501 §6.4.4: return sequence numbers (or UIDs when uid=true)
+/// of messages matching all criteria in `criteria` (implicit AND of the top-level
+/// Vec; individual SearchKey may contain nested AND/OR/NOT).
+///
+/// Flag-based criteria (Seen/Unseen/Flagged/…) are evaluated in Rust after
+/// fetching all messages. Date/content criteria (Since/Before/Body/…) default
+/// to true (conservative: may return extra results rather than missing matching
+/// ones). This covers the common case of client polling for UNSEEN messages.
+async fn cmd_search(
+    state: &AppState,
+    tag: Tag<'static>,
+    criteria: &[SearchKey<'_>],
+    uid: bool,
+    sel: &SelectedMailbox,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let rows = sqlx::query(
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags \
+         FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    let mut matches: Vec<NonZeroU32> = Vec::new();
+    for row in &rows {
+        let seq_val: i64 = row.get("seq");
+        let uid_val: i64 = row.get("uid");
+        let flags: Vec<String> = row.get("flags");
+        if criteria.iter().all(|key| search_key_matches(key, &flags)) {
+            let n = if uid {
+                NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
+            } else {
+                NonZeroU32::new(seq_val as u32).unwrap_or(NonZeroU32::MIN)
+            };
+            matches.push(n);
+        }
+    }
+
+    vec![
+        Response::Data(Data::Search(matches)),
+        ok_tagged(tag, None, "SEARCH completed"),
+    ]
+}
+
+fn search_key_matches(key: &SearchKey<'_>, flags: &[String]) -> bool {
+    let has = |f: &str| flags.iter().any(|x| x == f);
+    match key {
+        SearchKey::All     => true,
+        SearchKey::Recent  => false, // \Recent not tracked per-session
+        SearchKey::New     => false, // New = Recent + Unseen; \Recent not tracked
+        SearchKey::Seen    => has("\\Seen"),
+        SearchKey::Unseen  => !has("\\Seen"),
+        SearchKey::Flagged   => has("\\Flagged"),
+        SearchKey::Unflagged => !has("\\Flagged"),
+        SearchKey::Answered   => has("\\Answered"),
+        SearchKey::Unanswered => !has("\\Answered"),
+        SearchKey::Deleted   => has("\\Deleted"),
+        SearchKey::Undeleted => !has("\\Deleted"),
+        SearchKey::Draft     => has("\\Draft"),
+        SearchKey::Undraft   => !has("\\Draft"),
+        // Recursive logical operators
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags),
+        SearchKey::Or(a, b)   => search_key_matches(a.as_ref(), flags) || search_key_matches(b.as_ref(), flags),
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags)),
+        // Date/content/size criteria — default to true (conservative: may include extras)
+        _ => true,
+    }
 }
 
 /// APPEND — RFC 3501 §6.3.11 + RFC 4315 (UIDPLUS).
