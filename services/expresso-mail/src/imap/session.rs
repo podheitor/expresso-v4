@@ -737,16 +737,28 @@ fn seq_or_uid_val(val: &imap_codec::imap_types::sequence::SeqOrUid, exists: u32)
 }
 
 fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
-    use imap_codec::imap_types::fetch::Macro;
+    use imap_codec::imap_types::fetch::{Macro, MessageDataItemName};
     match macro_or {
         MacroOrMessageDataItemNames::Macro(m) => match m {
-            Macro::All => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
+            Macro::All  => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
             Macro::Fast => matches!(name, "FLAGS" | "RFC822.SIZE" | "INTERNALDATE"),
             Macro::Full => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY"),
             _ => false,
         },
+        // Pattern matching explícito por variante — o Debug repr anterior
+        // produzia "Rfc822Size" (sem ponto) para RFC822.SIZE, quebrando a
+        // detecção quando o cliente listava itens explicitamente.
         MacroOrMessageDataItemNames::MessageDataItemNames(items) => {
-            items.iter().any(|item| format!("{:?}", item).to_uppercase().contains(name))
+            items.iter().any(|item| matches!(
+                (name, item),
+                ("FLAGS",        MessageDataItemName::Flags)
+                | ("ENVELOPE",    MessageDataItemName::Envelope)
+                | ("RFC822.SIZE", MessageDataItemName::Rfc822Size)
+                | ("UID",         MessageDataItemName::Uid)
+                | ("INTERNALDATE",MessageDataItemName::InternalDate)
+                | ("BODYEXT",     MessageDataItemName::BodyExt { .. })
+                | ("BODY",        MessageDataItemName::BodyStructure)
+            ))
         }
     }
 }
