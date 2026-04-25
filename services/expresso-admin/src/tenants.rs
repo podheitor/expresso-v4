@@ -314,20 +314,25 @@ pub async fn wizard_form(
     if let Some(r) = auth::require_super_admin(&st, &headers).await { return Ok(r); }
     Ok(crate::templates::TenantWizardTpl {
         current: "tenants",
-        slug: String::new(), name: String::new(), plan: "free".into(),
+        slug: String::new(), name: String::new(), plan: "standard".into(),
         admin_email: String::new(), admin_user: String::new(),
         error: None, success: None,
     }.into_response())
 }
 
 fn validate_wizard(f: &TenantWizardForm) -> Option<String> {
-    if f.slug.trim().is_empty() || !f.slug.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        return Some("slug inválido (use a-z0-9-)".into());
+    // Antes: wizard validava plan contra ["free","pro","enterprise"] e
+    // não usava valid_slug. Resultado: tenants criados via wizard ficavam
+    // com plan que o edit form rejeitava (PLANS canônico é standard/
+    // professional/enterprise), e slugs com tamanho inválido passavam.
+    // Single source of truth: valid_slug + PLANS.
+    if !valid_slug(f.slug.trim()) {
+        return Some("slug inválido (use a-z, 0-9, hifens; 1-63 chars)".into());
     }
     if f.name.trim().is_empty() { return Some("nome obrigatório".into()); }
     if !f.admin_email.contains('@') { return Some("email admin inválido".into()); }
     if f.admin_user.trim().is_empty() { return Some("username admin obrigatório".into()); }
-    if !matches!(f.plan.as_str(), "free"|"pro"|"enterprise") { return Some("plan inválido".into()); }
+    if !PLANS.contains(&f.plan.as_str()) { return Some("plano inválido".into()); }
     None
 }
 
@@ -395,5 +400,41 @@ pub async fn wizard_action(
                 .bind(tenant_id).execute(pool).await;
             Ok(render(Some(format!("KC user create failed (tenant row reverted): {e}")), None, &f))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn wizard(slug: &str, plan: &str) -> TenantWizardForm {
+        TenantWizardForm {
+            slug:        slug.into(),
+            name:        "Acme".into(),
+            plan:        plan.into(),
+            admin_email: "a@b.com".into(),
+            admin_user:  "alice".into(),
+        }
+    }
+
+    #[test]
+    fn wizard_accepts_canonical_plans() {
+        for p in PLANS { assert!(validate_wizard(&wizard("acme", p)).is_none(), "{p}"); }
+    }
+
+    #[test]
+    fn wizard_rejects_legacy_plans() {
+        // Antes do fix esses passavam aqui mas falhavam no edit.
+        assert!(validate_wizard(&wizard("acme", "free")).is_some());
+        assert!(validate_wizard(&wizard("acme", "pro")).is_some());
+    }
+
+    #[test]
+    fn wizard_uses_strict_slug_rule() {
+        // Via valid_slug: rejeita slug com 64+ chars e com hífen no início/fim.
+        let long: String = std::iter::repeat('a').take(64).collect();
+        assert!(validate_wizard(&wizard(&long, "standard")).is_some());
+        assert!(validate_wizard(&wizard("-acme", "standard")).is_some());
+        assert!(validate_wizard(&wizard("acme-", "standard")).is_some());
     }
 }

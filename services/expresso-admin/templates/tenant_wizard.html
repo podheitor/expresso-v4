@@ -26,9 +26,9 @@
   <div class="row">
     <label>Plano
       <select name="plan">
-        <option value="free" {% if plan == "free" %}selected{% endif %}>free</option>
-        <option value="pro"  {% if plan == "pro"  %}selected{% endif %}>pro</option>
-        <option value="enterprise" {% if plan == "enterprise" %}selected{% endif %}>enterprise</option>
+        <option value="standard"     {% if plan == "standard"     %}selected{% endif %}>Standard</option>
+        <option value="professional" {% if plan == "professional" %}selected{% endif %}>Professional</option>
+        <option value="enterprise"   {% if plan == "enterprise"   %}selected{% endif %}>Enterprise</option>
       </select>
     </label>
   </div>
