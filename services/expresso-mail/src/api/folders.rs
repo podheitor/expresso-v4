@@ -1,11 +1,17 @@
-//! IMAP mailbox/folder management endpoints
+//! IMAP mailbox/folder management endpoints.
+//!
+//! Tenant scoping: `list_folders` abre transação via `begin_tenant_tx` para
+//! defense-in-depth — o SELECT usa `WHERE tenant_id = $1 AND user_id = $2`
+//! explícitos, e RLS de `mailboxes` filtra junto. Sem essa combinação o
+//! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
 use axum::{Router, routing::get, extract::State, Json};
+use expresso_core::begin_tenant_tx;
 use serde::Serialize;
 use sqlx::FromRow;
 use uuid::Uuid;
 
-use crate::{error::Result, state::AppState};
+use crate::{api::context::RequestCtx, error::Result, state::AppState};
 
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -25,7 +31,9 @@ pub struct FolderDto {
 /// GET /api/v1/mail/folders
 async fn list_folders(
     State(state): State<AppState>,
+    ctx:          RequestCtx,
 ) -> Result<Json<Vec<FolderDto>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let rows: Vec<FolderDto> = sqlx::query_as(
         r#"
         SELECT
@@ -36,7 +44,9 @@ async fn list_folders(
             unseen_count,
             subscribed
         FROM mailboxes
-        WHERE subscribed = true
+        WHERE tenant_id = $1
+          AND user_id   = $2
+          AND subscribed = true
         ORDER BY
             CASE special_use
                 WHEN '\Inbox'  THEN 0
@@ -49,9 +59,11 @@ async fn list_folders(
             folder_name
         "#
     )
-    .fetch_all(state.db())
-    .await
-    .map_err(expresso_core::CoreError::Database)?;
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
     Ok(Json(rows))
 }
