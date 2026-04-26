@@ -82,6 +82,9 @@ pub struct SearchParams {
     pub after_id:  Option<Uuid>,
     /// Return only messages belonging to this thread.
     pub thread_id: Option<Uuid>,
+    /// Sort order for offset pagination: "asc" or "desc" (default "desc").
+    /// Ignored when keyset cursors (before_id/after_id) are used.
+    pub sort:      Option<String>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -144,6 +147,7 @@ pub struct FlagRequest {
 /// `q` searches subject + from_addr + preview_text (ILIKE).
 /// `since`/`before` are ISO-8601 date prefixes (YYYY-MM-DD).
 /// Supports the same `before_id`/`after_id` keyset cursor as `/mail/messages`.
+/// `sort=asc/desc` controls offset-mode order (default `desc`); ignored with keyset cursors.
 async fn search_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
@@ -236,9 +240,14 @@ async fn search_messages(
         }
     } else {
         let offset = params.page.unwrap_or(0) * limit;
+        let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+            "ASC"
+        } else {
+            "DESC"
+        };
         let sql = format!(
             "{base_select} {enum_filters} \
-             ORDER BY m.received_at DESC LIMIT {limit} OFFSET {offset}"
+             ORDER BY m.received_at {order}, m.id {order} LIMIT {limit} OFFSET {offset}"
         );
         sqlx::query_as(&sql)
             .bind(ctx.tenant_id)
