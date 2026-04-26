@@ -57,7 +57,8 @@ pub fn init() {
         "CAPABILITY", "LOGIN", "AUTHENTICATE", "LIST", "SELECT", "EXAMINE", "FETCH",
         "STORE", "EXPUNGE", "CLOSE", "LOGOUT", "NOOP", "IDLE", "STATUS",
         "APPEND", "COPY", "MOVE", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB",
-        "CREATE", "DELETE", "RENAME", "UNSELECT", "CHECK", "ENABLE", "OTHER",
+        "CREATE", "DELETE", "RENAME", "UNSELECT", "CHECK", "ENABLE",
+        "SORT", "THREAD", "OTHER",
     ] {
         for outcome in ["ok", "no", "bad"] {
             IMAP_COMMANDS_TOTAL.with_label_values(&[cmd, outcome]).inc_by(0);
@@ -103,6 +104,8 @@ pub fn command_label(name: &str) -> &'static str {
         "UNSELECT"    => "UNSELECT",
         "CHECK"       => "CHECK",
         "ENABLE"      => "ENABLE",
+        "SORT"        => "SORT",
+        "THREAD"      => "THREAD",
         _             => "OTHER",
     }
 }

@@ -413,6 +413,28 @@ async fn dispatch(
             }
             cmd_rename(state, tag, from, to, user_id.unwrap(), tenant_id.unwrap()).await
         }
+        // SORT — RFC 5256: return sorted sequence numbers or UIDs.
+        // We honour the sort criteria against DB columns; unsupported keys
+        // fall back to received_at (Arrival).  Filter criteria reuse the
+        // existing search_key_matches logic (nil result = include all).
+        CommandBody::Sort { sort_criteria, uid, search_criteria, .. } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_sort(state, tag, sort_criteria.as_ref(), *uid,
+                search_criteria.as_ref(), selected.as_ref().unwrap(), tenant_id.unwrap()).await
+        }
+        // THREAD — RFC 5256: group messages into threads.
+        // We implement the ORDEREDSUBJECT algorithm: sort by subject+date,
+        // group messages sharing the same base subject, emit each group as a
+        // flat list of sequence numbers in a * THREAD response.
+        CommandBody::Thread { algorithm: _, search_criteria, uid, .. } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_thread(state, tag, *uid,
+                search_criteria.as_ref(), selected.as_ref().unwrap(), tenant_id.unwrap()).await
+        }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
             vec![bad_tagged(tag, &msg)]
@@ -432,6 +454,8 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Other(CapabilityOther(Atom::try_from("MOVE").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("LITERAL+").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("ENABLE").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("SORT").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -1903,6 +1927,188 @@ async fn cmd_move(
         "MOVE completed",
     ));
     out
+}
+
+/// SORT — RFC 5256: evaluate optional SEARCH filter, then sort by the
+/// given criteria. Sort keys map to DB columns; unknown keys use received_at.
+/// Returns * SORT <nums> where nums are seq (or UID when uid=true).
+async fn cmd_sort(
+    state: &AppState,
+    tag: Tag<'static>,
+    sort_criteria: &[imap_codec::imap_types::extensions::sort::SortCriterion],
+    uid: bool,
+    search_criteria: &[SearchKey<'_>],
+    sel: &SelectedMailbox,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    use imap_codec::imap_types::extensions::sort::SortKey;
+
+    // Fetch all messages with every column needed for sort + search.
+    let rows = sqlx::query(
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
+         received_at, date, size_bytes, subject, from_addr, to_addrs, cc_addrs \
+         FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    // Apply SEARCH filter (same logic as cmd_search).
+    let mut candidates: Vec<(i64, i64, Option<ChronoDateTime<Utc>>, Option<ChronoDateTime<Utc>>, Option<i32>, Option<String>, Option<String>)> = Vec::new();
+    for row in &rows {
+        let seq_val: i64  = row.get("seq");
+        let uid_val: i64  = row.get("uid");
+        let flags: Vec<String>  = row.get("flags");
+        let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
+        let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
+        let size: Option<i32> = row.try_get("size_bytes").ok();
+        let subject: Option<String>  = row.try_get("subject").ok().flatten();
+        let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
+        let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
+        let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
+        if search_criteria.iter().all(|k| search_key_matches(
+            k, &flags, recv.as_ref(), sent.as_ref(), size,
+            subject.as_deref(), from_addr.as_deref(),
+            to_addrs.as_ref(), cc_addrs.as_ref(),
+            seq_val as u32, uid_val as u32, sel.exists,
+        )) {
+            candidates.push((seq_val, uid_val, recv, sent, size, subject, from_addr));
+        }
+    }
+
+    // Sort candidates by each criterion in priority order.
+    // We sort stably so later criteria only break ties of earlier ones.
+    for crit in sort_criteria.iter().rev() {
+        let reverse = crit.reverse;
+        let key = &crit.key;
+        candidates.sort_by(|a, b| {
+            let ord = match key {
+                SortKey::Arrival  => a.2.cmp(&b.2),
+                SortKey::Date     => a.3.cmp(&b.3),
+                SortKey::Size     => a.4.cmp(&b.4),
+                SortKey::Subject  => a.5.as_deref().cmp(&b.5.as_deref()),
+                SortKey::From     => a.6.as_deref().cmp(&b.6.as_deref()),
+                // Cc/To/Reverse/Other: fall back to arrival order.
+                _                 => a.0.cmp(&b.0),
+            };
+            if reverse { ord.reverse() } else { ord }
+        });
+    }
+
+    let nums: Vec<NonZeroU32> = candidates.iter().filter_map(|(seq, uid_val, ..)| {
+        let n = if uid { *uid_val as u32 } else { *seq as u32 };
+        NonZeroU32::new(n)
+    }).collect();
+
+    vec![
+        Response::Data(Data::Sort(nums)),
+        ok_tagged(tag, None, "SORT completed"),
+    ]
+}
+
+/// THREAD — RFC 5256 ORDEREDSUBJECT algorithm.
+/// Groups messages by base subject (strip Re:/Fwd: prefixes), sorts each
+/// group by date, then emits each group as a nested * THREAD structure.
+/// The first message in each group is the root; siblings are children.
+async fn cmd_thread(
+    state: &AppState,
+    tag: Tag<'static>,
+    uid: bool,
+    search_criteria: &[SearchKey<'_>],
+    sel: &SelectedMailbox,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    use imap_codec::imap_types::extensions::thread::Thread;
+
+    let rows = sqlx::query(
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
+         received_at, date, size_bytes, subject, from_addr, to_addrs, cc_addrs \
+         FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
+    )
+    .bind(sel.mailbox_id)
+    .bind(tenant_id)
+    .fetch_all(state.db())
+    .await
+    .unwrap_or_default();
+
+    // Filter by search criteria.
+    let mut candidates: Vec<(u32, u32, Option<ChronoDateTime<Utc>>, String)> = Vec::new();
+    for row in &rows {
+        let seq_val: i64 = row.get("seq");
+        let uid_val: i64 = row.get("uid");
+        let flags: Vec<String> = row.get("flags");
+        let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
+        let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
+        let size: Option<i32> = row.try_get("size_bytes").ok();
+        let subject: Option<String> = row.try_get("subject").ok().flatten();
+        let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
+        let to_addrs: Option<serde_json::Value> = row.try_get("to_addrs").ok();
+        let cc_addrs: Option<serde_json::Value> = row.try_get("cc_addrs").ok();
+        if search_criteria.iter().all(|k| search_key_matches(
+            k, &flags, recv.as_ref(), sent.as_ref(), size,
+            subject.as_deref(), from_addr.as_deref(),
+            to_addrs.as_ref(), cc_addrs.as_ref(),
+            seq_val as u32, uid_val as u32, sel.exists,
+        )) {
+            let base_subj = base_subject(subject.as_deref().unwrap_or(""));
+            let num = if uid { uid_val as u32 } else { seq_val as u32 };
+            candidates.push((num, uid_val as u32, recv, base_subj));
+        }
+    }
+
+    // Sort by base_subject then by received_at (ORDEREDSUBJECT §3.3 step 2).
+    candidates.sort_by(|a, b| a.3.cmp(&b.3).then(a.2.cmp(&b.2)));
+
+    // Group consecutive entries with the same base_subject into threads.
+    // Each group: root = first member, rest = siblings (flat ORDEREDSUBJECT).
+    let mut threads: Vec<Thread> = Vec::new();
+    let mut i = 0;
+    while i < candidates.len() {
+        let base = &candidates[i].3.clone();
+        let root_n = NonZeroU32::new(candidates[i].0).unwrap_or(NonZeroU32::MIN);
+        // Collect siblings.
+        let mut siblings: Vec<NonZeroU32> = Vec::new();
+        i += 1;
+        while i < candidates.len() && &candidates[i].3 == base {
+            if let Some(n) = NonZeroU32::new(candidates[i].0) {
+                siblings.push(n);
+            }
+            i += 1;
+        }
+        // Thread::Members { prefix: Vec<NonZeroU32>, answers: Option<VecN<Thread,2>> }
+        // For ORDEREDSUBJECT: root as prefix=[root_n], siblings as nested answers.
+        let sibling_threads: Vec<Thread> = siblings.into_iter().map(|n| {
+            Thread::Members { prefix: vec![n], answers: None }
+        }).collect();
+        let answers = imap_codec::imap_types::core::VecN::try_from(sibling_threads).ok();
+        threads.push(Thread::Members { prefix: vec![root_n], answers });
+    }
+
+    vec![
+        Response::Data(Data::Thread(threads)),
+        ok_tagged(tag, None, "THREAD completed"),
+    ]
+}
+
+/// Strip Re:, Fwd:, and whitespace prefixes to get the "base subject"
+/// used by the ORDEREDSUBJECT threading algorithm (RFC 5256 §2.1).
+fn base_subject(s: &str) -> String {
+    let mut cur = s.trim();
+    loop {
+        let lower = cur.to_ascii_lowercase();
+        if lower.starts_with("re:") {
+            cur = cur[3..].trim();
+        } else if lower.starts_with("fwd:") {
+            cur = cur[4..].trim();
+        } else if lower.starts_with("fw:") {
+            cur = cur[3..].trim();
+        } else {
+            break;
+        }
+    }
+    cur.to_ascii_lowercase()
 }
 
 fn build_uid_set(uids: Vec<NonZeroU32>) -> UidSet {
