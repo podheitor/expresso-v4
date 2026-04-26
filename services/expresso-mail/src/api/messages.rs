@@ -48,6 +48,10 @@ pub struct ListParams {
     pub before_id: Option<Uuid>,
     /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
     pub after_id:  Option<Uuid>,
+    /// Filter by flag presence (e.g. `\Seen`, `\Starred`, `\Flagged`). URL-encode backslash.
+    pub flag:      Option<String>,
+    /// If `true`, return only messages NOT having `\Seen` flag.
+    pub unread:    Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -240,6 +244,8 @@ async fn search_messages(
 ///   - Keyset (preferred): pass `before_id` or `after_id` for O(log N) seeks.
 ///   - Offset (legacy): pass `page` (0-indexed). Slow on large mailboxes.
 ///
+/// Optional filters: `flag=\Starred`, `unread=true`.
+///
 /// Results are always returned in DESC received_at order.
 async fn list_messages(
     State(state):  State<AppState>,
@@ -249,7 +255,25 @@ async fn list_messages(
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
     let limit  = params.limit.unwrap_or(50).min(200);
 
+    // Build optional flag filters (no user-provided SQL, only escaped literals).
+    let flag_filter = params.flag
+        .map(|f| format!("AND '{}' = ANY(m.flags)", f.replace('\'', "''")))
+        .unwrap_or_default();
+    let unread_filter = if params.unread.unwrap_or(false) {
+        "AND NOT ('\\Seen' = ANY(m.flags))".to_string()
+    } else {
+        String::new()
+    };
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let base =
+        "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
+                m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND mb.folder_name = $3";
 
     // Keyset pagination: resolve the anchor row's received_at + id so we can
     // use a (received_at, id) composite cursor. before_id gives the "next page"
@@ -273,74 +297,53 @@ async fn list_messages(
         let (anchor_ts, anchor_id) = anchor.ok_or(MailError::MessageNotFound(cursor_id))?;
 
         if is_before {
-            // Messages older than the anchor (standard "next page").
-            sqlx::query_as(
-                r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
-                          m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
-                   FROM messages  m
-                   JOIN mailboxes mb ON mb.id = m.mailbox_id
-                   WHERE m.tenant_id    = $1
-                     AND mb.user_id     = $2
-                     AND mb.folder_name = $3
-                     AND (m.received_at, m.id) < ($4, $5)
-                   ORDER BY m.received_at DESC, m.id DESC
-                   LIMIT $6"#,
-            )
-            .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
-            .bind(&folder)
-            .bind(anchor_ts)
-            .bind(anchor_id)
-            .bind(limit)
-            .fetch_all(&mut *tx)
-            .await?
+            let sql = format!(
+                "{base} {flag_filter} {unread_filter} \
+                 AND (m.received_at, m.id) < ($4, $5) \
+                 ORDER BY m.received_at DESC, m.id DESC LIMIT $6"
+            );
+            sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(&folder)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .bind(limit)
+                .fetch_all(&mut *tx)
+                .await?
         } else {
-            // Messages newer than the anchor (standard "prev page"), reversed for DESC.
-            let mut rows: Vec<MessageListItem> = sqlx::query_as(
-                r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
-                          m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
-                   FROM messages  m
-                   JOIN mailboxes mb ON mb.id = m.mailbox_id
-                   WHERE m.tenant_id    = $1
-                     AND mb.user_id     = $2
-                     AND mb.folder_name = $3
-                     AND (m.received_at, m.id) > ($4, $5)
-                   ORDER BY m.received_at ASC, m.id ASC
-                   LIMIT $6"#,
-            )
-            .bind(ctx.tenant_id)
-            .bind(ctx.user_id)
-            .bind(&folder)
-            .bind(anchor_ts)
-            .bind(anchor_id)
-            .bind(limit)
-            .fetch_all(&mut *tx)
-            .await?;
+            let sql = format!(
+                "{base} {flag_filter} {unread_filter} \
+                 AND (m.received_at, m.id) > ($4, $5) \
+                 ORDER BY m.received_at ASC, m.id ASC LIMIT $6"
+            );
+            let mut rows: Vec<MessageListItem> = sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(&folder)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .bind(limit)
+                .fetch_all(&mut *tx)
+                .await?;
             rows.reverse();
             rows
         }
     } else {
         // Legacy offset pagination.
         let offset = params.page.unwrap_or(0) * limit;
-        sqlx::query_as(
-            r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
-                      m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
-               FROM messages  m
-               JOIN mailboxes mb ON mb.id = m.mailbox_id
-               WHERE m.tenant_id    = $1
-                 AND mb.tenant_id   = $1
-                 AND mb.user_id     = $2
-                 AND mb.folder_name = $3
-               ORDER BY m.received_at DESC
-               LIMIT $4 OFFSET $5"#,
-        )
-        .bind(ctx.tenant_id)
-        .bind(ctx.user_id)
-        .bind(&folder)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&mut *tx)
-        .await?
+        let sql = format!(
+            "{base} {flag_filter} {unread_filter} \
+             ORDER BY m.received_at DESC LIMIT $4 OFFSET $5"
+        );
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(&folder)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(&mut *tx)
+            .await?
     };
     tx.commit().await?;
 
