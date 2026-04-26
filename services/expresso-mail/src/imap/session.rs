@@ -365,6 +365,36 @@ async fn dispatch(
         CommandBody::Unselect => {
             cmd_unselect(tag, sess, selected)
         }
+        // CHECK — RFC 3501 §6.4.1: server checkpoint (equivalent to NOOP for us).
+        // Clients use this to request a server checkpoint; we treat it as NOOP.
+        CommandBody::Check => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            let mut resp = cmd_noop(state, tag.clone(), selected, *tenant_id).await;
+            // Replace the trailing "NOOP completed" OK with "CHECK completed".
+            if let Some(last) = resp.last_mut() {
+                if let Response::Status(Status::Tagged(t)) = last {
+                    t.body.text = Text::try_from("CHECK completed").unwrap();
+                }
+            }
+            resp
+        }
+        // ENABLE — RFC 5161: acknowledge capability activation.
+        // We don't implement CONDSTORE/QRESYNC but must respond with * ENABLED <list>.
+        CommandBody::Enable { capabilities } => {
+            use imap_codec::imap_types::extensions::enable::CapabilityEnable;
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            // Respond with ENABLED containing only the capabilities we actually support.
+            // Currently none — return empty ENABLED so the client knows we processed it.
+            let _ = capabilities; // acknowledged but not acted upon
+            vec![
+                Response::Data(Data::Enabled { capabilities: vec![] }),
+                ok_tagged(tag, None, "ENABLE completed"),
+            ]
+        }
         CommandBody::Create { mailbox } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
@@ -401,6 +431,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Other(CapabilityOther(Atom::try_from("UNSELECT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("MOVE").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("LITERAL+").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("ENABLE").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
