@@ -25,13 +25,13 @@ use std::{env, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::{FromRequestParts, Path, Query, Request, State},
-    http::request::Parts,
+    http::{header, request::Parts, StatusCode},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{delete, get, patch, post},
     Json, Router,
 };
-use axum::{async_trait, http::StatusCode};
+use axum::async_trait;
 use expresso_auth_client::{AuthContext, Authenticated, AuthRejection, OidcConfig, OidcValidator};
 use expresso_core::{begin_tenant_tx, create_db_pool, init_tracing, run_migrations, AppConfig};
 use serde::{Deserialize, Serialize};
@@ -167,7 +167,7 @@ async fn list_rules(
     State(st):     State<AppState>,
     AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ListRulesParams>,
-) -> Result<Json<Vec<FlowRule>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let enabled_filter = match params.enabled {
         Some(true)  => "AND enabled = TRUE",
         Some(false) => "AND enabled = FALSE",
@@ -192,7 +192,22 @@ async fn list_rules(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    Ok(Json(rows))
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM flow_rules \
+         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter}"
+    );
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&st.db)
+        .await
+        .unwrap_or(0);
+
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 async fn create_rule(
