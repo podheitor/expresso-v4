@@ -14,7 +14,7 @@
 //! `condition_mode`: "and" (default) — all conditions must match;
 //!                   "or"            — any condition suffices.
 //!
-//! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules        (JWT auth)
+//! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules        (JWT auth; ?enabled=true/false filter)
 //! Reorder: PATCH  /api/v1/flows/rules/reorder            (JWT auth) — bulk priority update
 //! Bulk delete: DELETE /api/v1/flows/rules/bulk           (JWT auth) — delete multiple rules
 //! Trigger: POST /internal/process                        (internal, no auth)
@@ -24,7 +24,7 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
 use axum::{
-    extract::{FromRequestParts, Path, Request, State},
+    extract::{FromRequestParts, Path, Query, Request, State},
     http::request::Parts,
     middleware::{self, Next},
     response::Response,
@@ -84,6 +84,13 @@ struct UpdateRuleRequest {
     pub conditions:       Option<serde_json::Value>,
     pub condition_mode:   Option<String>,
     pub actions:          Option<serde_json::Value>,
+}
+
+/// Query params for GET /api/v1/flows/rules
+#[derive(Debug, Deserialize)]
+struct ListRulesParams {
+    /// Filter by enabled status. Omit to return all rules.
+    pub enabled: Option<bool>,
 }
 
 /// One entry in a bulk reorder request.
@@ -155,20 +162,29 @@ async fn inject_validator(
 // ─── CRUD handlers ────────────────────────────────────────────────────────────
 
 async fn list_rules(
-    State(st): State<AppState>,
-    AuthCtx(ctx): AuthCtx,
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ListRulesParams>,
 ) -> Result<Json<Vec<FlowRule>>, (StatusCode, Json<serde_json::Value>)> {
-    let rows: Vec<FlowRule> = sqlx::query_as(
+    let enabled_filter = match params.enabled {
+        Some(true)  => "AND enabled = TRUE",
+        Some(false) => "AND enabled = FALSE",
+        None        => "",
+    };
+
+    let sql = format!(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
-         WHERE tenant_id = $1 AND user_id = $2 \
-         ORDER BY priority ASC, created_at ASC",
-    )
-    .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
-    .fetch_all(&st.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} \
+         ORDER BY priority ASC, created_at ASC"
+    );
+
+    let rows: Vec<FlowRule> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok(Json(rows))
 }
