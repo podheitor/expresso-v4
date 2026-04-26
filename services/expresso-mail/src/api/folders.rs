@@ -15,8 +15,9 @@ use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppStat
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/folders",         get(list_folders).post(create_folder))
-        .route("/mail/folders/:name",   axum::routing::patch(rename_folder).delete(delete_folder))
+        .route("/mail/folders",                  get(list_folders).post(create_folder))
+        .route("/mail/folders/:name",            axum::routing::patch(rename_folder).delete(delete_folder))
+        .route("/mail/folders/:name/mark-read",  axum::routing::post(mark_folder_read))
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -210,6 +211,44 @@ async fn delete_folder(
 
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/mail/folders/:name/mark-read — mark all messages in folder as \Seen
+///
+/// Returns `{"marked": N}` — number of messages that had the flag added.
+async fn mark_folder_read(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(name):   Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let mbox_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&name)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let mbox_id = mbox_id.ok_or(MailError::FolderNotFound { folder: name })?;
+
+    let res = sqlx::query(
+        r#"UPDATE messages
+           SET flags = array_append(flags, $1)
+           WHERE mailbox_id = $2
+             AND tenant_id  = $3
+             AND NOT ($1 = ANY(flags))"#,
+    )
+    .bind(r"\Seen")
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "marked": res.rows_affected() })))
 }
 
 /// Reject names that would confuse IMAP hierarchy or SQL injection via folder_name
