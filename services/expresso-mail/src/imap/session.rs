@@ -1,7 +1,7 @@
-//! IMAP session state machine — one per TCP connection.
+//! IMAP session state machine — one per TCP connection (plain or TLS).
 //! Handles core IMAP4rev1 commands: CAPABILITY, LOGIN, LIST, SELECT,
 //! FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP.
-//! Extensions: UIDPLUS, IDLE, UNSELECT, MOVE, LITERAL+ (RFC 7888).
+//! Extensions: UIDPLUS, IDLE, UNSELECT, MOVE, LITERAL+ (RFC 7888), STATUS=SIZE (RFC 8438).
 //! SEARCH TEXT/BODY fetches raw bytes from object store for real content search.
 //!
 //! Tenant scoping: após LOGIN, `tenant_id` é propagado para todo handler
@@ -39,7 +39,7 @@ use imap_codec::{
 use chrono::{DateTime as ChronoDateTime, FixedOffset, Utc};
 use imap_codec::imap_types::datetime::DateTime as ImapDateTime;
 use sqlx::Row;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tracing::{debug, warn};
 use uuid::Uuid;
@@ -78,7 +78,24 @@ struct SelectedMailbox {
 }
 
 pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
-    let (mut reader, mut writer) = stream.into_split();
+    let (reader, writer) = stream.into_split();
+    run(reader, writer, state).await
+}
+
+/// IMAP over implicit TLS (port 993) — TLS already established before first byte.
+pub async fn handle_tls(
+    stream: tokio_rustls::server::TlsStream<TcpStream>,
+    state: AppState,
+) -> anyhow::Result<()> {
+    let (reader, writer) = tokio::io::split(stream);
+    run(reader, writer, state).await
+}
+
+async fn run<R, W>(mut reader: R, mut writer: W, state: AppState) -> anyhow::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let cmd_codec = CommandCodec::default();
     let resp_codec = ResponseCodec::default();
     let greet_codec = GreetingCodec::default();
@@ -2703,15 +2720,19 @@ fn cmd_unselect(
 /// Desconecta silenciosamente após 30 min se nenhum DONE (RFC 2177 §3.3).
 /// DONE do cliente pode chegar em qualquer burst de leitura; aceita como
 /// prefixo case-insensitive (clientes enviam "DONE\r\n").
-async fn handle_idle(
+async fn handle_idle<R, W>(
     tag:       Tag<'static>,
-    reader:    &mut tokio::net::tcp::OwnedReadHalf,
-    writer:    &mut tokio::net::tcp::OwnedWriteHalf,
+    reader:    &mut R,
+    writer:    &mut W,
     resp_codec: &ResponseCodec,
     state:     &AppState,
     selected:  &mut Option<SelectedMailbox>,
     tenant_id: Option<Uuid>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     writer.write_all(b"+ idling\r\n").await?;
 
     // 63 ticks × 28s ≈ 29.4 minutes → keep-alive; 65 ticks ≈ 30.3 min → timeout.

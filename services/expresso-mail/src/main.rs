@@ -6,6 +6,7 @@
 //!   - :587   SMTP Submission — STARTTLS + AUTH PLAIN/LOGIN (only when TLS wired)
 //!   - :24    LMTP — Postfix → app delivery
 //!   - :143   IMAP4rev1 — LOGIN, LIST, SELECT, FETCH, STORE, EXPUNGE, CLOSE, NOOP
+//!   - :993   IMAPS — IMAP4rev1 over implicit TLS (RFC 8314, only when TLS wired)
 
 mod api;
 mod bootstrap;
@@ -150,10 +151,19 @@ async fn main() -> anyhow::Result<()> {
     let lmtp_state = state.clone();
     set.spawn(async move { lmtp::serve(lmtp_state, lmtp_addr).await });
 
-    // IMAP4rev1
+    // IMAP4rev1 (plain, port 143)
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;
     let imap_state = state.clone();
     set.spawn(async move { imap::serve(imap_state, imap_addr).await });
+
+    // IMAPS — implicit TLS (port 993, RFC 8314) — only when TLS configured
+    if cfg.mail_server.tls_cert.is_some() && cfg.mail_server.tls_key.is_some() {
+        let imaps_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imaps_port).parse()?;
+        let imaps_state = state.clone();
+        set.spawn(async move { imap::serve_tls(imaps_state, imaps_addr).await });
+    } else {
+        info!("IMAPS (993) disabled — mail_server.tls_cert/tls_key not set");
+    }
 
     // ── Wait for any task to finish (usually shutdown signal) ──────────────────
     while let Some(result) = set.join_next().await {
