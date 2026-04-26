@@ -103,6 +103,10 @@ struct ListRulesParams {
     /// Return only rules that contain at least one action of this type.
     /// E.g. `?action_type=move_to_folder`, `?action_type=webhook`.
     pub action_type:     Option<String>,
+    /// Maximum number of rules to return (default 100, max 500).
+    pub limit:           Option<i64>,
+    /// Zero-indexed page for offset pagination (default 0).
+    pub page:            Option<i64>,
 }
 
 /// One entry in a bulk reorder request.
@@ -178,6 +182,9 @@ async fn list_rules(
     AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ListRulesParams>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let limit  = params.limit.unwrap_or(100).min(500);
+    let offset = params.page.unwrap_or(0) * limit;
+
     let enabled_filter = match params.enabled {
         Some(true)  => "AND enabled = TRUE",
         Some(false) => "AND enabled = FALSE",
@@ -207,7 +214,8 @@ async fn list_rules(
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
          {priority_min_filter} {priority_max_filter} {condition_mode_filter} {action_type_filter} \
-         ORDER BY priority ASC, created_at ASC"
+         ORDER BY priority ASC, created_at ASC \
+         LIMIT {limit} OFFSET {offset}"
     );
 
     let rows: Vec<FlowRule> = sqlx::query_as(&sql)
