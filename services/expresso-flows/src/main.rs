@@ -347,6 +347,37 @@ async fn delete_rule(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// PATCH /api/v1/flows/rules/:id/toggle — flip enabled ↔ disabled atomically.
+/// Returns the updated rule. 404 if not found.
+async fn toggle_rule(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let row: Option<FlowRule> = sqlx::query_as(
+        "UPDATE flow_rules SET enabled = NOT enabled \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3 \
+         RETURNING id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    match row {
+        Some(r) => Ok(Json(r)),
+        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"})))),
+    }
+}
+
 // ─── Bulk delete handler ──────────────────────────────────────────────────────
 
 /// DELETE /api/v1/flows/rules/bulk — delete multiple rules in one request.
@@ -584,6 +615,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/flows/rules",             get(list_rules).post(create_rule))
         .route("/api/v1/flows/rules/reorder",     patch(reorder_rules))
         .route("/api/v1/flows/rules/bulk",         delete(bulk_delete_rules))
+        .route("/api/v1/flows/rules/:id/toggle",   patch(toggle_rule))
         .route("/api/v1/flows/rules/:id",          get(get_rule).patch(update_rule).delete(delete_rule))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
