@@ -318,7 +318,7 @@ async fn update_rule(
     }
 }
 
-/// GET /api/v1/flows/rules/:id — ETag + Last-Modified; responds 304 if If-None-Match matches.
+/// GET /api/v1/flows/rules/:id — ETag + Last-Modified; responds 304 if If-None-Match or If-Modified-Since matches.
 async fn get_rule(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
@@ -362,6 +362,15 @@ async fn get_rule(
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if r.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
         }
     }
 
