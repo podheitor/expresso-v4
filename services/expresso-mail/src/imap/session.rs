@@ -311,7 +311,7 @@ async fn dispatch(
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_append(state, tag, mailbox, flags, message, user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_append(state, tag, mailbox, flags, message, user_id.unwrap(), tenant_id.unwrap(), selected).await
         }
         CommandBody::Fetch {
             sequence_set,
@@ -1098,6 +1098,7 @@ async fn cmd_append(
     message: &LiteralOrLiteral8<'_>,
     uid: Uuid,
     tenant_id: Uuid,
+    selected: &mut Option<SelectedMailbox>,
 ) -> Vec<Response<'static>> {
     let mbox_name = mailbox_to_string(mailbox);
 
@@ -1190,11 +1191,21 @@ async fn cmd_append(
     let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
     let appended_uid = NonZeroU32::new(new_uid_raw as u32).unwrap_or(NonZeroU32::MIN);
 
-    vec![ok_tagged(
+    // RFC 3501 §7.3.1 SHOULD: if the append target is the currently selected
+    // mailbox, emit * N EXISTS so the client doesn't need a NOOP to notice it.
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(2);
+    if let Some(sel) = selected.as_mut() {
+        if sel.mailbox_id == mailbox_id {
+            sel.exists += 1;
+            out.push(Response::Data(Data::Exists(sel.exists)));
+        }
+    }
+    out.push(ok_tagged(
         tag,
         Some(Code::AppendUid { uid_validity, uid: appended_uid }),
         "APPEND completed",
-    )]
+    ));
+    out
 }
 
 async fn cmd_fetch(
