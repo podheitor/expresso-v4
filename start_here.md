@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #307 (2026-04-26)
+**Último sprint commitado:** #312 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,37 +8,35 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#302–#307)
+## O que foi feito nesta sessão (#308–#312)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #302 | calendar | `Last-Modified` + `If-Modified-Since` em `GET /calendars/:id/events/:id` — `ev.updated_at` |
-| #303 | contacts | `If-Modified-Since` → 304 em `GET /addressbooks` list — check antes do list completo |
-| #304 | calendar | `If-Modified-Since` → 304 em `GET /calendars` list — adicionou `HeaderMap` ao import |
-| #305 | chat | `If-Modified-Since` → 304 em `GET /channels` list — adicionou `HeaderMap` ao import |
-| #306 | contacts | `If-Modified-Since` → 304 em `GET /addressbooks/:id` get_one — LM já existia |
-| #307 | calendar | `If-Modified-Since` → 304 em `GET /calendars/:id` get_one — LM já existia |
+| #308 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/messages` list — MAX(received_at) antes do keyset |
+| #309 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/threads/:id` — MAX(received_at) já calculado |
+| #310 | compliance | `Last-Modified` + `If-Modified-Since` em `GET /compliance/archive` list — MAX(archived_at) |
+| #311 | compliance | `If-Modified-Since` → 304 em `GET /compliance/archive/:id` — LM já existia, faltava IMS |
+| #312 | flows | `Last-Modified` + `If-Modified-Since` em `GET /flows/rules` list — MAX(updated_at) |
 
-**Estado atual:** todos os handlers de contacts/calendar/chat têm LM=IMS=2 (list + get_one cada).
+**Estado atual:** caching HTTP completo em contacts/calendar/chat/mail/flows/compliance.
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **mail: `GET /api/v1/messages` (list) — If-Modified-Since → 304**
-   - `messages.rs` já tem LM em line ~571 e ~910; verificar se tem IMS no list handler
+1. **mail: `GET /mail/messages/:id` (get_message) — If-Modified-Since check** *(já tem ETag + LM + INM; falta IMS)*
+   - `received_at` imutável; verificar se já tem IMS no handler
 
-2. **mail: folders/threads — Last-Modified + If-Modified-Since**
-   - Verificar `GET /folders`, `GET /folders/:id`, `GET /threads` — quais têm LM/IMS
-
-3. **flows: `GET /api/v1/flows` + `GET /flows/:id` — Last-Modified + If-Modified-Since**
-   - Verificar handlers em expresso-flows
-
-4. **compliance: `GET /api/v1/archive` — If-Modified-Since → 304**
-   - Verificar handlers em expresso-compliance
-
-5. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)**
+2. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)**
    - Aguardar imap_types alpha
+
+3. **IMAP: NAMESPACE (RFC 2342)**
+   - Aguardar imap_types alpha
+
+4. **mail: search endpoint (`GET /mail/search`) — Last-Modified + If-Modified-Since**
+   - Verificar se tem campo temporal adequado
+
+5. **notifications: testar Redis pub/sub cross-pod**
 
 ---
 
@@ -63,12 +61,14 @@ git log --oneline | head -10
 ## Padrões usados recorrentemente
 
 ```rust
-// X-Total-Count + Last-Modified num único query (list)
-let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
-    "SELECT COUNT(*), MAX(updated_at) FROM tbl WHERE tenant_id = $1 AND ..."
-).bind(...).fetch_one(pool).await?;
-// If-Modified-Since → 304 ANTES do SELECT completo
-if let Some(ts) = max_updated {
+// MAX(field) + IMS check antes do rows query (list handlers)
+let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+    "SELECT MAX(updated_at) FROM tbl WHERE tenant_id = $1 AND user_id = $2",
+)
+.bind(ctx.tenant_id).bind(ctx.user_id)
+.fetch_one(&pool).await.unwrap_or(None);
+
+if let Some(ts) = max_ts {
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
             if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
@@ -77,14 +77,14 @@ if let Some(ts) = max_updated {
         }
     }
 }
-let rows = Repo::new(pool).list(...).await?;
-let mut resp = ([(header::HeaderName::from_static("x-total-count"), total.to_string())], Json(rows)).into_response();
-if let Some(ts) = max_updated {
+// ... rows query ...
+let mut resp = (...).into_response();
+if let Some(ts) = max_ts {
     let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
 }
 
-// ETag + Last-Modified + If-Modified-Since em get_one
+// ETag + LM + IMS em get_one
 let etag = format!("\"{}-{}\"", resource.updated_at.unix_timestamp(), resource.id);
 if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
     if inm.as_bytes() == etag.as_bytes() { return Ok(StatusCode::NOT_MODIFIED.into_response()); }
@@ -97,9 +97,6 @@ if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         }
     }
 }
-let mut resp = Json(resource).into_response();
-resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
-resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
 ```
 
 ---
