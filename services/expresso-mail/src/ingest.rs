@@ -233,6 +233,35 @@ pub async fn process(
                     .await;
             });
         }
+
+        // Fire-and-forget: evaluate workflow rules via expresso-flows.
+        let flows_url = state.cfg().flows_url.clone();
+        if !flows_url.is_empty() {
+            let folder    = target_folder.clone();
+            let from_addr = parsed.from_addr.clone();
+            let to_addrs: Vec<String> = parsed.to_addrs
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
+                .unwrap_or_default();
+            let subject = parsed.subject.clone();
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "user_id":    user_id,
+                    "tenant_id":  tenant_id,
+                    "message_id": Uuid::nil(), // message row UUID not tracked here; flows uses it for context only
+                    "folder":     folder,
+                    "from_addr":  from_addr,
+                    "to_addrs":   to_addrs,
+                    "subject":    subject,
+                });
+                let _ = reqwest::Client::new()
+                    .post(format!("{flows_url}/internal/process"))
+                    .json(&payload)
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await;
+            });
+        }
     }
 
     Ok(delivered)
