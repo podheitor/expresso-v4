@@ -1288,16 +1288,35 @@ async fn bulk_delete(
     Json(body):   Json<BulkDeleteRequest>,
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let res = sqlx::query(
+    let deleted: Vec<(Uuid, i64)> = sqlx::query_as(
         "DELETE FROM messages \
          WHERE id = ANY($1) AND tenant_id = $2 \
-           AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
+           AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2) \
+         RETURNING mailbox_id, uid",
     )
     .bind(&body.ids)
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
-    .execute(&mut *tx)
+    .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(BulkResult { affected: res.rows_affected() }))
+
+    // Fire-and-forget: remove deleted messages from search index.
+    let search_url   = state.cfg().search_url.clone();
+    let search_token = state.cfg().search_token.clone();
+    if !search_url.is_empty() && !deleted.is_empty() {
+        tokio::spawn(async move {
+            let client = reqwest::Client::new();
+            for (mailbox_id, uid) in &deleted {
+                let doc_id = format!("{mailbox_id}/{uid}");
+                let mut req = client.delete(format!("{search_url}/api/v1/index/{doc_id}"));
+                if !search_token.is_empty() {
+                    req = req.bearer_auth(&search_token);
+                }
+                let _ = req.send().await;
+            }
+        });
+    }
+
+    Ok(Json(BulkResult { affected: deleted.len() as u64 }))
 }
