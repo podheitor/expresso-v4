@@ -43,7 +43,7 @@ pub async fn record(
 // ─── GET /audit listing endpoint ────────────────────────────────────────────
 
 use axum::{extract::{Query, State}, response::{IntoResponse, Response}, Json};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header, HeaderValue};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use time::OffsetDateTime;
@@ -120,8 +120,37 @@ pub async fn list(
     };
     let limit = q.limit.unwrap_or(50).clamp(1, 500);
     let prefix_like = q.action_prefix.as_ref().map(|p| format!("{p}%"));
-
     let (since, until) = resolve_window(&q);
+
+    let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
+        r#"SELECT MAX(created_at) FROM audit_log
+            WHERE ($1::uuid        IS NULL OR tenant_id  = $1)
+              AND ($2::text        IS NULL OR action     LIKE $2)
+              AND ($3::timestamptz IS NULL OR created_at >= $3)
+              AND ($4::timestamptz IS NULL OR created_at <  $4)
+              AND ($5::bigint      IS NULL OR id         <  $5)"#,
+    )
+    .bind(q.tenant_id)
+    .bind(prefix_like.as_deref())
+    .bind(since)
+    .bind(until)
+    .bind(q.before_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_created {
+        if let Some(ims_val) = headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return StatusCode::NOT_MODIFIED.into_response();
+                    }
+                }
+            }
+        }
+    }
+
     let rows = sqlx::query(
         r#"SELECT id, created_at, tenant_id, user_id, action, resource, status, metadata
              FROM audit_log
@@ -157,7 +186,12 @@ pub async fn list(
         metadata:   r.try_get("metadata").unwrap_or(serde_json::json!({})),
     }).collect();
 
-    Json(out).into_response()
+    let mut resp = Json(out).into_response();
+    if let Some(ts) = max_created {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    resp
 }
 
 
