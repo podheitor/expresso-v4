@@ -3,11 +3,12 @@
 use axum::{
     body::Bytes,
     extract::{Multipart, Path, Query, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use time::OffsetDateTime;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
@@ -55,10 +56,45 @@ async fn list(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Query(q):     Query<ListQuery>,
-) -> Result<Json<Vec<DriveFile>>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
+    let max_updated: Option<OffsetDateTime> = if let Some(pid) = q.parent_id {
+        sqlx::query_scalar(
+            "SELECT MAX(updated_at) FROM drive_files WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL",
+        )
+        .bind(ctx.tenant_id)
+        .bind(pid)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(None)
+    } else {
+        sqlx::query_scalar(
+            "SELECT MAX(updated_at) FROM drive_files WHERE tenant_id = $1 AND parent_id IS NULL AND deleted_at IS NULL",
+        )
+        .bind(ctx.tenant_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(None)
+    };
+    if let Some(ts) = max_updated {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows = FileRepo::new(pool).list_children(ctx.tenant_id, q.parent_id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn mkdir(
@@ -202,9 +238,23 @@ async fn metadata(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<DriveFile>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    Ok(Json(FileRepo::new(pool).get(ctx.tenant_id, id).await?))
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let lm = f.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if f.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+    let mut resp = Json(f).into_response();
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 async fn download(
@@ -277,22 +327,67 @@ async fn restore(
 async fn trash(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<Json<Vec<DriveFile>>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
+    let max_updated: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+    if let Some(ts) = max_updated {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows = FileRepo::new(pool).list_trash(ctx.tenant_id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn list_versions(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<Vec<FileVersion>>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    // Ensure caller can see the file under current tenant.
-    FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(created_at) FROM file_versions WHERE tenant_id = $1 AND file_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+    let max_ts = max_created.unwrap_or(f.updated_at);
+    let lm = max_ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if max_ts <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
     let rows = VersionRepo::new(pool).list(ctx.tenant_id, id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 async fn download_version(
