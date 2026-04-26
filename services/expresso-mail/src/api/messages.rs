@@ -50,8 +50,13 @@ pub struct ListParams {
     pub after_id:  Option<Uuid>,
     /// Filter by flag presence (e.g. `\Seen`, `\Starred`, `\Flagged`). URL-encode backslash.
     pub flag:      Option<String>,
+    /// Multi-flag AND filter: comma-separated list of flags — all must be present.
+    /// Example: `flags=%5CSeen,%5CFlagged` (URL-encoded backslashes).
+    pub flags:     Option<String>,
     /// If `true`, return only messages NOT having `\Seen` flag.
     pub unread:    Option<bool>,
+    /// Return only messages belonging to this thread.
+    pub thread_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,11 +264,23 @@ async fn list_messages(
     let flag_filter = params.flag
         .map(|f| format!("AND '{}' = ANY(m.flags)", f.replace('\'', "''")))
         .unwrap_or_default();
+    // Multi-flag AND: every flag in the comma-separated list must be present.
+    let multi_flag_filter = params.flags
+        .map(|raw| {
+            raw.split(',')
+                .map(|f| format!("AND '{}' = ANY(m.flags)", f.trim().replace('\'', "''")))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
     let unread_filter = if params.unread.unwrap_or(false) {
         "AND NOT ('\\Seen' = ANY(m.flags))".to_string()
     } else {
         String::new()
     };
+    let thread_id_filter = params.thread_id
+        .map(|t| format!("AND m.thread_id = '{t}'"))
+        .unwrap_or_default();
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -298,7 +315,7 @@ async fn list_messages(
 
         if is_before {
             let sql = format!(
-                "{base} {flag_filter} {unread_filter} \
+                "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
                  AND (m.received_at, m.id) < ($4, $5) \
                  ORDER BY m.received_at DESC, m.id DESC LIMIT $6"
             );
@@ -313,7 +330,7 @@ async fn list_messages(
                 .await?
         } else {
             let sql = format!(
-                "{base} {flag_filter} {unread_filter} \
+                "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
                  AND (m.received_at, m.id) > ($4, $5) \
                  ORDER BY m.received_at ASC, m.id ASC LIMIT $6"
             );
@@ -333,7 +350,7 @@ async fn list_messages(
         // Legacy offset pagination.
         let offset = params.page.unwrap_or(0) * limit;
         let sql = format!(
-            "{base} {flag_filter} {unread_filter} \
+            "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
              ORDER BY m.received_at DESC LIMIT $4 OFFSET $5"
         );
         sqlx::query_as(&sql)
