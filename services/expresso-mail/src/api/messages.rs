@@ -177,15 +177,71 @@ async fn search_messages(
     req_headers:   HeaderMap,
 ) -> Result<Response> {
     let limit = params.limit.unwrap_or(50).min(200);
+
+    // When a full-text query is provided and the search service is configured,
+    // call Tantivy to get matching document_ids (mailbox_id/uid pairs) and
+    // inject them as an SQL filter. Falls back to ILIKE if the service is
+    // unavailable or the query is empty.
+    let tantivy_filter: Option<String> = match &params.q {
+        Some(q) if !q.trim().is_empty() => {
+            let search_url   = state.cfg().search_url.clone();
+            let search_token = state.cfg().search_token.clone();
+            if !search_url.is_empty() {
+                let client = reqwest::Client::new();
+                let mut req = client.get(format!("{search_url}/api/v1/search"))
+                    .query(&[
+                        ("q",         q.as_str()),
+                        ("tenant_id", &ctx.tenant_id.to_string()),
+                        ("limit",     "200"),
+                    ]);
+                if !search_token.is_empty() { req = req.bearer_auth(&search_token); }
+                match req.send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        #[derive(serde::Deserialize)]
+                        struct SResp { hits: Vec<SHit> }
+                        #[derive(serde::Deserialize)]
+                        struct SHit { document_id: String }
+                        match resp.json::<SResp>().await {
+                            Ok(sr) if !sr.hits.is_empty() => {
+                                // document_id = "mailbox_id/uid" — build
+                                // AND (m.mailbox_id::text || '/' || m.uid::text) = ANY($ids)
+                                let ids: Vec<String> = sr.hits.into_iter()
+                                    .map(|h| h.document_id)
+                                    .collect();
+                                let literal = ids.iter()
+                                    .map(|s| format!("'{}'", s.replace('\'', "''")))
+                                    .collect::<Vec<_>>()
+                                    .join(",");
+                                Some(format!(
+                                    "AND (m.mailbox_id::text || '/' || m.uid::text) IN ({literal})"
+                                ))
+                            }
+                            Ok(_) => Some("AND FALSE".into()), // no hits → empty result
+                            Err(_) => None,                    // parse error → fallback
+                        }
+                    }
+                    _ => None, // service down → fallback to ILIKE
+                }
+            } else {
+                None // search_url not configured → fallback to ILIKE
+            }
+        }
+        _ => None,
+    };
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let folder_filter = params.folder
         .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
         .unwrap_or_default();
-    let q_filter = params.q.map(|q| {
-        let esc = q.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-        format!("AND (m.subject ILIKE '%{esc}%' OR m.from_addr ILIKE '%{esc}%' OR m.preview_text ILIKE '%{esc}%')")
-    }).unwrap_or_default();
+    let q_filter = if let Some(ref tf) = tantivy_filter {
+        tf.clone()
+    } else {
+        params.q.as_ref().map(|q| {
+            let esc = q.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+            format!("AND (m.subject ILIKE '%{esc}%' OR m.from_addr ILIKE '%{esc}%' OR m.preview_text ILIKE '%{esc}%')")
+        }).unwrap_or_default()
+    };
     let from_filter = params.from.map(|f| {
         let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND m.from_addr ILIKE '%{esc}%'")
