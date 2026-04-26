@@ -23,7 +23,7 @@ use imap_codec::{
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
         mailbox::Mailbox as ImapMailbox,
         response::{
-            Bye, Capability, Code, Data, Greeting, Response, Status, StatusBody,
+            Bye, Capability, CapabilityOther, Code, Data, Greeting, Response, Status, StatusBody,
             StatusKind, Tagged,
         },
         status::{StatusDataItem, StatusDataItemName},
@@ -346,6 +346,9 @@ async fn dispatch(
             }
             cmd_expunge_uid(state, tag, sequence_set, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
+        CommandBody::Unselect => {
+            cmd_unselect(tag, sess, selected)
+        }
         CommandBody::Create { mailbox } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
@@ -379,6 +382,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Auth(AuthMechanism::Plain),
         Capability::Idle,
         Capability::UidPlus,
+        Capability::Other(CapabilityOther(Atom::try_from("UNSELECT").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -1713,6 +1717,24 @@ async fn cmd_close(
         *sess = SessionState::Authenticated;
     }
     vec![ok_tagged(tag, None, "CLOSE completed")]
+}
+
+/// UNSELECT — RFC 3691: return to authenticated state WITHOUT silently expunging
+/// \Deleted messages. Contrast with CLOSE (RFC 3501 §6.4.2) which expunges first.
+/// Server MUST advertise UNSELECT capability before clients may use this command.
+fn cmd_unselect(
+    tag: Tag<'static>,
+    sess: &mut SessionState,
+    selected: &mut Option<SelectedMailbox>,
+) -> Vec<Response<'static>> {
+    if selected.is_none() {
+        return vec![no_tagged(tag, "no mailbox selected")];
+    }
+    *selected = None;
+    if *sess == SessionState::Selected {
+        *sess = SessionState::Authenticated;
+    }
+    vec![ok_tagged(tag, None, "UNSELECT completed")]
 }
 
 /// IDLE RFC 2177: envia "+ idling", espera DONE do cliente.

@@ -125,6 +125,7 @@ mod tests {
         assert_eq!(command_label("CREATE"),      "CREATE");
         assert_eq!(command_label("DELETE"),      "DELETE");
         assert_eq!(command_label("RENAME"),      "RENAME");
+        assert_eq!(command_label("UNSELECT"),    "UNSELECT");
     }
 
     #[test]
