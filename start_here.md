@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #277 (2026-04-26)
+**Último sprint commitado:** #282 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,34 +8,34 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#273–#277)
+## O que foi feito nesta sessão (#278–#282)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #273 | api | `X-Total-Count` em `GET /mail/folders` — COUNT(*) em query separada antes do SELECT |
-| #274 | api | `PATCH /mail/messages/:id/move` retorna `200 + Json(MessageDetail)` em vez de `204` |
-| #275 | flows | `Location: /api/v1/flows/rules/{id}` header em `POST /api/v1/flows/rules` |
-| #276 | compliance | ETag + Last-Modified em `GET /compliance/retention-policies/:id` — ETag = `"{created_at_unix}-{id}"` |
-| #277 | api | ETag + If-None-Match em `GET /mail/messages/:id/flags` — ETag = flags sorted e joined |
+| #278 | api | `X-Total-Count` em `GET /mail/folders/all` — pastas incluindo não subscritas |
+| #279 | contacts | `X-Total-Count` em `GET /api/v1/addressbooks/:id/contacts` |
+| #280 | api | `Last-Modified` em `GET /mail/messages/:id/flags` — via `received_at` imutável |
+| #281 | calendar | `X-Total-Count` em `GET /api/v1/calendars/:id/events` — com filtros from/to |
+| #282 | compliance | `X-Total-Count` em `GET /compliance/retention-policies` |
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **api: `GET /mail/folders/all` — X-Total-Count**
-   - Mesmo padrão do #273, mas para o endpoint `/mail/folders/all` (inclui pastas não subscritas)
+1. **contacts: `GET /api/v1/addressbooks` — X-Total-Count**
+   - Lista de address books do usuário; verificar se já tem; adicionar se não tiver
 
-2. **compliance: `GET /compliance/archive` — X-Total-Count**
-   - Lista paginada de arquivo; adicionar COUNT(*) com os mesmos filtros como `x-total-count`
+2. **calendar: `GET /api/v1/calendars` — X-Total-Count**
+   - Lista de calendários do usuário; mesmo padrão
 
-3. **api: `GET /mail/messages/:id/flags` — Last-Modified**
-   - Atualmente só tem ETag; adicionar `Last-Modified` baseado em `received_at` (proxy para quando flags foram atualizadas pela última vez) ou omitir se não houver campo adequado
+3. **chat: `GET /api/v1/channels` — X-Total-Count**
+   - Handler `list_channels` em `services/expresso-chat/src/api/channels.rs`
 
-4. **flows: `GET /api/v1/flows/rules` — X-Total-Count**
-   - Atualmente retorna lista com x-total-count (verificar se já tem); se não, adicionar
+4. **contacts: `GET /api/v1/addressbooks/:id/contacts` — ETag em list**
+   - Atualmente lista sem ETag; considerar ETag de aggregate (MAX etag) se viável
 
-5. **api: `PATCH /mail/messages/:id/flags` — retornar flags atualizadas**
-   - Atualmente retorna `200 + Json(msg.flags)` (verificar); uniformizar se necessário
+5. **calendar: `GET /api/v1/calendars/:id/events/:uid` — ETag + If-None-Match**
+   - `get_one` já retorna ETag via header; verificar se lida com If-None-Match (304) ou só envia ETag
 
 ---
 
@@ -47,6 +47,9 @@ git log --oneline | head -10
 | expresso-flows | 8005 | `services/expresso-flows/src/main.rs` |
 | expresso-compliance | 8009 | `services/expresso-compliance/src/main.rs` |
 | expresso-notifications | 8007 | `services/expresso-notifications/src/` |
+| expresso-contacts | 8003 | `services/expresso-contacts/src/` |
+| expresso-calendar | 8004 | `services/expresso-calendar/src/` |
+| expresso-chat | 8006 | `services/expresso-chat/src/` |
 | expresso-imap | 993/143 | `services/expresso-imap/src/` |
 | expresso-smtp | 25/587 | `services/expresso-smtp/src/` |
 
@@ -57,9 +60,14 @@ git log --oneline | head -10
 ## Padrões usados recorrentemente
 
 ```rust
-// X-Total-Count
-let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ... WHERE ...").bind(...).fetch_one(&mut *tx).await?;
+// X-Total-Count em handler sem pool-own
+let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tbl WHERE tenant_id = $1 AND ...").bind(...).fetch_one(pool).await?;
 Ok(([(header::HeaderName::from_static("x-total-count"), total.to_string())], Json(rows)).into_response())
+
+// X-Total-Count em compliance (usa &st.db, map_err)
+let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tbl WHERE tenant_id = $1")
+    .bind(ctx.tenant_id).fetch_one(&st.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
 // ETag + If-None-Match/304
 let etag = format!("\"{}-{}\"", ts.unix_timestamp(), id);
@@ -69,28 +77,16 @@ if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
     }
 }
 
-// If-Modified-Since/304
-if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
-    if let Ok(ims_str) = ims_val.to_str() {
-        if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
-            if ts <= ims_dt {
-                return Ok(StatusCode::NOT_MODIFIED.into_response());
-            }
-        }
-    }
-}
+// Last-Modified
+let last_modified = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
 
-// ETag de flags (flags mutáveis, sem timestamp de update)
+// ETag de flags (mutáveis, sem timestamp)
 flags.sort_unstable();
 let etag = format!("\"{}\"", flags.join(","));
 
-// Location header em POST de criação
+// Location header em POST
 let location = format!("/api/v1/{resource}/{}", created.id);
 Ok((StatusCode::CREATED, [(header::LOCATION, location)], Json(created)))
-
-// ILIKE filter
-let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
-format!("AND col ILIKE '%{esc}%'")
 ```
 
 ---
