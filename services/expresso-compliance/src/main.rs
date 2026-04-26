@@ -65,6 +65,17 @@ struct RetentionPolicy {
     pub enabled:     bool,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+struct RetentionPolicyDetail {
+    pub id:          Uuid,
+    pub tenant_id:   Uuid,
+    pub folder_name: Option<String>,
+    pub retain_days: i32,
+    pub action:      String,
+    pub enabled:     bool,
+    pub created_at:  time::OffsetDateTime,
+}
+
 #[derive(Debug, Deserialize)]
 struct CreatePolicyRequest {
     pub folder_name: Option<String>,
@@ -229,9 +240,10 @@ async fn get_policy(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<RetentionPolicy>, (StatusCode, Json<serde_json::Value>)> {
-    let row: Option<RetentionPolicy> = sqlx::query_as(
-        "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
+    req_headers:  axum::http::HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    let row: Option<RetentionPolicyDetail> = sqlx::query_as(
+        "SELECT id, tenant_id, folder_name, retain_days, action, enabled, created_at \
          FROM retention_policies \
          WHERE id = $1 AND tenant_id = $2",
     )
@@ -241,10 +253,44 @@ async fn get_policy(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    match row {
-        Some(p) => Ok(Json(p)),
-        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"})))),
+    let p = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"}))))?;
+
+    let etag = format!("\"{}-{}\"", p.created_at.unix_timestamp(), p.id);
+    let last_modified = p.created_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
     }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if p.created_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+
+    let policy = RetentionPolicy {
+        id:          p.id,
+        tenant_id:   p.tenant_id,
+        folder_name: p.folder_name,
+        retain_days: p.retain_days,
+        action:      p.action,
+        enabled:     p.enabled,
+    };
+    Ok((
+        StatusCode::OK,
+        [
+            (header::ETAG,          etag),
+            (header::LAST_MODIFIED, last_modified),
+        ],
+        Json(policy),
+    ).into_response())
 }
 
 async fn update_policy(
