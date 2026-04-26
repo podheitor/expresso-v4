@@ -33,7 +33,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/raw",    get(get_message_raw).head(head_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
-        .route("/mail/messages/bulk",        post(bulk_action))
+        .route("/mail/messages/bulk",        post(bulk_action).delete(bulk_delete))
         .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
 }
 
@@ -1127,4 +1127,34 @@ async fn bulk_update_flags(
 
     tx.commit().await?;
     Ok(Json(BulkResult { affected }))
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkDeleteRequest {
+    ids: Vec<Uuid>,
+}
+
+/// DELETE /api/v1/mail/messages/bulk
+///
+/// Hard-delete a set of messages by ID in one request.
+/// Body: `{"ids":[…]}`
+/// Returns `{"affected": N}`.
+async fn bulk_delete(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkDeleteRequest>,
+) -> Result<Json<BulkResult>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let res = sqlx::query(
+        "DELETE FROM messages \
+         WHERE id = ANY($1) AND tenant_id = $2 \
+           AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
+    )
+    .bind(&body.ids)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(BulkResult { affected: res.rows_affected() }))
 }
