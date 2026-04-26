@@ -1,6 +1,7 @@
 //! IMAP session state machine — one per TCP connection.
 //! Handles core IMAP4rev1 commands: CAPABILITY, LOGIN, LIST, SELECT,
 //! FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP.
+//! Extensions: UIDPLUS, IDLE, UNSELECT, MOVE, LITERAL+ (RFC 7888).
 //!
 //! Tenant scoping: após LOGIN, `tenant_id` é propagado para todo handler
 //! subsequente e cada query aplica `AND tenant_id = $` explícito. Sem isso,
@@ -210,10 +211,15 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
                     }
                 }
                 Err(CommandDecodeError::Incomplete) => break 'decode,
-                Err(CommandDecodeError::LiteralFound { length, .. }) => {
-                    // Accept literal continuation
-                    let cont = format!("+ Ready for {} bytes\r\n", length);
-                    writer.write_all(cont.as_bytes()).await?;
+                Err(CommandDecodeError::LiteralFound { length, mode, .. }) => {
+                    // RFC 7888 (LITERAL+): non-synchronizing literals skip the
+                    // continuation request — the client sends data immediately.
+                    // Sync literals require the server to grant permission first.
+                    use imap_codec::imap_types::core::LiteralMode;
+                    if !matches!(mode, LiteralMode::NonSync) {
+                        let cont = format!("+ Ready for {} bytes\r\n", length);
+                        writer.write_all(cont.as_bytes()).await?;
+                    }
                     // Keep reading — literal data will be appended to buf
                     break 'decode;
                 }
@@ -394,6 +400,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::UidPlus,
         Capability::Other(CapabilityOther(Atom::try_from("UNSELECT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("MOVE").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("LITERAL+").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
