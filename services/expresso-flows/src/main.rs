@@ -15,6 +15,7 @@
 //!                   "or"            — any condition suffices.
 //!
 //! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules  (JWT auth)
+//! Reorder: PATCH /api/v1/flows/rules/reorder       (JWT auth) — bulk priority update
 //! Trigger: POST /internal/process                  (internal, no auth)
 //!
 //! Port: :8005
@@ -82,6 +83,18 @@ struct UpdateRuleRequest {
     pub conditions:       Option<serde_json::Value>,
     pub condition_mode:   Option<String>,
     pub actions:          Option<serde_json::Value>,
+}
+
+/// One entry in a bulk reorder request.
+#[derive(Debug, Deserialize)]
+struct PriorityEntry {
+    pub id:       Uuid,
+    pub priority: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct ReorderResult {
+    pub updated: usize,
 }
 
 /// Payload from expresso-mail: metadata about the delivered message.
@@ -268,6 +281,46 @@ async fn delete_rule(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ─── Reorder handler ──────────────────────────────────────────────────────────
+
+/// PATCH /api/v1/flows/rules/reorder — bulk priority assignment.
+/// Body: `[{"id": "<uuid>", "priority": N}, …]`
+/// Only updates rules owned by the authenticated user+tenant.
+async fn reorder_rules(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(entries): Json<Vec<PriorityEntry>>,
+) -> Result<Json<ReorderResult>, (StatusCode, Json<serde_json::Value>)> {
+    if entries.is_empty() {
+        return Ok(Json(ReorderResult { updated: 0 }));
+    }
+
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let mut updated = 0usize;
+    for entry in &entries {
+        let rows = sqlx::query(
+            "UPDATE flow_rules \
+             SET priority = $3, updated_at = NOW() \
+             WHERE id = $1 AND tenant_id = $2 AND user_id = $4",
+        )
+        .bind(entry.id)
+        .bind(ctx.tenant_id)
+        .bind(entry.priority)
+        .bind(ctx.user_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        updated += rows.rows_affected() as usize;
+    }
+
+    tx.commit().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(ReorderResult { updated }))
+}
+
 // ─── Internal process handler ─────────────────────────────────────────────────
 
 /// POST /internal/process — evaluate rules for a freshly delivered message.
@@ -428,8 +481,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/health",                  get(health))
         .route("/ready",                   get(ready))
         .route("/internal/process",        post(internal_process))
-        .route("/api/v1/flows/rules",      get(list_rules).post(create_rule))
-        .route("/api/v1/flows/rules/:id",  get(get_rule).patch(update_rule).delete(delete_rule))
+        .route("/api/v1/flows/rules",          get(list_rules).post(create_rule))
+        .route("/api/v1/flows/rules/reorder", patch(reorder_rules))
+        .route("/api/v1/flows/rules/:id",      get(get_rule).patch(update_rule).delete(delete_rule))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
