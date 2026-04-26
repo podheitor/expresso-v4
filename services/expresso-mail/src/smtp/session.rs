@@ -20,6 +20,8 @@ struct Envelope {
     from: Option<String>,
     rcpts: Vec<String>,
     helo: Option<String>,
+    /// Client-declared message size via MAIL FROM SIZE= parameter (RFC 1870).
+    declared_size: Option<usize>,
 }
 
 /// Handle a single SMTP connection.
@@ -125,7 +127,17 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
             ).await?;
             SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "ok"]).inc();
         } else if upper.starts_with("MAIL FROM:") {
-            env.from = Some(extract_angle(&line[10..]));
+            let rest = &line[10..];
+            let declared = extract_size_param(rest);
+            if let Some(sz) = declared {
+                if sz > MAX_MSG_BYTES {
+                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum message size\r\n").await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp25", "reject"]).inc();
+                    continue;
+                }
+            }
+            env.from = Some(extract_angle(rest));
+            env.declared_size = declared;
             env.rcpts.clear();
             writer.write_all(b"250 OK\r\n").await?;
             SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp25", "ok"]).inc();
@@ -183,10 +195,54 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
 
 /// Extract address from `<user@domain>` or `user@domain`
 fn extract_angle(s: &str) -> String {
-    let s = s.trim();
-    if s.starts_with('<') && s.ends_with('>') {
-        s[1..s.len() - 1].to_string()
+    // Strip any ESMTP parameters after the address (e.g., "SIZE=1234").
+    let addr_part = s.trim();
+    let addr_part = if let Some(gt) = addr_part.find('>') {
+        &addr_part[..=gt]
     } else {
-        s.to_string()
+        // No angle bracket — take up to first whitespace (ESMTP param).
+        addr_part.split_whitespace().next().unwrap_or(addr_part)
+    };
+    let addr_part = addr_part.trim();
+    if addr_part.starts_with('<') && addr_part.ends_with('>') {
+        addr_part[1..addr_part.len() - 1].to_string()
+    } else {
+        addr_part.to_string()
+    }
+}
+
+/// Extract the SIZE parameter value from a MAIL FROM parameter string.
+/// Accepts `<addr@host> SIZE=12345` or `addr@host SIZE=12345`.
+/// Returns None if SIZE is absent or unparseable.
+fn extract_size_param(s: &str) -> Option<usize> {
+    // Upper-case to find SIZE= case-insensitively.
+    let upper = s.to_ascii_uppercase();
+    let pos = upper.find("SIZE=")?;
+    let after = s[pos + 5..].split_whitespace().next()?;
+    after.parse::<usize>().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_angle, extract_size_param};
+
+    #[test]
+    fn angle_plain() {
+        assert_eq!(extract_angle("<a@b.com>"), "a@b.com");
+        assert_eq!(extract_angle("a@b.com"), "a@b.com");
+    }
+
+    #[test]
+    fn angle_with_size_param() {
+        assert_eq!(extract_angle("<a@b.com> SIZE=1234"), "a@b.com");
+        assert_eq!(extract_angle("a@b.com SIZE=1234"), "a@b.com");
+    }
+
+    #[test]
+    fn size_param_extracted() {
+        assert_eq!(extract_size_param("<a@b.com> SIZE=99"), Some(99));
+        assert_eq!(extract_size_param("a@b SIZE=0"), Some(0));
+        assert_eq!(extract_size_param("<a@b.com>"), None);
+        assert_eq!(extract_size_param("SIZE=abc"), None);
     }
 }

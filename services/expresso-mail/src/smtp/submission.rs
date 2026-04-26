@@ -377,7 +377,15 @@ where
                 SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
                 continue;
             };
-            let from = extract_angle(&line[10..]);
+            let rest = &line[10..];
+            if let Some(sz) = extract_size_param(rest) {
+                if sz > MAX_MSG_BYTES {
+                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n").await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
+                    continue;
+                }
+            }
+            let from = extract_angle(rest);
             if !from_matches_authed(&from, authed) {
                 warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
                 writer.write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n").await?;
@@ -443,12 +451,25 @@ where
 }
 
 fn extract_angle(s: &str) -> String {
-    let s = s.trim();
-    if s.starts_with('<') && s.ends_with('>') {
-        s[1..s.len() - 1].to_string()
+    let addr_part = s.trim();
+    let addr_part = if let Some(gt) = addr_part.find('>') {
+        &addr_part[..=gt]
     } else {
-        s.to_string()
+        addr_part.split_whitespace().next().unwrap_or(addr_part)
+    };
+    let addr_part = addr_part.trim();
+    if addr_part.starts_with('<') && addr_part.ends_with('>') {
+        addr_part[1..addr_part.len() - 1].to_string()
+    } else {
+        addr_part.to_string()
     }
+}
+
+fn extract_size_param(s: &str) -> Option<usize> {
+    let upper = s.to_ascii_uppercase();
+    let pos = upper.find("SIZE=")?;
+    let after = s[pos + 5..].split_whitespace().next()?;
+    after.parse::<usize>().ok()
 }
 
 /// True if MAIL FROM matches the authenticated user (case-insensitive,
@@ -570,5 +591,14 @@ mod tests {
         assert_eq!(extract_angle("<a@b.com>"), "a@b.com");
         assert_eq!(extract_angle("a@b.com"), "a@b.com");
         assert_eq!(extract_angle("  <a@b.com>  "), "a@b.com");
+        assert_eq!(extract_angle("<a@b.com> SIZE=12345"), "a@b.com");
+    }
+
+    #[test]
+    fn size_param_variants() {
+        assert_eq!(extract_size_param("<a@b.com> SIZE=9999"), Some(9999));
+        assert_eq!(extract_size_param("<a@b.com>"), None);
+        assert_eq!(extract_size_param("SIZE=42"), Some(42));
+        assert_eq!(extract_size_param("SIZE=abc"), None);
     }
 }

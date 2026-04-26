@@ -29,6 +29,7 @@ struct Envelope {
     from: Option<String>,
     rcpts: Vec<String>,
     lhlo: Option<String>,
+    declared_size: Option<usize>,
 }
 
 /// Start LMTP listener; spawn task per connection.
@@ -133,7 +134,17 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                 .await?;
             SMTP_COMMANDS_TOTAL.with_label_values(&["LHLO", "lmtp", "ok"]).inc();
         } else if upper.starts_with("MAIL FROM:") {
-            env.from = Some(extract_angle(&line[10..]));
+            let rest = &line[10..];
+            let declared = extract_size_param(rest);
+            if let Some(sz) = declared {
+                if sz > MAX_MSG_BYTES {
+                    writer.write_all(b"552 5.3.4 Message size exceeds fixed maximum\r\n").await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "lmtp", "reject"]).inc();
+                    continue;
+                }
+            }
+            env.from = Some(extract_angle(rest));
+            env.declared_size = declared;
             env.rcpts.clear();
             writer.write_all(b"250 2.1.0 Sender OK\r\n").await?;
             SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "lmtp", "ok"]).inc();
@@ -186,22 +197,43 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
 }
 
 fn extract_angle(s: &str) -> String {
-    let s = s.trim();
-    if s.starts_with('<') && s.ends_with('>') {
-        s[1..s.len() - 1].to_string()
+    let addr_part = s.trim();
+    let addr_part = if let Some(gt) = addr_part.find('>') {
+        &addr_part[..=gt]
     } else {
-        s.to_string()
+        addr_part.split_whitespace().next().unwrap_or(addr_part)
+    };
+    let addr_part = addr_part.trim();
+    if addr_part.starts_with('<') && addr_part.ends_with('>') {
+        addr_part[1..addr_part.len() - 1].to_string()
+    } else {
+        addr_part.to_string()
     }
+}
+
+fn extract_size_param(s: &str) -> Option<usize> {
+    let upper = s.to_ascii_uppercase();
+    let pos = upper.find("SIZE=")?;
+    let after = s[pos + 5..].split_whitespace().next()?;
+    after.parse::<usize>().ok()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::extract_angle;
+    use super::{extract_angle, extract_size_param};
 
     #[test]
     fn angle_brackets() {
         assert_eq!(extract_angle(" <a@b> "), "a@b");
         assert_eq!(extract_angle("a@b"), "a@b");
         assert_eq!(extract_angle("<a@b>"), "a@b");
+        assert_eq!(extract_angle("<a@b> SIZE=1234"), "a@b");
+    }
+
+    #[test]
+    fn size_param_parsed() {
+        assert_eq!(extract_size_param("<a@b> SIZE=512"), Some(512));
+        assert_eq!(extract_size_param("<a@b>"), None);
+        assert_eq!(extract_size_param("SIZE=abc"), None);
     }
 }
