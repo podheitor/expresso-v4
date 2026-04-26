@@ -867,7 +867,8 @@ async fn move_message(
     msg.map(Json).ok_or(MailError::MessageNotFound(id))
 }
 
-/// GET /api/v1/mail/messages/:id/flags — list flags without marking Seen; ETag = sorted flags hash
+/// GET /api/v1/mail/messages/:id/flags — list flags without marking Seen.
+/// ETag = sorted flags joined; Last-Modified = received_at (immutable delivery timestamp).
 async fn get_message_flags(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -875,8 +876,8 @@ async fn get_message_flags(
     req_headers:  axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let row: Option<(Vec<String>,)> = sqlx::query_as(
-        "SELECT m.flags \
+    let row: Option<(Vec<String>, OffsetDateTime)> = sqlx::query_as(
+        "SELECT m.flags, m.received_at \
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.id = $1 AND m.tenant_id = $2 AND mb.tenant_id = $2 AND mb.user_id = $3 \
@@ -889,9 +890,12 @@ async fn get_message_flags(
     .await?;
     tx.commit().await?;
 
-    let (mut flags,) = row.ok_or(MailError::MessageNotFound(id))?;
+    let (mut flags, received_at) = row.ok_or(MailError::MessageNotFound(id))?;
     flags.sort_unstable();
     let etag = format!("\"{}\"", flags.join(","));
+    let last_modified = received_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
 
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
@@ -901,7 +905,10 @@ async fn get_message_flags(
 
     Ok((
         StatusCode::OK,
-        [(header::ETAG, etag)],
+        [
+            (header::ETAG,          etag),
+            (header::LAST_MODIFIED, last_modified),
+        ],
         Json(flags),
     ).into_response())
 }
