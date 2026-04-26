@@ -742,16 +742,23 @@ async fn cmd_select(
                 Response::Data(Data::Recent(0)),
                 untagged_ok(Code::UidValidity(uid_validity), "UIDs valid"),
                 untagged_ok(Code::UidNext(uid_next), "predicted next UID"),
+                // RFC 3501 §7.3.1: PERMANENTFLAGS for read-write includes \* (user-defined
+                // keywords allowed). For EXAMINE (read-only) the list is empty — no flags
+                // can be permanently stored via this session.
                 untagged_ok(
-                    Code::PermanentFlags(vec![
-                        FlagPerm::Flag(Flag::Seen),
-                        FlagPerm::Flag(Flag::Answered),
-                        FlagPerm::Flag(Flag::Flagged),
-                        FlagPerm::Flag(Flag::Deleted),
-                        FlagPerm::Flag(Flag::Draft),
-                        FlagPerm::Asterisk,
-                    ]),
-                    "Limited",
+                    Code::PermanentFlags(if read_only {
+                        vec![]
+                    } else {
+                        vec![
+                            FlagPerm::Flag(Flag::Seen),
+                            FlagPerm::Flag(Flag::Answered),
+                            FlagPerm::Flag(Flag::Flagged),
+                            FlagPerm::Flag(Flag::Deleted),
+                            FlagPerm::Flag(Flag::Draft),
+                            FlagPerm::Asterisk,
+                        ]
+                    }),
+                    if read_only { "No permanent flags in read-only mailbox" } else { "Limited" },
                 ),
             ];
             // Emite UNSEEN apenas se há de fato msgs não-vistas (seq <= exists).
@@ -1460,6 +1467,10 @@ async fn cmd_store(
     sel: &SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
+    // RFC 3501 §3.4: in read-only state (EXAMINE) flag changes MUST be rejected.
+    if sel.read_only {
+        return vec![no_tagged(tag, "mailbox is read-only (opened via EXAMINE)")];
+    }
     let flag_strs: Vec<String> = flags.iter().map(|f| flag_to_str(f).to_owned()).collect();
 
     // Compute the WHERE clause once; reused for both UPDATE and post-SELECT.
