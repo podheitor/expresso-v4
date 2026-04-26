@@ -11,6 +11,9 @@
 //! Rules are matched in ascending priority order. Multiple rules can match
 //! (non-exclusive). The caller receives the list of actions to execute.
 //!
+//! `condition_mode`: "and" (default) — all conditions must match;
+//!                   "or"            — any condition suffices.
+//!
 //! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules  (JWT auth)
 //! Trigger: POST /internal/process                  (internal, no auth)
 //!
@@ -49,32 +52,36 @@ struct AppState {
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct FlowRule {
-    pub id:         Uuid,
-    pub user_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub name:       String,
-    pub enabled:    bool,
-    pub priority:   i32,
-    pub conditions: serde_json::Value,
-    pub actions:    serde_json::Value,
+    pub id:               Uuid,
+    pub user_id:          Uuid,
+    pub tenant_id:        Uuid,
+    pub name:             String,
+    pub enabled:          bool,
+    pub priority:         i32,
+    pub conditions:       serde_json::Value,
+    pub condition_mode:   String,
+    pub actions:          serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
 struct CreateRuleRequest {
-    pub name:       Option<String>,
-    pub enabled:    Option<bool>,
-    pub priority:   Option<i32>,
-    pub conditions: serde_json::Value,
-    pub actions:    serde_json::Value,
+    pub name:             Option<String>,
+    pub enabled:          Option<bool>,
+    pub priority:         Option<i32>,
+    pub conditions:       serde_json::Value,
+    /// "and" (default) or "or"
+    pub condition_mode:   Option<String>,
+    pub actions:          serde_json::Value,
 }
 
 #[derive(Debug, Deserialize)]
 struct UpdateRuleRequest {
-    pub name:       Option<String>,
-    pub enabled:    Option<bool>,
-    pub priority:   Option<i32>,
-    pub conditions: Option<serde_json::Value>,
-    pub actions:    Option<serde_json::Value>,
+    pub name:             Option<String>,
+    pub enabled:          Option<bool>,
+    pub priority:         Option<i32>,
+    pub conditions:       Option<serde_json::Value>,
+    pub condition_mode:   Option<String>,
+    pub actions:          Option<serde_json::Value>,
 }
 
 /// Payload from expresso-mail: metadata about the delivered message.
@@ -128,7 +135,7 @@ async fn list_rules(
     AuthCtx(ctx): AuthCtx,
 ) -> Result<Json<Vec<FlowRule>>, (StatusCode, Json<serde_json::Value>)> {
     let rows: Vec<FlowRule> = sqlx::query_as(
-        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, actions \
+        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 \
          ORDER BY priority ASC, created_at ASC",
@@ -151,9 +158,9 @@ async fn create_rule(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     let rule: FlowRule = sqlx::query_as(
-        "INSERT INTO flow_rules (user_id, tenant_id, name, enabled, priority, conditions, actions) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7) \
-         RETURNING id, user_id, tenant_id, name, enabled, priority, conditions, actions",
+        "INSERT INTO flow_rules (user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions",
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
@@ -161,6 +168,7 @@ async fn create_rule(
     .bind(req.enabled.unwrap_or(true))
     .bind(req.priority.unwrap_or(10))
     .bind(&req.conditions)
+    .bind(req.condition_mode.unwrap_or_else(|| "and".into()))
     .bind(&req.actions)
     .fetch_one(&mut *tx)
     .await
@@ -183,14 +191,15 @@ async fn update_rule(
 
     let rule: Option<FlowRule> = sqlx::query_as(
         "UPDATE flow_rules \
-         SET name       = COALESCE($3, name), \
-             enabled    = COALESCE($4, enabled), \
-             priority   = COALESCE($5, priority), \
-             conditions = COALESCE($6, conditions), \
-             actions    = COALESCE($7, actions), \
-             updated_at = NOW() \
-         WHERE id = $1 AND tenant_id = $2 AND user_id = $8 \
-         RETURNING id, user_id, tenant_id, name, enabled, priority, conditions, actions",
+         SET name           = COALESCE($3, name), \
+             enabled        = COALESCE($4, enabled), \
+             priority       = COALESCE($5, priority), \
+             conditions     = COALESCE($6, conditions), \
+             condition_mode = COALESCE($7, condition_mode), \
+             actions        = COALESCE($8, actions), \
+             updated_at     = NOW() \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $9 \
+         RETURNING id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions",
     )
     .bind(id)
     .bind(ctx.tenant_id)
@@ -198,6 +207,7 @@ async fn update_rule(
     .bind(req.enabled)
     .bind(req.priority)
     .bind(req.conditions)
+    .bind(req.condition_mode)
     .bind(req.actions)
     .bind(ctx.user_id)
     .fetch_optional(&mut *tx)
@@ -219,7 +229,7 @@ async fn get_rule(
     Path(id):     Path<Uuid>,
 ) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<FlowRule> = sqlx::query_as(
-        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, actions \
+        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
     )
@@ -267,7 +277,7 @@ async fn internal_process(
     Json(req):   Json<ProcessRequest>,
 ) -> Json<ProcessResponse> {
     let rules: Vec<FlowRule> = match sqlx::query_as(
-        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, actions \
+        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 AND enabled = TRUE \
          ORDER BY priority ASC",
@@ -287,7 +297,7 @@ async fn internal_process(
     let mut actions: Vec<serde_json::Value> = vec![];
 
     for rule in &rules {
-        if rule_matches(&rule.conditions, &req) {
+        if rule_matches(&rule.conditions, &rule.condition_mode, &req) {
             matched += 1;
             if let Some(arr) = rule.actions.as_array() {
                 for a in arr {
@@ -303,64 +313,60 @@ async fn internal_process(
     Json(ProcessResponse { matched_rules: matched, actions })
 }
 
-/// Evaluate all conditions for a rule (AND semantics — all must match).
-fn rule_matches(conditions: &serde_json::Value, req: &ProcessRequest) -> bool {
+/// Evaluate all conditions for a rule.
+/// `condition_mode`: "or" — any single condition suffices; "and" (default) — all must match.
+fn rule_matches(conditions: &serde_json::Value, condition_mode: &str, req: &ProcessRequest) -> bool {
     let conds = match conditions.as_array() {
         Some(a) if !a.is_empty() => a,
         _ => return true, // no conditions = always match
     };
+
+    let is_or = condition_mode.eq_ignore_ascii_case("or");
 
     for cond in conds {
         let field = cond.get("field").and_then(|v| v.as_str()).unwrap_or("");
         let op    = cond.get("op").and_then(|v| v.as_str()).unwrap_or("contains");
         let val   = cond.get("value").and_then(|v| v.as_str()).unwrap_or("");
 
-        let haystack: Option<&str> = match field {
-            "from"    => req.from_addr.as_deref(),
-            "subject" => req.subject.as_deref(),
-            "folder"  => Some(req.folder.as_str()),
-            "to"      => {
-                // Match if any to_addr satisfies the condition.
-                let addrs = req.to_addrs.as_deref().unwrap_or(&[]);
-                let matched = addrs.iter().any(|a| str_op(a, op, val));
-                if !matched { return false; }
-                continue;
-            }
-            "has_attachment" => {
-                // val: "true" | "false"; op is ignored (always equality check)
-                let want = val.eq_ignore_ascii_case("true");
-                let has  = req.has_attachments.unwrap_or(false);
-                if has != want { return false; }
-                continue;
-            }
-            "size" => {
-                // op: "gt" | "lt" | "gte" | "lte"; val: bytes as string
-                let threshold = val.trim().parse::<i32>().unwrap_or(0);
-                let actual    = req.size_bytes.unwrap_or(0);
-                let ok = match op {
-                    "gt"  | "greater_than"          => actual > threshold,
-                    "lt"  | "less_than"             => actual < threshold,
-                    "gte" | "greater_than_or_equal" => actual >= threshold,
-                    "lte" | "less_than_or_equal"    => actual <= threshold,
-                    _                               => actual == threshold,
-                };
-                if !ok { return false; }
-                continue;
-            }
-            _ => None,
-        };
+        let cond_result = eval_condition(field, op, val, req);
 
-        let hay = match haystack {
-            Some(h) => h,
-            None    => return false,
-        };
-
-        if !str_op(hay, op, val) {
+        if is_or {
+            if cond_result { return true; }
+        } else if !cond_result {
             return false;
         }
     }
 
-    true
+    // AND: all passed; OR: none passed.
+    !is_or
+}
+
+fn eval_condition(field: &str, op: &str, val: &str, req: &ProcessRequest) -> bool {
+    match field {
+        "from"    => req.from_addr.as_deref().map_or(false, |h| str_op(h, op, val)),
+        "subject" => req.subject.as_deref().map_or(false, |h| str_op(h, op, val)),
+        "folder"  => str_op(&req.folder, op, val),
+        "to"      => {
+            let addrs = req.to_addrs.as_deref().unwrap_or(&[]);
+            addrs.iter().any(|a| str_op(a, op, val))
+        }
+        "has_attachment" => {
+            let want = val.eq_ignore_ascii_case("true");
+            req.has_attachments.unwrap_or(false) == want
+        }
+        "size" => {
+            let threshold = val.trim().parse::<i32>().unwrap_or(0);
+            let actual    = req.size_bytes.unwrap_or(0);
+            match op {
+                "gt"  | "greater_than"          => actual > threshold,
+                "lt"  | "less_than"             => actual < threshold,
+                "gte" | "greater_than_or_equal" => actual >= threshold,
+                "lte" | "less_than_or_equal"    => actual <= threshold,
+                _                               => actual == threshold,
+            }
+        }
+        _ => false,
+    }
 }
 
 fn str_op(hay: &str, op: &str, needle: &str) -> bool {
