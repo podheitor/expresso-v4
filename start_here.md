@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #282 (2026-04-26)
+**Último sprint commitado:** #287 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,34 +8,36 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#278–#282)
+## O que foi feito nesta sessão (#283–#287)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #278 | api | `X-Total-Count` em `GET /mail/folders/all` — pastas incluindo não subscritas |
-| #279 | contacts | `X-Total-Count` em `GET /api/v1/addressbooks/:id/contacts` |
-| #280 | api | `Last-Modified` em `GET /mail/messages/:id/flags` — via `received_at` imutável |
-| #281 | calendar | `X-Total-Count` em `GET /api/v1/calendars/:id/events` — com filtros from/to |
-| #282 | compliance | `X-Total-Count` em `GET /compliance/retention-policies` |
+| #283 | contacts | `X-Total-Count` em `GET /api/v1/addressbooks` — lista de address books |
+| #284 | calendar | `X-Total-Count` em `GET /api/v1/calendars` — lista de calendários |
+| #285 | chat | `X-Total-Count` em `GET /api/v1/channels` — JOIN com chat_channel_members + is_archived=FALSE |
+| #286 | calendar | `If-None-Match` + 304 em `GET /api/v1/calendars/:id/events/:id` — get_one já enviava ETag |
+| #287 | contacts | `If-None-Match` + 304 em `GET /api/v1/addressbooks/:id/contacts/:id` — get_one já enviava ETag |
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **contacts: `GET /api/v1/addressbooks` — X-Total-Count**
-   - Lista de address books do usuário; verificar se já tem; adicionar se não tiver
+1. **contacts: `GET /api/v1/addressbooks/:id` — ETag + If-None-Match**
+   - `get_one` retorna `Json<Addressbook>`; sem ETag; `Addressbook` tem `updated_at` → ETag = `"{updated_at_unix}-{id}"`
+   - Retornar `Response` com header `ETag`; check `If-None-Match` → 304
 
-2. **calendar: `GET /api/v1/calendars` — X-Total-Count**
-   - Lista de calendários do usuário; mesmo padrão
+2. **calendar: `GET /api/v1/calendars/:id` — ETag + If-None-Match**
+   - `get_one` retorna `Json<Calendar>`; sem ETag; `Calendar` tem `updated_at` → ETag = `"{updated_at_unix}-{id}"`
+   - Mesmo padrão que addressbooks
 
-3. **chat: `GET /api/v1/channels` — X-Total-Count**
-   - Handler `list_channels` em `services/expresso-chat/src/api/channels.rs`
+3. **chat: `GET /api/v1/channels/:id` — ETag + If-None-Match**
+   - `get_one` retorna `Json<Channel>`; `Channel` tem `updated_at` → ETag = `"{updated_at_unix}-{id}"`
 
-4. **contacts: `GET /api/v1/addressbooks/:id/contacts` — ETag em list**
-   - Atualmente lista sem ETag; considerar ETag de aggregate (MAX etag) se viável
+4. **contacts: `GET /api/v1/addressbooks/:id/contacts` — Last-Modified**
+   - List já tem X-Total-Count; considerar `Last-Modified` = MAX(updated_at) dos contatos
 
-5. **calendar: `GET /api/v1/calendars/:id/events/:uid` — ETag + If-None-Match**
-   - `get_one` já retorna ETag via header; verificar se lida com If-None-Match (304) ou só envia ETag
+5. **calendar: `GET /api/v1/calendars/:id/events` — Last-Modified**
+   - List já tem X-Total-Count; considerar `Last-Modified` = MAX(updated_at) dos eventos
 
 ---
 
@@ -87,6 +89,9 @@ let etag = format!("\"{}\"", flags.join(","));
 // Location header em POST
 let location = format!("/api/v1/{resource}/{}", created.id);
 Ok((StatusCode::CREATED, [(header::LOCATION, location)], Json(created)))
+
+// ETag de recurso com updated_at (sem campo etag dedicado)
+let etag = format!("\"{}-{}\"", resource.updated_at.unix_timestamp(), resource.id);
 ```
 
 ---
