@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #297 (2026-04-26)
+**Último sprint commitado:** #301 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,37 +8,33 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#293–#297)
+## O que foi feito nesta sessão (#298–#301)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #293 | contacts | `Last-Modified` em `GET /api/v1/addressbooks` — COUNT + MAX(updated_at) num único query |
-| #294 | calendar | `Last-Modified` em `GET /api/v1/calendars` — mesmo padrão |
-| #295 | chat | `Last-Modified` em `GET /api/v1/channels` — MAX(c.updated_at) com JOIN members + is_archived=FALSE |
-| #296 | contacts | `Last-Modified` em `GET /api/v1/addressbooks/:id` — get_one já tinha ETag; adicionado LM = updated_at |
-| #297 | calendar | `Last-Modified` em `GET /api/v1/calendars/:id` — mesmo padrão |
+| #298 | chat | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/channels/:id` — ETag já existia |
+| #299 | contacts | `Last-Modified` + `If-Modified-Since` em `GET /addressbooks/:id/contacts/:id` — usa `Response::builder()` |
+| #300 | contacts | `If-Modified-Since` → 304 em `GET /addressbooks/:id/contacts` — check antes do list completo |
+| #301 | calendar | `If-Modified-Since` → 304 em `GET /calendars/:id/events` — adicionado `HeaderMap` ao import |
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **chat: `GET /api/v1/channels/:id` — Last-Modified**
-   - `get_one` já tem ETag de `updated_at`; emitir também `Last-Modified` = `ch.updated_at` (Rfc2822)
-   - Capturar `ch.updated_at` antes de `Json(ch)` consumir o valor
+1. **chat: `GET /api/v1/channels/:id/messages` — Last-Modified + If-Modified-Since**
+   - `list` provavelmente já tem X-Total-Count; verificar se tem LM; adicionar IMS → 304
 
-2. **contacts: `GET /addressbooks/:id/contacts/:id` — Last-Modified**
-   - `get_one` já tem ETag (`c.etag`); `Contact` tem `updated_at` → emitir `Last-Modified`
-   - Handler usa `Response::builder()` — adicionar `.header(header::LAST_MODIFIED, lm)`
+2. **calendar: `GET /calendars/:id/events/:id` — Last-Modified + If-Modified-Since**
+   - `get_one` já tem ETag (`ev.etag`); `Event` tem `updated_at` → emitir LM + check IMS
 
-3. **contacts: `GET /addressbooks/:id/contacts` — If-Modified-Since**
-   - `list` já tem X-Total-Count + Last-Modified; adicionar `If-Modified-Since` → 304
-   - Comparar MAX(updated_at) ≤ IMS → 304
+3. **contacts: `GET /addressbooks` — If-Modified-Since → 304**
+   - `list` já tem LM (sprint #293); adicionar IMS check antes do SELECT completo
 
-4. **calendar: `GET /calendars/:id/events` — If-Modified-Since**
-   - `list` já tem X-Total-Count + Last-Modified; adicionar `If-Modified-Since` → 304
+4. **calendar: `GET /calendars` — If-Modified-Since → 304**
+   - `list` já tem LM (sprint #294); mesmo padrão
 
-5. **chat: `GET /api/v1/channels/:id` — If-Modified-Since**
-   - `get_one` terá LM após #298; adicionar `If-Modified-Since` → 304
+5. **chat: `GET /api/v1/channels` — If-Modified-Since → 304**
+   - `list` já tem LM (sprint #295); mesmo padrão
 
 ---
 
