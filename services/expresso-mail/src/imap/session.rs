@@ -342,7 +342,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_expunge(state, tag, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_expunge(state, tag, selected.as_mut().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Copy { sequence_set, mailbox, uid, .. } => {
             if selected.is_none() {
@@ -360,7 +360,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_expunge_uid(state, tag, sequence_set, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_expunge_uid(state, tag, sequence_set, selected.as_mut().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Unselect => {
             cmd_unselect(tag, sess, selected)
@@ -1918,7 +1918,7 @@ fn build_uid_set(uids: Vec<NonZeroU32>) -> UidSet {
 async fn cmd_expunge(
     state: &AppState,
     tag: Tag<'static>,
-    sel: &SelectedMailbox,
+    sel: &mut SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     // Fetch seq positions of \Deleted messages (within the full mailbox).
@@ -1947,13 +1947,19 @@ async fn cmd_expunge(
     // RFC 3501 §7.4.1: each expunge shifts subsequent sequence numbers down by 1.
     // The i-th deleted message (0-indexed) had original seq S; by the time
     // that response is sent, i earlier messages are already gone, so emit S-i.
-    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 1);
+    let n_expunged = seq_rows.len() as u32;
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 2);
     for (i, row) in seq_rows.iter().enumerate() {
         let orig: i64 = row.get("seq");
         let adj = (orig as usize).saturating_sub(i);
         if let Some(n) = NonZeroU32::new(adj as u32) {
             out.push(Response::Data(Data::Expunge(n)));
         }
+    }
+    // Update cached exists count and emit * N EXISTS so the client knows the new size.
+    sel.exists = sel.exists.saturating_sub(n_expunged);
+    if n_expunged > 0 {
+        out.push(Response::Data(Data::Exists(sel.exists)));
     }
     out.push(ok_tagged(tag, None, "EXPUNGE completed"));
     out
@@ -1966,7 +1972,7 @@ async fn cmd_expunge_uid(
     state: &AppState,
     tag: Tag<'static>,
     sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
-    sel: &SelectedMailbox,
+    sel: &mut SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
@@ -1994,13 +2000,18 @@ async fn cmd_expunge_uid(
     .execute(state.db())
     .await;
 
-    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 1);
+    let n_expunged = seq_rows.len() as u32;
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(seq_rows.len() + 2);
     for (i, row) in seq_rows.iter().enumerate() {
         let orig: i64 = row.get("seq");
         let adj = (orig as usize).saturating_sub(i);
         if let Some(n) = NonZeroU32::new(adj as u32) {
             out.push(Response::Data(Data::Expunge(n)));
         }
+    }
+    sel.exists = sel.exists.saturating_sub(n_expunged);
+    if n_expunged > 0 {
+        out.push(Response::Data(Data::Exists(sel.exists)));
     }
     out.push(ok_tagged(tag, None, "UID EXPUNGE completed"));
     out
