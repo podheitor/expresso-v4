@@ -156,7 +156,7 @@ async fn search_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
     Query(params): Query<SearchParams>,
-) -> Result<Json<Vec<MessageListItem>>> {
+) -> Result<Response> {
     let limit = params.limit.unwrap_or(50).min(200);
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -260,8 +260,26 @@ async fn search_messages(
             .await?
     };
 
+    let count_sql = format!(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         {enum_filters}"
+    );
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap_or(0);
+
     tx.commit().await?;
-    Ok(Json(rows))
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 /// GET /api/v1/mail/messages?folder=INBOX&limit=50[&before_id=UUID|&after_id=UUID|&page=0]
