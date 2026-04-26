@@ -93,6 +93,10 @@ pub struct SearchParams {
     pub sort:            Option<String>,
     /// If set, return only messages with (true) or without (false) attachments.
     pub has_attachments: Option<bool>,
+    /// Return only messages with size_bytes >= this value.
+    pub size_min:        Option<i32>,
+    /// Return only messages with size_bytes <= this value.
+    pub size_max:        Option<i32>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -342,6 +346,12 @@ async fn list_messages(
         Some(false) => "AND m.has_attachments = FALSE",
         None        => "",
     };
+    let size_min_filter = params.size_min
+        .map(|v| format!("AND m.size_bytes >= {v}"))
+        .unwrap_or_default();
+    let size_max_filter = params.size_max
+        .map(|v| format!("AND m.size_bytes <= {v}"))
+        .unwrap_or_default();
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -378,6 +388,7 @@ async fn list_messages(
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
                  {from_addr_filter} {subject_filter} {has_attachments_filter} \
+                 {size_min_filter} {size_max_filter} \
                  AND (m.received_at, m.id) < ($4, $5) \
                  ORDER BY m.received_at DESC, m.id DESC LIMIT $6"
             );
@@ -394,6 +405,7 @@ async fn list_messages(
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
                  {from_addr_filter} {subject_filter} {has_attachments_filter} \
+                 {size_min_filter} {size_max_filter} \
                  AND (m.received_at, m.id) > ($4, $5) \
                  ORDER BY m.received_at ASC, m.id ASC LIMIT $6"
             );
@@ -420,6 +432,7 @@ async fn list_messages(
         let sql = format!(
             "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
              {from_addr_filter} {subject_filter} {has_attachments_filter} \
+             {size_min_filter} {size_max_filter} \
              ORDER BY m.received_at {order}, m.id {order} LIMIT $4 OFFSET $5"
         );
         sqlx::query_as(&sql)
@@ -437,7 +450,8 @@ async fn list_messages(
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
            AND mb.folder_name = $3 \
          {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-         {from_addr_filter} {subject_filter} {has_attachments_filter}"
+         {from_addr_filter} {subject_filter} {has_attachments_filter} \
+         {size_min_filter} {size_max_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
