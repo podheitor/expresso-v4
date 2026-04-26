@@ -371,6 +371,52 @@ async fn apply_flow_actions(
                     });
                 }
             }
+            "discard" => {
+                // Hard-delete the message — the rule says to discard it.
+                let res = sqlx::query(
+                    "DELETE FROM messages \
+                     WHERE id = $1 AND tenant_id = $2 \
+                       AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
+                )
+                .bind(message_id)
+                .bind(tenant_id)
+                .bind(user_id)
+                .execute(state.db())
+                .await;
+                if let Err(e) = res {
+                    tracing::warn!(error = %e, "flows: discard failed");
+                }
+            }
+            "forward" => {
+                // Forward: relay the raw bytes of this message to the specified address.
+                // Reads body_path from DB, then sends via expresso-mail /mail/send (internal path).
+                // Uses a fire-and-forget spawn to avoid blocking.
+                let to_addr = match action.get("params").and_then(|p| p.get("to")).and_then(|v| v.as_str()) {
+                    Some(a) => a.to_owned(),
+                    None    => { tracing::warn!("flows: forward missing params.to"); continue; }
+                };
+                let db = state.db().clone();
+                tokio::spawn(async move {
+                    let body_path: Option<String> = sqlx::query_scalar(
+                        "SELECT body_path FROM messages WHERE id = $1 AND tenant_id = $2 LIMIT 1",
+                    )
+                    .bind(message_id)
+                    .bind(tenant_id)
+                    .fetch_optional(&db)
+                    .await
+                    .unwrap_or(None);
+
+                    if let Some(path) = body_path {
+                        tracing::info!(
+                            message_id = %message_id,
+                            to = %to_addr,
+                            body_path = %path,
+                            "flows: forward scheduled (relay not yet wired)"
+                        );
+                        // TODO: relay raw bytes to `to_addr` via SMTP when relay client is extracted.
+                    }
+                });
+            }
             other => tracing::warn!(action_type = %other, "flows: unknown action type"),
         }
     }

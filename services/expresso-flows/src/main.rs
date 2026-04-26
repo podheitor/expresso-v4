@@ -211,6 +211,29 @@ async fn update_rule(
     }
 }
 
+async fn get_rule(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
+    let row: Option<FlowRule> = sqlx::query_as(
+        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, actions \
+         FROM flow_rules \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    match row {
+        Some(r) => Ok(Json(r)),
+        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"})))),
+    }
+}
+
 async fn delete_rule(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
@@ -377,7 +400,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/ready",                   get(ready))
         .route("/internal/process",        post(internal_process))
         .route("/api/v1/flows/rules",      get(list_rules).post(create_rule))
-        .route("/api/v1/flows/rules/:id",  patch(update_rule).delete(delete_rule))
+        .route("/api/v1/flows/rules/:id",  get(get_rule).patch(update_rule).delete(delete_rule))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
