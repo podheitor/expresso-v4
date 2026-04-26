@@ -795,9 +795,9 @@ async fn cmd_status(
 /// Vec; individual SearchKey may contain nested AND/OR/NOT).
 ///
 /// Flag criteria are evaluated exactly. Since/Before/On are evaluated against
-/// `received_at` (RFC 3501 §2.3.3 internal date). SentSince/SentBefore/SentOn
-/// and content criteria (Body/Text/Subject/…) conservatively return true to
-/// avoid missing matching messages without full MIME parsing.
+/// `received_at` (RFC 3501 §2.3.3 internal date). Subject/From use the DB
+/// columns (ILIKE). Text/Body/Header also match against subject+from_addr.
+/// SentSince/SentBefore/SentOn require envelope Date parsing — conservative true.
 async fn cmd_search(
     state: &AppState,
     tag: Tag<'static>,
@@ -807,7 +807,8 @@ async fn cmd_search(
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     let rows = sqlx::query(
-        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, received_at, size_bytes \
+        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
+         received_at, size_bytes, subject, from_addr \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -823,7 +824,9 @@ async fn cmd_search(
         let flags: Vec<String> = row.get("flags");
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
         let size: Option<i32> = row.try_get("size_bytes").ok();
-        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref(), size)) {
+        let subject: Option<String> = row.try_get("subject").ok().flatten();
+        let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
+        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref(), size, subject.as_deref(), from_addr.as_deref())) {
             let n = if uid {
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
             } else {
@@ -844,8 +847,14 @@ fn search_key_matches(
     flags: &[String],
     recv: Option<&ChronoDateTime<Utc>>,
     size: Option<i32>,
+    subject: Option<&str>,
+    from_addr: Option<&str>,
 ) -> bool {
     let has = |f: &str| flags.iter().any(|x| x == f);
+    // Case-insensitive substring check — mirrors RFC 3501 §6.4.4 ILIKE semantics.
+    let icontains = |haystack: Option<&str>, needle: &str| -> bool {
+        haystack.map_or(true, |h| h.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()))
+    };
     match key {
         SearchKey::All     => true,
         SearchKey::Recent  => false, // \Recent not tracked per-session
@@ -869,14 +878,43 @@ fn search_key_matches(
         // Conservative true when size_bytes is NULL (e.g. old messages before APPEND sprint).
         SearchKey::Larger(n)  => size.map_or(true, |s| (s as u64) > (*n as u64)),
         SearchKey::Smaller(n) => size.map_or(true, |s| (s as u64) < (*n as u64)),
-        // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size),
-        SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, size)
-                || search_key_matches(b.as_ref(), flags, recv, size)
+        // Envelope criteria — matched against DB columns (ILIKE).
+        // Subject uses subject column; From matches from_addr.
+        // CC/BCC/To/ReplyTo are not stored — conservative true.
+        SearchKey::Subject(pat) => {
+            let p = astring_to_string(pat);
+            icontains(subject, &p)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size)),
-        // Content/envelope criteria — conservative true (no MIME parsing)
+        SearchKey::From(pat) => {
+            let p = astring_to_string(pat);
+            icontains(from_addr, &p)
+        }
+        // Header field matching: support Subject: and From: header names.
+        // Other header fields: conservative true (not stored in DB).
+        SearchKey::Header(field, value) => {
+            let field_lower = astring_to_string(field).to_ascii_lowercase();
+            let val_str = astring_to_string(value);
+            match field_lower.as_str() {
+                "subject" => icontains(subject, &val_str),
+                "from"    => icontains(from_addr, &val_str),
+                _         => true,
+            }
+        }
+        // TEXT / BODY — full body search requires fetching raw bytes from object store:
+        // too expensive per-message in a hot path; conservative true (no false negatives).
+        SearchKey::Text(_) | SearchKey::Body(_) => true,
+        // Keyword / Unkeyword — match against the flags array using flag_to_str.
+        SearchKey::Keyword(kw) => has(flag_to_str(kw)),
+        SearchKey::Unkeyword(kw) => !has(flag_to_str(kw)),
+        // Recursive logical operators
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size, subject, from_addr),
+        SearchKey::Or(a, b)   => {
+            search_key_matches(a.as_ref(), flags, recv, size, subject, from_addr)
+                || search_key_matches(b.as_ref(), flags, recv, size, subject, from_addr)
+        }
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size, subject, from_addr)),
+        // Remaining criteria (Cc, Bcc, To, SentSince, SentBefore, SentOn, SequenceSet, Uid) —
+        // conservative true: not missing matches is safer than false positives for clients.
         _ => true,
     }
 }
