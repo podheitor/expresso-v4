@@ -216,14 +216,39 @@ async fn add_member(
 
 async fn list_members(
     State(state): State<AppState>,
-    ctx: RequestCtx,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Vec<ChannelMember>>> {
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = ChannelRepo::new(pool);
     if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
         return Err(ChatError::NotMember);
     }
+    let max_joined: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(joined_at) FROM chat_channel_members WHERE tenant_id = $1 AND channel_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+    if let Some(ts) = max_joined {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows = repo.list_members(ctx.tenant_id, id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_joined {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
