@@ -809,7 +809,7 @@ async fn move_message(
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
     Json(body):   Json<MoveRequest>,
-) -> Result<StatusCode> {
+) -> Result<Json<MessageDetail>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let target_id: Option<Uuid> = sqlx::query_scalar(
@@ -840,9 +840,31 @@ async fn move_message(
     .bind(ctx.user_id)
     .execute(&mut *tx)
     .await?;
-    tx.commit().await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    let msg: Option<MessageDetail> = sqlx::query_as(
+        r#"
+        SELECT m.id, m.mailbox_id, m.subject, m.from_addr, m.from_name,
+               m.to_addrs, m.cc_addrs, m.bcc_addrs, m.reply_to, m.message_id, m.in_reply_to,
+               COALESCE(m.references_, '{}') AS references_,
+               m.thread_id,
+               m.flags, m.has_attachments, m.body_path, m.preview_text,
+               m.date, m.received_at, m.size_bytes
+        FROM messages  m
+        JOIN mailboxes mb ON mb.id = m.mailbox_id
+        WHERE m.id         = $1
+          AND m.tenant_id  = $2
+          AND mb.tenant_id = $2
+          AND mb.user_id   = $3
+        "#,
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    msg.map(Json).ok_or(MailError::MessageNotFound(id))
 }
 
 /// GET /api/v1/mail/messages/:id/flags — list flags of a message without marking it Seen
