@@ -162,20 +162,33 @@ async fn inject_validator(
 
 // ─── Retention policy CRUD ───────────────────────────────────────────────────
 
+#[derive(Debug, Deserialize)]
+struct ListPoliciesParams {
+    /// Sort order: "asc" or "desc" (default "asc").
+    sort: Option<String>,
+}
+
 async fn list_policies(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
+    Query(params): Query<ListPoliciesParams>,
 ) -> Result<Json<Vec<RetentionPolicy>>, (StatusCode, Json<serde_json::Value>)> {
-    let rows: Vec<RetentionPolicy> = sqlx::query_as(
+    let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("desc")).unwrap_or(false) {
+        "DESC"
+    } else {
+        "ASC"
+    };
+    let sql = format!(
         "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
          FROM retention_policies \
          WHERE tenant_id = $1 \
-         ORDER BY created_at ASC",
-    )
-    .bind(ctx.tenant_id)
-    .fetch_all(&st.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+         ORDER BY created_at {order}"
+    );
+    let rows: Vec<RetentionPolicy> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok(Json(rows))
 }
