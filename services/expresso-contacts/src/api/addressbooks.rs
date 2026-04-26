@@ -2,7 +2,8 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -37,10 +38,20 @@ async fn create(
 async fn list(
     State(state): State<AppState>,
     ctx: RequestCtx,
-) -> Result<Json<Vec<Addressbook>>> {
+) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM addressbooks WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(pool)
+    .await?;
     let abs  = AddressbookRepo::new(pool).list_accessible(ctx.tenant_id, ctx.user_id).await?;
-    Ok(Json(abs))
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(abs),
+    ).into_response())
 }
 
 async fn get_one(
