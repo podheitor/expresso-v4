@@ -6,6 +6,7 @@ pub mod messages;
 pub mod compose;
 pub mod attachments;
 pub mod context;
+pub mod quota;
 pub mod vacation;
 pub mod sieve;
 
@@ -40,6 +41,7 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(messages::routes())
         .merge(compose::routes())
         .merge(attachments::routes())
+        .merge(quota::routes())
         .merge(vacation::routes())
         .merge(sieve::routes())
 }
