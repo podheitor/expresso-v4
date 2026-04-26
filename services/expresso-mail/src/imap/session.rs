@@ -457,6 +457,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Other(CapabilityOther(Atom::try_from("ENABLE").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("SORT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("STATUS=SIZE").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -844,10 +845,10 @@ async fn cmd_select(
     }
 }
 
-/// STATUS — RFC 3501 §6.3.10: returns per-mailbox counters without SELECTing.
-/// Clients use this to refresh unread badges on folders they aren't currently viewing.
+/// STATUS — RFC 3501 §6.3.10 + RFC 8438 (SIZE).
 /// Reads trigger-maintained counters from `mailboxes` (O(1)) for MESSAGES/UNSEEN;
-/// RECENT is always 0 (we don't track the \Recent flag per-session).
+/// SIZE aggregates `size_bytes` from `messages` only when requested (one extra query);
+/// RECENT is always 0.
 async fn cmd_status(
     state: &AppState,
     tag: Tag<'static>,
@@ -879,6 +880,24 @@ async fn cmd_status(
     let uid_validity = NonZeroU32::new(uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
     let uid_next     = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
 
+    // Fetch SIZE only when client asked for it — avoids the aggregate on every STATUS.
+    let needs_size = item_names.iter().any(|n| matches!(n, StatusDataItemName::Size));
+    let mailbox_size: u64 = if needs_size {
+        sqlx::query_scalar(
+            "SELECT COALESCE(SUM(size_bytes), 0) \
+             FROM messages \
+             WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3 AND expunged_at IS NULL",
+        )
+        .bind(uid)
+        .bind(&mbox_name)
+        .bind(tenant_id)
+        .fetch_one(state.db())
+        .await
+        .unwrap_or(0i64) as u64
+    } else {
+        0
+    };
+
     let mut items: Vec<StatusDataItem> = Vec::with_capacity(item_names.len());
     for name in item_names {
         let item = match name {
@@ -887,7 +906,8 @@ async fn cmd_status(
             StatusDataItemName::UidNext     => StatusDataItem::UidNext(uid_next),
             StatusDataItemName::UidValidity => StatusDataItem::UidValidity(uid_validity),
             StatusDataItemName::Unseen      => StatusDataItem::Unseen(unseen_count as u32),
-            // Deleted/Size/DeletedStorage/HighestModSeq not tracked — skip silently.
+            StatusDataItemName::Size        => StatusDataItem::Size(mailbox_size),
+            // Deleted/DeletedStorage/HighestModSeq not tracked — skip silently.
             _ => continue,
         };
         items.push(item);
