@@ -12,7 +12,7 @@ use axum::{
     routing::{get, delete, head, patch, post},
     extract::{State, Path, Query},
     response::{IntoResponse, Response},
-    Json, http::{StatusCode, header},
+    Json, http::{StatusCode, header, HeaderMap, HeaderValue},
     body::Body,
 };
 use expresso_core::begin_tenant_tx;
@@ -328,6 +328,7 @@ async fn list_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
     Query(params): Query<ListParams>,
+    req_headers:   HeaderMap,
 ) -> Result<Response> {
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
     let limit  = params.limit.unwrap_or(50).min(200);
@@ -378,6 +379,31 @@ async fn list_messages(
         .unwrap_or_default();
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let max_received: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(m.received_at) FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND mb.folder_name = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&folder)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_received {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        tx.commit().await?;
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
 
     let base =
         "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
@@ -487,11 +513,16 @@ async fn list_messages(
 
     tx.commit().await?;
 
-    Ok((
+    let mut resp = (
         StatusCode::OK,
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_received {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// GET /api/v1/mail/messages/:id — mark as Seen + return detail
