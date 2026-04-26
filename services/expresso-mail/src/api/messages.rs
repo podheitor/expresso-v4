@@ -61,9 +61,11 @@ pub struct ListParams {
     /// Ignored when keyset cursors (before_id/after_id) are used.
     pub sort:      Option<String>,
     /// ILIKE filter on from_addr field.
-    pub from_addr: Option<String>,
+    pub from_addr:       Option<String>,
     /// ILIKE filter on subject field.
-    pub subject:   Option<String>,
+    pub subject:         Option<String>,
+    /// If set, return only messages with (true) or without (false) attachments.
+    pub has_attachments: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -327,6 +329,11 @@ async fn list_messages(
         let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND m.subject ILIKE '%{esc}%'")
     }).unwrap_or_default();
+    let has_attachments_filter = match params.has_attachments {
+        Some(true)  => "AND m.has_attachments = TRUE",
+        Some(false) => "AND m.has_attachments = FALSE",
+        None        => "",
+    };
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -362,7 +369,7 @@ async fn list_messages(
         if is_before {
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-                 {from_addr_filter} {subject_filter} \
+                 {from_addr_filter} {subject_filter} {has_attachments_filter} \
                  AND (m.received_at, m.id) < ($4, $5) \
                  ORDER BY m.received_at DESC, m.id DESC LIMIT $6"
             );
@@ -378,7 +385,7 @@ async fn list_messages(
         } else {
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-                 {from_addr_filter} {subject_filter} \
+                 {from_addr_filter} {subject_filter} {has_attachments_filter} \
                  AND (m.received_at, m.id) > ($4, $5) \
                  ORDER BY m.received_at ASC, m.id ASC LIMIT $6"
             );
@@ -404,7 +411,7 @@ async fn list_messages(
         };
         let sql = format!(
             "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-             {from_addr_filter} {subject_filter} \
+             {from_addr_filter} {subject_filter} {has_attachments_filter} \
              ORDER BY m.received_at {order}, m.id {order} LIMIT $4 OFFSET $5"
         );
         sqlx::query_as(&sql)
@@ -422,7 +429,7 @@ async fn list_messages(
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
            AND mb.folder_name = $3 \
          {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-         {from_addr_filter} {subject_filter}"
+         {from_addr_filter} {subject_filter} {has_attachments_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
