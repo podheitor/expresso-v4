@@ -25,9 +25,9 @@ use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 use axum::{
     async_trait,
     extract::{FromRequestParts, Path, Query, Request, State},
-    http::{request::Parts, StatusCode},
+    http::{header, request::Parts, StatusCode},
     middleware::{self, Next},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{delete, get, patch, post},
     Json, Router,
 };
@@ -318,7 +318,7 @@ async fn list_archive(
     State(st):     State<AppState>,
     AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ArchiveListParams>,
-) -> Result<Json<Vec<ArchiveEntry>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(50).min(200);
 
     let since_filter = params.since
@@ -405,7 +405,24 @@ async fn list_archive(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
     };
 
-    Ok(Json(rows))
+    // Count total matching rows (same filters, no pagination) for X-Total-Count header.
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_date_filter} {subject_filter} {from_addr_filter}"
+    );
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&st.db)
+        .await
+        .unwrap_or(0);
+
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 // ─── Retention enforcement background task ────────────────────────────────────
