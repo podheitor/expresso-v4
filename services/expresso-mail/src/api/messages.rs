@@ -60,6 +60,10 @@ pub struct ListParams {
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
     pub sort:      Option<String>,
+    /// ILIKE filter on from_addr field.
+    pub from_addr: Option<String>,
+    /// ILIKE filter on subject field.
+    pub subject:   Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -266,7 +270,7 @@ async fn search_messages(
 ///   - Keyset (preferred): pass `before_id` or `after_id` for O(log N) seeks.
 ///   - Offset (legacy): pass `page` (0-indexed). Slow on large mailboxes.
 ///
-/// Optional filters: `flag=\Starred`, `unread=true`, `thread_id=UUID`.
+/// Optional filters: `flag=\Starred`, `unread=true`, `thread_id=UUID`, `from_addr=`, `subject=` (ILIKE).
 /// Optional sort for offset mode: `sort=asc` (default `desc`). Keyset direction is cursor-driven.
 async fn list_messages(
     State(state):  State<AppState>,
@@ -297,6 +301,14 @@ async fn list_messages(
     let thread_id_filter = params.thread_id
         .map(|t| format!("AND m.thread_id = '{t}'"))
         .unwrap_or_default();
+    let from_addr_filter = params.from_addr.map(|f| {
+        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND m.from_addr ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let subject_filter = params.subject.map(|s| {
+        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND m.subject ILIKE '%{esc}%'")
+    }).unwrap_or_default();
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
@@ -332,6 +344,7 @@ async fn list_messages(
         if is_before {
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
+                 {from_addr_filter} {subject_filter} \
                  AND (m.received_at, m.id) < ($4, $5) \
                  ORDER BY m.received_at DESC, m.id DESC LIMIT $6"
             );
@@ -347,6 +360,7 @@ async fn list_messages(
         } else {
             let sql = format!(
                 "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
+                 {from_addr_filter} {subject_filter} \
                  AND (m.received_at, m.id) > ($4, $5) \
                  ORDER BY m.received_at ASC, m.id ASC LIMIT $6"
             );
@@ -372,6 +386,7 @@ async fn list_messages(
         };
         let sql = format!(
             "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
+             {from_addr_filter} {subject_filter} \
              ORDER BY m.received_at {order}, m.id {order} LIMIT $4 OFFSET $5"
         );
         sqlx::query_as(&sql)
