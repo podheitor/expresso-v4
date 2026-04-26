@@ -54,10 +54,10 @@ pub fn init() {
     Lazy::force(&IMAP_LOGINS_TOTAL);
 
     for cmd in [
-        "CAPABILITY", "LOGIN", "LIST", "SELECT", "EXAMINE", "FETCH",
+        "CAPABILITY", "LOGIN", "AUTHENTICATE", "LIST", "SELECT", "EXAMINE", "FETCH",
         "STORE", "EXPUNGE", "CLOSE", "LOGOUT", "NOOP", "IDLE", "STATUS",
         "APPEND", "COPY", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB",
-        "CREATE", "DELETE", "RENAME", "OTHER",
+        "CREATE", "DELETE", "RENAME", "UNSELECT", "OTHER",
     ] {
         for outcome in ["ok", "no", "bad"] {
             IMAP_COMMANDS_TOTAL.with_label_values(&[cmd, outcome]).inc_by(0);
@@ -76,9 +76,10 @@ pub fn init() {
 /// cardinality stays bounded under malformed traffic.
 pub fn command_label(name: &str) -> &'static str {
     match name.to_ascii_uppercase().as_str() {
-        "CAPABILITY" => "CAPABILITY",
-        "LOGIN"      => "LOGIN",
-        "LIST"       => "LIST",
+        "CAPABILITY"   => "CAPABILITY",
+        "LOGIN"        => "LOGIN",
+        "AUTHENTICATE" => "AUTHENTICATE",
+        "LIST"         => "LIST",
         "SELECT"     => "SELECT",
         "EXAMINE"    => "EXAMINE",
         "FETCH"      => "FETCH",
@@ -98,6 +99,7 @@ pub fn command_label(name: &str) -> &'static str {
         "CREATE"      => "CREATE",
         "DELETE"      => "DELETE",
         "RENAME"      => "RENAME",
+        "UNSELECT"    => "UNSELECT",
         _             => "OTHER",
     }
 }
@@ -108,9 +110,10 @@ mod tests {
 
     #[test]
     fn known_commands_map_directly() {
-        assert_eq!(command_label("LOGIN"),       "LOGIN");
-        assert_eq!(command_label("login"),       "LOGIN");
-        assert_eq!(command_label("Fetch"),       "FETCH");
+        assert_eq!(command_label("LOGIN"),        "LOGIN");
+        assert_eq!(command_label("login"),        "LOGIN");
+        assert_eq!(command_label("AUTHENTICATE"), "AUTHENTICATE");
+        assert_eq!(command_label("Fetch"),        "FETCH");
         assert_eq!(command_label("STATUS"),      "STATUS");
         assert_eq!(command_label("IDLE"),        "IDLE");
         assert_eq!(command_label("APPEND"),      "APPEND");

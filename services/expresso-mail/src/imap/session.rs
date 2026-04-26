@@ -15,6 +15,7 @@ use imap_codec::{
     decode::{CommandDecodeError, Decoder},
     encode::Encoder,
     imap_types::{
+        auth::AuthMechanism,
         command::{Command, CommandBody},
         core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
@@ -106,6 +107,65 @@ pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
 
                     let cmd_name = cmd.body.name();
                     debug!(tag = %tag_s, cmd = ?cmd_name, "imap ←");
+
+                    // AUTHENTICATE PLAIN (RFC 4616 + RFC 3501 §6.2.2) — tratado inline
+                    // pois pode precisar de um round-trip extra para leitura de dados
+                    // quando o cliente não usa SASL-IR (initial_response == None).
+                    if let CommandBody::Authenticate { mechanism, initial_response } = &cmd.body {
+                        if *sess != SessionState::NotAuthenticated {
+                            let resp = no_tagged(cmd.tag.clone(), "already authenticated");
+                            writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "no"]).inc();
+                        } else if !matches!(mechanism, AuthMechanism::Plain) {
+                            let resp = no_tagged(cmd.tag.clone(), "unsupported mechanism");
+                            writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "no"]).inc();
+                        } else {
+                            // Try to get PLAIN blob: prefer SASL-IR (initial_response),
+                            // fall back to a challenge round-trip.
+                            let plain_bytes: Option<Vec<u8>> = if let Some(ir) = initial_response {
+                                Some(ir.declassify().to_vec())
+                            } else {
+                                // Send challenge line; client replies with base64-encoded blob.
+                                writer.write_all(b"+ \r\n").await?;
+                                let mut line_buf = Vec::with_capacity(512);
+                                let mut tmp2 = [0u8; 512];
+                                'auth_read: loop {
+                                    let n = reader.read(&mut tmp2).await?;
+                                    if n == 0 { break 'auth_read; }
+                                    line_buf.extend_from_slice(&tmp2[..n]);
+                                    if line_buf.contains(&b'\n') { break 'auth_read; }
+                                }
+                                let line = String::from_utf8_lossy(&line_buf);
+                                let trimmed = line.trim();
+                                // Client may send "*" to cancel AUTHENTICATE.
+                                if trimmed == "*" {
+                                    let resp = bad_tagged(cmd.tag.clone(), "AUTHENTICATE cancelled");
+                                    writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                                    IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", "bad"]).inc();
+                                    buf.clear();
+                                    break 'decode;
+                                }
+                                let decoded: Option<Vec<u8>> = {
+                                    use base64::Engine as _;
+                                    base64::engine::general_purpose::STANDARD.decode(trimmed.as_bytes()).ok()
+                                };
+                                decoded
+                            };
+
+                            let outcome = handle_authenticate_plain(
+                                &state, cmd.tag.clone(), plain_bytes.as_deref(),
+                                &mut sess, &mut user_id, &mut tenant_id,
+                            ).await;
+                            let outcome_label = outcome_of(&outcome);
+                            IMAP_COMMANDS_TOTAL.with_label_values(&["AUTHENTICATE", outcome_label]).inc();
+                            for resp in &outcome {
+                                writer.write_all(&resp_codec.encode(resp).dump()).await?;
+                            }
+                        }
+                        buf.clear();
+                        break 'decode;
+                    }
 
                     // IDLE (RFC 2177) — tratado inline, não via dispatch.
                     // handle_idle() envia "+ idling", espera DONE do cliente
@@ -315,6 +375,7 @@ async fn dispatch(
 fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
     let caps = Vec1::try_from(vec![
         Capability::Imap4Rev1,
+        Capability::Auth(AuthMechanism::Plain),
         Capability::Idle,
         Capability::UidPlus,
     ]).unwrap();
@@ -378,6 +439,72 @@ async fn cmd_login(
             IMAP_LOGINS_TOTAL.with_label_values(&["failure"]).inc();
             warn!(user = %user, "IMAP login failed");
             vec![no_tagged(tag, "LOGIN failed")]
+        }
+    }
+}
+
+/// AUTHENTICATE PLAIN helper — RFC 4616 §2.
+/// Decodes `\0authzid\0authcid\0passwd` blob (authzid may be empty).
+/// Uses the same DB query and lockout as `cmd_login`.
+async fn handle_authenticate_plain(
+    state: &AppState,
+    tag: Tag<'static>,
+    plain_bytes: Option<&[u8]>,
+    sess: &mut SessionState,
+    user_id: &mut Option<Uuid>,
+    tenant_id: &mut Option<Uuid>,
+) -> Vec<Response<'static>> {
+    let bytes = match plain_bytes {
+        None => return vec![no_tagged(tag, "AUTHENTICATE failed")],
+        Some(b) => b,
+    };
+
+    // RFC 4616 §2: message = [authzid] NUL authcid NUL passwd
+    let parts: Vec<&[u8]> = bytes.splitn(3, |&b| b == 0).collect();
+    if parts.len() != 3 {
+        return vec![no_tagged(tag, "AUTHENTICATE failed")];
+    }
+    let user = match std::str::from_utf8(parts[1]) {
+        Ok(s) if !s.is_empty() => s,
+        _ => return vec![no_tagged(tag, "AUTHENTICATE failed")],
+    };
+    let pass = match std::str::from_utf8(parts[2]) {
+        Ok(s) => s,
+        _ => return vec![no_tagged(tag, "AUTHENTICATE failed")],
+    };
+
+    let lock = login_lockout();
+    if lock.is_locked_out(user) {
+        IMAP_LOGINS_TOTAL.with_label_values(&["locked_out"]).inc();
+        warn!(user = %user, "IMAP AUTHENTICATE refused (locked out)");
+        return vec![no_tagged(tag, "AUTHENTICATE failed")];
+    }
+
+    let row: Option<(Uuid, Uuid)> = sqlx::query_as(
+        "SELECT id, tenant_id FROM users \
+         WHERE lower(email) = lower($1) AND password_hash = crypt($2, password_hash) LIMIT 1",
+    )
+    .bind(user)
+    .bind(pass)
+    .fetch_optional(state.db())
+    .await
+    .ok()
+    .flatten();
+
+    match row {
+        Some((uid, tid)) => {
+            *sess = SessionState::Authenticated;
+            *user_id = Some(uid);
+            *tenant_id = Some(tid);
+            lock.clear_failures(user);
+            IMAP_LOGINS_TOTAL.with_label_values(&["success"]).inc();
+            vec![ok_tagged(tag, None, "AUTHENTICATE completed")]
+        }
+        None => {
+            lock.record_failure(user);
+            IMAP_LOGINS_TOTAL.with_label_values(&["failure"]).inc();
+            warn!(user = %user, "IMAP AUTHENTICATE failed");
+            vec![no_tagged(tag, "AUTHENTICATE failed")]
         }
     }
 }
