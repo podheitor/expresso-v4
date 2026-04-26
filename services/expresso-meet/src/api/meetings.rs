@@ -11,7 +11,8 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -173,18 +174,46 @@ async fn create(
 
 async fn list(
     State(state): State<AppState>,
-    ctx: RequestCtx,
-) -> Result<Json<Vec<Meeting>>> {
+    ctx:          RequestCtx,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
+    let max_updated: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(m.updated_at) FROM meetings m \
+         JOIN meeting_participants mp ON mp.meeting_id = m.id \
+         WHERE m.tenant_id = $1 AND mp.user_id = $2 AND m.is_archived = FALSE",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+    if let Some(ts) = max_updated {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows = MeetingRepo::new(pool).list_for_user(ctx.tenant_id, ctx.user_id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn get_one(
     State(state): State<AppState>,
-    ctx: RequestCtx,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Meeting>> {
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
     if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
@@ -192,7 +221,26 @@ async fn get_one(
     }
     let m = repo.get(ctx.tenant_id, id).await
         .map_err(|_| MeetError::MeetingNotFound(id))?;
-    Ok(Json(m))
+    let etag = format!("\"{}-{}\"", m.updated_at.unix_timestamp(), m.id);
+    let lm   = m.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if m.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+    let mut resp = Json(m).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 async fn archive(
