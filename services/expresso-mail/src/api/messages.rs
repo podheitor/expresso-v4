@@ -887,6 +887,12 @@ enum BulkRequest {
         ids:    Vec<Uuid>,
         folder: String,
     },
+    MarkRead {
+        ids: Vec<Uuid>,
+    },
+    MarkUnread {
+        ids: Vec<Uuid>,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -904,9 +910,11 @@ struct BulkFlagRequest {
 /// POST /api/v1/mail/messages/bulk
 ///
 /// Apply one action to a set of messages atomically.
-/// `{"action":"delete","ids":[…]}` — soft-delete (sets expunged_at)
+/// `{"action":"delete","ids":[…]}` — hard-delete messages
 /// `{"action":"flag","ids":[…],"add":["\\Seen"],"remove":[]}` — update flags
 /// `{"action":"move","ids":[…],"folder":"Trash"}` — move to folder
+/// `{"action":"mark_read","ids":[…]}` — add `\Seen` to all
+/// `{"action":"mark_unread","ids":[…]}` — remove `\Seen` from all
 /// Returns `{"affected": N}` — count of rows modified.
 async fn bulk_action(
     State(state): State<AppState>,
@@ -985,6 +993,34 @@ async fn bulk_action(
                    AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
             )
             .bind(dst_id)
+            .bind(ids)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .execute(&mut *tx)
+            .await?;
+            res.rows_affected()
+        }
+        BulkRequest::MarkRead { ids } => {
+            let res = sqlx::query(
+                "UPDATE messages \
+                 SET flags = array(SELECT DISTINCT unnest(flags || ARRAY['\\Seen']::text[])) \
+                 WHERE id = ANY($1) AND tenant_id = $2 \
+                   AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
+            )
+            .bind(ids)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .execute(&mut *tx)
+            .await?;
+            res.rows_affected()
+        }
+        BulkRequest::MarkUnread { ids } => {
+            let res = sqlx::query(
+                "UPDATE messages \
+                 SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest(ARRAY['\\Seen']::text[])) \
+                 WHERE id = ANY($1) AND tenant_id = $2 \
+                   AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
+            )
             .bind(ids)
             .bind(ctx.tenant_id)
             .bind(ctx.user_id)
