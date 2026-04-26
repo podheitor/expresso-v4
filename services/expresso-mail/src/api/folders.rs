@@ -17,6 +17,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/folders",                    get(list_folders).post(create_folder))
         .route("/mail/folders/all",                get(list_all_folders))
+        .route("/mail/folders/unread-summary",     get(unread_summary))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
@@ -335,6 +336,39 @@ async fn mark_folder_read(
 
     tx.commit().await?;
     Ok(Json(serde_json::json!({ "marked": res.rows_affected() })))
+}
+
+/// GET /api/v1/mail/folders/unread-summary — live unread count per folder (not cached).
+///
+/// Returns `[{"folder": "INBOX", "unread": 5}, …]` computed via COUNT at query time.
+/// Use this when you need accurate counts; `GET /mail/folders` returns the cached `unseen_count`.
+async fn unread_summary(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<serde_json::Value>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        r#"
+        SELECT mb.folder_name,
+               COUNT(m.id) FILTER (WHERE NOT ('\Seen' = ANY(m.flags))) AS unread
+        FROM mailboxes mb
+        LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1
+        WHERE mb.tenant_id = $1
+          AND mb.user_id   = $2
+        GROUP BY mb.folder_name
+        ORDER BY mb.folder_name
+        "#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let result = rows.into_iter()
+        .map(|(folder, unread)| serde_json::json!({"folder": folder, "unread": unread}))
+        .collect();
+    Ok(Json(result))
 }
 
 /// Reject names that would confuse IMAP hierarchy or SQL injection via folder_name
