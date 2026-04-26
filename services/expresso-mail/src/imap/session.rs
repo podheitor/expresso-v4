@@ -570,8 +570,9 @@ async fn cmd_list(
     uid: Uuid,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
-    let rows: Vec<(String, Option<String>)> = sqlx::query_as(
-        "SELECT folder_name, special_use FROM mailboxes \
+    let rows: Vec<(String, Option<String>, i32, i32)> = sqlx::query_as(
+        "SELECT folder_name, special_use, unseen_count, message_count \
+         FROM mailboxes \
          WHERE user_id = $1 AND tenant_id = $2 ORDER BY folder_name",
     )
     .bind(uid)
@@ -581,22 +582,31 @@ async fn cmd_list(
     .unwrap_or_default();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
-    for (name, special_use) in &rows {
+    for (name, special_use, unseen, msg_count) in &rows {
         let mailbox = ImapMailbox::try_from(name.to_owned())
             .unwrap_or_else(|_| ImapMailbox::Inbox);
 
-        // Emite RFC 6154 special-use attribute se presente (e.g. "\\Sent" → Atom "Sent").
-        // DB armazena com backslash; Atom não aceita backslash — strip antes.
-        // From<Atom> for FlagNameAttribute produz a extension attribute correta.
-        let items: Vec<FlagNameAttribute<'static>> = special_use
-            .as_deref()
-            .and_then(|s| {
-                let bare = s.trim().trim_start_matches('\\');
-                if bare.is_empty() { return None; }
-                Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
-            })
-            .into_iter()
-            .collect();
+        let mut items: Vec<FlagNameAttribute<'static>> = Vec::new();
+
+        // RFC 6154 special-use attribute (e.g. "\\Sent" → FlagNameAttribute::Extension("Sent")).
+        // DB stores with backslash; Atom rejects backslash — strip before conversion.
+        if let Some(attr) = special_use.as_deref().and_then(|s| {
+            let bare = s.trim().trim_start_matches('\\');
+            if bare.is_empty() { return None; }
+            Atom::try_from(bare.to_owned()).ok().map(FlagNameAttribute::from)
+        }) {
+            items.push(attr);
+        }
+
+        // RFC 3501 §7.2.2: \Marked if mailbox has unseen messages since last check;
+        // \Unmarked otherwise. Only emit for non-empty mailboxes.
+        if *msg_count > 0 {
+            if *unseen > 0 {
+                items.push(FlagNameAttribute::Marked);
+            } else {
+                items.push(FlagNameAttribute::Unmarked);
+            }
+        }
 
         out.push(Response::Data(Data::List {
             items,
