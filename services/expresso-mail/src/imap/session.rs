@@ -1091,7 +1091,8 @@ async fn cmd_fetch(
         let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
         sqlx::query(&format!(
             "SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-             uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+             uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
              FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}) \
              ORDER BY received_at ASC",
         ))
@@ -1103,10 +1104,12 @@ async fn cmd_fetch(
     } else {
         let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
         sqlx::query(&format!(
-            "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+            "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
              FROM ( \
                SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
-                      uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path \
+                      uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
+                      to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
                FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
              ) sub WHERE ({seq_w}) \
              ORDER BY seq ASC",
@@ -1216,13 +1219,26 @@ async fn cmd_fetch(
             items.push(MessageDataItem::Rfc822Size(sz as u32));
         }
         if w_envelope {
-            let subject: Option<String> = row.get("subject");
-            let from_addr: Option<String> = row.get("from_addr");
-            let from_name: Option<String> = row.get("from_name");
+            let subject:    Option<String> = row.get("subject");
+            let from_addr:  Option<String> = row.get("from_addr");
+            let from_name:  Option<String> = row.get("from_name");
+            let to_addrs:   Option<serde_json::Value> = row.try_get("to_addrs").ok();
+            let cc_addrs:   Option<serde_json::Value> = row.try_get("cc_addrs").ok();
+            let message_id: Option<String> = row.try_get("message_id").ok().flatten();
+            let in_reply_to:Option<String> = row.try_get("in_reply_to").ok().flatten();
+            let reply_to:   Option<String> = row.try_get("reply_to").ok().flatten();
+            let date_ts:    Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
+            let date_str = date_ts.map(|t| t.format("%a, %d %b %Y %H:%M:%S +0000").to_string());
             items.push(MessageDataItem::Envelope(build_envelope(
+                date_str.as_deref(),
                 subject.as_deref(),
                 from_addr.as_deref(),
                 from_name.as_deref(),
+                to_addrs.as_ref(),
+                cc_addrs.as_ref(),
+                message_id.as_deref(),
+                in_reply_to.as_deref(),
+                reply_to.as_deref(),
             )));
         }
         if w_internaldate {
@@ -2331,45 +2347,76 @@ fn build_body_structure(size_bytes: u32) -> BodyStructure<'static> {
     }
 }
 
+fn addr_from_str(addr: &str, name: Option<&str>) -> imap_codec::imap_types::envelope::Address<'static> {
+    use imap_codec::imap_types::envelope::Address;
+    let (local, domain) = addr.split_once('@').unwrap_or((addr, ""));
+    Address {
+        name: name.and_then(|n| NString::try_from(n.to_owned()).ok()).unwrap_or(NString(None)),
+        adl: NString(None),
+        mailbox: NString::try_from(local.to_owned()).ok().unwrap_or(NString(None)),
+        host: NString::try_from(domain.to_owned()).ok().unwrap_or(NString(None)),
+    }
+}
+
+fn json_to_addr_list(v: Option<&serde_json::Value>) -> Vec<imap_codec::imap_types::envelope::Address<'static>> {
+    v.and_then(|j| j.as_array())
+        .map(|arr| {
+            arr.iter().filter_map(|item| {
+                let addr = item.get("addr").and_then(|a| a.as_str())?;
+                let name = item.get("name").and_then(|n| n.as_str());
+                Some(addr_from_str(addr, name))
+            }).collect()
+        })
+        .unwrap_or_default()
+}
+
 fn build_envelope(
+    date: Option<&str>,
     subject: Option<&str>,
     from_addr: Option<&str>,
     from_name: Option<&str>,
+    to_addrs: Option<&serde_json::Value>,
+    cc_addrs: Option<&serde_json::Value>,
+    message_id: Option<&str>,
+    in_reply_to: Option<&str>,
+    reply_to_addr: Option<&str>,
 ) -> imap_codec::imap_types::envelope::Envelope<'static> {
-    use imap_codec::imap_types::envelope::{Address, Envelope};
+    use imap_codec::imap_types::envelope::Envelope;
+
+    let date_ns = date
+        .and_then(|s| NString::try_from(s.to_owned()).ok())
+        .unwrap_or(NString(None));
 
     let subject_ns = subject
         .and_then(|s| NString::try_from(s.to_owned()).ok())
         .unwrap_or(NString(None));
 
-    let from = from_addr.map(|addr| {
-        let (local, domain) = addr.split_once('@').unwrap_or((addr, ""));
-        Address {
-            name: from_name
-                .and_then(|n| NString::try_from(n.to_owned()).ok())
-                .unwrap_or(NString(None)),
-            adl: NString(None),
-            mailbox: NString::try_from(local.to_owned())
-                .ok()
-                .unwrap_or(NString(None)),
-            host: NString::try_from(domain.to_owned())
-                .ok()
-                .unwrap_or(NString(None)),
-        }
-    });
-
+    let from = from_addr.map(|a| addr_from_str(a, from_name));
     let from_list = from.into_iter().collect::<Vec<_>>();
 
+    let reply_to_list = reply_to_addr
+        .map(|a| addr_from_str(a, None))
+        .into_iter()
+        .collect::<Vec<_>>();
+    let reply_to_list = if reply_to_list.is_empty() { from_list.clone() } else { reply_to_list };
+
+    let to_list = json_to_addr_list(to_addrs);
+    let cc_list  = json_to_addr_list(cc_addrs);
+
     Envelope {
-        date: NString(None),
+        date: date_ns,
         subject: subject_ns,
         from: from_list.clone(),
         sender: from_list.clone(),
-        reply_to: from_list.clone(),
-        to: vec![],
-        cc: vec![],
+        reply_to: reply_to_list,
+        to: to_list,
+        cc: cc_list,
         bcc: vec![],
-        in_reply_to: NString(None),
-        message_id: NString(None),
+        in_reply_to: in_reply_to
+            .and_then(|s| NString::try_from(s.to_owned()).ok())
+            .unwrap_or(NString(None)),
+        message_id: message_id
+            .and_then(|s| NString::try_from(s.to_owned()).ok())
+            .unwrap_or(NString(None)),
     }
 }
