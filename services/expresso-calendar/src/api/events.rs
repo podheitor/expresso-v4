@@ -133,10 +133,16 @@ async fn get_one(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    req_headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let etag = format!("\"{}\"", ev.etag);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
     let mut resp = Json(ev).into_response();
     resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     Ok(resp)
