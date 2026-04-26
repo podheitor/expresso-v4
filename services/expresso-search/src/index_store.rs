@@ -1,6 +1,10 @@
 //! Tantivy index management — shared state for the search service.
-//! Schema: document_id (stored), tenant_id (indexed), subject (full-text),
-//! from_addr (stored+indexed), body (full-text), received_at (fast-field).
+//! Schema: document_id (stored), tenant_id (indexed), subject (full-text+stored),
+//! from_addr (stored+indexed), body (full-text+stored), received_at (fast-field).
+//!
+//! NOTE: body was changed from TEXT to TEXT|STORED. Existing indexes built
+//! before this change need re-indexing to populate stored body values; until
+//! then snippet will be None for old documents.
 
 use std::path::Path;
 use tantivy::schema::Value as TantivyValue;
@@ -14,6 +18,7 @@ use tantivy::{
     schema::{
         Field, IndexRecordOption, Schema, STORED, STRING, TEXT,
     },
+    snippet::SnippetGenerator,
     Index, IndexReader, IndexWriter, ReloadPolicy,
 };
 use tokio::sync::Mutex;
@@ -54,6 +59,9 @@ pub struct SearchHit {
     pub score: f32,
     pub subject: Option<String>,
     pub from_addr: Option<String>,
+    /// Excerpt (~200 chars) from the body around the matched terms. None when
+    /// the document was indexed before body became STORED (needs re-index).
+    pub snippet: Option<String>,
 }
 
 impl IndexStore {
@@ -64,7 +72,7 @@ impl IndexStore {
         let f_tenant_id = schema_builder.add_text_field("tenant_id", STRING | STORED);
         let f_subject = schema_builder.add_text_field("subject", TEXT | STORED);
         let f_from_addr = schema_builder.add_text_field("from_addr", TEXT | STORED);
-        let f_body = schema_builder.add_text_field("body", TEXT);
+        let f_body = schema_builder.add_text_field("body", TEXT | STORED);
         let schema = schema_builder.build();
 
         std::fs::create_dir_all(data_dir)?;
@@ -174,8 +182,9 @@ impl IndexStore {
         let tenant_query: Box<dyn Query> =
             Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
 
-        let final_query: Box<dyn Query> = if trimmed.is_empty() {
-            tenant_query
+        // Keep user_query separate so we can build a SnippetGenerator from it.
+        let (final_query, user_query_for_snippet): (Box<dyn Query>, Option<Box<dyn Query>>) = if trimmed.is_empty() {
+            (tenant_query, None)
         } else {
             let parser = QueryParser::for_index(
                 &i.index,
@@ -187,11 +196,21 @@ impl IndexStore {
             let user_query = parser
                 .parse_query(trimmed)
                 .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
-            Box::new(BooleanQuery::new(vec![
+            // Clone via Box<dyn Query> is not available; re-parse for snippet generator.
+            let user_query2 = parser
+                .parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            let combined = Box::new(BooleanQuery::new(vec![
                 (Occur::Must, tenant_query),
                 (Occur::Must, user_query),
-            ]))
+            ]));
+            (combined, Some(user_query2))
         };
+
+        // Build snippet generator once (expensive) outside the per-doc loop.
+        let snippet_gen = user_query_for_snippet.as_ref().and_then(|q| {
+            SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok()
+        }).map(|mut gen| { gen.set_max_num_chars(200); gen });
 
         let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit))?;
 
@@ -202,9 +221,15 @@ impl IndexStore {
                 Some(id) => id.to_owned(),
                 None => continue,
             };
-            let subject  = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            let subject   = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
             let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
-            results.push(SearchHit { document_id: doc_id, score, subject, from_addr });
+            let snippet = snippet_gen.as_ref().map(|gen| {
+                let s = gen.snippet_from_doc(&doc);
+                let text = s.to_html();
+                // Strip tantivy's <b>…</b> highlight tags — return plain text.
+                text.replace("<b>", "").replace("</b>", "")
+            }).filter(|s| !s.is_empty());
+            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet });
         }
 
         Ok(results)
@@ -240,6 +265,9 @@ mod tests {
         assert_eq!(hits[0].document_id, "msg-001");
         assert_eq!(hits[0].subject.as_deref(), Some("Meeting tomorrow"));
         assert_eq!(hits[0].from_addr.as_deref(), Some("alice@example.com"));
+        // snippet should contain the body text around the match term
+        let snip = hits[0].snippet.as_deref().unwrap_or("");
+        assert!(snip.contains("meeting"), "snippet missing match term, got: {snip:?}");
 
         // Different tenant → no results
         let hits2 = store.search("meeting", TENANT_B, 10).unwrap();
