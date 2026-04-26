@@ -4,11 +4,12 @@
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header, HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
@@ -91,20 +92,25 @@ async fn list(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(book_id): Path<Uuid>,
-) -> Result<impl IntoResponse> {
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM contacts WHERE tenant_id = $1 AND addressbook_id = $2",
+    let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
+        "SELECT COUNT(*), MAX(updated_at) FROM contacts WHERE tenant_id = $1 AND addressbook_id = $2",
     )
     .bind(ctx.tenant_id)
     .bind(book_id)
     .fetch_one(pool)
     .await?;
     let cs = ContactRepo::new(pool).list(ctx.tenant_id, book_id).await?;
-    Ok((
+    let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(cs),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn get_one(
