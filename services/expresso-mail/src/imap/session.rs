@@ -1153,8 +1153,8 @@ async fn cmd_fetch(
     // BODY[TEXT]   / BODY.PEEK[TEXT]   → want_text
     // BODY[]       / BODY.PEEK[]       → want_full_body
     // BODY[HEADER.FIELDS (...)] → header_fields_reqs (field names + is_not flag)
-    // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative:
-    //   MIME part parsing is not implemented; returning full body is RFC-safe as fallback)
+    // BODY[]<offset.count>     → full_body_partials (offset, count)
+    // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative)
     let (mut want_full_body, mut want_header, mut want_text, mut set_seen) = (
         w_rfc822,
         w_rfc822_header,
@@ -1163,11 +1163,24 @@ async fn cmd_fetch(
     );
     // Each entry: (field_names_lowercase, is_not)
     let mut header_fields_reqs: Vec<(Vec<String>, bool)> = Vec::new();
+    // Partial reqs: (section_tag, offset, count)
+    // section_tag: 0=full, 1=header, 2=text
+    let mut partial_reqs: Vec<(u8, u32, u32)> = Vec::new();
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
-            if let MessageDataItemName::BodyExt { section, peek, .. } = name {
+            if let MessageDataItemName::BodyExt { section, peek, partial, .. } = name {
                 // Non-peek body fetch implicitly sets \Seen (RFC 3501 §6.4.5).
                 if !peek { set_seen = true; }
+                // Partial fetch: BODY[<section>]<offset.count>
+                if let Some((offset, count)) = partial {
+                    let tag = match section {
+                        Some(Section::Header(_)) => 1u8,
+                        Some(Section::Text(_))   => 2u8,
+                        _                        => 0u8,
+                    };
+                    partial_reqs.push((tag, *offset, *count));
+                    continue;
+                }
                 match section {
                     None                      => want_full_body = true,
                     Some(Section::Header(_))  => want_header = true,
@@ -1189,7 +1202,8 @@ async fn cmd_fetch(
             }
         }
     }
-    let need_body = want_full_body || want_header || want_text || !header_fields_reqs.is_empty();
+    let need_body = want_full_body || want_header || want_text
+        || !header_fields_reqs.is_empty() || !partial_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -1350,7 +1364,30 @@ async fn cmd_fetch(
                         items.push(MessageDataItem::BodyExt {
                             section: None,
                             origin:  None,
-                            data:    NString::from(Literal::unvalidated(raw)),
+                            data:    NString::from(Literal::unvalidated(raw.clone())),
+                        });
+                    }
+                    // Partial fetch: BODY[<section>]<offset.count>
+                    // RFC 3501 §6.4.5: the response echoes the starting octet in origin.
+                    // Reads beyond EOF are truncated; starting beyond EOF returns empty.
+                    for (sec_tag, offset, count) in &partial_reqs {
+                        let source: Vec<u8> = match sec_tag {
+                            1 => email_header_bytes(&raw),
+                            2 => email_text_bytes(&raw),
+                            _ => raw.clone(),
+                        };
+                        let section = match sec_tag {
+                            1 => Some(Section::Header(None)),
+                            2 => Some(Section::Text(None)),
+                            _ => None,
+                        };
+                        let start = (*offset as usize).min(source.len());
+                        let end   = (start + *count as usize).min(source.len());
+                        let slice = source[start..end].to_vec();
+                        items.push(MessageDataItem::BodyExt {
+                            section,
+                            origin:  Some(*offset),
+                            data:    NString::from(Literal::unvalidated(slice)),
                         });
                     }
                 }
