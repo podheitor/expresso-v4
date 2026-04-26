@@ -29,6 +29,7 @@ pub struct GovbrMapping {
     pub assurance:     Option<String>,
     pub created_at:    OffsetDateTime,
     pub last_login_at: Option<OffsetDateTime>,
+    pub updated_at:    OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -57,7 +58,7 @@ pub async fn list(
     let pool = db_or_503(&st)?;
     let max_ts: Option<OffsetDateTime> = if let Some(tid) = q.tenant_id {
         sqlx::query_scalar(
-            "SELECT MAX(COALESCE(last_login_at, created_at)) FROM govbr_user_map WHERE tenant_id = $1",
+            "SELECT MAX(updated_at) FROM govbr_user_map WHERE tenant_id = $1",
         )
         .bind(tid)
         .fetch_one(pool)
@@ -65,7 +66,7 @@ pub async fn list(
         .unwrap_or(None)
     } else {
         sqlx::query_scalar(
-            "SELECT MAX(COALESCE(last_login_at, created_at)) FROM govbr_user_map",
+            "SELECT MAX(updated_at) FROM govbr_user_map",
         )
         .fetch_one(pool)
         .await
@@ -84,8 +85,8 @@ pub async fn list(
     }
     let rows: Vec<GovbrMapping> = if let Some(tid) = q.tenant_id {
         sqlx::query_as(
-            "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at \
-             FROM govbr_user_map WHERE tenant_id = $1 ORDER BY created_at DESC",
+            "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at, updated_at \
+             FROM govbr_user_map WHERE tenant_id = $1 ORDER BY updated_at DESC",
         )
         .bind(tid)
         .fetch_all(pool)
@@ -93,8 +94,8 @@ pub async fn list(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?
     } else {
         sqlx::query_as(
-            "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at \
-             FROM govbr_user_map ORDER BY created_at DESC",
+            "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at, updated_at \
+             FROM govbr_user_map ORDER BY updated_at DESC",
         )
         .fetch_all(pool)
         .await
@@ -116,7 +117,7 @@ pub async fn get_one(
     if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
     let pool = db_or_503(&st)?;
     let row: Option<GovbrMapping> = sqlx::query_as(
-        "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at \
+        "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at, updated_at \
          FROM govbr_user_map WHERE cpf_hash = $1",
     )
     .bind(&cpf_hash)
@@ -125,7 +126,7 @@ pub async fn get_one(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
 
     let r = row.ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
-    let ts   = r.last_login_at.unwrap_or(r.created_at);
+    let ts   = r.updated_at;
     let etag = format!("\"{}-{}\"", ts.unix_timestamp(), r.cpf_hash);
     let lm   = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
     if let Some(inm) = headers.get(header::IF_NONE_MATCH) {
@@ -162,10 +163,11 @@ pub async fn upsert(
         "INSERT INTO govbr_user_map (cpf_hash, tenant_id, user_id, assurance) \
          VALUES ($1, $2, $3, $4) \
          ON CONFLICT (cpf_hash) DO UPDATE \
-           SET tenant_id = EXCLUDED.tenant_id, \
-               user_id   = EXCLUDED.user_id, \
-               assurance = EXCLUDED.assurance \
-         RETURNING cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at",
+           SET tenant_id  = EXCLUDED.tenant_id, \
+               user_id    = EXCLUDED.user_id, \
+               assurance  = EXCLUDED.assurance, \
+               updated_at = now() \
+         RETURNING cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at, updated_at",
     )
     .bind(&body.cpf_hash)
     .bind(body.tenant_id)
