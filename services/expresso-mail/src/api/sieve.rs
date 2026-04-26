@@ -6,12 +6,15 @@
 
 use axum::{
     extract::State,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use time::OffsetDateTime;
 
 use crate::api::context::RequestCtx;
 use crate::error::{MailError, Result};
@@ -44,11 +47,12 @@ impl Default for SieveRules {
 
 async fn get_sieve(
     State(state): State<AppState>,
-    ctx: RequestCtx,
-) -> Result<Json<SieveRules>> {
+    ctx:          RequestCtx,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(
-        "SELECT enabled, script
+        "SELECT enabled, script, updated_at
          FROM user_sieve WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
@@ -56,11 +60,29 @@ async fn get_sieve(
     .fetch_optional(&mut *tx).await?;
     tx.commit().await?;
 
-    let rules = match row {
-        Some(r) => SieveRules { enabled: r.get("enabled"), script: r.get("script") },
-        None    => SieveRules::default(),
+    let (rules, updated_at) = match row {
+        Some(r) => {
+            let ua: Option<OffsetDateTime> = r.try_get("updated_at").ok();
+            (SieveRules { enabled: r.get("enabled"), script: r.get("script") }, ua)
+        },
+        None => (SieveRules::default(), None),
     };
-    Ok(Json(rules))
+    if let Some(ts) = updated_at {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+        let mut resp = Json(rules).into_response();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        return Ok(resp);
+    }
+    Ok(Json(rules).into_response())
 }
 
 async fn put_sieve(

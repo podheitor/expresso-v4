@@ -6,6 +6,8 @@
 
 use axum::{
     extract::State,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -86,30 +88,49 @@ fn escape(s: &str) -> String {
 
 async fn get_vacation(
     State(state): State<AppState>,
-    ctx: RequestCtx,
-) -> Result<Json<Vacation>> {
+    ctx:          RequestCtx,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let row  = sqlx::query(
-        "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script
+    let row = sqlx::query(
+        "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at
          FROM user_vacation WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
     .fetch_optional(&mut *tx).await?;
     tx.commit().await?;
-    let v = match row {
-        Some(r) => Vacation {
-            enabled:       r.get("enabled"),
-            starts_at:     r.try_get("starts_at").ok(),
-            ends_at:       r.try_get("ends_at").ok(),
-            subject:       r.get("subject"),
-            body:          r.get("body"),
-            interval_days: r.get("interval_days"),
-            sieve_script:  r.get("sieve_script"),
+    let (v, updated_at) = match row {
+        Some(r) => {
+            let ua: Option<OffsetDateTime> = r.try_get("updated_at").ok();
+            (Vacation {
+                enabled:       r.get("enabled"),
+                starts_at:     r.try_get("starts_at").ok(),
+                ends_at:       r.try_get("ends_at").ok(),
+                subject:       r.get("subject"),
+                body:          r.get("body"),
+                interval_days: r.get("interval_days"),
+                sieve_script:  r.get("sieve_script"),
+            }, ua)
         },
-        None => Vacation::default(),
+        None => (Vacation::default(), None),
     };
-    Ok(Json(v))
+    if let Some(ts) = updated_at {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+        let mut resp = Json(v).into_response();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+        return Ok(resp);
+    }
+    Ok(Json(v).into_response())
 }
 
 async fn put_vacation(
