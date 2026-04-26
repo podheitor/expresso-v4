@@ -983,6 +983,15 @@ async fn get_message_flags(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if received_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
 
     Ok((
         StatusCode::OK,
