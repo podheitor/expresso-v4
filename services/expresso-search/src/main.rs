@@ -4,6 +4,7 @@
 //!   GET  /health                     → service health (open)
 //!   GET  /ready                      → readiness     (open)
 //!   POST /api/v1/index               → index document       (auth)
+//!   POST /api/v1/index/bulk          → bulk index (≤500)    (auth)
 //!   GET  /api/v1/search?q=&tenant_id=  → search             (auth)
 //!   DELETE /api/v1/index/:id         → remove document      (auth)
 //!
@@ -116,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
 
     let api_routes = Router::new()
         .route("/api/v1/index", post(api::index_doc))
+        .route("/api/v1/index/bulk", post(api::bulk_index))
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
         .with_state(store);

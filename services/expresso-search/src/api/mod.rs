@@ -74,6 +74,42 @@ pub async fn index_doc(
     Ok(StatusCode::CREATED)
 }
 
+pub const MAX_BULK_DOCS: usize = 500;
+
+#[derive(Debug, Deserialize)]
+pub struct BulkIndexRequest {
+    pub documents: Vec<IndexDoc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkIndexResponse {
+    pub indexed: usize,
+    pub rejected: Vec<String>,
+}
+
+/// POST /api/v1/index/bulk — index multiple documents in one request
+pub async fn bulk_index(
+    State(store): State<IndexStore>,
+    Json(body): Json<BulkIndexRequest>,
+) -> Result<Json<BulkIndexResponse>, (StatusCode, String)> {
+    if body.documents.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "documents must not be empty".into()));
+    }
+    if body.documents.len() > MAX_BULK_DOCS {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("too many documents: {} (max {})", body.documents.len(), MAX_BULK_DOCS),
+        ));
+    }
+    let total = body.documents.len();
+    let rejected = store
+        .index_documents(&body.documents)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let indexed = total - rejected.len();
+    Ok(Json(BulkIndexResponse { indexed, rejected }))
+}
+
 /// GET /api/v1/search?q=...&tenant_id=...&limit=20
 pub async fn search(
     State(store): State<IndexStore>,

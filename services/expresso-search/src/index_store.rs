@@ -134,6 +134,41 @@ impl IndexStore {
         Ok(())
     }
 
+    /// Add or update multiple documents in a single writer lock + commit.
+    ///
+    /// Validation failures on individual docs are collected and returned as an
+    /// error listing which document_ids were rejected; successfully validated
+    /// docs are still indexed and committed.
+    pub async fn index_documents(&self, docs: &[IndexDoc]) -> anyhow::Result<Vec<String>> {
+        let i = &self.inner;
+        let mut writer = i.writer.lock().await;
+        let mut rejected: Vec<String> = Vec::new();
+
+        for doc_data in docs {
+            let tenant_uuid = match Uuid::parse_str(doc_data.tenant_id.trim()) {
+                Ok(u) => u,
+                Err(_) => { rejected.push(doc_data.document_id.clone()); continue; }
+            };
+            if doc_data.document_id.trim().is_empty() {
+                rejected.push(doc_data.document_id.clone());
+                continue;
+            }
+            let tenant_canonical = tenant_uuid.to_string();
+            let term = tantivy::Term::from_field_text(i.f_doc_id, &doc_data.document_id);
+            writer.delete_term(term);
+            writer.add_document(doc!(
+                i.f_doc_id    => doc_data.document_id.as_str(),
+                i.f_tenant_id => tenant_canonical.as_str(),
+                i.f_subject   => doc_data.subject.as_deref().unwrap_or(""),
+                i.f_from_addr => doc_data.from_addr.as_deref().unwrap_or(""),
+                i.f_body      => doc_data.body.as_deref().unwrap_or(""),
+            ))?;
+        }
+
+        writer.commit()?;
+        Ok(rejected)
+    }
+
     /// Remove a document by id.
     pub async fn delete_document(&self, document_id: &str) -> anyhow::Result<()> {
         let i = &self.inner;
