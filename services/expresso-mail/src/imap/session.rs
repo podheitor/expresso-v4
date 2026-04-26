@@ -2679,6 +2679,8 @@ fn cmd_unselect(
 /// IDLE RFC 2177: envia "+ idling", espera DONE do cliente.
 /// Enquanto aguarda, a cada 28s verifica se message_count mudou e envia
 /// * N EXISTS se houver novos emails — elimina o polling NOOP do cliente.
+/// Após 29 min (63 ticks × 28s) envia "* OK Still here" (keep-alive).
+/// Desconecta silenciosamente após 30 min se nenhum DONE (RFC 2177 §3.3).
 /// DONE do cliente pode chegar em qualquer burst de leitura; aceita como
 /// prefixo case-insensitive (clientes enviam "DONE\r\n").
 async fn handle_idle(
@@ -2691,6 +2693,11 @@ async fn handle_idle(
     tenant_id: Option<Uuid>,
 ) -> anyhow::Result<()> {
     writer.write_all(b"+ idling\r\n").await?;
+
+    // 63 ticks × 28s ≈ 29.4 minutes → keep-alive; 65 ticks ≈ 30.3 min → timeout.
+    const KEEPALIVE_TICKS: u32 = 63;
+    const TIMEOUT_TICKS:   u32 = 65;
+    let mut ticks: u32 = 0;
 
     let mut ibuf = [0u8; 32];
     loop {
@@ -2708,6 +2715,16 @@ async fn handle_idle(
                 }
             }
             _ = tokio::time::sleep(tokio::time::Duration::from_secs(28)) => {
+                ticks += 1;
+                if ticks == KEEPALIVE_TICKS {
+                    // RFC 2177 §3.3: emit an untagged OK to reset NAT/firewall timers.
+                    writer.write_all(b"* OK Still here\r\n").await?;
+                }
+                if ticks >= TIMEOUT_TICKS {
+                    // 30-minute hard limit — BYE and close.
+                    writer.write_all(b"* BYE IDLE timeout — reconnect\r\n").await?;
+                    return Ok(());
+                }
                 if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
                     let count: Option<i64> = sqlx::query_scalar(
                         "SELECT message_count FROM mailboxes WHERE id = $1 AND tenant_id = $2",
