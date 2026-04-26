@@ -91,6 +91,8 @@ struct UpdateRuleRequest {
 struct ListRulesParams {
     /// Filter by enabled status. Omit to return all rules.
     pub enabled: Option<bool>,
+    /// ILIKE filter on rule name. E.g. `?name=invoice` matches "Invoice alerts".
+    pub name:    Option<String>,
 }
 
 /// One entry in a bulk reorder request.
@@ -171,11 +173,15 @@ async fn list_rules(
         Some(false) => "AND enabled = FALSE",
         None        => "",
     };
+    let name_filter = params.name.map(|n| {
+        let esc = n.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND name ILIKE '%{esc}%'")
+    }).unwrap_or_default();
 
     let sql = format!(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
-         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} \
+         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
          ORDER BY priority ASC, created_at ASC"
     );
 
