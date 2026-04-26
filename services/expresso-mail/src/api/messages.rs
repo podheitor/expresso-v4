@@ -77,6 +77,8 @@ pub struct SearchParams {
     pub before_id: Option<Uuid>,
     /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
     pub after_id:  Option<Uuid>,
+    /// Return only messages belonging to this thread.
+    pub thread_id: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -168,6 +170,9 @@ async fn search_messages(
     let before_date_filter = params.before
         .map(|d| format!("AND m.received_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
+    let thread_id_filter = params.thread_id
+        .map(|t| format!("AND m.thread_id = '{t}'"))
+        .unwrap_or_default();
 
     let base_select =
         "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
@@ -176,7 +181,7 @@ async fn search_messages(
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2";
     let enum_filters = format!(
-        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter}"
+        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter} {thread_id_filter}"
     );
 
     let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
