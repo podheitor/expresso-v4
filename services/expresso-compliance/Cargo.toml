@@ -32,6 +32,7 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 futures = { workspace = true }
 tantivy = { workspace = true }
+sqlx = { workspace = true }
 
 # Internal libs
 expresso-core = { path = "../../libs/expresso-core", package = "expresso-core" }
