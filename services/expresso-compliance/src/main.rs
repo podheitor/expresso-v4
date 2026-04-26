@@ -27,7 +27,7 @@ use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 use axum::{
     async_trait,
     extract::{FromRequestParts, Path, Query, Request, State},
-    http::{header, request::Parts, StatusCode},
+    http::{header, request::Parts, HeaderMap, HeaderValue, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, patch, post},
@@ -399,6 +399,7 @@ async fn list_archive(
     State(st):     State<AppState>,
     AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ArchiveListParams>,
+    req_headers:   HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(50).min(200);
     let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
@@ -431,6 +432,27 @@ async fn list_archive(
     let size_max_filter = params.size_max
         .map(|v| format!("AND size_bytes <= {v}"))
         .unwrap_or_default();
+
+    let max_archived: Option<time::OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(archived_at) FROM compliance_archive WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&st.db)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_archived {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
 
     let base =
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
@@ -518,11 +540,16 @@ async fn list_archive(
         .await
         .unwrap_or(0);
 
-    Ok((
+    let mut resp = (
         StatusCode::OK,
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_archived {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
