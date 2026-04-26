@@ -335,7 +335,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_store(state, tag, sequence_set, kind, response, flags, *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            cmd_store(state, tag, sequence_set, kind, response, flags, *uid, selected.as_mut().unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Close => cmd_close(state, tag, sess, selected, *tenant_id).await,
         CommandBody::Expunge => {
@@ -1540,7 +1540,7 @@ async fn cmd_store(
     response: &StoreResponse,
     flags: &[Flag<'_>],
     uid: bool,
-    sel: &SelectedMailbox,
+    sel: &mut SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
     // RFC 3501 §3.4: in read-only state (EXAMINE) flag changes MUST be rejected.
@@ -1609,35 +1609,38 @@ async fn cmd_store(
         .execute(state.db())
         .await;
 
-    // RFC 3501 §6.4.6: unless .SILENT, return * N FETCH (FLAGS ...) for each row.
-    let mut out: Vec<Response<'static>> = Vec::new();
-    if matches!(*response, StoreResponse::Answer) {
-        // Re-SELECT the affected rows to read back the post-update flag state.
-        let select_sql = if uid {
-            format!(
-                "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
-                 FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({range_clause}) \
-                 ORDER BY received_at ASC"
-            )
-        } else {
-            format!(
-                "SELECT seq, flags FROM (\
-                   SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
-                   FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
-                 ) sub WHERE ({range_clause}) ORDER BY seq ASC"
-            )
-        };
-        let rows = sqlx::query(&select_sql)
-            .bind(sel.mailbox_id)
-            .bind(tenant_id)
-            .fetch_all(state.db())
-            .await
-            .unwrap_or_default();
+    // Re-SELECT affected rows to read back post-update flags for two purposes:
+    // 1. Emit * N FETCH (FLAGS ...) when StoreResponse::Answer (non-SILENT).
+    // 2. Update flags_snapshot so NOOP/IDLE don't re-push the same changes.
+    let select_sql = if uid {
+        format!(
+            "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({range_clause}) \
+             ORDER BY received_at ASC"
+        )
+    } else {
+        format!(
+            "SELECT seq, flags FROM (\
+               SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+             ) sub WHERE ({range_clause}) ORDER BY seq ASC"
+        )
+    };
+    let rows = sqlx::query(&select_sql)
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default();
 
-        for row in &rows {
-            let seq_num: i64 = row.get("seq");
+    let mut out: Vec<Response<'static>> = Vec::new();
+    for row in &rows {
+        let seq_num: i64 = row.get("seq");
+        let flags_val: Vec<String> = row.get("flags");
+        // Update snapshot so NOOP/IDLE don't re-push these changes.
+        sel.flags_snapshot.insert(seq_num as u32, flags_val.clone());
+        if matches!(*response, StoreResponse::Answer) {
             let seq = NonZeroU32::new(seq_num as u32).unwrap_or(NonZeroU32::MIN);
-            let flags_val: Vec<String> = row.get("flags");
             let flag_items: Vec<FlagFetch<'static>> = flags_val
                 .iter()
                 .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
