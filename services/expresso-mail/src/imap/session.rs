@@ -16,6 +16,7 @@ use imap_codec::{
     encode::Encoder,
     imap_types::{
         auth::AuthMechanism,
+        body::{BasicFields, Body, BodyStructure, SpecificFields},
         command::{Command, CommandBody},
         core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
@@ -1024,8 +1025,13 @@ async fn cmd_fetch(
     let w_size         = wants(macro_or, "RFC822.SIZE");
     // RFC 3501 §6.4.8 + RFC 4315 §3: UID MUST be in every UID FETCH response,
     // even when the client didn't explicitly request it.
-    let w_uid          = uid || wants(macro_or, "UID");
-    let w_internaldate = wants(macro_or, "INTERNALDATE");
+    let w_uid            = uid || wants(macro_or, "UID");
+    let w_internaldate   = wants(macro_or, "INTERNALDATE");
+    // BODYSTRUCTURE — RFC 3501 §7.4.2: extensible body structure.
+    // Macro::Full includes BODY (non-extensible). We serve a minimal single-part
+    // TEXT/PLAIN structure for both BODYSTRUCTURE and BODY macros. Clients
+    // use this for preview/thread-pane rendering without downloading the body.
+    let w_bodystructure  = wants(macro_or, "BODYSTRUCTURE") || wants(macro_or, "BODY");
 
     // Determine which body sections the client wants.
     // BODY[HEADER] / BODY.PEEK[HEADER] → want_header
@@ -1119,6 +1125,10 @@ async fn cmd_fetch(
                     items.push(MessageDataItem::InternalDate(imap_dt));
                 }
             }
+        }
+        if w_bodystructure {
+            let sz: i32 = row.try_get("size_bytes").unwrap_or(0);
+            items.push(MessageDataItem::BodyStructure(build_body_structure(sz as u32)));
         }
         if need_body {
             let body_path: Option<String> = row.try_get("body_path").ok();
@@ -1924,7 +1934,7 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
         MacroOrMessageDataItemNames::Macro(m) => match m {
             Macro::All  => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE"),
             Macro::Fast => matches!(name, "FLAGS" | "RFC822.SIZE" | "INTERNALDATE"),
-            Macro::Full => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY"),
+            Macro::Full => matches!(name, "FLAGS" | "ENVELOPE" | "RFC822.SIZE" | "INTERNALDATE" | "BODY" | "BODYSTRUCTURE"),
             _ => false,
         },
         // Pattern matching explícito por variante — o Debug repr anterior
@@ -1933,15 +1943,39 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
         MacroOrMessageDataItemNames::MessageDataItemNames(items) => {
             items.iter().any(|item| matches!(
                 (name, item),
-                ("FLAGS",        MessageDataItemName::Flags)
+                ("FLAGS",         MessageDataItemName::Flags)
                 | ("ENVELOPE",    MessageDataItemName::Envelope)
                 | ("RFC822.SIZE", MessageDataItemName::Rfc822Size)
                 | ("UID",         MessageDataItemName::Uid)
                 | ("INTERNALDATE",MessageDataItemName::InternalDate)
                 | ("BODYEXT",     MessageDataItemName::BodyExt { .. })
-                | ("BODY",        MessageDataItemName::BodyStructure)
+                | ("BODY",        MessageDataItemName::Body)
+                | ("BODYSTRUCTURE", MessageDataItemName::BodyStructure)
             ))
         }
+    }
+}
+
+/// Build a minimal RFC 3501 §7.4.2 BODYSTRUCTURE for a message.
+/// Returns a single-part TEXT/PLAIN 7BIT structure using the stored
+/// size_bytes. Without full MIME parsing this is conservative but
+/// RFC-compliant: clients use it for preview without downloading.
+fn build_body_structure(size_bytes: u32) -> BodyStructure<'static> {
+    BodyStructure::Single {
+        body: Body {
+            basic: BasicFields {
+                parameter_list: vec![],
+                id: NString(None),
+                description: NString(None),
+                content_transfer_encoding: IString::try_from("7BIT").unwrap(),
+                size: size_bytes,
+            },
+            specific: SpecificFields::Basic {
+                r#type: IString::try_from("TEXT").unwrap(),
+                subtype: IString::try_from("PLAIN").unwrap(),
+            },
+        },
+        extension_data: None,
     }
 }
 
