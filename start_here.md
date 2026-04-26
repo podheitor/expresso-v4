@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #328 (2026-04-26)
+**Último sprint commitado:** #332 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,16 +8,27 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#321–#328)
+## O que foi feito nesta sessão (#329–#332)
+
+| Sprint | Escopo | O que foi feito |
+|--------|--------|-----------------|
+| #329 | calendar | REST API para COUNTER proposals — GET/GET/:id/POST accept/POST reject em `/api/v1/scheduling/counters` |
+| #330 | mail | `GET /mail/search` integrado com Tantivy — fallback transparente para ILIKE |
+| #331 | chat | Last-Modified + IMS em `GET /channels/:id/members` — MAX(joined_at) |
+| #332 | admin | ETag + Last-Modified em `GET /govbr/mappings` e `GET /govbr/mappings/:cpf_hash` |
+
+---
+
+## Sessões anteriores (#321–#328)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
 | #321 | drive | `ETag` + `If-None-Match` em `GET /drive/files/:id/metadata` |
 | #322 | drive | `HEAD /drive/files/:id` — ETag + Last-Modified + Content-Length |
-| #323 | search | `SearchHit` expõe `subject` + `from_addr` — elimina round-trip ao mail |
+| #323 | search | `SearchHit` expõe `subject` + `from_addr` |
 | #324 | search | `snippet` de body no `SearchHit` — body STORED + `SnippetGenerator` 200 chars |
-| #325 | search | `bulk_delete` remove mensagens do índice Tantivy via `DELETE /index/:id` |
-| #326 | admin | REST API `govbr_user_map` — GET/POST/DELETE `/api/v1/govbr/mappings` |
+| #325 | search | `bulk_delete` remove mensagens do índice Tantivy |
+| #326 | admin | REST API `govbr_user_map` — GET/POST/DELETE |
 | #327 | meet | LM+IMS em `GET /meetings`, ETag+INM em `GET /meetings/:id` |
 | #328 | meet | LM+IMS em `GET /meetings/:id/participants` |
 
@@ -27,10 +38,10 @@ git log --oneline | head -10
 
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
-3. **notifications: testar Redis pub/sub cross-pod**
-4. **search: integrar GET /mail/search com Tantivy** — atualmente usa SQL ILIKE
-5. **scheduling_counter_proposals** — tabela existe sem API REST
-6. **meet: ETag em GET /meetings/:id (já feito #327) + scheduling_counter REST**
+3. **notifications: testar Redis pub/sub cross-pod** — ops concern
+4. **govbr: adicionar `updated_at` à tabela** — migration para LM mais preciso
+5. **search: bulk_index em POST /api/v1/index/bulk** — indexar múltiplos docs por chamada
+6. **compliance: LM em list_retention_policies** — só tem `created_at`, sem updated_at
 
 ---
 
@@ -92,6 +103,16 @@ if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) { ... IMS chec
 let mut resp = Json(resource).into_response();
 resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
 resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+
+// Tantivy search integration (mail search)
+let req = client.get(format!("{search_url}/api/v1/search"))
+    .query(&[("q", q), ("tenant_id", &tenant_id), ("limit", "200")]);
+// document_id = "mailbox_id/uid" → AND (m.mailbox_id::text || '/' || m.uid::text) IN (...)
+
+// COUNTER proposals accept (calendar)
+let new_raw = itip::apply_proposed_times(&event.ical_raw, prop.proposed_dtstart, prop.proposed_dtend)?;
+erepo.update(ctx.tenant_id, event.id, &new_raw).await?;
+crepo.resolve(ctx.tenant_id, id, "accepted", Some(ctx.user_id)).await?;
 ```
 
 ---
