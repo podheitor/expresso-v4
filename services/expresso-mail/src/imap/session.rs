@@ -8,6 +8,7 @@
 //! acesso cross-tenant — a RLS de `mailboxes`/`messages` é NULL-bypass e
 //! não bloqueia operações IMAP que rodam fora de `begin_tenant_tx`.
 
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use imap_codec::{
@@ -69,6 +70,9 @@ struct SelectedMailbox {
     mailbox_id: Uuid,
     exists: u32,
     read_only: bool,
+    /// seq (1-based) → flags as stored in DB; used by NOOP to detect flag
+    /// changes made by other sessions and push unsolicited FETCH responses.
+    flags_snapshot: HashMap<u32, Vec<String>>,
 }
 
 pub async fn handle(stream: TcpStream, state: AppState) -> anyhow::Result<()> {
@@ -695,8 +699,26 @@ async fn cmd_select(
             .flatten()
             .and_then(|n| NonZeroU32::new(n as u32));
 
+            // Build initial flags snapshot so NOOP can diff against it.
+            let flags_snapshot: HashMap<u32, Vec<String>> = sqlx::query(
+                "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+                 FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+            )
+            .bind(mailbox_id)
+            .bind(tenant_id)
+            .fetch_all(state.db())
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|r| {
+                let s: i64 = r.get("seq");
+                let f: Vec<String> = r.get("flags");
+                (s as u32, f)
+            })
+            .collect();
+
             *sess = SessionState::Selected;
-            *selected = Some(SelectedMailbox { mailbox_id, exists, read_only });
+            *selected = Some(SelectedMailbox { mailbox_id, exists, read_only, flags_snapshot });
 
             // RFC 3501 §7.3.1: FLAGS, EXISTS, RECENT, UIDVALIDITY, UIDNEXT e
             // PERMANENTFLAGS são todos obrigatórios/SHOULD na resposta SELECT.
@@ -1876,18 +1898,19 @@ async fn cmd_rename(
 }
 
 /// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover
-/// new messages without re-SELECTing. If a mailbox is currently selected we
-/// re-query its message count and emit an untagged `* N EXISTS` when it
-/// changed since SELECT, then update the cached count so subsequent FETCH
-/// sequence math stays consistent. Outside the selected state, NOOP is a
-/// pure liveness probe and we just return OK.
+/// new messages and flag changes without re-SELECTing. When a mailbox is
+/// selected we:
+///   1. Emit `* N EXISTS` if the message count changed.
+///   2. Emit `* N FETCH (FLAGS …)` for every message whose flags differ from
+///      the snapshot taken at SELECT time (or the previous NOOP), so that
+///      changes made by another session (e.g. webmail marking read) are pushed.
 async fn cmd_noop(
     state: &AppState,
     tag: Tag<'static>,
     selected: &mut Option<SelectedMailbox>,
     tenant_id: Option<Uuid>,
 ) -> Vec<Response<'static>> {
-    let mut out: Vec<Response<'static>> = Vec::with_capacity(2);
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(4);
     if let (Some(sel), Some(tid)) = (selected.as_mut(), tenant_id) {
         // Usa message_count (trigger-maintained em mailboxes) em vez de COUNT(*) —
         // evita full scan em mailboxes com muitas mensagens durante polling de NOOP.
@@ -1907,6 +1930,42 @@ async fn cmd_noop(
                 out.push(Response::Data(Data::Exists(new_exists)));
             }
         }
+
+        // Re-query all seq+flags and diff against snapshot to detect external changes.
+        let current: Vec<(u32, Vec<String>)> = sqlx::query(
+            "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+        )
+        .bind(sel.mailbox_id)
+        .bind(tid)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| {
+            let s: i64 = r.get("seq");
+            let f: Vec<String> = r.get("flags");
+            (s as u32, f)
+        })
+        .collect();
+
+        let mut new_snapshot: HashMap<u32, Vec<String>> = HashMap::with_capacity(current.len());
+        for (seq, flags_now) in &current {
+            let changed = sel.flags_snapshot.get(seq).map_or(true, |prev| prev != flags_now);
+            if changed {
+                let flag_items: Vec<FlagFetch<'static>> = flags_now
+                    .iter()
+                    .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
+                    .collect();
+                if let Ok(items) = Vec1::try_from(vec![MessageDataItem::Flags(flag_items)]) {
+                    if let Some(seq_nz) = NonZeroU32::new(*seq) {
+                        out.push(Response::Data(Data::Fetch { seq: seq_nz, items }));
+                    }
+                }
+            }
+            new_snapshot.insert(*seq, flags_now.clone());
+        }
+        sel.flags_snapshot = new_snapshot;
     }
     out.push(ok_tagged(tag, None, "NOOP completed"));
     out
