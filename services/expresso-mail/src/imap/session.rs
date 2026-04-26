@@ -319,9 +319,24 @@ async fn dispatch(
             }
             cmd_status(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), item_names.as_ref()).await
         }
-        CommandBody::Search { criteria, uid, .. } => {
+        CommandBody::Search { criteria, uid, charset } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            // RFC 3501 §6.4.4: reject unsupported charsets with [BADCHARSET].
+            // We support US-ASCII and UTF-8 only (Rust strings are inherently UTF-8).
+            if let Some(cs) = charset {
+                let cs_str = cs.as_ref().to_ascii_uppercase();
+                if cs_str != "UTF-8" && cs_str != "US-ASCII" {
+                    return vec![Response::Status(Status::Tagged(Tagged {
+                        tag,
+                        body: StatusBody {
+                            kind: StatusKind::No,
+                            code: Some(Code::BadCharset(None)),
+                            text: Text::try_from("unsupported charset — use UTF-8 or US-ASCII").unwrap(),
+                        },
+                    }))];
+                }
             }
             cmd_search(state, tag, criteria.as_ref(), *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
