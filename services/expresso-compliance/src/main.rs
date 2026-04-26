@@ -183,12 +183,19 @@ async fn list_policies(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Query(params): Query<ListPoliciesParams>,
-) -> Result<Json<Vec<RetentionPolicy>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("desc")).unwrap_or(false) {
         "DESC"
     } else {
         "ASC"
     };
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM retention_policies WHERE tenant_id = $1",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
     let sql = format!(
         "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
          FROM retention_policies \
@@ -201,7 +208,11 @@ async fn list_policies(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    Ok(Json(rows))
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 async fn create_policy(
