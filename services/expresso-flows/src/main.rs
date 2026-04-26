@@ -90,9 +90,13 @@ struct UpdateRuleRequest {
 #[derive(Debug, Deserialize)]
 struct ListRulesParams {
     /// Filter by enabled status. Omit to return all rules.
-    pub enabled: Option<bool>,
+    pub enabled:      Option<bool>,
     /// ILIKE filter on rule name. E.g. `?name=invoice` matches "Invoice alerts".
-    pub name:    Option<String>,
+    pub name:         Option<String>,
+    /// Return only rules with priority >= this value.
+    pub priority_min: Option<i32>,
+    /// Return only rules with priority <= this value.
+    pub priority_max: Option<i32>,
 }
 
 /// One entry in a bulk reorder request.
@@ -177,11 +181,18 @@ async fn list_rules(
         let esc = n.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND name ILIKE '%{esc}%'")
     }).unwrap_or_default();
+    let priority_min_filter = params.priority_min
+        .map(|v| format!("AND priority >= {v}"))
+        .unwrap_or_default();
+    let priority_max_filter = params.priority_max
+        .map(|v| format!("AND priority <= {v}"))
+        .unwrap_or_default();
 
     let sql = format!(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
+         {priority_min_filter} {priority_max_filter} \
          ORDER BY priority ASC, created_at ASC"
     );
 
@@ -194,7 +205,8 @@ async fn list_rules(
 
     let count_sql = format!(
         "SELECT COUNT(*) FROM flow_rules \
-         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter}"
+         WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
+         {priority_min_filter} {priority_max_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
