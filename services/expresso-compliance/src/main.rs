@@ -469,11 +469,13 @@ async fn list_archive(
 }
 
 /// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
+/// Returns ETag (`"{archived_at_unix}-{id}"`) and Last-Modified. Responds 304 if If-None-Match matches.
 async fn get_archive_entry(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<ArchiveEntry>, (StatusCode, Json<serde_json::Value>)> {
+    req_headers:  axum::http::HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<ArchiveEntry> = sqlx::query_as(
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
                 to_addrs, subject, archived_at, size_bytes \
@@ -487,10 +489,27 @@ async fn get_archive_entry(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    match row {
-        Some(entry) => Ok(Json(entry)),
-        None        => Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"})))),
+    let entry = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))))?;
+
+    let etag = format!("\"{}-{}\"", entry.archived_at.unix_timestamp(), entry.id);
+    let last_modified = entry.archived_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
     }
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::ETAG,          etag),
+            (header::LAST_MODIFIED, last_modified),
+        ],
+        Json(entry),
+    ).into_response())
 }
 
 /// DELETE /api/v1/compliance/archive/:id — remove a single archived entry (GDPR/legal hold).
