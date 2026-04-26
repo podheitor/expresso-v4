@@ -94,9 +94,11 @@ struct ListRulesParams {
     /// ILIKE filter on rule name. E.g. `?name=invoice` matches "Invoice alerts".
     pub name:         Option<String>,
     /// Return only rules with priority >= this value.
-    pub priority_min: Option<i32>,
+    pub priority_min:    Option<i32>,
     /// Return only rules with priority <= this value.
-    pub priority_max: Option<i32>,
+    pub priority_max:    Option<i32>,
+    /// Filter by condition_mode: "and" or "or". Omit to return all.
+    pub condition_mode:  Option<String>,
 }
 
 /// One entry in a bulk reorder request.
@@ -187,12 +189,16 @@ async fn list_rules(
     let priority_max_filter = params.priority_max
         .map(|v| format!("AND priority <= {v}"))
         .unwrap_or_default();
+    let condition_mode_filter = params.condition_mode.map(|m| {
+        let esc = m.replace('\'', "''");
+        format!("AND condition_mode = '{esc}'")
+    }).unwrap_or_default();
 
     let sql = format!(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
-         {priority_min_filter} {priority_max_filter} \
+         {priority_min_filter} {priority_max_filter} {condition_mode_filter} \
          ORDER BY priority ASC, created_at ASC"
     );
 
@@ -206,7 +212,7 @@ async fn list_rules(
     let count_sql = format!(
         "SELECT COUNT(*) FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
-         {priority_min_filter} {priority_max_filter}"
+         {priority_min_filter} {priority_max_filter} {condition_mode_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
