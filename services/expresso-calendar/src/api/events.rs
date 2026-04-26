@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
@@ -107,10 +108,10 @@ async fn list(
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
     Query(q): Query<EventQuery>,
-) -> Result<impl IntoResponse> {
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let total: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM calendar_events
+    let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
+        r#"SELECT COUNT(*), MAX(updated_at) FROM calendar_events
             WHERE tenant_id = $1
               AND calendar_id = $2
               AND ($3::timestamptz IS NULL OR dtend   IS NULL OR dtend   >= $3)
@@ -123,10 +124,15 @@ async fn list(
     .fetch_one(pool)
     .await?;
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
-    Ok((
+    let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(events),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn get_one(
