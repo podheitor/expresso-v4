@@ -100,6 +100,9 @@ struct ListRulesParams {
     pub priority_max:    Option<i32>,
     /// Filter by condition_mode: "and" or "or". Omit to return all.
     pub condition_mode:  Option<String>,
+    /// Return only rules that contain at least one action of this type.
+    /// E.g. `?action_type=move_to_folder`, `?action_type=webhook`.
+    pub action_type:     Option<String>,
 }
 
 /// One entry in a bulk reorder request.
@@ -194,12 +197,16 @@ async fn list_rules(
         let esc = m.replace('\'', "''");
         format!("AND condition_mode = '{esc}'")
     }).unwrap_or_default();
+    let action_type_filter = params.action_type.map(|t| {
+        let esc = t.replace('\'', "''");
+        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements(actions) a WHERE a->>'type' = '{esc}')")
+    }).unwrap_or_default();
 
     let sql = format!(
         "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
          FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
-         {priority_min_filter} {priority_max_filter} {condition_mode_filter} \
+         {priority_min_filter} {priority_max_filter} {condition_mode_filter} {action_type_filter} \
          ORDER BY priority ASC, created_at ASC"
     );
 
@@ -213,7 +220,7 @@ async fn list_rules(
     let count_sql = format!(
         "SELECT COUNT(*) FROM flow_rules \
          WHERE tenant_id = $1 AND user_id = $2 {enabled_filter} {name_filter} \
-         {priority_min_filter} {priority_max_filter} {condition_mode_filter}"
+         {priority_min_filter} {priority_max_filter} {condition_mode_filter} {action_type_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
