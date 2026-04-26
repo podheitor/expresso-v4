@@ -348,7 +348,7 @@ async fn dispatch(
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_ref().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_mut().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Move { sequence_set, mailbox, uid, .. } => {
             if selected.is_none() {
@@ -1651,7 +1651,7 @@ async fn cmd_copy(
     sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
     dst_mailbox: &ImapMailbox<'_>,
     uid: bool,
-    sel: &SelectedMailbox,
+    sel: &mut SelectedMailbox,
     user_id: Uuid,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
@@ -1752,6 +1752,26 @@ async fn cmd_copy(
 
     if tx.commit().await.is_err() {
         return vec![no_tagged(tag, "internal error")];
+    }
+
+    // If the destination is the currently selected mailbox, its flags_snapshot
+    // is now stale (new messages were inserted without snapshot entries). Re-query
+    // seq+flags for the destination so NOOP won't falsely push FLAGS for the copies.
+    if dst_mailbox_id == sel.mailbox_id {
+        let fresh: Vec<(u32, Vec<String>)> = sqlx::query(
+            "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+        )
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| { let s: i64 = r.get("seq"); let f: Vec<String> = r.get("flags"); (s as u32, f) })
+        .collect();
+        sel.exists = fresh.len() as u32;
+        sel.flags_snapshot = fresh.into_iter().collect();
     }
 
     let dst_uid_validity = NonZeroU32::new(dst_uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
