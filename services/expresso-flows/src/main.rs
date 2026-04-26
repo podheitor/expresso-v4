@@ -14,9 +14,10 @@
 //! `condition_mode`: "and" (default) — all conditions must match;
 //!                   "or"            — any condition suffices.
 //!
-//! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules  (JWT auth)
-//! Reorder: PATCH /api/v1/flows/rules/reorder       (JWT auth) — bulk priority update
-//! Trigger: POST /internal/process                  (internal, no auth)
+//! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules        (JWT auth)
+//! Reorder: PATCH  /api/v1/flows/rules/reorder            (JWT auth) — bulk priority update
+//! Bulk delete: DELETE /api/v1/flows/rules/bulk           (JWT auth) — delete multiple rules
+//! Trigger: POST /internal/process                        (internal, no auth)
 //!
 //! Port: :8005
 
@@ -95,6 +96,16 @@ struct PriorityEntry {
 #[derive(Debug, Serialize)]
 struct ReorderResult {
     pub updated: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkDeleteRulesRequest {
+    pub ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Serialize)]
+struct BulkDeleteResult {
+    pub deleted: u64,
 }
 
 /// Payload from expresso-mail: metadata about the delivered message.
@@ -279,6 +290,40 @@ async fn delete_rule(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Bulk delete handler ──────────────────────────────────────────────────────
+
+/// DELETE /api/v1/flows/rules/bulk — delete multiple rules in one request.
+/// Body: `{"ids": ["<uuid>", …]}`
+/// Only deletes rules owned by the authenticated user+tenant. Returns count deleted.
+async fn bulk_delete_rules(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(req):    Json<BulkDeleteRulesRequest>,
+) -> Result<Json<BulkDeleteResult>, (StatusCode, Json<serde_json::Value>)> {
+    if req.ids.is_empty() {
+        return Ok(Json(BulkDeleteResult { deleted: 0 }));
+    }
+
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let res = sqlx::query(
+        "DELETE FROM flow_rules \
+         WHERE id = ANY($1) AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(&req.ids)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(BulkDeleteResult { deleted: res.rows_affected() }))
 }
 
 // ─── Reorder handler ──────────────────────────────────────────────────────────
@@ -481,9 +526,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/health",                  get(health))
         .route("/ready",                   get(ready))
         .route("/internal/process",        post(internal_process))
-        .route("/api/v1/flows/rules",          get(list_rules).post(create_rule))
-        .route("/api/v1/flows/rules/reorder", patch(reorder_rules))
-        .route("/api/v1/flows/rules/:id",      get(get_rule).patch(update_rule).delete(delete_rule))
+        .route("/api/v1/flows/rules",             get(list_rules).post(create_rule))
+        .route("/api/v1/flows/rules/reorder",     patch(reorder_rules))
+        .route("/api/v1/flows/rules/bulk",         delete(bulk_delete_rules))
+        .route("/api/v1/flows/rules/:id",          get(get_rule).patch(update_rule).delete(delete_rule))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
