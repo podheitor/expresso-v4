@@ -231,8 +231,15 @@ async fn delete_folder(
 async fn list_all_folders(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<Json<Vec<FolderDto>>> {
+) -> Result<impl IntoResponse> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
     let rows: Vec<FolderDto> = sqlx::query_as(
         r#"
         SELECT
@@ -262,7 +269,10 @@ async fn list_all_folders(
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(Json(rows))
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 /// POST /api/v1/mail/folders/:name/subscribe — mark folder as subscribed
