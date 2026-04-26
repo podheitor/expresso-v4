@@ -40,9 +40,14 @@ pub fn routes() -> Router<AppState> {
 
 #[derive(Debug, Deserialize)]
 pub struct ListParams {
-    pub folder:  Option<String>,
-    pub page:    Option<i64>,
-    pub limit:   Option<i64>,
+    pub folder:    Option<String>,
+    /// Legacy offset-based page (0-indexed). Ignored when before_id or after_id is set.
+    pub page:      Option<i64>,
+    pub limit:     Option<i64>,
+    /// Keyset cursor — return messages received strictly before this message (DESC order).
+    pub before_id: Option<Uuid>,
+    /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
+    pub after_id:  Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,7 +177,13 @@ async fn search_messages(
     Ok(Json(rows))
 }
 
-/// GET /api/v1/mail/messages?folder=INBOX&page=0&limit=50
+/// GET /api/v1/mail/messages?folder=INBOX&limit=50[&before_id=UUID|&after_id=UUID|&page=0]
+///
+/// Supports two pagination modes:
+///   - Keyset (preferred): pass `before_id` or `after_id` for O(log N) seeks.
+///   - Offset (legacy): pass `page` (0-indexed). Slow on large mailboxes.
+///
+/// Results are always returned in DESC received_at order.
 async fn list_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
@@ -180,31 +191,100 @@ async fn list_messages(
 ) -> Result<Json<Vec<MessageListItem>>> {
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
     let limit  = params.limit.unwrap_or(50).min(200);
-    let offset = params.page.unwrap_or(0) * limit;
 
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let rows: Vec<MessageListItem> = sqlx::query_as(
-        r#"
-        SELECT
-            m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
-            m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
-        FROM messages  m
-        JOIN mailboxes mb ON mb.id = m.mailbox_id
-        WHERE m.tenant_id    = $1
-          AND mb.tenant_id   = $1
-          AND mb.user_id     = $2
-          AND mb.folder_name = $3
-        ORDER BY m.received_at DESC
-        LIMIT $4 OFFSET $5
-        "#,
-    )
-    .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
-    .bind(&folder)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&mut *tx)
-    .await?;
+
+    // Keyset pagination: resolve the anchor row's received_at + id so we can
+    // use a (received_at, id) composite cursor. before_id gives the "next page"
+    // (older messages); after_id gives the "previous page" (newer messages).
+    let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
+        let is_before = params.before_id.is_some();
+
+        let anchor: Option<(time::OffsetDateTime, Uuid)> = sqlx::query_as(
+            "SELECT m.received_at, m.id \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE m.id = $1 AND m.tenant_id = $2 AND mb.user_id = $3 \
+             LIMIT 1",
+        )
+        .bind(cursor_id)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let (anchor_ts, anchor_id) = anchor.ok_or(MailError::MessageNotFound(cursor_id))?;
+
+        if is_before {
+            // Messages older than the anchor (standard "next page").
+            sqlx::query_as(
+                r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
+                          m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
+                   FROM messages  m
+                   JOIN mailboxes mb ON mb.id = m.mailbox_id
+                   WHERE m.tenant_id    = $1
+                     AND mb.user_id     = $2
+                     AND mb.folder_name = $3
+                     AND (m.received_at, m.id) < ($4, $5)
+                   ORDER BY m.received_at DESC, m.id DESC
+                   LIMIT $6"#,
+            )
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(&folder)
+            .bind(anchor_ts)
+            .bind(anchor_id)
+            .bind(limit)
+            .fetch_all(&mut *tx)
+            .await?
+        } else {
+            // Messages newer than the anchor (standard "prev page"), reversed for DESC.
+            let mut rows: Vec<MessageListItem> = sqlx::query_as(
+                r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
+                          m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
+                   FROM messages  m
+                   JOIN mailboxes mb ON mb.id = m.mailbox_id
+                   WHERE m.tenant_id    = $1
+                     AND mb.user_id     = $2
+                     AND mb.folder_name = $3
+                     AND (m.received_at, m.id) > ($4, $5)
+                   ORDER BY m.received_at ASC, m.id ASC
+                   LIMIT $6"#,
+            )
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(&folder)
+            .bind(anchor_ts)
+            .bind(anchor_id)
+            .bind(limit)
+            .fetch_all(&mut *tx)
+            .await?;
+            rows.reverse();
+            rows
+        }
+    } else {
+        // Legacy offset pagination.
+        let offset = params.page.unwrap_or(0) * limit;
+        sqlx::query_as(
+            r#"SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
+                      m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
+               FROM messages  m
+               JOIN mailboxes mb ON mb.id = m.mailbox_id
+               WHERE m.tenant_id    = $1
+                 AND mb.tenant_id   = $1
+                 AND mb.user_id     = $2
+                 AND mb.folder_name = $3
+               ORDER BY m.received_at DESC
+               LIMIT $4 OFFSET $5"#,
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(&folder)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&mut *tx)
+        .await?
+    };
     tx.commit().await?;
 
     Ok(Json(rows))
