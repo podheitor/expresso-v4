@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #312 (2026-04-26)
+**Último sprint commitado:** #320 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,35 +8,36 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#308–#312)
+## O que foi feito nesta sessão (#313–#320)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #308 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/messages` list — MAX(received_at) antes do keyset |
-| #309 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/threads/:id` — MAX(received_at) já calculado |
-| #310 | compliance | `Last-Modified` + `If-Modified-Since` em `GET /compliance/archive` list — MAX(archived_at) |
-| #311 | compliance | `If-Modified-Since` → 304 em `GET /compliance/archive/:id` — LM já existia, faltava IMS |
-| #312 | flows | `Last-Modified` + `If-Modified-Since` em `GET /flows/rules` list — MAX(updated_at) |
+| #313 | mail | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/mail/search` — MAX(received_at) com mesmos filtros |
+| #314 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/vacation` e `GET /mail/sieve` — `updated_at` |
+| #315 | calendar | `Last-Modified` + `If-Modified-Since` em `GET /calendars/:id/acl` — MAX(created_at) |
+| #316 | contacts,calendar | `Last-Modified` + `If-Modified-Since` em `GET /addressbooks/:id/acl` e `GET /calendars/:id/events/:id/attendees` |
+| #317 | drive | `Last-Modified` + `If-Modified-Since` em `GET /drive/files`, `/drive/files/:id/metadata`, `/drive/trash`, `/drive/files/:id/versions` |
+| #318 | admin | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/audit` — MAX(created_at) com mesmos filtros |
+| #319 | drive | `Last-Modified` + `If-Modified-Since` em `GET /drive/files/:id/shares` — MAX(created_at) |
+| #320 | mail | `If-Modified-Since` → 304 em `GET /mail/messages/:id/flags` — `received_at` imutável; fechou LM/IMS=31/31 |
 
-**Estado atual:** caching HTTP completo em contacts/calendar/chat/mail/flows/compliance.
+**Estado atual:** caching HTTP COMPLETO — LM/IMS 31/31 em todos os serviços.
 
 ---
 
-## Próximos candidatos (por ordem de prioridade)
+## Próximos candidatos
 
-1. **mail: `GET /mail/messages/:id` (get_message) — If-Modified-Since check** *(já tem ETag + LM + INM; falta IMS)*
-   - `received_at` imutável; verificar se já tem IMS no handler
-
-2. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)**
+1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)**
    - Aguardar imap_types alpha
 
-3. **IMAP: NAMESPACE (RFC 2342)**
+2. **IMAP: NAMESPACE (RFC 2342)**
    - Aguardar imap_types alpha
 
-4. **mail: search endpoint (`GET /mail/search`) — Last-Modified + If-Modified-Since**
-   - Verificar se tem campo temporal adequado
+3. **notifications: testar Redis pub/sub cross-pod**
 
-5. **notifications: testar Redis pub/sub cross-pod**
+4. **drive: ETag em `/drive/files/:id/metadata`** — usar hash de `updated_at + id`
+
+5. **drive: HEAD `/drive/files/:id`** — para checagem leve de existência + ETag
 
 ---
 
@@ -51,6 +52,8 @@ git log --oneline | head -10
 | expresso-contacts | 8003 | `services/expresso-contacts/src/` |
 | expresso-calendar | 8004 | `services/expresso-calendar/src/` |
 | expresso-chat | 8006 | `services/expresso-chat/src/` |
+| expresso-drive | 8008 | `services/expresso-drive/src/` |
+| expresso-admin | 8010 | `services/expresso-admin/src/` |
 | expresso-imap | 993/143 | `services/expresso-imap/src/` |
 | expresso-smtp | 25/587 | `services/expresso-smtp/src/` |
 
