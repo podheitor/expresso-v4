@@ -32,7 +32,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id",        delete(delete_message))
         .route("/mail/messages/:id/raw",    get(get_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
-        .route("/mail/messages/:id/flags",  patch(update_flags))
+        .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
         .route("/mail/messages/bulk",       post(bulk_action))
 }
 
@@ -719,6 +719,31 @@ async fn move_message(
     tx.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/v1/mail/messages/:id/flags — list flags of a message without marking it Seen
+async fn get_message_flags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Vec<String>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<(Vec<String>,)> = sqlx::query_as(
+        "SELECT m.flags \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.id = $1 AND m.tenant_id = $2 AND mb.tenant_id = $2 AND mb.user_id = $3 \
+         LIMIT 1",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let (flags,) = row.ok_or(MailError::MessageNotFound(id))?;
+    Ok(Json(flags))
 }
 
 /// PATCH /api/v1/mail/messages/:id/flags
