@@ -575,20 +575,22 @@ async fn get_message(
 }
 
 
-/// GET /api/v1/mail/messages/:id/raw — download RFC 2822 bytes
+/// GET /api/v1/mail/messages/:id/raw — download RFC 2822 bytes.
 ///
 /// Returns `Content-Type: message/rfc822` and
 /// `Content-Disposition: attachment; filename="message.eml"`.
+/// ETag = `"{size_bytes}-{id}"` (immutable after delivery). Responds 304 if If-None-Match matches.
 /// Fetches raw bytes from S3 or local filesystem via `body_path`.
 /// Returns 404 if the message is not found or 502 if the body store is unavailable.
 async fn get_message_raw(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
+    req_headers:  axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let row: Option<(String, Option<String>)> = sqlx::query_as(
-        r#"SELECT m.body_path, m.message_id
+    let row: Option<(String, Option<String>, i32)> = sqlx::query_as(
+        r#"SELECT m.body_path, m.message_id, m.size_bytes
            FROM messages  m
            JOIN mailboxes mb ON mb.id = m.mailbox_id
            WHERE m.id        = $1
@@ -603,7 +605,14 @@ async fn get_message_raw(
     .await?;
     tx.commit().await?;
 
-    let (body_path, message_id) = row.ok_or(MailError::MessageNotFound(id))?;
+    let (body_path, message_id, size_bytes) = row.ok_or(MailError::MessageNotFound(id))?;
+
+    let etag = format!("\"{}-{}\"", size_bytes, id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
 
     let bytes = fetch_body_bytes_api(&state, &body_path).await
         .ok_or_else(|| MailError::SendFailed("body store unavailable".into()))?;
@@ -625,6 +634,7 @@ async fn get_message_raw(
         [
             (header::CONTENT_TYPE,        "message/rfc822".to_string()),
             (header::CONTENT_DISPOSITION, cd),
+            (header::ETAG,                etag),
         ],
         Body::from(bytes),
     ).into_response())
