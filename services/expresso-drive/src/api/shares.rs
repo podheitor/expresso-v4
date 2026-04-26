@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{delete, get},
     Json, Router,
@@ -90,14 +90,39 @@ async fn create(
 }
 
 async fn list(
-    State(state): State<AppState>,
-    ctx:          RequestCtx,
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
     Path(file_id): Path<Uuid>,
-) -> Result<Json<Vec<Share>>> {
+    req_headers:   HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     FileRepo::new(pool).get(ctx.tenant_id, file_id).await?;
+    let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(created_at) FROM drive_shares WHERE tenant_id = $1 AND file_id = $2 AND revoked_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .bind(file_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+    if let Some(ts) = max_created {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows = ShareRepo::new(pool).list_for_file(ctx.tenant_id, file_id).await?;
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_created {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn revoke(
