@@ -16,7 +16,7 @@ use lettre::{
 use serde::Deserialize;
 use uuid::Uuid;
 
-use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
+use crate::{api::context::RequestCtx, error::{MailError, Result}, ingest, state::AppState};
 
 /// Limites duros pro endpoint de envio.
 ///
@@ -133,32 +133,37 @@ pub async fn send_message(
         .port(smtp_port)
         .build();
 
-    // DKIM signing: se configurado, serializa → assina → prepend header → envia raw.
-    // Senão, fluxo normal via lettre send() (≠ signed).
-    if let Some(signer) = state.dkim() {
-        let envelope = email.envelope().clone();
-        let raw = email.formatted();
+    // Serialize once; sign if DKIM configured (signing failure is non-fatal).
+    let raw = email.formatted();
+    let (to_relay, dkim) = if let Some(signer) = state.dkim() {
         match signer.sign(&raw) {
             Ok(sig_header) => {
                 let mut signed = Vec::with_capacity(sig_header.len() + raw.len());
                 signed.extend_from_slice(sig_header.as_bytes());
                 signed.extend_from_slice(&raw);
-                mailer.send_raw(&envelope, &signed).await
-                    .map_err(|e| MailError::SendFailed(e.to_string()))?;
-                tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim = true, "message sent");
-                return Ok(StatusCode::ACCEPTED);
+                (signed, true)
             }
             Err(e) => {
-                // Falha DKIM ≠ bloqueia envio — loga e manda sem assinar.
                 tracing::warn!(error = %e, "DKIM sign failed — sending unsigned");
+                (raw.clone(), false)
             }
         }
-    }
+    } else {
+        (raw.clone(), false)
+    };
 
-    mailer.send(email).await
+    let envelope = email.envelope().clone();
+    mailer.send_raw(&envelope, &to_relay).await
         .map_err(|e| MailError::SendFailed(e.to_string()))?;
 
-    tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim = false, "message sent");
+    tracing::info!(from = %req.from, to = ?req.to, subject = %req.subject, dkim, "message sent");
+
+    // Async best-effort: save to Sent folder. Failure is logged but never blocks
+    // the 202 response — the message has already been relayed successfully.
+    if let Err(e) = save_to_sent(&state, &ctx, &to_relay, r"\Sent").await {
+        tracing::warn!(error = %e, "save-to-sent failed");
+    }
+
     Ok(StatusCode::ACCEPTED)
 }
 
@@ -249,6 +254,76 @@ pub async fn send_itip(
 
     tracing::info!(from=%req.from, to=?req.to, method=%method, "itip dispatched");
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Store raw RFC 2822 bytes to the user's Sent mailbox with `\Seen` flag.
+/// Returns Ok even when the mailbox doesn't exist — it is auto-created.
+async fn save_to_sent(
+    state:       &AppState,
+    ctx:         &RequestCtx,
+    raw:         &[u8],
+    special_use: &str,
+) -> anyhow::Result<()> {
+    let body_path = ingest::write_raw_message(state, raw).await?;
+    let size_bytes = raw.len().min(i32::MAX as usize) as i32;
+    let msg_id = Uuid::now_v7();
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let row: Option<(Uuid, i64)> = sqlx::query_as(
+        "SELECT id, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(special_use)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (mbox_id, uid) = if let Some((mid, nu)) = row {
+        (mid, nu)
+    } else {
+        let folder_name = match special_use {
+            r"\Sent"   => "Sent",
+            r"\Drafts" => "Drafts",
+            other      => other,
+        };
+        let mid: Uuid = sqlx::query_scalar(
+            "INSERT INTO mailboxes \
+               (user_id, tenant_id, folder_name, special_use, uid_validity, next_uid, subscribed) \
+             VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
+             RETURNING id",
+        )
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(folder_name)
+        .bind(special_use)
+        .fetch_one(&mut *tx)
+        .await?;
+        (mid, 1i64)
+    };
+
+    sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
+        .bind(mbox_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO messages (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
+         VALUES ($1, $2, $3, $4, ARRAY[$5::text], $6, $7, now())",
+    )
+    .bind(msg_id)
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .bind(uid)
+    .bind(r"\Seen")
+    .bind(size_bytes)
+    .bind(&body_path)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
 }
 
 /// Gate aplicado em /mail/send antes do bind ao relay SMTP. Ordem dos
