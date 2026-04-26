@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -52,9 +52,36 @@ pub async fn list(
     State(st):   State<Arc<AppState>>,
     headers:     HeaderMap,
     Query(q):    Query<ListQuery>,
-) -> Result<Json<Vec<GovbrMapping>>, Response> {
+) -> Result<Response, Response> {
     if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
     let pool = db_or_503(&st)?;
+    let max_ts: Option<OffsetDateTime> = if let Some(tid) = q.tenant_id {
+        sqlx::query_scalar(
+            "SELECT MAX(COALESCE(last_login_at, created_at)) FROM govbr_user_map WHERE tenant_id = $1",
+        )
+        .bind(tid)
+        .fetch_one(pool)
+        .await
+        .unwrap_or(None)
+    } else {
+        sqlx::query_scalar(
+            "SELECT MAX(COALESCE(last_login_at, created_at)) FROM govbr_user_map",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap_or(None)
+    };
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let rows: Vec<GovbrMapping> = if let Some(tid) = q.tenant_id {
         sqlx::query_as(
             "SELECT cpf_hash, tenant_id, user_id, assurance, created_at, last_login_at \
@@ -73,14 +100,19 @@ pub async fn list(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?
     };
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 pub async fn get_one(
     State(st):         State<Arc<AppState>>,
     headers:           HeaderMap,
     Path(cpf_hash):    Path<String>,
-) -> Result<Json<GovbrMapping>, Response> {
+) -> Result<Response, Response> {
     if let Some(r) = auth::require_super_admin(&st, &headers).await { return Err(r); }
     let pool = db_or_503(&st)?;
     let row: Option<GovbrMapping> = sqlx::query_as(
@@ -92,10 +124,28 @@ pub async fn get_one(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response())?;
 
-    match row {
-        Some(r) => Ok(Json(r)),
-        None    => Err(StatusCode::NOT_FOUND.into_response()),
+    let r = row.ok_or_else(|| StatusCode::NOT_FOUND.into_response())?;
+    let ts   = r.last_login_at.unwrap_or(r.created_at);
+    let etag = format!("\"{}-{}\"", ts.unix_timestamp(), r.cpf_hash);
+    let lm   = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(inm) = headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
     }
+    if let Some(ims_val) = headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if ts <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+    let mut resp = Json(r).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 pub async fn upsert(
