@@ -123,6 +123,10 @@ struct ArchiveListParams {
     pub subject:   Option<String>,
     /// ILIKE filter on from_addr field.
     pub from_addr: Option<String>,
+    /// Return only entries with size_bytes >= this value.
+    pub size_min:  Option<i32>,
+    /// Return only entries with size_bytes <= this value.
+    pub size_max:  Option<i32>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -335,6 +339,12 @@ async fn list_archive(
         let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND from_addr ILIKE '%{esc}%'")
     }).unwrap_or_default();
+    let size_min_filter = params.size_min
+        .map(|v| format!("AND size_bytes >= {v}"))
+        .unwrap_or_default();
+    let size_max_filter = params.size_max
+        .map(|v| format!("AND size_bytes <= {v}"))
+        .unwrap_or_default();
 
     let base =
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
@@ -363,6 +373,7 @@ async fn list_archive(
         if is_before {
             let sql = format!(
                 "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+                 {size_min_filter} {size_max_filter} \
                  AND (archived_at, id) < ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at DESC, id DESC LIMIT {limit}"
             );
@@ -377,6 +388,7 @@ async fn list_archive(
         } else {
             let sql = format!(
                 "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+                 {size_min_filter} {size_max_filter} \
                  AND (archived_at, id) > ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at ASC, id ASC LIMIT {limit}"
             );
@@ -395,6 +407,7 @@ async fn list_archive(
         let offset = params.offset.unwrap_or(0);
         let sql = format!(
             "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+             {size_min_filter} {size_max_filter} \
              ORDER BY archived_at DESC LIMIT {limit} OFFSET {offset}"
         );
         sqlx::query_as(&sql)
@@ -409,7 +422,8 @@ async fn list_archive(
     let count_sql = format!(
         "SELECT COUNT(*) FROM compliance_archive \
          WHERE tenant_id = $1 AND user_id = $2 \
-         {since_filter} {before_date_filter} {subject_filter} {from_addr_filter}"
+         {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+         {size_min_filter} {size_max_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
