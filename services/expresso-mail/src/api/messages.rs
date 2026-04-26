@@ -479,11 +479,14 @@ async fn list_messages(
 }
 
 /// GET /api/v1/mail/messages/:id — mark as Seen + return detail
+/// GET /api/v1/mail/messages/:id — mark as Seen + return detail.
+/// Returns ETag derived from received_at (immutable) + id. Responds 304 if If-None-Match matches.
 async fn get_message(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<MessageDetail>> {
+    req_headers:  axum::http::HeaderMap,
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let msg: Option<MessageDetail> = sqlx::query_as(
         r#"
@@ -509,6 +512,15 @@ async fn get_message(
 
     let msg = msg.ok_or(MailError::MessageNotFound(id))?;
 
+    let etag = format!("\"{}-{}\"", msg.received_at.unix_timestamp(), msg.id);
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            tx.commit().await?;
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
     if !msg.flags.iter().any(|f| f == r"\Seen") {
         let _ = sqlx::query(
             r#"UPDATE messages
@@ -523,7 +535,11 @@ async fn get_message(
     }
     tx.commit().await?;
 
-    Ok(Json(msg))
+    Ok((
+        StatusCode::OK,
+        [(header::ETAG, etag)],
+        Json(msg),
+    ).into_response())
 }
 
 
