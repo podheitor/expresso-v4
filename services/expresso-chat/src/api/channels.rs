@@ -15,6 +15,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
@@ -88,10 +89,10 @@ async fn create(
 async fn list(
     State(state): State<AppState>,
     ctx: RequestCtx,
-) -> Result<impl IntoResponse> {
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let total: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM chat_channels c
+    let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
+        r#"SELECT COUNT(*), MAX(c.updated_at) FROM chat_channels c
            JOIN chat_channel_members m ON m.channel_id = c.id
            WHERE c.tenant_id = $1 AND m.user_id = $2 AND c.is_archived = FALSE"#,
     )
@@ -100,10 +101,15 @@ async fn list(
     .fetch_one(pool)
     .await?;
     let rows = ChannelRepo::new(pool).list_for_user(ctx.tenant_id, ctx.user_id).await?;
-    Ok((
+    let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_updated {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn get_one(
