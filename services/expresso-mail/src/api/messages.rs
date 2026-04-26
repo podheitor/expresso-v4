@@ -276,7 +276,7 @@ async fn list_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
     Query(params): Query<ListParams>,
-) -> Result<Json<Vec<MessageListItem>>> {
+) -> Result<Response> {
     let folder = params.folder.unwrap_or_else(|| "INBOX".into());
     let limit  = params.limit.unwrap_or(50).min(200);
 
@@ -398,9 +398,29 @@ async fn list_messages(
             .fetch_all(&mut *tx)
             .await?
     };
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND mb.folder_name = $3 \
+         {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
+         {from_addr_filter} {subject_filter}"
+    );
+    let total: i64 = sqlx::query_scalar(&count_sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(&folder)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap_or(0);
+
     tx.commit().await?;
 
-    Ok(Json(rows))
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 /// GET /api/v1/mail/messages/:id — mark as Seen + return detail
