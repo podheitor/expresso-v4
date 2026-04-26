@@ -5,7 +5,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, head, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -26,7 +26,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/drive/files",                       get(list).post(upload))
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
-        .route("/api/v1/drive/files/:id",                   get(download).delete(delete))
+        .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
@@ -261,6 +261,39 @@ async fn metadata(
     let mut resp = Json(f).into_response();
     resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
+}
+
+async fn head_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let etag = format!("\"{}-{}\"", f.updated_at.unix_timestamp(), f.id);
+    let lm = f.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if f.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+    let mut resp = StatusCode::OK.into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    if let Ok(size) = HeaderValue::from_str(&f.size_bytes.to_string()) {
+        resp.headers_mut().insert(header::CONTENT_LENGTH, size);
+    }
     Ok(resp)
 }
 
