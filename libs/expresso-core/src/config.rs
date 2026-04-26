@@ -35,6 +35,10 @@ pub struct AppConfig {
     /// When set, `expresso-mail` fires POST /internal/process after each delivery.
     #[serde(default)]
     pub flows_url: String,
+    /// URL of the compliance service (e.g. "http://localhost:8009").
+    /// When set, `expresso-mail` fires POST /internal/archive after each delivery.
+    #[serde(default)]
+    pub compliance_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]

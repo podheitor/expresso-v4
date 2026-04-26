@@ -262,6 +262,32 @@ pub async fn process(
                     .await;
             });
         }
+
+        // Fire-and-forget: journal a compliance copy to expresso-compliance.
+        let compliance_url = state.cfg().compliance_url.clone();
+        if !compliance_url.is_empty() {
+            let from_addr  = parsed.from_addr.clone();
+            let to_addrs   = parsed.to_addrs.clone();
+            let subject    = parsed.subject.clone();
+            let body_path2 = body_path.clone();
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "tenant_id":  tenant_id,
+                    "user_id":    user_id,
+                    "body_path":  body_path2,
+                    "from_addr":  from_addr,
+                    "to_addrs":   to_addrs,
+                    "subject":    subject,
+                    "size_bytes": size_bytes,
+                });
+                let _ = reqwest::Client::new()
+                    .post(format!("{compliance_url}/internal/archive"))
+                    .json(&payload)
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await;
+            });
+        }
     }
 
     Ok(delivered)
