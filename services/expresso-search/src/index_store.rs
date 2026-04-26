@@ -52,6 +52,8 @@ pub struct IndexDoc {
 pub struct SearchHit {
     pub document_id: String,
     pub score: f32,
+    pub subject: Option<String>,
+    pub from_addr: Option<String>,
 }
 
 impl IndexStore {
@@ -196,12 +198,13 @@ impl IndexStore {
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_addr) in top_docs {
             let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
-            if let Some(doc_id) = doc.get_first(i.f_doc_id).and_then(|v| TantivyValue::as_str(&v)) {
-                results.push(SearchHit {
-                    document_id: doc_id.to_owned(),
-                    score,
-                });
-            }
+            let doc_id = match doc.get_first(i.f_doc_id).and_then(|v| TantivyValue::as_str(&v)) {
+                Some(id) => id.to_owned(),
+                None => continue,
+            };
+            let subject  = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            results.push(SearchHit { document_id: doc_id, score, subject, from_addr });
         }
 
         Ok(results)
@@ -235,6 +238,8 @@ mod tests {
         let hits = store.search("meeting", TENANT_A, 10).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "msg-001");
+        assert_eq!(hits[0].subject.as_deref(), Some("Meeting tomorrow"));
+        assert_eq!(hits[0].from_addr.as_deref(), Some("alice@example.com"));
 
         // Different tenant → no results
         let hits2 = store.search("meeting", TENANT_B, 10).unwrap();
