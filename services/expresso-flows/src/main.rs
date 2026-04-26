@@ -248,7 +248,7 @@ async fn create_rule(
     State(st):   State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Json(req):   Json<CreateRuleRequest>,
-) -> Result<(StatusCode, Json<FlowRule>), (StatusCode, Json<serde_json::Value>)> {
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
@@ -272,7 +272,12 @@ async fn create_rule(
     tx.commit().await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    Ok((StatusCode::CREATED, Json(rule)))
+    let location = format!("/api/v1/flows/rules/{}", rule.id);
+    Ok((
+        StatusCode::CREATED,
+        [(header::LOCATION, location)],
+        Json(rule),
+    ))
 }
 
 async fn update_rule(
