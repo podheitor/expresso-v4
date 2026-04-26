@@ -16,7 +16,7 @@
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
-//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr= ILIKE; keyset pagination via before_id/after_id; ?size_min=&size_max=)
+//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr=&to_addr= ILIKE; keyset pagination via before_id/after_id; ?size_min=&size_max=)
 //! GET             /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped)
 //! DELETE          /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped; GDPR/legal hold removal)
 //!
@@ -125,6 +125,8 @@ struct ArchiveListParams {
     pub subject:   Option<String>,
     /// ILIKE filter on from_addr field.
     pub from_addr: Option<String>,
+    /// ILIKE filter on any element in the to_addrs JSON array.
+    pub to_addr:   Option<String>,
     /// Return only entries with size_bytes >= this value.
     pub size_min:  Option<i32>,
     /// Return only entries with size_bytes <= this value.
@@ -341,6 +343,10 @@ async fn list_archive(
         let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
         format!("AND from_addr ILIKE '%{esc}%'")
     }).unwrap_or_default();
+    let to_addr_filter = params.to_addr.map(|t| {
+        let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
+    }).unwrap_or_default();
     let size_min_filter = params.size_min
         .map(|v| format!("AND size_bytes >= {v}"))
         .unwrap_or_default();
@@ -375,7 +381,7 @@ async fn list_archive(
         if is_before {
             let sql = format!(
                 "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
-                 {size_min_filter} {size_max_filter} \
+                 {to_addr_filter} {size_min_filter} {size_max_filter} \
                  AND (archived_at, id) < ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at DESC, id DESC LIMIT {limit}"
             );
@@ -390,7 +396,7 @@ async fn list_archive(
         } else {
             let sql = format!(
                 "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
-                 {size_min_filter} {size_max_filter} \
+                 {to_addr_filter} {size_min_filter} {size_max_filter} \
                  AND (archived_at, id) > ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at ASC, id ASC LIMIT {limit}"
             );
@@ -409,7 +415,7 @@ async fn list_archive(
         let offset = params.offset.unwrap_or(0);
         let sql = format!(
             "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
-             {size_min_filter} {size_max_filter} \
+             {to_addr_filter} {size_min_filter} {size_max_filter} \
              ORDER BY archived_at DESC LIMIT {limit} OFFSET {offset}"
         );
         sqlx::query_as(&sql)
@@ -425,7 +431,7 @@ async fn list_archive(
         "SELECT COUNT(*) FROM compliance_archive \
          WHERE tenant_id = $1 AND user_id = $2 \
          {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
-         {size_min_filter} {size_max_filter}"
+         {to_addr_filter} {size_min_filter} {size_max_filter}"
     );
     let total: i64 = sqlx::query_scalar(&count_sql)
         .bind(ctx.tenant_id)
