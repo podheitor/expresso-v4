@@ -16,7 +16,7 @@
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
-//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped)
+//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters)
 //!
 //! Port: :8009
 
@@ -110,6 +110,10 @@ struct ArchiveRequest {
 struct ArchiveListParams {
     pub limit:  Option<i64>,
     pub offset: Option<i64>,
+    /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived on or after this date.
+    pub since:  Option<String>,
+    /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived strictly before this date.
+    pub before: Option<String>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -302,28 +306,38 @@ async fn archive_message(
 }
 
 async fn list_archive(
-    State(st):    State<AppState>,
-    AuthCtx(ctx): AuthCtx,
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Json<Vec<ArchiveEntry>>, (StatusCode, Json<serde_json::Value>)> {
     let limit  = params.limit.unwrap_or(50).min(200);
     let offset = params.offset.unwrap_or(0);
 
-    let rows: Vec<ArchiveEntry> = sqlx::query_as(
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
                 to_addrs, subject, archived_at, size_bytes \
          FROM compliance_archive \
          WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_filter} \
          ORDER BY archived_at DESC \
-         LIMIT $3 OFFSET $4",
-    )
-    .bind(ctx.tenant_id)
-    .bind(ctx.user_id)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(&st.db)
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+         LIMIT $3 OFFSET $4"
+    );
+
+    let rows: Vec<ArchiveEntry> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok(Json(rows))
 }
