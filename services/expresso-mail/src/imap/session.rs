@@ -848,7 +848,7 @@ async fn cmd_search(
 ) -> Vec<Response<'static>> {
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
-         received_at, date, size_bytes, subject, from_addr \
+         received_at, date, size_bytes, subject, from_addr, to_addrs, cc_addrs \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -865,10 +865,14 @@ async fn cmd_search(
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
         let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
         let size: Option<i32> = row.try_get("size_bytes").ok();
-        let subject: Option<String> = row.try_get("subject").ok().flatten();
-        let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
+        let subject:   Option<String>             = row.try_get("subject").ok().flatten();
+        let from_addr: Option<String>             = row.try_get("from_addr").ok().flatten();
+        let to_addrs:  Option<serde_json::Value>  = row.try_get("to_addrs").ok();
+        let cc_addrs:  Option<serde_json::Value>  = row.try_get("cc_addrs").ok();
         if criteria.iter().all(|key| search_key_matches(
-            key, &flags, recv.as_ref(), sent.as_ref(), size, subject.as_deref(), from_addr.as_deref(),
+            key, &flags, recv.as_ref(), sent.as_ref(), size,
+            subject.as_deref(), from_addr.as_deref(),
+            to_addrs.as_ref(), cc_addrs.as_ref(),
             seq_val as u32, uid_val as u32, sel.exists,
         )) {
             let n = if uid {
@@ -886,6 +890,18 @@ async fn cmd_search(
     ]
 }
 
+fn json_addr_contains(v: Option<&serde_json::Value>, needle: &str) -> bool {
+    let needle_lc = needle.to_ascii_lowercase();
+    v.and_then(|j| j.as_array()).map_or(true, |arr| {
+        arr.iter().any(|item| {
+            let addr = item.get("addr").and_then(|a| a.as_str()).unwrap_or("");
+            let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("");
+            addr.to_ascii_lowercase().contains(&needle_lc)
+                || name.to_ascii_lowercase().contains(&needle_lc)
+        })
+    })
+}
+
 fn search_key_matches(
     key: &SearchKey<'_>,
     flags: &[String],
@@ -894,6 +910,8 @@ fn search_key_matches(
     size: Option<i32>,
     subject: Option<&str>,
     from_addr: Option<&str>,
+    to_addrs: Option<&serde_json::Value>,
+    cc_addrs: Option<&serde_json::Value>,
     seq: u32,
     msg_uid: u32,
     exists: u32,
@@ -945,7 +963,15 @@ fn search_key_matches(
             let p = astring_to_string(pat);
             icontains(from_addr, &p)
         }
-        // Header field matching: support Subject: and From: header names.
+        SearchKey::To(pat) => {
+            let p = astring_to_string(pat);
+            json_addr_contains(to_addrs, &p)
+        }
+        SearchKey::Cc(pat) => {
+            let p = astring_to_string(pat);
+            json_addr_contains(cc_addrs, &p)
+        }
+        // Header field matching: support Subject:, From:, To:, Cc: header names.
         // Other header fields: conservative true (not stored in DB).
         SearchKey::Header(field, value) => {
             let field_lower = astring_to_string(field).to_ascii_lowercase();
@@ -953,6 +979,8 @@ fn search_key_matches(
             match field_lower.as_str() {
                 "subject" => icontains(subject, &val_str),
                 "from"    => icontains(from_addr, &val_str),
+                "to"      => json_addr_contains(to_addrs, &val_str),
+                "cc"      => json_addr_contains(cc_addrs, &val_str),
                 _         => true,
             }
         }
@@ -973,14 +1001,13 @@ fn search_key_matches(
             in_ranges(&ranges, msg_uid)
         }
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists),
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists),
         SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)
-                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)
+            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)
+                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)),
-        // Remaining criteria (Cc, Bcc, To) —
-        // conservative true: not missing matches is safer than false positives for clients.
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)),
+        // Remaining criteria (Bcc) — conservative true (not stored in DB).
         _ => true,
     }
 }
