@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{header, HeaderValue, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -108,6 +108,7 @@ async fn list(
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
     Query(q): Query<EventQuery>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
@@ -123,6 +124,17 @@ async fn list(
     .bind(q.to)
     .fetch_one(pool)
     .await?;
+    if let Some(ts) = max_updated {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
     let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
