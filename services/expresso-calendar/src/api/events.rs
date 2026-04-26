@@ -347,12 +347,23 @@ async fn rsvp(
 /// GET /api/v1/calendars/:cal_id/events/:id/attendees — parsed attendee list.
 async fn list_attendees(
     State(state): State<AppState>,
-    ctx: RequestCtx,
+    ctx:          RequestCtx,
     Path((_cal, id)): Path<(Uuid, Uuid)>,
+    req_headers:  HeaderMap,
 ) -> Result<Response> {
     use crate::domain::itip;
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let lm = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if ev.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
     let atts = itip::parse_attendees(&ev.ical_raw);
     let body: Vec<_> = atts.into_iter().map(|a| serde_json::json!({
         "email":    a.email,
@@ -361,7 +372,9 @@ async fn list_attendees(
         "partstat": a.partstat,
         "rsvp":     a.rsvp,
     })).collect();
-    Ok((StatusCode::OK, Json(body)).into_response())
+    let mut resp = (StatusCode::OK, Json(body)).into_response();
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 /// Gate aplicado em todos os endpoints que aceitam VCALENDAR raw.
