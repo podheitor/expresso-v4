@@ -820,7 +820,7 @@ async fn update_flags(
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
     Json(body):   Json<FlagRequest>,
-) -> Result<StatusCode> {
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     if !body.add.is_empty() {
@@ -851,9 +851,23 @@ async fn update_flags(
         .execute(&mut *tx)
         .await?;
     }
+
+    let (flags,): (Vec<String>,) = sqlx::query_as(
+        "SELECT flags FROM messages \
+         WHERE id = $1 AND tenant_id = $2 \
+           AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2) \
+         LIMIT 1",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(MailError::MessageNotFound(id))?;
+
     tx.commit().await?;
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok((StatusCode::OK, Json(flags)).into_response())
 }
 
 // ─── Bulk ────────────────────────────────────────────────────────────────────
