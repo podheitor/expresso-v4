@@ -108,6 +108,38 @@ pub async fn send_message(
         builder = builder.to(Mailbox::new(None, a));
     }
 
+    // Threading: if replying to a known message, resolve In-Reply-To + References.
+    if let Some(orig_id) = req.reply_to_id {
+        let row: Option<(Option<String>, Vec<String>)> = {
+            let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+            let r = sqlx::query_as(
+                r#"SELECT m.message_id, m.references_
+                   FROM messages  m
+                   JOIN mailboxes mb ON mb.id = m.mailbox_id
+                   WHERE m.id       = $1
+                     AND m.tenant_id = $2
+                     AND mb.user_id  = $3
+                   LIMIT 1"#,
+            )
+            .bind(orig_id)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            r
+        };
+        if let Some((orig_msg_id, orig_refs)) = row {
+            if let Some(ref mid) = orig_msg_id {
+                builder = builder.in_reply_to(mid.clone());
+                // References = original References + original Message-Id (RFC 5322 §3.6.4)
+                let mut refs_list = orig_refs;
+                refs_list.push(mid.clone());
+                builder = builder.references(refs_list.join(" "));
+            }
+        }
+    }
+
     // Build body — prefer multipart when both variants present
     let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
         (Some(html), Some(plain)) => builder.multipart(

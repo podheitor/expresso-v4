@@ -86,6 +86,8 @@ pub struct MessageDetail {
     pub cc_addrs:        serde_json::Value,
     pub reply_to:        Option<String>,
     pub message_id:      Option<String>,
+    pub in_reply_to:     Option<String>,
+    pub references_:     Vec<String>,
     pub thread_id:       Option<Uuid>,
     pub flags:           Vec<String>,
     pub has_attachments: bool,
@@ -218,7 +220,9 @@ async fn get_message(
     let msg: Option<MessageDetail> = sqlx::query_as(
         r#"
         SELECT m.id, m.mailbox_id, m.subject, m.from_addr, m.from_name,
-               m.to_addrs, m.cc_addrs, m.reply_to, m.message_id, m.thread_id,
+               m.to_addrs, m.cc_addrs, m.reply_to, m.message_id, m.in_reply_to,
+               COALESCE(m.references_, '{}') AS references_,
+               m.thread_id,
                m.flags, m.has_attachments, m.body_path, m.preview_text,
                m.date, m.received_at, m.size_bytes
         FROM messages  m
