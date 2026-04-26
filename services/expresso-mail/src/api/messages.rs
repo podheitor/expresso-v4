@@ -11,7 +11,9 @@ use axum::{
     Router,
     routing::{get, delete, patch, post},
     extract::{State, Path, Query},
-    Json, http::StatusCode,
+    response::{IntoResponse, Response},
+    Json, http::{StatusCode, header},
+    body::Body,
 };
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
+        .route("/mail/messages/:id/raw",    get(get_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  patch(update_flags))
         .route("/mail/messages/bulk",       post(bulk_action))
@@ -251,6 +254,72 @@ async fn get_message(
     Ok(Json(msg))
 }
 
+
+/// GET /api/v1/mail/messages/:id/raw — download RFC 2822 bytes
+///
+/// Returns `Content-Type: message/rfc822` and
+/// `Content-Disposition: attachment; filename="message.eml"`.
+/// Fetches raw bytes from S3 or local filesystem via `body_path`.
+/// Returns 404 if the message is not found or 502 if the body store is unavailable.
+async fn get_message_raw(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Response> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        r#"SELECT m.body_path, m.message_id
+           FROM messages  m
+           JOIN mailboxes mb ON mb.id = m.mailbox_id
+           WHERE m.id        = $1
+             AND m.tenant_id = $2
+             AND mb.user_id  = $3
+           LIMIT 1"#,
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let (body_path, message_id) = row.ok_or(MailError::MessageNotFound(id))?;
+
+    let bytes = fetch_body_bytes_api(&state, &body_path).await
+        .ok_or_else(|| MailError::SendFailed("body store unavailable".into()))?;
+
+    let filename = message_id
+        .as_deref()
+        .map(|mid| {
+            let clean: String = mid.chars()
+                .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '.' { c } else { '_' })
+                .collect();
+            format!("{clean}.eml")
+        })
+        .unwrap_or_else(|| format!("{id}.eml"));
+
+    let cd = format!("attachment; filename=\"{filename}\"");
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,        "message/rfc822".to_string()),
+            (header::CONTENT_DISPOSITION, cd),
+        ],
+        Body::from(bytes),
+    ).into_response())
+}
+
+async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u8>> {
+    if let Some(idx) = body_path.strip_prefix("s3://").and_then(|s| s.find('/').map(|i| "s3://".len() + i + 1)) {
+        let key = &body_path[idx..];
+        state.store()?.get(key).await.ok()
+    } else if body_path.starts_with('/') {
+        tokio::fs::read(body_path).await.ok()
+    } else {
+        None
+    }
+}
 
 /// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC
 async fn list_thread(
