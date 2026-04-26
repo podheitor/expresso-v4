@@ -213,6 +213,26 @@ pub async fn process(
                 let _ = req.send().await;
             });
         }
+
+        // Fire-and-forget: push SSE notification to expresso-notifications.
+        let notif_url = state.cfg().notifications_url.clone();
+        if !notif_url.is_empty() {
+            let folder = target_folder.clone();
+            tokio::spawn(async move {
+                let payload = serde_json::json!({
+                    "kind":       "new_mail",
+                    "user_id":    user_id,
+                    "tenant_id":  tenant_id,
+                    "folder":     folder,
+                });
+                let _ = reqwest::Client::new()
+                    .post(format!("{notif_url}/internal/notify"))
+                    .json(&payload)
+                    .timeout(std::time::Duration::from_secs(3))
+                    .send()
+                    .await;
+            });
+        }
     }
 
     Ok(delivered)

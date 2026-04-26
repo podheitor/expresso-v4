@@ -27,6 +27,10 @@ pub struct AppConfig {
     /// `{calendar_url}/api/v1/scheduling/inbox` on delivery.
     #[serde(default)]
     pub calendar_url: String,
+    /// URL of the notifications service (e.g. "http://localhost:8006").
+    /// When set, `expresso-mail` fires POST /internal/notify after each delivery.
+    #[serde(default)]
+    pub notifications_url: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
