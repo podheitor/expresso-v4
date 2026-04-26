@@ -16,7 +16,7 @@
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
-//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters)
+//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; keyset pagination via before_id/after_id)
 //!
 //! Port: :8009
 
@@ -108,12 +108,17 @@ struct ArchiveRequest {
 
 #[derive(Debug, Deserialize)]
 struct ArchiveListParams {
-    pub limit:  Option<i64>,
-    pub offset: Option<i64>,
+    pub limit:     Option<i64>,
+    /// Legacy offset (ignored when before_id/after_id is set).
+    pub offset:    Option<i64>,
     /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived on or after this date.
-    pub since:  Option<String>,
+    pub since:     Option<String>,
     /// ISO-8601 date prefix (YYYY-MM-DD) — entries archived strictly before this date.
-    pub before: Option<String>,
+    pub before:    Option<String>,
+    /// Keyset cursor — entries archived strictly before this entry (DESC order, next page).
+    pub before_id: Option<Uuid>,
+    /// Keyset cursor — entries archived strictly after this entry (ASC, then reversed).
+    pub after_id:  Option<Uuid>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -310,34 +315,83 @@ async fn list_archive(
     AuthCtx(ctx):  AuthCtx,
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Json<Vec<ArchiveEntry>>, (StatusCode, Json<serde_json::Value>)> {
-    let limit  = params.limit.unwrap_or(50).min(200);
-    let offset = params.offset.unwrap_or(0);
+    let limit = params.limit.unwrap_or(50).min(200);
 
     let since_filter = params.since
         .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_date_filter = params.before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
-    let sql = format!(
+    let base =
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
                 to_addrs, subject, archived_at, size_bytes \
          FROM compliance_archive \
-         WHERE tenant_id = $1 AND user_id = $2 \
-         {since_filter} {before_filter} \
-         ORDER BY archived_at DESC \
-         LIMIT $3 OFFSET $4"
-    );
+         WHERE tenant_id = $1 AND user_id = $2";
 
-    let rows: Vec<ArchiveEntry> = sqlx::query_as(&sql)
+    let rows: Vec<ArchiveEntry> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
+        let is_before = params.before_id.is_some();
+
+        let anchor: Option<(time::OffsetDateTime, Uuid)> = sqlx::query_as(
+            "SELECT archived_at, id FROM compliance_archive \
+             WHERE id = $1 AND tenant_id = $2 AND user_id = $3 LIMIT 1",
+        )
+        .bind(cursor_id)
         .bind(ctx.tenant_id)
         .bind(ctx.user_id)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(&st.db)
+        .fetch_optional(&st.db)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+        let (anchor_ts, anchor_id) = anchor.ok_or_else(|| {
+            (StatusCode::NOT_FOUND, Json(json!({"error": "cursor entry not found"})))
+        })?;
+
+        if is_before {
+            let sql = format!(
+                "{base} {since_filter} {before_date_filter} \
+                 AND (archived_at, id) < ($4::timestamptz, $5::uuid) \
+                 ORDER BY archived_at DESC, id DESC LIMIT {limit}"
+            );
+            sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .fetch_all(&st.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+        } else {
+            let sql = format!(
+                "{base} {since_filter} {before_date_filter} \
+                 AND (archived_at, id) > ($4::timestamptz, $5::uuid) \
+                 ORDER BY archived_at ASC, id ASC LIMIT {limit}"
+            );
+            let mut rows: Vec<ArchiveEntry> = sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .fetch_all(&st.db)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+            rows.reverse();
+            rows
+        }
+    } else {
+        let offset = params.offset.unwrap_or(0);
+        let sql = format!(
+            "{base} {since_filter} {before_date_filter} \
+             ORDER BY archived_at DESC LIMIT {limit} OFFSET {offset}"
+        );
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_all(&st.db)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    };
 
     Ok(Json(rows))
 }
