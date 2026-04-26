@@ -7,6 +7,7 @@
 //!   - :24    LMTP — Postfix → app delivery
 //!   - :143   IMAP4rev1 — LOGIN, LIST, SELECT, FETCH, STORE, EXPUNGE, CLOSE, NOOP
 //!   - :993   IMAPS — IMAP4rev1 over implicit TLS (RFC 8314, only when TLS wired)
+//!   - :465   SMTPS — SMTP over implicit TLS (RFC 8314, only when TLS wired)
 
 mod api;
 mod bootstrap;
@@ -144,6 +145,15 @@ async fn main() -> anyhow::Result<()> {
         set.spawn(async move { smtp::submission::serve(sub_state, sub_addr).await });
     } else {
         info!("submission (587) disabled — mail_server.tls_cert/tls_key not set");
+    }
+
+    // SMTPS — implicit TLS (port 465, RFC 8314) — only when TLS configured
+    if cfg.mail_server.tls_cert.is_some() && cfg.mail_server.tls_key.is_some() {
+        let smtps_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.smtps_port).parse()?;
+        let smtps_state = state.clone();
+        set.spawn(async move { smtp::serve_smtps(smtps_state, smtps_addr).await });
+    } else {
+        info!("SMTPS (465) disabled — mail_server.tls_cert/tls_key not set");
     }
 
     // LMTP (Postfix → app delivery)

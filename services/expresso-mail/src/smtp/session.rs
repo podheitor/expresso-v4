@@ -266,6 +266,25 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
     result
 }
 
+/// Handle a single SMTPS connection (port 465, RFC 8314) — TLS already established.
+/// Sends banner, then enters session_loop without offering STARTTLS again.
+pub async fn handle_smtps(
+    stream: tokio_rustls::server::TlsStream<TcpStream>,
+    peer: SocketAddr,
+    state: AppState,
+) -> anyhow::Result<()> {
+    SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "accepted"]).inc();
+    let domain = state.cfg().mail_server.domain.clone();
+    let (r, mut w) = tokio::io::split(stream);
+    w.write_all(format!("220 {domain} ESMTP Expresso\r\n").as_bytes()).await?;
+    let result = session_loop(r, w, &domain, &state, peer, Envelope::default(), true).await;
+    match &result {
+        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "closed"]).inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtps465", "error"]).inc(),
+    }
+    result
+}
+
 /// Post-TLS SMTP session loop (mirrors the plain loop but STARTTLS is not offered).
 async fn session_loop<R, W>(
     reader: R,

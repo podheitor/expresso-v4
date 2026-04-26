@@ -36,7 +36,7 @@ pub fn init() {
     Lazy::force(&SMTP_COMMANDS_TOTAL);
     Lazy::force(&SMTP_SESSIONS_TOTAL);
 
-    for listener in ["smtp25", "smtp587", "lmtp"] {
+    for listener in ["smtp25", "smtp587", "smtps465", "lmtp"] {
         for cmd in [
             "EHLO", "HELO", "LHLO", "MAIL", "RCPT", "DATA",
             "RSET", "NOOP", "QUIT", "VRFY", "STARTTLS", "AUTH", "OTHER",

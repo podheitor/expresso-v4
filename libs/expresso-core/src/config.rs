@@ -108,9 +108,12 @@ pub struct MailServerConfig {
     /// IMAP listen port
     #[serde(default = "default_imap_port")]
     pub imap_port: u16,
-    /// IMAPS port
+    /// IMAPS port (implicit TLS, RFC 8314)
     #[serde(default = "default_imaps_port")]
     pub imaps_port: u16,
+    /// SMTPS port (implicit TLS, RFC 8314)
+    #[serde(default = "default_smtps_port")]
+    pub smtps_port: u16,
     /// Outbound relay host (submission)
     #[serde(default = "default_relay_host")]
     pub relay_host: String,
@@ -147,6 +150,7 @@ fn default_submission_port() -> u16     { 587 }
 fn default_lmtp_port() -> u16           { 24 }
 fn default_imap_port() -> u16           { 143 }
 fn default_imaps_port() -> u16          { 993 }
+fn default_smtps_port() -> u16          { 465 }
 fn default_relay_host() -> String     { "127.0.0.1".into() }
 fn default_relay_port() -> u16          { 587 }
 
