@@ -837,7 +837,10 @@ async fn cmd_search(
         let size: Option<i32> = row.try_get("size_bytes").ok();
         let subject: Option<String> = row.try_get("subject").ok().flatten();
         let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
-        if criteria.iter().all(|key| search_key_matches(key, &flags, recv.as_ref(), size, subject.as_deref(), from_addr.as_deref())) {
+        if criteria.iter().all(|key| search_key_matches(
+            key, &flags, recv.as_ref(), size, subject.as_deref(), from_addr.as_deref(),
+            seq_val as u32, uid_val as u32, sel.exists,
+        )) {
             let n = if uid {
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
             } else {
@@ -860,11 +863,18 @@ fn search_key_matches(
     size: Option<i32>,
     subject: Option<&str>,
     from_addr: Option<&str>,
+    seq: u32,
+    msg_uid: u32,
+    exists: u32,
 ) -> bool {
     let has = |f: &str| flags.iter().any(|x| x == f);
     // Case-insensitive substring check — mirrors RFC 3501 §6.4.4 ILIKE semantics.
     let icontains = |haystack: Option<&str>, needle: &str| -> bool {
         haystack.map_or(true, |h| h.to_ascii_lowercase().contains(&needle.to_ascii_lowercase()))
+    };
+    // Check if a value falls within any of the (start, end) ranges derived from a SequenceSet.
+    let in_ranges = |ranges: &[(u32, u32)], val: u32| -> bool {
+        ranges.iter().any(|&(s, e)| val >= s && val <= e)
     };
     match key {
         SearchKey::All     => true,
@@ -917,14 +927,24 @@ fn search_key_matches(
         // Keyword / Unkeyword — match against the flags array using flag_to_str.
         SearchKey::Keyword(kw) => has(flag_to_str(kw)),
         SearchKey::Unkeyword(kw) => !has(flag_to_str(kw)),
-        // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size, subject, from_addr),
-        SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, size, subject, from_addr)
-                || search_key_matches(b.as_ref(), flags, recv, size, subject, from_addr)
+        // SequenceSet — RFC 3501 §6.4.4: match by seq number (* resolves to exists).
+        SearchKey::SequenceSet(seq_set) => {
+            let ranges = sequence_ranges(seq_set, exists);
+            in_ranges(&ranges, seq)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size, subject, from_addr)),
-        // Remaining criteria (Cc, Bcc, To, SentSince, SentBefore, SentOn, SequenceSet, Uid) —
+        // UID — match by UID (* resolves to u32::MAX in UID mode).
+        SearchKey::Uid(uid_set) => {
+            let ranges = sequence_ranges(uid_set, u32::MAX);
+            in_ranges(&ranges, msg_uid)
+        }
+        // Recursive logical operators
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists),
+        SearchKey::Or(a, b)   => {
+            search_key_matches(a.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists)
+                || search_key_matches(b.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists)
+        }
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size, subject, from_addr, seq, msg_uid, exists)),
+        // Remaining criteria (Cc, Bcc, To, SentSince, SentBefore, SentOn) —
         // conservative true: not missing matches is safer than false positives for clients.
         _ => true,
     }
