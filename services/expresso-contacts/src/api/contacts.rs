@@ -127,9 +127,20 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
+    let lm = c.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if c.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::ETAG, &etag)
+        .header(header::LAST_MODIFIED, &lm)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&c).unwrap()))
         .unwrap())
