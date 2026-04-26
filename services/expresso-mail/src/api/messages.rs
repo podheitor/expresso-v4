@@ -57,6 +57,9 @@ pub struct ListParams {
     pub unread:    Option<bool>,
     /// Return only messages belonging to this thread.
     pub thread_id: Option<Uuid>,
+    /// Sort order for offset pagination: "asc" or "desc" (default "desc").
+    /// Ignored when keyset cursors (before_id/after_id) are used.
+    pub sort:      Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -254,9 +257,8 @@ async fn search_messages(
 ///   - Keyset (preferred): pass `before_id` or `after_id` for O(log N) seeks.
 ///   - Offset (legacy): pass `page` (0-indexed). Slow on large mailboxes.
 ///
-/// Optional filters: `flag=\Starred`, `unread=true`.
-///
-/// Results are always returned in DESC received_at order.
+/// Optional filters: `flag=\Starred`, `unread=true`, `thread_id=UUID`.
+/// Optional sort for offset mode: `sort=asc` (default `desc`). Keyset direction is cursor-driven.
 async fn list_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
@@ -354,9 +356,14 @@ async fn list_messages(
     } else {
         // Legacy offset pagination.
         let offset = params.page.unwrap_or(0) * limit;
+        let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+            "ASC"
+        } else {
+            "DESC"
+        };
         let sql = format!(
             "{base} {flag_filter} {multi_flag_filter} {unread_filter} {thread_id_filter} \
-             ORDER BY m.received_at DESC LIMIT $4 OFFSET $5"
+             ORDER BY m.received_at {order}, m.id {order} LIMIT $4 OFFSET $5"
         );
         sqlx::query_as(&sql)
             .bind(ctx.tenant_id)
