@@ -15,6 +15,7 @@
 //! # REST
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
+//! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped)
 //!
 //! Port: :8009
@@ -185,6 +186,28 @@ async fn create_policy(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok((StatusCode::CREATED, Json(policy)))
+}
+
+async fn get_policy(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<RetentionPolicy>, (StatusCode, Json<serde_json::Value>)> {
+    let row: Option<RetentionPolicy> = sqlx::query_as(
+        "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
+         FROM retention_policies \
+         WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    match row {
+        Some(p) => Ok(Json(p)),
+        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"})))),
+    }
 }
 
 async fn update_policy(
@@ -454,7 +477,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies",
                get(list_policies).post(create_policy))
         .route("/api/v1/compliance/retention-policies/:id",
-               patch(update_policy).delete(delete_policy))
+               get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
