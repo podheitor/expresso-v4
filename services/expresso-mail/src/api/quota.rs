@@ -27,9 +27,10 @@ async fn get_quota(
     ctx: RequestCtx,
 ) -> Result<Json<QuotaDto>> {
     let used: i64 = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(size_bytes), 0) \
-         FROM messages \
-         WHERE user_id = $1 AND tenant_id = $2 AND expunged_at IS NULL",
+        "SELECT COALESCE(SUM(m.size_bytes), 0) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE mb.user_id = $1 AND m.tenant_id = $2",
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)

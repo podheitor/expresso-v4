@@ -151,7 +151,6 @@ async fn search_messages(
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
-           AND m.expunged_at IS NULL \
            {folder_filter} {q_filter} {from_filter} {subject_filter} \
            {since_filter} {before_filter} \
          ORDER BY m.received_at DESC \
@@ -307,12 +306,14 @@ async fn delete_message(
 
     if let Some(trash) = trash_id {
         sqlx::query(
-            r#"UPDATE messages SET mailbox_id = $1
-                WHERE id = $2 AND tenant_id = $3"#,
+            "UPDATE messages SET mailbox_id = $1 \
+             WHERE id = $2 AND tenant_id = $3 \
+               AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
         )
         .bind(trash)
         .bind(id)
         .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -348,12 +349,14 @@ async fn move_message(
     })?;
 
     sqlx::query(
-        r#"UPDATE messages SET mailbox_id = $1
-            WHERE id = $2 AND tenant_id = $3"#,
+        "UPDATE messages SET mailbox_id = $1 \
+         WHERE id = $2 AND tenant_id = $3 \
+           AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
     )
     .bind(target_id)
     .bind(id)
     .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -372,25 +375,29 @@ async fn update_flags(
 
     if !body.add.is_empty() {
         sqlx::query(
-            r#"UPDATE messages
-                SET flags = array(SELECT DISTINCT unnest(flags || $1::text[]))
-                WHERE id = $2 AND tenant_id = $3"#,
+            "UPDATE messages \
+             SET flags = array(SELECT DISTINCT unnest(flags || $1::text[])) \
+             WHERE id = $2 AND tenant_id = $3 \
+               AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
         )
         .bind(&body.add)
         .bind(id)
         .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
         .execute(&mut *tx)
         .await?;
     }
     if !body.remove.is_empty() {
         sqlx::query(
-            r#"UPDATE messages
-                SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest($1::text[]))
-                WHERE id = $2 AND tenant_id = $3"#,
+            "UPDATE messages \
+             SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest($1::text[])) \
+             WHERE id = $2 AND tenant_id = $3 \
+               AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
         )
         .bind(&body.remove)
         .bind(id)
         .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -437,18 +444,23 @@ async fn bulk_action(
 ) -> Result<Json<BulkResult>> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
+    // Sub-select to verify ownership via mailboxes.user_id (messages has no user_id column).
+    let owned_mboxes = "(SELECT id FROM mailboxes WHERE user_id = $U AND tenant_id = $T)";
+
     let affected = match &body {
         BulkRequest::Delete { ids } => {
+            // Hard-delete owned messages matching the id list.
             let res = sqlx::query(
-                "UPDATE messages \
-                 SET expunged_at = NOW() \
-                 WHERE id = ANY($1) AND user_id = $2 AND tenant_id = $3 AND expunged_at IS NULL",
+                "DELETE FROM messages \
+                 WHERE id = ANY($1) AND tenant_id = $2 \
+                   AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $3 AND tenant_id = $2)",
             )
             .bind(ids)
-            .bind(ctx.user_id)
             .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
             .execute(&mut *tx)
             .await?;
+            let _ = owned_mboxes; // suppress unused warning
             res.rows_affected()
         }
         BulkRequest::Flag { ids, add, remove } => {
@@ -457,12 +469,13 @@ async fn bulk_action(
                 let res = sqlx::query(
                     "UPDATE messages \
                      SET flags = array(SELECT DISTINCT unnest(flags || $1::text[])) \
-                     WHERE id = ANY($2) AND user_id = $3 AND tenant_id = $4",
+                     WHERE id = ANY($2) AND tenant_id = $3 \
+                       AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
                 )
                 .bind(add)
                 .bind(ids)
-                .bind(ctx.user_id)
                 .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
                 .execute(&mut *tx)
                 .await?;
                 rows += res.rows_affected();
@@ -471,12 +484,13 @@ async fn bulk_action(
                 let res = sqlx::query(
                     "UPDATE messages \
                      SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest($1::text[])) \
-                     WHERE id = ANY($2) AND user_id = $3 AND tenant_id = $4",
+                     WHERE id = ANY($2) AND tenant_id = $3 \
+                       AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
                 )
                 .bind(remove)
                 .bind(ids)
-                .bind(ctx.user_id)
                 .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
                 .execute(&mut *tx)
                 .await?;
                 rows += res.rows_affected();
@@ -495,15 +509,14 @@ async fn bulk_action(
             .await?;
             let dst_id = mbox.ok_or_else(|| MailError::NotFound("folder not found".into()))?;
             let res = sqlx::query(
-                "UPDATE messages \
-                 SET mailbox_id = $1, folder_name = $2 \
-                 WHERE id = ANY($3) AND user_id = $4 AND tenant_id = $5 AND expunged_at IS NULL",
+                "UPDATE messages SET mailbox_id = $1 \
+                 WHERE id = ANY($2) AND tenant_id = $3 \
+                   AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
             )
             .bind(dst_id)
-            .bind(folder)
             .bind(ids)
-            .bind(ctx.user_id)
             .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
             .execute(&mut *tx)
             .await?;
             res.rows_affected()

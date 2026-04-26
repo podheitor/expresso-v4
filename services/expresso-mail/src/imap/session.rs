@@ -916,9 +916,10 @@ async fn cmd_status(
     let needs_size = item_names.iter().any(|n| matches!(n, StatusDataItemName::Size));
     let mailbox_size: u64 = if needs_size {
         sqlx::query_scalar(
-            "SELECT COALESCE(SUM(size_bytes), 0) \
-             FROM messages \
-             WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3 AND expunged_at IS NULL",
+            "SELECT COALESCE(SUM(m.size_bytes), 0) \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE mb.user_id = $1 AND mb.folder_name = $2 AND m.tenant_id = $3",
         )
         .bind(uid)
         .bind(&mbox_name)
