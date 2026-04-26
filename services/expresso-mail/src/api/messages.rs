@@ -9,7 +9,7 @@
 
 use axum::{
     Router,
-    routing::{get, delete, patch, post},
+    routing::{get, delete, head, patch, post},
     extract::{State, Path, Query},
     response::{IntoResponse, Response},
     Json, http::{StatusCode, header},
@@ -30,7 +30,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
-        .route("/mail/messages/:id/raw",    get(get_message_raw))
+        .route("/mail/messages/:id/raw",    get(get_message_raw).head(head_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
         .route("/mail/messages/bulk",        post(bulk_action))
@@ -579,6 +579,41 @@ async fn get_message_raw(
             (header::CONTENT_DISPOSITION, cd),
         ],
         Body::from(bytes),
+    ).into_response())
+}
+
+/// HEAD /api/v1/mail/messages/:id/raw — check existence and get Content-Length without body download.
+async fn head_message_raw(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Response> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<(String, i32)> = sqlx::query_as(
+        r#"SELECT m.body_path, m.size_bytes
+           FROM messages  m
+           JOIN mailboxes mb ON mb.id = m.mailbox_id
+           WHERE m.id        = $1
+             AND m.tenant_id = $2
+             AND mb.user_id  = $3
+           LIMIT 1"#,
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let (_body_path, size_bytes) = row.ok_or(MailError::MessageNotFound(id))?;
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,   "message/rfc822".to_string()),
+            (header::CONTENT_LENGTH, size_bytes.to_string()),
+        ],
+        Body::empty(),
     ).into_response())
 }
 
