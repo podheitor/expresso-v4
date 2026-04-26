@@ -5,7 +5,7 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde_json::{json, Value};
@@ -14,6 +14,7 @@ use tracing::info;
 
 mod auth;
 mod dav_admin;
+mod govbr;
 mod handlers;
 mod tenants;
 mod audit;
@@ -117,6 +118,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/dead-props.html",          get(dead_props::page))
         .route("/drive-quotas.html",        get(drive_quotas::page))
         .route("/drive-quotas/:tenant_id",  post(drive_quotas::update))
+        .route("/api/v1/govbr/mappings",            get(govbr::list).post(govbr::upsert))
+        .route("/api/v1/govbr/mappings/:cpf_hash",  get(govbr::get_one).delete(govbr::delete))
         .route("/health", get(health))
         .route("/ready",  get(ready))
         .nest_service("/static", ServeDir::new("static"))
