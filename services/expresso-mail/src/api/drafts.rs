@@ -36,6 +36,7 @@ pub struct DraftRequest {
     pub from:       String,
     pub to:         Option<Vec<String>>,
     pub cc:         Option<Vec<String>>,
+    pub bcc:        Option<Vec<String>>,
     pub subject:    Option<String>,
     pub body_text:  Option<String>,
     pub body_html:  Option<String>,
@@ -123,6 +124,11 @@ fn build_raw(req: &DraftRequest) -> Result<Vec<u8>> {
         let a: Address = addr_str.parse()
             .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
         builder = builder.cc(Mailbox::new(None, a));
+    }
+    for addr_str in req.bcc.iter().flatten() {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
+        builder = builder.bcc(Mailbox::new(None, a));
     }
 
     let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
