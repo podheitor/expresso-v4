@@ -24,7 +24,7 @@ use imap_codec::{
         core::{Atom, AString, IString, Literal, NString, Tag, Text, Vec1},
         fetch::{MacroOrMessageDataItemNames, MessageDataItem, MessageDataItemName, Section},
         flag::{Flag, FlagFetch, FlagNameAttribute, FlagPerm, StoreResponse},
-        mailbox::Mailbox as ImapMailbox,
+        mailbox::{Mailbox as ImapMailbox, ListMailbox},
         response::{
             Bye, Capability, CapabilityOther, Code, Data, Greeting, Response, Status, StatusBody,
             StatusKind, Tagged,
@@ -276,12 +276,12 @@ async fn dispatch(
         }
         CommandBody::List {
             reference,
-            mailbox_wildcard: _,
+            mailbox_wildcard,
         } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_list(state, tag, reference, user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_list(state, tag, reference, mailbox_wildcard, user_id.unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Select { mailbox, .. } => {
             if *sess == SessionState::NotAuthenticated {
@@ -307,11 +307,11 @@ async fn dispatch(
             }
             cmd_subscribe(state, tag, mailbox, user_id.unwrap(), tenant_id.unwrap(), false).await
         }
-        CommandBody::Lsub { reference, .. } => {
+        CommandBody::Lsub { reference, mailbox_wildcard } => {
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            cmd_lsub(state, tag, reference, user_id.unwrap(), tenant_id.unwrap()).await
+            cmd_lsub(state, tag, reference, mailbox_wildcard, user_id.unwrap(), tenant_id.unwrap()).await
         }
         CommandBody::Status { mailbox, item_names } => {
             if *sess == SessionState::NotAuthenticated {
@@ -621,13 +621,76 @@ async fn handle_authenticate_plain(
     }
 }
 
+/// Convert `ListMailbox` to a plain UTF-8 pattern string.
+/// `ListMailbox::Token` wraps a `ListCharString` (AsRef<[u8]>).
+/// `ListMailbox::String` wraps an `IString`.
+fn list_mailbox_pattern(wc: &ListMailbox<'_>) -> String {
+    match wc {
+        ListMailbox::Token(lcs) => String::from_utf8_lossy(lcs.as_ref()).into_owned(),
+        ListMailbox::String(is) => match is {
+            IString::Quoted(q)   => String::from_utf8_lossy(q.as_ref()).into_owned(),
+            IString::Literal(l)  => String::from_utf8_lossy(l.as_ref()).into_owned(),
+        },
+    }
+}
+
+/// Returns true if `name` matches the IMAP LIST wildcard `pattern`.
+/// Hierarchy delimiter is `/`.
+/// `*` — matches everything including `/`.
+/// `%` — matches everything except `/` (one level only).
+/// `""` (empty) — matches only an empty string (used for LIST "" "" to get root).
+fn list_matches(name: &str, pattern: &str) -> bool {
+    if pattern.is_empty() {
+        return name.is_empty();
+    }
+    list_match_recursive(name.as_bytes(), pattern.as_bytes())
+}
+
+fn list_match_recursive(name: &[u8], pat: &[u8]) -> bool {
+    match (pat.first(), name.first()) {
+        (None, None) => true,
+        (None, _)    => false,
+        (Some(b'*'), _) => {
+            // * matches any sequence (including empty and including /).
+            for i in 0..=name.len() {
+                if list_match_recursive(&name[i..], &pat[1..]) {
+                    return true;
+                }
+            }
+            false
+        }
+        (Some(b'%'), _) => {
+            // % matches any sequence except / (i.e. one level).
+            for i in 0..=name.len() {
+                if name[..i].contains(&b'/') { break; }
+                if list_match_recursive(&name[i..], &pat[1..]) {
+                    return true;
+                }
+            }
+            false
+        }
+        (Some(pc), Some(nc)) => {
+            // Case-insensitive compare for regular chars.
+            if pc.to_ascii_lowercase() == nc.to_ascii_lowercase() {
+                list_match_recursive(&name[1..], &pat[1..])
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
+}
+
 async fn cmd_list(
     state: &AppState,
     tag: Tag<'static>,
     _reference: &ImapMailbox<'_>,
+    mailbox_wildcard: &ListMailbox<'_>,
     uid: Uuid,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
+    let pattern = list_mailbox_pattern(mailbox_wildcard);
+
     let rows: Vec<(String, Option<String>, i32, i32)> = sqlx::query_as(
         "SELECT folder_name, special_use, unseen_count, message_count \
          FROM mailboxes \
@@ -641,6 +704,8 @@ async fn cmd_list(
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for (name, special_use, unseen, msg_count) in &rows {
+        // If pattern is * or % at top level, all folders match; otherwise filter.
+        if !list_matches(name, &pattern) { continue; }
         let mailbox = ImapMailbox::try_from(name.to_owned())
             .unwrap_or_else(|_| ImapMailbox::Inbox);
 
@@ -709,9 +774,12 @@ async fn cmd_lsub(
     state: &AppState,
     tag: Tag<'static>,
     _reference: &ImapMailbox<'_>,
+    mailbox_wildcard: &ListMailbox<'_>,
     uid: Uuid,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
+    let pattern = list_mailbox_pattern(mailbox_wildcard);
+
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         "SELECT folder_name, special_use FROM mailboxes \
          WHERE user_id = $1 AND tenant_id = $2 AND subscribed = TRUE \
@@ -725,6 +793,7 @@ async fn cmd_lsub(
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for (name, special_use) in &rows {
+        if !list_matches(name, &pattern) { continue; }
         let mailbox = ImapMailbox::try_from(name.to_owned())
             .unwrap_or_else(|_| ImapMailbox::Inbox);
         let items: Vec<FlagNameAttribute<'static>> = special_use
