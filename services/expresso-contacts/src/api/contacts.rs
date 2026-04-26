@@ -111,12 +111,19 @@ async fn get_one(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path((_book_id, id)): Path<(Uuid, Uuid)>,
+    req_headers: HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let c    = ContactRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let etag = format!("\"{}\"", c.etag);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::ETAG, format!("\"{}\"", c.etag))
+        .header(header::ETAG, &etag)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&c).unwrap()))
         .unwrap())
