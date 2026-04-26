@@ -116,7 +116,7 @@ pub async fn process(
         let thread_id = resolve_thread_id(&mut tx, tenant_id, &parsed).await?;
 
 
-        sqlx::query(
+        let msg_row_id: Uuid = sqlx::query_scalar(
             r#"
             INSERT INTO messages (
                 mailbox_id,
@@ -143,6 +143,7 @@ pub async fn process(
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, '[]'::jsonb, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
             )
+            RETURNING id
             "#,
         )
         .bind(mailbox_id)
@@ -164,7 +165,7 @@ pub async fn process(
         .bind(&body_path)
         .bind(&parsed.preview_text)
         .bind(parsed.date)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
 
         sqlx::query("UPDATE mailboxes SET next_uid = GREATEST(next_uid, $2) WHERE id = $1")
@@ -234,33 +235,36 @@ pub async fn process(
             });
         }
 
-        // Fire-and-forget: evaluate workflow rules via expresso-flows.
+        // Evaluate workflow rules via expresso-flows and apply resulting actions.
         let flows_url = state.cfg().flows_url.clone();
         if !flows_url.is_empty() {
-            let folder    = target_folder.clone();
-            let from_addr = parsed.from_addr.clone();
-            let to_addrs: Vec<String> = parsed.to_addrs
-                .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect())
-                .unwrap_or_default();
-            let subject = parsed.subject.clone();
-            tokio::spawn(async move {
-                let payload = serde_json::json!({
-                    "user_id":    user_id,
-                    "tenant_id":  tenant_id,
-                    "message_id": Uuid::nil(), // message row UUID not tracked here; flows uses it for context only
-                    "folder":     folder,
-                    "from_addr":  from_addr,
-                    "to_addrs":   to_addrs,
-                    "subject":    subject,
-                });
-                let _ = reqwest::Client::new()
-                    .post(format!("{flows_url}/internal/process"))
-                    .json(&payload)
-                    .timeout(std::time::Duration::from_secs(3))
-                    .send()
-                    .await;
+            let payload = serde_json::json!({
+                "user_id":    user_id,
+                "tenant_id":  tenant_id,
+                "message_id": msg_row_id,
+                "folder":     target_folder,
+                "from_addr":  parsed.from_addr,
+                "to_addrs":   parsed.to_addrs
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect::<Vec<_>>())
+                    .unwrap_or_default(),
+                "subject":    parsed.subject,
             });
+            match reqwest::Client::new()
+                .post(format!("{flows_url}/internal/process"))
+                .json(&payload)
+                .timeout(std::time::Duration::from_secs(3))
+                .send()
+                .await
+            {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(body) = resp.json::<serde_json::Value>().await {
+                        apply_flow_actions(state, tenant_id, user_id, msg_row_id, &body).await;
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "flows process call failed"),
+                _ => {}
+            }
         }
 
         // Fire-and-forget: journal a compliance copy to expresso-compliance.
@@ -291,6 +295,85 @@ pub async fn process(
     }
 
     Ok(delivered)
+}
+
+/// Execute actions returned by expresso-flows (best-effort; errors are logged, not fatal).
+async fn apply_flow_actions(
+    state:      &AppState,
+    tenant_id:  Uuid,
+    user_id:    Uuid,
+    message_id: Uuid,
+    body:       &serde_json::Value,
+) {
+    let actions = match body.get("actions").and_then(|v| v.as_array()) {
+        Some(a) if !a.is_empty() => a,
+        _ => return,
+    };
+
+    for action in actions {
+        let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match action_type {
+            "move_to_folder" => {
+                let folder = match action.get("params").and_then(|p| p.get("folder")).and_then(|v| v.as_str()) {
+                    Some(f) => f.to_owned(),
+                    None    => { tracing::warn!("flows: move_to_folder missing params.folder"); continue; }
+                };
+                let res = sqlx::query(
+                    "UPDATE messages SET mailbox_id = ( \
+                        SELECT id FROM mailboxes \
+                        WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3 LIMIT 1 \
+                     ) \
+                     WHERE id = $4 AND tenant_id = $2 \
+                       AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $1 AND tenant_id = $2)",
+                )
+                .bind(user_id)
+                .bind(tenant_id)
+                .bind(&folder)
+                .bind(message_id)
+                .execute(state.db())
+                .await;
+                if let Err(e) = res {
+                    tracing::warn!(error = %e, folder = %folder, "flows: move_to_folder failed");
+                }
+            }
+            "add_flag" => {
+                let flag = match action.get("params").and_then(|p| p.get("flag")).and_then(|v| v.as_str()) {
+                    Some(f) => f.to_owned(),
+                    None    => { tracing::warn!("flows: add_flag missing params.flag"); continue; }
+                };
+                let res = sqlx::query(
+                    "UPDATE messages \
+                     SET flags = array_append(flags, $1) \
+                     WHERE id = $2 AND tenant_id = $3 AND NOT ($1 = ANY(flags)) \
+                       AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
+                )
+                .bind(&flag)
+                .bind(message_id)
+                .bind(tenant_id)
+                .bind(user_id)
+                .execute(state.db())
+                .await;
+                if let Err(e) = res {
+                    tracing::warn!(error = %e, flag = %flag, "flows: add_flag failed");
+                }
+            }
+            "webhook" => {
+                if let Some(url) = action.get("params").and_then(|p| p.get("url")).and_then(|v| v.as_str()) {
+                    let url = url.to_owned();
+                    let payload = serde_json::json!({ "message_id": message_id, "tenant_id": tenant_id });
+                    tokio::spawn(async move {
+                        let _ = reqwest::Client::new()
+                            .post(&url)
+                            .json(&payload)
+                            .timeout(std::time::Duration::from_secs(5))
+                            .send()
+                            .await;
+                    });
+                }
+            }
+            other => tracing::warn!(action_type = %other, "flows: unknown action type"),
+        }
+    }
 }
 
 /// Lock the target folder's mailbox row (FOR UPDATE) and return (id, next_uid).
