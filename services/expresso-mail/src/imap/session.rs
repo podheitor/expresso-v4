@@ -2590,6 +2590,50 @@ async fn cmd_rename(
     if src.eq_ignore_ascii_case("INBOX") {
         return vec![no_tagged(tag, "RENAME INBOX not supported")];
     }
+
+    // RFC 3501 §6.3.5: renaming a parent must also rename all children.
+    // We do this in two steps: rename children first (longest paths first to
+    // avoid overlapping LIKE patterns), then rename the parent itself.
+    //
+    // Children match: folder_name LIKE '<src>/%'
+    // Their new name:  '<dst>' || substring(folder_name, length('<src>') + 1)
+    let src_prefix = format!("{src}/");
+    let dst_prefix = format!("{dst}/");
+
+    let mut tx = match state.db().begin().await {
+        Ok(t) => t,
+        Err(_) => return vec![no_tagged(tag, "internal error")],
+    };
+
+    // Rename all children first.
+    let children = sqlx::query_scalar::<_, String>(
+        "SELECT folder_name FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND folder_name LIKE $3 \
+         ORDER BY length(folder_name) DESC",
+    )
+    .bind(user_id)
+    .bind(tenant_id)
+    .bind(format!("{src_prefix}%"))
+    .fetch_all(&mut *tx)
+    .await
+    .unwrap_or_default();
+
+    for child in &children {
+        let suffix = &child[src_prefix.len()..];
+        let new_name = format!("{dst_prefix}{suffix}");
+        let _ = sqlx::query(
+            "UPDATE mailboxes SET folder_name = $4 \
+             WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+        )
+        .bind(user_id)
+        .bind(tenant_id)
+        .bind(child)
+        .bind(&new_name)
+        .execute(&mut *tx)
+        .await;
+    }
+
+    // Rename the target mailbox itself.
     let result = sqlx::query(
         "UPDATE mailboxes SET folder_name = $4 \
          WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
@@ -2598,13 +2642,16 @@ async fn cmd_rename(
     .bind(tenant_id)
     .bind(&src)
     .bind(&dst)
-    .execute(state.db())
+    .execute(&mut *tx)
     .await;
 
-    match result {
-        Ok(r) if r.rows_affected() > 0 => vec![ok_tagged(tag, None, "RENAME completed")],
-        _ => vec![no_tagged(tag, "no such mailbox")],
+    let affected = result.map(|r| r.rows_affected()).unwrap_or(0);
+
+    if tx.commit().await.is_err() || affected == 0 {
+        return vec![no_tagged(tag, "no such mailbox")];
     }
+
+    vec![ok_tagged(tag, None, "RENAME completed")]
 }
 
 /// NOOP — RFC 3501 §6.1.2: clients use this as a polling beat to discover
