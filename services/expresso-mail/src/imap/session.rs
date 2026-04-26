@@ -837,7 +837,7 @@ async fn cmd_status(
 /// Flag criteria are evaluated exactly. Since/Before/On are evaluated against
 /// `received_at` (RFC 3501 §2.3.3 internal date). Subject/From use the DB
 /// columns (ILIKE). Text/Body/Header also match against subject+from_addr.
-/// SentSince/SentBefore/SentOn require envelope Date parsing — conservative true.
+/// SentSince/SentBefore/SentOn compare against the `date` DB column (envelope Date header).
 async fn cmd_search(
     state: &AppState,
     tag: Tag<'static>,
@@ -848,7 +848,7 @@ async fn cmd_search(
 ) -> Vec<Response<'static>> {
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
-         received_at, size_bytes, subject, from_addr \
+         received_at, date, size_bytes, subject, from_addr \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -863,11 +863,12 @@ async fn cmd_search(
         let uid_val: i64 = row.get("uid");
         let flags: Vec<String> = row.get("flags");
         let recv: Option<ChronoDateTime<Utc>> = row.try_get("received_at").ok();
+        let sent: Option<ChronoDateTime<Utc>> = row.try_get("date").ok().flatten();
         let size: Option<i32> = row.try_get("size_bytes").ok();
         let subject: Option<String> = row.try_get("subject").ok().flatten();
         let from_addr: Option<String> = row.try_get("from_addr").ok().flatten();
         if criteria.iter().all(|key| search_key_matches(
-            key, &flags, recv.as_ref(), size, subject.as_deref(), from_addr.as_deref(),
+            key, &flags, recv.as_ref(), sent.as_ref(), size, subject.as_deref(), from_addr.as_deref(),
             seq_val as u32, uid_val as u32, sel.exists,
         )) {
             let n = if uid {
@@ -889,6 +890,7 @@ fn search_key_matches(
     key: &SearchKey<'_>,
     flags: &[String],
     recv: Option<&ChronoDateTime<Utc>>,
+    sent: Option<&ChronoDateTime<Utc>>,
     size: Option<i32>,
     subject: Option<&str>,
     from_addr: Option<&str>,
@@ -920,10 +922,14 @@ fn search_key_matches(
         SearchKey::Draft     => has("\\Draft"),
         SearchKey::Undraft   => !has("\\Draft"),
         // Internal-date criteria: compare against received_at (UTC midnight boundary).
-        // SentSince/SentBefore/SentOn require envelope Date parsing — conservative true.
         SearchKey::Since(date) => recv.map_or(true, |r| r.date_naive() >= *date.as_ref()),
         SearchKey::Before(date) => recv.map_or(true, |r| r.date_naive() < *date.as_ref()),
         SearchKey::On(date) => recv.map_or(true, |r| r.date_naive() == *date.as_ref()),
+        // SentSince/SentBefore/SentOn compare against the envelope Date header stored in DB.
+        // Conservative true when Date header is absent (NULL) — no false negatives.
+        SearchKey::SentSince(date)  => sent.map_or(true, |s| s.date_naive() >= *date.as_ref()),
+        SearchKey::SentBefore(date) => sent.map_or(true, |s| s.date_naive() < *date.as_ref()),
+        SearchKey::SentOn(date)     => sent.map_or(true, |s| s.date_naive() == *date.as_ref()),
         // Size criteria: size_bytes comes from DB (set by APPEND/ingest).
         // Conservative true when size_bytes is NULL (e.g. old messages before APPEND sprint).
         SearchKey::Larger(n)  => size.map_or(true, |s| (s as u64) > (*n as u64)),
@@ -967,13 +973,13 @@ fn search_key_matches(
             in_ranges(&ranges, msg_uid)
         }
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists),
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists),
         SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists)
-                || search_key_matches(b.as_ref(), flags, recv, size, subject, from_addr, seq, msg_uid, exists)
+            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)
+                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, size, subject, from_addr, seq, msg_uid, exists)),
-        // Remaining criteria (Cc, Bcc, To, SentSince, SentBefore, SentOn) —
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, seq, msg_uid, exists)),
+        // Remaining criteria (Cc, Bcc, To) —
         // conservative true: not missing matches is safer than false positives for clients.
         _ => true,
     }
