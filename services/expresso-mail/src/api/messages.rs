@@ -496,7 +496,7 @@ async fn list_messages(
 
 /// GET /api/v1/mail/messages/:id — mark as Seen + return detail
 /// GET /api/v1/mail/messages/:id — mark as Seen + return detail.
-/// Returns ETag derived from received_at (immutable) + id. Responds 304 if If-None-Match matches.
+/// Returns ETag derived from received_at (immutable) + id. Responds 304 if If-None-Match or If-Modified-Since matches.
 async fn get_message(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -529,11 +529,24 @@ async fn get_message(
     let msg = msg.ok_or(MailError::MessageNotFound(id))?;
 
     let etag = format!("\"{}-{}\"", msg.received_at.unix_timestamp(), msg.id);
+    let last_modified = msg.received_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
 
     if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
         if inm.as_bytes() == etag.as_bytes() {
             tx.commit().await?;
             return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if msg.received_at <= ims_dt {
+                    tx.commit().await?;
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
         }
     }
 
@@ -553,7 +566,10 @@ async fn get_message(
 
     Ok((
         StatusCode::OK,
-        [(header::ETAG, etag)],
+        [
+            (header::ETAG,          etag),
+            (header::LAST_MODIFIED, last_modified),
+        ],
         Json(msg),
     ).into_response())
 }
