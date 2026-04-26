@@ -2,6 +2,7 @@
 //! Handles core IMAP4rev1 commands: CAPABILITY, LOGIN, LIST, SELECT,
 //! FETCH, STORE, EXPUNGE, CLOSE, LOGOUT, NOOP.
 //! Extensions: UIDPLUS, IDLE, UNSELECT, MOVE, LITERAL+ (RFC 7888).
+//! SEARCH TEXT/BODY fetches raw bytes from object store for real content search.
 //!
 //! Tenant scoping: após LOGIN, `tenant_id` é propagado para todo handler
 //! subsequente e cada query aplica `AND tenant_id = $` explícito. Sem isso,
@@ -908,8 +909,8 @@ async fn cmd_status(
 ///
 /// Flag criteria are evaluated exactly. Since/Before/On are evaluated against
 /// `received_at` (RFC 3501 §2.3.3 internal date). Subject/From use the DB
-/// columns (ILIKE). Text/Body/Header also match against subject+from_addr.
-/// SentSince/SentBefore/SentOn compare against the `date` DB column (envelope Date header).
+/// columns (ILIKE). TEXT/BODY fetch raw bytes from object store for real content
+/// search. SentSince/SentBefore/SentOn compare against the `date` DB column.
 async fn cmd_search(
     state: &AppState,
     tag: Tag<'static>,
@@ -918,9 +919,10 @@ async fn cmd_search(
     sel: &SelectedMailbox,
     tenant_id: Uuid,
 ) -> Vec<Response<'static>> {
+    let needs_body = criteria_needs_body(criteria);
     let rows = sqlx::query(
         "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, uid, flags, \
-         received_at, date, size_bytes, subject, from_addr, to_addrs, cc_addrs \
+         received_at, date, size_bytes, subject, from_addr, to_addrs, cc_addrs, body_path \
          FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 ORDER BY received_at ASC",
     )
     .bind(sel.mailbox_id)
@@ -941,25 +943,66 @@ async fn cmd_search(
         let from_addr: Option<String>             = row.try_get("from_addr").ok().flatten();
         let to_addrs:  Option<serde_json::Value>  = row.try_get("to_addrs").ok();
         let cc_addrs:  Option<serde_json::Value>  = row.try_get("cc_addrs").ok();
-        if criteria.iter().all(|key| search_key_matches(
+
+        // First pass: check all non-body criteria. TEXT/BODY return true here
+        // (conservative) so we avoid fetching bytes for messages that already
+        // fail on flags/date/size/envelope criteria.
+        let meta_ok = criteria.iter().all(|key| search_key_matches(
             key, &flags, recv.as_ref(), sent.as_ref(), size,
             subject.as_deref(), from_addr.as_deref(),
             to_addrs.as_ref(), cc_addrs.as_ref(),
             seq_val as u32, uid_val as u32, sel.exists,
-        )) {
-            let n = if uid {
-                NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
+            None,
+        ));
+        if !meta_ok { continue; }
+
+        // Second pass: if TEXT/BODY present, fetch bytes and re-evaluate those keys.
+        if needs_body {
+            let body_path: Option<String> = row.try_get("body_path").ok().flatten();
+            let raw = if let Some(ref p) = body_path {
+                fetch_body_bytes(state, p).await
             } else {
-                NonZeroU32::new(seq_val as u32).unwrap_or(NonZeroU32::MIN)
+                None
             };
-            matches.push(n);
+            // Re-check only TEXT/BODY criteria with actual bytes.
+            // Non-body keys re-evaluated too (cheap, all already passed).
+            let body_ok = criteria.iter().all(|key| search_key_matches(
+                key, &flags, recv.as_ref(), sent.as_ref(), size,
+                subject.as_deref(), from_addr.as_deref(),
+                to_addrs.as_ref(), cc_addrs.as_ref(),
+                seq_val as u32, uid_val as u32, sel.exists,
+                raw.as_deref(),
+            ));
+            if !body_ok { continue; }
         }
+
+        let n = if uid {
+            NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN)
+        } else {
+            NonZeroU32::new(seq_val as u32).unwrap_or(NonZeroU32::MIN)
+        };
+        matches.push(n);
     }
 
     vec![
         Response::Data(Data::Search(matches)),
         ok_tagged(tag, None, "SEARCH completed"),
     ]
+}
+
+/// Returns true if any TEXT or BODY key appears anywhere in the criteria tree.
+fn criteria_needs_body(criteria: &[SearchKey<'_>]) -> bool {
+    criteria.iter().any(search_key_needs_body)
+}
+
+fn search_key_needs_body(key: &SearchKey<'_>) -> bool {
+    match key {
+        SearchKey::Text(_) | SearchKey::Body(_) => true,
+        SearchKey::Not(inner) => search_key_needs_body(inner.as_ref()),
+        SearchKey::Or(a, b) => search_key_needs_body(a.as_ref()) || search_key_needs_body(b.as_ref()),
+        SearchKey::And(inner) => inner.iter().any(search_key_needs_body),
+        _ => false,
+    }
 }
 
 fn json_addr_contains(v: Option<&serde_json::Value>, needle: &str) -> bool {
@@ -987,6 +1030,7 @@ fn search_key_matches(
     seq: u32,
     msg_uid: u32,
     exists: u32,
+    body_bytes: Option<&[u8]>,
 ) -> bool {
     let has = |f: &str| flags.iter().any(|x| x == f);
     // Case-insensitive substring check — mirrors RFC 3501 §6.4.4 ILIKE semantics.
@@ -1056,9 +1100,35 @@ fn search_key_matches(
                 _         => true,
             }
         }
-        // TEXT / BODY — full body search requires fetching raw bytes from object store:
-        // too expensive per-message in a hot path; conservative true (no false negatives).
-        SearchKey::Text(_) | SearchKey::Body(_) => true,
+        // TEXT — RFC 3501 §6.4.4: search entire message (headers + body).
+        // BODY — search body section only (after header separator).
+        // When body_bytes is None (first-pass metadata check), return true
+        // conservatively so the caller can fetch bytes and re-evaluate.
+        SearchKey::Text(pat) => {
+            let p = astring_to_string(pat);
+            let needle = p.to_ascii_lowercase();
+            match body_bytes {
+                None => true,
+                Some(raw) => {
+                    let haystack = String::from_utf8_lossy(raw).to_ascii_lowercase();
+                    haystack.contains(&needle)
+                }
+            }
+        }
+        SearchKey::Body(pat) => {
+            let p = astring_to_string(pat);
+            let needle = p.to_ascii_lowercase();
+            match body_bytes {
+                None => true,
+                Some(raw) => {
+                    // BODY searches only after the \r\n\r\n header separator.
+                    let body_start = raw.windows(4).position(|w| w == b"\r\n\r\n")
+                        .map_or(raw.len(), |i| i + 4);
+                    let haystack = String::from_utf8_lossy(&raw[body_start..]).to_ascii_lowercase();
+                    haystack.contains(&needle)
+                }
+            }
+        }
         // Keyword / Unkeyword — match against the flags array using flag_to_str.
         SearchKey::Keyword(kw) => has(flag_to_str(kw)),
         SearchKey::Unkeyword(kw) => !has(flag_to_str(kw)),
@@ -1073,12 +1143,12 @@ fn search_key_matches(
             in_ranges(&ranges, msg_uid)
         }
         // Recursive logical operators
-        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists),
+        SearchKey::Not(inner) => !search_key_matches(inner.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes),
         SearchKey::Or(a, b)   => {
-            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)
-                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)
+            search_key_matches(a.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
+                || search_key_matches(b.as_ref(), flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)
         }
-        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists)),
+        SearchKey::And(inner) => inner.iter().all(|k| search_key_matches(k, flags, recv, sent, size, subject, from_addr, to_addrs, cc_addrs, seq, msg_uid, exists, body_bytes)),
         // Remaining criteria (Bcc) — conservative true (not stored in DB).
         _ => true,
     }
@@ -2006,7 +2076,7 @@ async fn cmd_sort(
             k, &flags, recv.as_ref(), sent.as_ref(), size,
             subject.as_deref(), from_addr.as_deref(),
             to_addrs.as_ref(), cc_addrs.as_ref(),
-            seq_val as u32, uid_val as u32, sel.exists,
+            seq_val as u32, uid_val as u32, sel.exists, None,
         )) {
             candidates.push((seq_val, uid_val, recv, sent, size, subject, from_addr));
         }
@@ -2084,7 +2154,7 @@ async fn cmd_thread(
             k, &flags, recv.as_ref(), sent.as_ref(), size,
             subject.as_deref(), from_addr.as_deref(),
             to_addrs.as_ref(), cc_addrs.as_ref(),
-            seq_val as u32, uid_val as u32, sel.exists,
+            seq_val as u32, uid_val as u32, sel.exists, None,
         )) {
             let base_subj = base_subject(subject.as_deref().unwrap_or(""));
             let num = if uid { uid_val as u32 } else { seq_val as u32 };
