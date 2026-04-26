@@ -9,7 +9,8 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, StatusCode},
+    response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
@@ -87,10 +88,22 @@ async fn create(
 async fn list(
     State(state): State<AppState>,
     ctx: RequestCtx,
-) -> Result<Json<Vec<Channel>>> {
+) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
+    let total: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM chat_channels c
+           JOIN chat_channel_members m ON m.channel_id = c.id
+           WHERE c.tenant_id = $1 AND m.user_id = $2 AND c.is_archived = FALSE"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(pool)
+    .await?;
     let rows = ChannelRepo::new(pool).list_for_user(ctx.tenant_id, ctx.user_id).await?;
-    Ok(Json(rows))
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 async fn get_one(
