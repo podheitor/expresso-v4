@@ -5,7 +5,7 @@ use axum::{
     body::Body,
     extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -91,10 +91,20 @@ async fn list(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(book_id): Path<Uuid>,
-) -> Result<Json<Vec<Contact>>> {
+) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
-    let cs   = ContactRepo::new(pool).list(ctx.tenant_id, book_id).await?;
-    Ok(Json(cs))
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM contacts WHERE tenant_id = $1 AND addressbook_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(book_id)
+    .fetch_one(pool)
+    .await?;
+    let cs = ContactRepo::new(pool).list(ctx.tenant_id, book_id).await?;
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(cs),
+    ).into_response())
 }
 
 async fn get_one(
