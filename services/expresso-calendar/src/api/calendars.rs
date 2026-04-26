@@ -2,8 +2,8 @@
 
 use axum::{
     extract::{Path, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -58,10 +58,19 @@ async fn get_one(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
-) -> Result<Json<Calendar>> {
+    req_headers: axum::http::HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let cal = CalendarRepo::new(pool).get(ctx.tenant_id, id).await?;
-    Ok(Json(cal))
+    let etag = format!("\"{}-{}\"", cal.updated_at.unix_timestamp(), cal.id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    let mut resp = Json(cal).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    Ok(resp)
 }
 
 async fn update(
