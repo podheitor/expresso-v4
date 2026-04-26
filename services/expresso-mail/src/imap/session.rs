@@ -1370,8 +1370,12 @@ async fn cmd_fetch(
     let mut want_part_body: bool = false;
     let mut want_part_mime: bool = false;
     // (part number as u32, original Part clone for echo-back in response)
-    let mut part_body_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
-    let mut part_mime_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    let mut part_body_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    let mut part_mime_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    // BODY[N.HEADER] — header block of part N.
+    let mut part_header_reqs: Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
+    // BODY[N.TEXT]   — body text of part N.
+    let mut part_text_reqs:   Vec<(u32, Vec<NonZeroU32>)> = Vec::new();
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
             if let MessageDataItemName::BodyExt { section, peek, partial, .. } = name {
@@ -1391,10 +1395,18 @@ async fn cmd_fetch(
                     None                      => want_full_body = true,
                     Some(Section::Header(None))  => want_header = true,
                     Some(Section::Text(None))    => want_text = true,
-                    // BODY[N.HEADER] — treat as message header for flat msgs.
-                    Some(Section::Header(Some(_))) => want_header = true,
-                    // BODY[N.TEXT] — treat as body text for flat msgs.
-                    Some(Section::Text(Some(_))) => want_text = true,
+                    // BODY[N.HEADER] — header block of part N (for multipart) or message header (flat).
+                    Some(Section::Header(Some(p))) => {
+                        let nums_ref: &[NonZeroU32] = p.0.as_ref();
+                        let part_num = nums_ref.first().map(|n| n.get()).unwrap_or(1);
+                        part_header_reqs.push((part_num, nums_ref.to_vec()));
+                    }
+                    // BODY[N.TEXT] — body text of part N (for multipart) or body text (flat).
+                    Some(Section::Text(Some(p))) => {
+                        let nums_ref: &[NonZeroU32] = p.0.as_ref();
+                        let part_num = nums_ref.first().map(|n| n.get()).unwrap_or(1);
+                        part_text_reqs.push((part_num, nums_ref.to_vec()));
+                    }
                     Some(Section::HeaderFields(_, fields)) => {
                         let names_lc: Vec<String> = fields.iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
@@ -1438,7 +1450,8 @@ async fn cmd_fetch(
     }
     // Fetch body bytes for BODYSTRUCTURE too — needed to detect Content-Type.
     let need_body = want_full_body || want_header || want_text || want_part_body || want_part_mime
-        || w_bodystructure || !header_fields_reqs.is_empty() || !partial_reqs.is_empty();
+        || w_bodystructure || !header_fields_reqs.is_empty() || !partial_reqs.is_empty()
+        || !part_header_reqs.is_empty() || !part_text_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -1627,6 +1640,48 @@ async fn cmd_fetch(
                                 data:    NString::from(Literal::unvalidated(bytes)),
                             });
                         }
+                    }
+                    // BODY[N.HEADER] — header block of part N.
+                    // For multipart: navigate to part N, return its header block.
+                    // For flat messages (no boundaries): BODY[1.HEADER] = BODY[HEADER].
+                    for (_, nums) in &part_header_reqs {
+                        use imap_codec::imap_types::fetch::Part;
+                        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+                        let hdr_bytes = if mime_split_parts(&raw).is_empty() {
+                            email_header_bytes(&raw)
+                        } else {
+                            match mime_navigate(&raw, &path) {
+                                Some(part) => email_header_bytes(&part),
+                                None       => email_header_bytes(&raw),
+                            }
+                        };
+                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Header(Some(part))),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(hdr_bytes)),
+                        });
+                    }
+                    // BODY[N.TEXT] — body text of part N.
+                    // For multipart: navigate to part N, return its body text.
+                    // For flat messages: BODY[1.TEXT] = BODY[TEXT].
+                    for (_, nums) in &part_text_reqs {
+                        use imap_codec::imap_types::fetch::Part;
+                        let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+                        let txt_bytes = if mime_split_parts(&raw).is_empty() {
+                            email_text_bytes(&raw)
+                        } else {
+                            match mime_navigate(&raw, &path) {
+                                Some(part) => email_text_bytes(&part),
+                                None       => email_text_bytes(&raw),
+                            }
+                        };
+                        let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Text(Some(part))),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(txt_bytes)),
+                        });
                     }
                     // BODY[] or fallback for unrecognised section specs.
                     if want_full_body && !w_rfc822 {
