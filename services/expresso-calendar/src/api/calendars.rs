@@ -74,8 +74,10 @@ async fn get_one(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
+    let lm = cal.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
     let mut resp = Json(cal).into_response();
     resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
