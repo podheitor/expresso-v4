@@ -1597,13 +1597,14 @@ async fn cmd_fetch(
                             data:    NString::from(Literal::unvalidated(txt)),
                         });
                     }
-                    // BODY[N] — body of part N (1-based). RFC 3501 §6.4.5: for a
-                    // non-multipart message BODY[1] = BODY[TEXT]. For multipart messages,
-                    // parse MIME boundaries and return the N-th part body.
+                    // BODY[N] / BODY[N.M] — body of the part at the given path.
+                    // RFC 3501 §6.4.5: for a non-multipart message BODY[1] = BODY[TEXT].
+                    // For multipart messages, walk MIME boundaries recursively.
                     if want_part_body {
                         use imap_codec::imap_types::fetch::Part;
-                        for (part_num, nums) in &part_body_reqs {
-                            let bytes = mime_part_body(&raw, *part_num);
+                        for (_, nums) in &part_body_reqs {
+                            let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+                            let bytes = mime_part_body_path(&raw, &path);
                             let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
                             items.push(MessageDataItem::BodyExt {
                                 section: Some(Section::Part(part)),
@@ -1612,13 +1613,13 @@ async fn cmd_fetch(
                             });
                         }
                     }
-                    // BODY[N.MIME] — MIME headers of part N. For non-multipart, extracted
-                    // from the message header (Content-Type etc.). For multipart, extracted
-                    // from the part's own header block.
+                    // BODY[N.MIME] / BODY[N.M.MIME] — MIME headers of the part at the path.
+                    // For non-multipart, extracted from the message header.
                     if want_part_mime {
                         use imap_codec::imap_types::fetch::Part;
-                        for (part_num, nums) in &part_mime_reqs {
-                            let bytes = mime_part_mime_headers(&raw, *part_num);
+                        for (_, nums) in &part_mime_reqs {
+                            let path: Vec<u32> = nums.iter().map(|n| n.get()).collect();
+                            let bytes = mime_part_mime_headers_path(&raw, &path);
                             let part = Part(Vec1::try_from(nums.clone()).unwrap_or_else(|_| Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap()));
                             items.push(MessageDataItem::BodyExt {
                                 section: Some(Section::Mime(part)),
@@ -2813,49 +2814,81 @@ fn mime_split_parts(raw: &[u8]) -> Vec<Vec<u8>> {
     parts
 }
 
-/// Return raw bytes of the N-th MIME part (1-based) of a message.
-/// For non-multipart messages, part 1 = body text (RFC 3501 §6.4.5).
-/// Returns empty Vec if the part does not exist.
-fn mime_part_body(raw: &[u8], part_num: u32) -> Vec<u8> {
-    if part_num == 0 { return vec![]; }
+/// Navigate a hierarchical part path (RFC 3501 §6.4.5) and return the raw
+/// bytes of the leaf MIME part (including its own headers).
+/// `path` is the sequence of 1-based part numbers, e.g. [1, 2] = part 1.2.
+/// Returns None when any step in the path is out of range.
+fn mime_navigate(raw: &[u8], path: &[u32]) -> Option<Vec<u8>> {
+    if path.is_empty() { return Some(raw.to_vec()); }
+    let (head, tail) = (path[0], &path[1..]);
+    if head == 0 { return None; }
+
     let parts = mime_split_parts(raw);
     if parts.is_empty() {
-        // Non-multipart: part 1 is the body text.
-        if part_num == 1 { return email_text_bytes(raw); }
-        return vec![];
-    }
-    let idx = (part_num as usize).saturating_sub(1);
-    parts.into_iter().nth(idx).map(|p| {
-        // Strip the MIME headers of the part, returning only the body.
-        if let Some(sep) = p.windows(4).position(|w| w == b"\r\n\r\n") {
-            p[sep + 4..].to_vec()
-        } else {
-            p
+        // Non-multipart: only path [1] is valid and maps to the whole body.
+        if head == 1 && tail.is_empty() {
+            return Some(email_text_bytes(raw));
         }
-    }).unwrap_or_default()
+        return None;
+    }
+    let idx = (head as usize).saturating_sub(1);
+    let part = parts.into_iter().nth(idx)?;
+    if tail.is_empty() {
+        Some(part)
+    } else {
+        mime_navigate(&part, tail)
+    }
+}
+
+/// Return body bytes of the MIME part identified by `path` (1-based numbers).
+/// For non-multipart messages, path [1] = body text (RFC 3501 §6.4.5).
+fn mime_part_body(raw: &[u8], part_num: u32) -> Vec<u8> {
+    mime_part_body_path(raw, &[part_num])
+}
+
+/// Return body bytes for a hierarchical MIME part path like [1, 2] (= BODY[1.2]).
+/// Strips the part's own MIME header block; returns just the content bytes.
+fn mime_part_body_path(raw: &[u8], path: &[u32]) -> Vec<u8> {
+    match mime_navigate(raw, path) {
+        None => vec![],
+        Some(part) => {
+            // If navigate returned a whole part (with its own headers), strip them.
+            if let Some(sep) = part.windows(4).position(|w| w == b"\r\n\r\n") {
+                part[sep + 4..].to_vec()
+            } else {
+                part
+            }
+        }
+    }
 }
 
 /// Return MIME header bytes (Content-Type, Content-Transfer-Encoding, etc.)
-/// of the N-th MIME part (1-based). For non-multipart, extracts from message header.
+/// of the part identified by `part_num` (1-based). For non-multipart, extracts
+/// from the message header (Content-Type etc.).
 fn mime_part_mime_headers(raw: &[u8], part_num: u32) -> Vec<u8> {
-    if part_num == 0 { return vec![]; }
-    let parts = mime_split_parts(raw);
-    if parts.is_empty() {
-        // Non-multipart: MIME headers come from the message header itself.
-        if part_num == 1 {
-            let mime_fields = ["content-type", "content-transfer-encoding",
-                               "content-disposition", "content-id", "content-description"];
-            return filter_header_fields(raw, &mime_fields.iter()
-                .map(|s| s.to_string()).collect::<Vec<_>>(), false);
+    mime_part_mime_headers_path(raw, &[part_num])
+}
+
+/// Return MIME header bytes for a hierarchical path like [1, 2] (= BODY[1.2.MIME]).
+fn mime_part_mime_headers_path(raw: &[u8], path: &[u32]) -> Vec<u8> {
+    const MIME_FIELDS: &[&str] = &[
+        "content-type", "content-transfer-encoding",
+        "content-disposition", "content-id", "content-description",
+    ];
+    let field_names: Vec<String> = MIME_FIELDS.iter().map(|s| s.to_string()).collect();
+
+    if path.is_empty() || path == [1] {
+        // Top-level or non-multipart part 1: use the message header.
+        let parts = mime_split_parts(raw);
+        if parts.is_empty() {
+            return filter_header_fields(raw, &field_names, false);
         }
-        return vec![];
     }
-    let idx = (part_num as usize).saturating_sub(1);
-    parts.into_iter().nth(idx).map(|p| {
-        let mime_fields = ["content-type", "content-transfer-encoding",
-                           "content-disposition", "content-id", "content-description"];
-        filter_header_fields(&p, &mime_fields.iter().map(|s| s.to_string()).collect::<Vec<_>>(), false)
-    }).unwrap_or_default()
+
+    match mime_navigate(raw, path) {
+        None => vec![],
+        Some(part) => filter_header_fields(&part, &field_names, false),
+    }
 }
 
 struct ParsedHeaders {
@@ -3391,7 +3424,8 @@ fn build_envelope(
 
 #[cfg(test)]
 mod tests {
-    use super::{mime_split_parts, mime_part_body, mime_part_mime_headers, mime_boundary};
+    use super::{mime_split_parts, mime_part_body, mime_part_mime_headers,
+                mime_boundary, mime_navigate, mime_part_body_path, mime_part_mime_headers_path};
 
     const MULTIPART_MSG: &[u8] = b"\
 From: sender@example.com\r\n\
@@ -3408,6 +3442,29 @@ Content-Type: text/html; charset=utf-8\r\n\
 \r\n\
 <p>Hello</p>\r\n\
 --boundary42--\r\n";
+
+    // Nested multipart: BODY[1.1] = inner plain, BODY[1.2] = inner HTML
+    const NESTED_MSG: &[u8] = b"\
+From: sender@example.com\r\n\
+Content-Type: multipart/mixed; boundary=\"outer\"\r\n\
+\r\n\
+--outer\r\n\
+Content-Type: multipart/alternative; boundary=\"inner\"\r\n\
+\r\n\
+--inner\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+Plain text\r\n\
+--inner\r\n\
+Content-Type: text/html\r\n\
+\r\n\
+<b>HTML</b>\r\n\
+--inner--\r\n\
+--outer\r\n\
+Content-Type: text/plain\r\n\
+\r\n\
+Attachment\r\n\
+--outer--\r\n";
 
     #[test]
     fn boundary_extracted() {
@@ -3451,5 +3508,29 @@ Content-Type: text/html; charset=utf-8\r\n\
         let msg = b"From: a@b\r\nContent-Type: text/plain\r\n\r\nBody text here\r\n";
         let body = mime_part_body(msg, 1);
         assert_eq!(String::from_utf8_lossy(&body).trim(), "Body text here");
+    }
+
+    #[test]
+    fn navigate_nested_1_1_returns_plain() {
+        let body = mime_part_body_path(NESTED_MSG, &[1, 1]);
+        assert_eq!(String::from_utf8_lossy(&body).trim(), "Plain text");
+    }
+
+    #[test]
+    fn navigate_nested_1_2_returns_html() {
+        let body = mime_part_body_path(NESTED_MSG, &[1, 2]);
+        assert_eq!(String::from_utf8_lossy(&body).trim(), "<b>HTML</b>");
+    }
+
+    #[test]
+    fn navigate_nested_2_returns_attachment() {
+        let body = mime_part_body_path(NESTED_MSG, &[2]);
+        assert_eq!(String::from_utf8_lossy(&body).trim(), "Attachment");
+    }
+
+    #[test]
+    fn navigate_none_for_invalid_path() {
+        assert!(mime_navigate(MULTIPART_MSG, &[3]).is_none());
+        assert!(mime_navigate(MULTIPART_MSG, &[1, 2]).is_none());
     }
 }
