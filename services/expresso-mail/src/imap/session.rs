@@ -1362,6 +1362,14 @@ async fn cmd_fetch(
     // Partial reqs: (section_tag, offset, count)
     // section_tag: 0=full, 1=header, 2=text
     let mut partial_reqs: Vec<(u8, u32, u32)> = Vec::new();
+    // Section::Part(part) — BODY[1]: body of the first (only) part; for
+    //   single-part messages this is the body text after the separator.
+    // Section::Mime(part) — BODY[1.MIME]: MIME headers of the first part.
+    // Section::Header(Some(part)) — BODY[1.HEADER]: same as BODY[HEADER] for flat messages.
+    // Section::Text(Some(part))   — BODY[1.TEXT]: same as BODY[TEXT] for flat messages.
+    // We only handle part [1]; other numbers fall back to full body.
+    let mut want_part_body: bool = false;
+    let mut want_part_mime: bool = false;
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
             if let MessageDataItemName::BodyExt { section, peek, partial, .. } = name {
@@ -1379,8 +1387,12 @@ async fn cmd_fetch(
                 }
                 match section {
                     None                      => want_full_body = true,
-                    Some(Section::Header(_))  => want_header = true,
-                    Some(Section::Text(_))    => want_text = true,
+                    Some(Section::Header(None))  => want_header = true,
+                    Some(Section::Text(None))    => want_text = true,
+                    // BODY[1.HEADER] — header section of part 1 = message header for flat msg.
+                    Some(Section::Header(Some(_))) => want_header = true,
+                    // BODY[1.TEXT] — text section of part 1 = body for flat msg.
+                    Some(Section::Text(Some(_))) => want_text = true,
                     Some(Section::HeaderFields(_, fields)) => {
                         let names_lc: Vec<String> = fields.iter()
                             .map(|f| astring_to_string(f).to_ascii_lowercase())
@@ -1393,12 +1405,16 @@ async fn cmd_fetch(
                             .collect();
                         header_fields_reqs.push((names_lc, true));
                     }
+                    // BODY[1] — body of the first/only part.
+                    Some(Section::Part(_)) => want_part_body = true,
+                    // BODY[1.MIME] — MIME headers of the first part (Content-Type etc.).
+                    Some(Section::Mime(_)) => want_part_mime = true,
                     _ => want_full_body = true,
                 }
             }
         }
     }
-    let need_body = want_full_body || want_header || want_text
+    let need_body = want_full_body || want_header || want_text || want_part_body || want_part_mime
         || !header_fields_reqs.is_empty() || !partial_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
@@ -1553,6 +1569,37 @@ async fn cmd_fetch(
                             section: Some(Section::Text(None)),
                             origin:  None,
                             data:    NString::from(Literal::unvalidated(txt)),
+                        });
+                    }
+                    // BODY[1] — body of part 1 (= body text for single-part messages).
+                    // RFC 3501 §6.4.5: for a non-multipart message BODY[1] is the same as
+                    // BODY[TEXT]. We respond with Section::Part([1]).
+                    if want_part_body {
+                        use imap_codec::imap_types::fetch::Part;
+                        let part = Part(Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap());
+                        let txt = email_text_bytes(&raw);
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Part(part)),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(txt)),
+                        });
+                    }
+                    // BODY[1.MIME] — MIME header lines of part 1.
+                    // For single-part messages: the Content-Type, Content-Transfer-Encoding,
+                    // and Content-Disposition lines from the message header. These are
+                    // extracted from the main header block since there is no separate MIME
+                    // header for a flat (non-multipart) message (RFC 3501 §6.4.5 note 2).
+                    if want_part_mime {
+                        use imap_codec::imap_types::fetch::Part;
+                        let part = Part(Vec1::try_from(vec![NonZeroU32::new(1).unwrap()]).unwrap());
+                        let mime_fields = ["content-type", "content-transfer-encoding",
+                                          "content-disposition", "content-id", "content-description"];
+                        let mime_bytes = filter_header_fields(&raw, &mime_fields.iter()
+                            .map(|s| s.to_string()).collect::<Vec<_>>(), false);
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(Section::Mime(part)),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(mime_bytes)),
                         });
                     }
                     // BODY[] or fallback for unrecognised section specs.
