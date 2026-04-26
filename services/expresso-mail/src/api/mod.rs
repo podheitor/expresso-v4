@@ -11,7 +11,12 @@ pub mod vacation;
 pub mod sieve;
 pub mod drafts;
 
-use axum::Router;
+use axum::{
+    Router,
+    middleware::{self, Next},
+    extract::Request,
+    response::Response,
+};
 use tower_http::{
     cors::{CorsLayer, Any},
     trace::TraceLayer,
@@ -20,11 +25,23 @@ use tower_http::{
 
 use crate::state::AppState;
 
+/// Record HTTP_REQUESTS_TOTAL{service, method, status} for every request.
+async fn http_metrics_middleware(req: Request, next: Next) -> Response {
+    let method = req.method().to_string();
+    let resp = next.run(req).await;
+    let status = resp.status().as_u16().to_string();
+    expresso_observability::HTTP_REQUESTS_TOTAL
+        .with_label_values(&["expresso-mail", &method, &status])
+        .inc();
+    resp
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
         .nest("/api/v1", api_routes(state.clone()))
+        .layer(middleware::from_fn(http_metrics_middleware))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(
