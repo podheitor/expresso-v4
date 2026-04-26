@@ -19,6 +19,7 @@ use tokio::{
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::{ingest, state::AppState};
+use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
 const MAX_RCPTS: usize = 100;
@@ -55,11 +56,12 @@ pub async fn serve(state: AppState, addr: SocketAddr) -> anyhow::Result<()> {
 
 #[instrument(skip(stream, state), fields(peer = %peer))]
 async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow::Result<()> {
+    SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "accepted"]).inc();
+
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
     let domain = &state.cfg().mail_server.domain;
 
-    // LMTP banner
     writer
         .write_all(format!("220 {domain} LMTP Expresso\r\n").as_bytes())
         .await?;
@@ -68,6 +70,7 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
     let mut data_mode = false;
     let mut data_buf = String::new();
 
+    let result = async {
     loop {
         let line = match lines.next_line().await? {
             Some(l) => l,
@@ -81,16 +84,15 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                 let bytes = data_buf.len();
                 info!(from = ?env.from, rcpts = ?env.rcpts, bytes, "LMTP received");
 
-                // Delivery: one response per rcpt
                 let rcpts = std::mem::take(&mut env.rcpts);
                 match ingest::process(&state, env.from.as_deref(), &rcpts, data_buf.as_bytes()).await {
                     Ok(_) => {
-                        // Per RFC 2033: one line per RCPT reply
                         for rcpt in &rcpts {
                             writer
                                 .write_all(format!("250 2.0.0 <{rcpt}> delivered\r\n").as_bytes())
                                 .await?;
                         }
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "lmtp", "ok"]).inc();
                     }
                     Err(e) => {
                         error!(error = %e, "LMTP ingest failed");
@@ -99,21 +101,22 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                                 .write_all(format!("451 4.0.0 <{rcpt}> local error\r\n").as_bytes())
                                 .await?;
                         }
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "lmtp", "error"]).inc();
                     }
                 }
                 data_buf.clear();
                 env = Envelope::default();
             } else {
-                // Dot-stuffing
+                // RFC 5321 §4.5.2 dot-stuffing: strip leading dot.
                 let line = line.strip_prefix('.').unwrap_or(&line);
-                if data_buf.len() + line.len() > MAX_MSG_BYTES {
+                if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
                     writer.write_all(b"552 5.3.4 Message too large\r\n").await?;
                     data_mode = false;
                     data_buf.clear();
                     env = Envelope::default();
                 } else {
                     data_buf.push_str(line);
-                    data_buf.push('\n');
+                    data_buf.push_str("\r\n");
                 }
             }
             continue;
@@ -128,46 +131,58 @@ async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow:
                     format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-ENHANCEDSTATUSCODES\r\n250 PIPELINING\r\n").as_bytes(),
                 )
                 .await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["LHLO", "lmtp", "ok"]).inc();
         } else if upper.starts_with("MAIL FROM:") {
             env.from = Some(extract_angle(&line[10..]));
             env.rcpts.clear();
             writer.write_all(b"250 2.1.0 Sender OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "lmtp", "ok"]).inc();
         } else if upper.starts_with("RCPT TO:") {
             if env.from.is_none() {
                 writer.write_all(b"503 5.5.1 MAIL first\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "reject"]).inc();
             } else if env.rcpts.len() >= MAX_RCPTS {
                 writer.write_all(b"452 4.5.3 Too many recipients\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "reject"]).inc();
             } else {
                 env.rcpts.push(extract_angle(&line[8..]));
                 writer.write_all(b"250 2.1.5 Recipient OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "lmtp", "ok"]).inc();
             }
         } else if upper == "DATA" {
             if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 5.5.1 Bad sequence\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "lmtp", "reject"]).inc();
             } else {
-                writer
-                    .write_all(b"354 End data with <CRLF>.<CRLF>\r\n")
-                    .await?;
+                writer.write_all(b"354 End data with <CRLF>.<CRLF>\r\n").await?;
                 data_mode = true;
             }
         } else if upper == "RSET" {
             env = Envelope::default();
             writer.write_all(b"250 2.0.0 Reset\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["RSET", "lmtp", "ok"]).inc();
         } else if upper == "NOOP" {
             writer.write_all(b"250 2.0.0 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP", "lmtp", "ok"]).inc();
         } else if upper == "QUIT" {
-            writer
-                .write_all(format!("221 2.0.0 {domain} Bye\r\n").as_bytes())
-                .await?;
+            writer.write_all(format!("221 2.0.0 {domain} Bye\r\n").as_bytes()).await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT", "lmtp", "ok"]).inc();
             break;
         } else {
+            let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
             warn!(cmd = %line, "unknown LMTP command");
-            writer
-                .write_all(b"500 5.5.2 Command not recognized\r\n")
-                .await?;
+            writer.write_all(b"500 5.5.2 Command not recognized\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "lmtp", "reject"]).inc();
         }
     }
-    Ok(())
+    anyhow::Ok(())
+    }.await;
+
+    match &result {
+        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "closed"]).inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["lmtp", "error"]).inc(),
+    }
+    result
 }
 
 fn extract_angle(s: &str) -> String {

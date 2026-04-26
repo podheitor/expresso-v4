@@ -1,5 +1,5 @@
 //! SMTP session state machine — one per connection.
-//! Implements: EHLO, MAIL FROM, RCPT TO, DATA, RSET, QUIT, NOOP.
+//! Implements: EHLO, MAIL FROM, RCPT TO, DATA, RSET, QUIT, NOOP, VRFY.
 //! Inbound: runs SPF/DKIM/DMARC verification on DATA, prepends Authentication-Results.
 
 use std::net::SocketAddr;
@@ -10,6 +10,7 @@ use tokio::{
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::{dkim, ingest, state::AppState};
+use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
 const MAX_RCPTS: usize = 100;
@@ -24,11 +25,12 @@ struct Envelope {
 /// Handle a single SMTP connection.
 #[instrument(skip(stream, state), fields(peer = %peer))]
 pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> anyhow::Result<()> {
+    SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "accepted"]).inc();
+
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
     let domain = &state.cfg().mail_server.domain;
 
-    // Greeting
     writer
         .write_all(format!("220 {domain} ESMTP Expresso\r\n").as_bytes())
         .await?;
@@ -37,6 +39,7 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
     let mut data_mode = false;
     let mut data_buf = String::new();
 
+    let result = async {
     loop {
         let line = match lines.next_line().await? {
             Some(l) => l,
@@ -52,21 +55,12 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                 let bytes = raw.len();
                 info!(from = ?env.from, rcpts = ?env.rcpts, bytes, "received message");
 
-                // SPF/DKIM/DMARC verification
                 let helo = env.helo.as_deref().unwrap_or("unknown");
                 let mail_from = env.from.as_deref().unwrap_or("");
-                let auth = dkim::verify_inbound(
-                    peer.ip(),
-                    helo,
-                    mail_from,
-                    domain,
-                    raw,
-                )
-                .await;
+                let auth = dkim::verify_inbound(peer.ip(), helo, mail_from, domain, raw).await;
                 debug!(spf = %auth.spf, dkim = %auth.dkim, dmarc = %auth.dmarc,
                        policy = ?auth.dmarc_policy, "auth results");
 
-                // DMARC policy enforcement: p=reject rejects at SMTP level.
                 if auth.should_reject() {
                     warn!(from = %mail_from, spf = %auth.spf, dkim = %auth.dkim,
                           "DMARC fail + p=reject — refusing message");
@@ -75,6 +69,7 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                     writer
                         .write_all(b"550 5.7.1 DMARC policy: message rejected (p=reject)\r\n")
                         .await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
                     data_buf.clear();
                     env = Envelope::default();
                     continue;
@@ -82,39 +77,38 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
                 expresso_mail_auth::MAIL_AUTH_ACTIONS_TOTAL
                     .with_label_values(&["accept"]).inc();
 
-                // Prepend Received-SPF (RFC 7208 §9.1) + Authentication-Results.
                 let rspf_header = auth.to_received_spf_header(domain);
                 let auth_header = auth.to_header(domain);
                 let signed_raw = format!("{rspf_header}{auth_header}{data_buf}");
 
-                match ingest::process(&state, env.from.as_deref(), &env.rcpts, signed_raw.as_bytes())
-                    .await
-                {
+                match ingest::process(&state, env.from.as_deref(), &env.rcpts, signed_raw.as_bytes()).await {
                     Ok(delivered) if delivered > 0 => {
                         writer.write_all(b"250 OK message accepted\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "ok"]).inc();
                     }
                     Ok(_) => {
                         writer.write_all(b"550 No valid recipients\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
                     }
                     Err(e) => {
                         error!(error = %e, "ingest failed");
-                        writer
-                            .write_all(b"451 Requested action aborted: local error\r\n")
-                            .await?;
+                        writer.write_all(b"451 Requested action aborted: local error\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "error"]).inc();
                     }
                 }
                 data_buf.clear();
                 env = Envelope::default();
             } else {
+                // RFC 5321 §4.5.2 dot-stuffing: strip leading dot.
                 let line = line.strip_prefix('.').unwrap_or(&line);
-                if data_buf.len() + line.len() > MAX_MSG_BYTES {
+                if data_buf.len() + line.len() + 2 > MAX_MSG_BYTES {
                     writer.write_all(b"552 Message too large\r\n").await?;
                     data_mode = false;
                     data_buf.clear();
                     env = Envelope::default();
                 } else {
                     data_buf.push_str(line);
-                    data_buf.push('\n');
+                    data_buf.push_str("\r\n");
                 }
             }
             continue;
@@ -123,52 +117,68 @@ pub async fn handle(stream: TcpStream, peer: SocketAddr, state: AppState) -> any
         let upper = line.to_ascii_uppercase();
 
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
+            let verb = if upper.starts_with("EHLO") { "EHLO" } else { "HELO" };
             env.helo = Some(line[4..].trim().to_string());
             writer.write_all(
-                format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250 OK\r\n")
+                format!("250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250 OK\r\n")
                     .as_bytes()
             ).await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "ok"]).inc();
         } else if upper.starts_with("MAIL FROM:") {
             env.from = Some(extract_angle(&line[10..]));
             env.rcpts.clear();
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp25", "ok"]).inc();
         } else if upper.starts_with("RCPT TO:") {
             if env.from.is_none() {
-                writer
-                    .write_all(b"503 Bad sequence: MAIL first\r\n")
-                    .await?;
+                writer.write_all(b"503 Bad sequence: MAIL first\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "reject"]).inc();
             } else if env.rcpts.len() >= MAX_RCPTS {
                 writer.write_all(b"452 Too many recipients\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "reject"]).inc();
             } else {
                 env.rcpts.push(extract_angle(&line[8..]));
                 writer.write_all(b"250 OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp25", "ok"]).inc();
             }
         } else if upper == "DATA" {
             if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 Bad sequence\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp25", "reject"]).inc();
             } else {
-                writer
-                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
-                    .await?;
+                writer.write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n").await?;
                 data_mode = true;
             }
         } else if upper == "RSET" {
             env = Envelope::default();
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["RSET", "smtp25", "ok"]).inc();
         } else if upper == "NOOP" {
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP", "smtp25", "ok"]).inc();
+        } else if upper == "VRFY" {
+            // RFC 5321 §3.5.2: servers MAY return 252 (not verified but will accept).
+            writer.write_all(b"252 2.5.2 Cannot VRFY user; try RCPT\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["VRFY", "smtp25", "ok"]).inc();
         } else if upper == "QUIT" {
-            writer
-                .write_all(format!("221 {domain} Bye\r\n").as_bytes())
-                .await?;
+            writer.write_all(format!("221 {domain} Bye\r\n").as_bytes()).await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT", "smtp25", "ok"]).inc();
             break;
         } else {
+            let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
             warn!(cmd = %line, "unknown SMTP command");
             writer.write_all(b"500 Command not recognized\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp25", "reject"]).inc();
         }
     }
+    anyhow::Ok(())
+    }.await;
 
-    Ok(())
+    match &result {
+        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "closed"]).inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp25", "error"]).inc(),
+    }
+    result
 }
 
 /// Extract address from `<user@domain>` or `user@domain`

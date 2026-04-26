@@ -20,6 +20,7 @@ use std::time::Duration;
 use expresso_auth_client::{KcBasicAuthenticator, KcBasicConfig, KcBasicError};
 
 use crate::{ingest, state::AppState};
+use crate::smtp::metrics::{command_label, SMTP_COMMANDS_TOTAL, SMTP_SESSIONS_TOTAL};
 
 const MAX_MSG_BYTES: usize = 50 * 1024 * 1024; // 50 MiB
 const MAX_RCPTS: usize = 100;
@@ -113,22 +114,27 @@ async fn handle(
     state: AppState,
     acceptor: TlsAcceptor,
 ) -> anyhow::Result<()> {
+    SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "accepted"]).inc();
+
     let domain = state.cfg().mail_server.domain.clone();
 
-    // Plaintext greeting
     let (reader, writer) = stream.into_split();
-    let (done, env) =
-        handle_plain(reader, writer, &domain, &state).await?;
+    let (done, env) = handle_plain(reader, writer, &domain, &state).await?;
     if done {
+        SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "closed"]).inc();
         return Ok(());
     }
-    // STARTTLS path: upgrade
     let stream = env
         .tcp
         .ok_or_else(|| anyhow::anyhow!("STARTTLS requested but stream missing"))?;
     let tls_stream = acceptor.accept(stream).await?;
     info!(peer = %peer, "submission TLS established");
-    handle_tls(tls_stream, &domain, &state, env.helo).await
+    let result = handle_tls(tls_stream, &domain, &state, env.helo).await;
+    match &result {
+        Ok(()) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "closed"]).inc(),
+        Err(_) => SMTP_SESSIONS_TOTAL.with_label_values(&["smtp587", "error"]).inc(),
+    }
+    result
 }
 
 struct PreTls {
@@ -252,12 +258,14 @@ where
                                 format!("250 OK queued ({n} delivered locally)\r\n").as_bytes(),
                             )
                             .await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "ok"]).inc();
                     }
                     Err(e) => {
                         error!(error = %e, "submission ingest failed");
                         writer
                             .write_all(b"451 Requested action aborted: local error\r\n")
                             .await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "error"]).inc();
                     }
                 }
 
@@ -290,17 +298,18 @@ where
         let upper = line.to_ascii_uppercase();
 
         if upper.starts_with("EHLO") || upper.starts_with("HELO") {
+            let verb = if upper.starts_with("EHLO") { "EHLO" } else { "HELO" };
             env.helo = Some(line[4..].trim().to_string());
             writer
                 .write_all(
                     format!(
-                        "250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n"
+                        "250-{domain} Hello\r\n250-SIZE {MAX_MSG_BYTES}\r\n250-8BITMIME\r\n250-PIPELINING\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n"
                     )
                     .as_bytes(),
                 )
                 .await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp587", "ok"]).inc();
         } else if upper.starts_with("AUTH PLAIN") {
-            // AUTH PLAIN [<base64>] or AUTH PLAIN\r\n followed by base64 line
             let b64 = line[10..].trim();
             let credential = if b64.is_empty() {
                 writer.write_all(b"334 \r\n").await?;
@@ -316,31 +325,27 @@ where
                     Ok(()) => {
                         env.authed_user = Some(user.clone());
                         info!(user = %user, "submission AUTH PLAIN success");
-                        writer
-                            .write_all(b"235 2.7.0 Authentication successful\r\n")
-                            .await?;
+                        writer.write_all(b"235 2.7.0 Authentication successful\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "ok"]).inc();
                     }
                     Err(e) => {
                         warn!(user = %user, error = %e, "submission AUTH PLAIN fail");
-                        writer
-                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
-                            .await?;
+                        writer.write_all(b"535 5.7.8 Authentication credentials invalid\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
                     }
                 },
                 None => {
-                    writer
-                        .write_all(b"501 5.5.2 Cannot decode AUTH PLAIN\r\n")
-                        .await?;
+                    writer.write_all(b"501 5.5.2 Cannot decode AUTH PLAIN\r\n").await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
                 }
             }
         } else if upper.starts_with("AUTH LOGIN") {
-            // Prompt for username (base64)
-            writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?; // "Username:"
+            writer.write_all(b"334 VXNlcm5hbWU6\r\n").await?;
             let user_b64 = match lines.next_line().await? {
                 Some(l) => l,
                 None => break,
             };
-            writer.write_all(b"334 UGFzc3dvcmQ6\r\n").await?; // "Password:"
+            writer.write_all(b"334 UGFzc3dvcmQ6\r\n").await?;
             let pass_b64 = match lines.next_line().await? {
                 Some(l) => l,
                 None => break,
@@ -352,69 +357,63 @@ where
                     Ok(()) => {
                         env.authed_user = Some(u.clone());
                         info!(user = %u, "submission AUTH LOGIN success");
-                        writer
-                            .write_all(b"235 2.7.0 Authentication successful\r\n")
-                            .await?;
+                        writer.write_all(b"235 2.7.0 Authentication successful\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "ok"]).inc();
                     }
                     Err(e) => {
                         warn!(user = %u, error = %e, "submission AUTH LOGIN fail");
-                        writer
-                            .write_all(b"535 5.7.8 Authentication credentials invalid\r\n")
-                            .await?;
+                        writer.write_all(b"535 5.7.8 Authentication credentials invalid\r\n").await?;
+                        SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
                     }
                 },
                 _ => {
-                    writer
-                        .write_all(b"501 5.5.2 Cannot decode AUTH LOGIN\r\n")
-                        .await?;
+                    writer.write_all(b"501 5.5.2 Cannot decode AUTH LOGIN\r\n").await?;
+                    SMTP_COMMANDS_TOTAL.with_label_values(&["AUTH", "smtp587", "reject"]).inc();
                 }
             }
         } else if upper.starts_with("MAIL FROM:") {
             let Some(authed) = env.authed_user.as_deref() else {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
+                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
                 continue;
             };
             let from = extract_angle(&line[10..]);
             if !from_matches_authed(&from, authed) {
                 warn!(user = %authed, from = %from, "submission MAIL FROM spoof rejected");
-                writer
-                    .write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n")
-                    .await?;
+                writer.write_all(b"550 5.7.1 MAIL FROM does not match authenticated user\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "reject"]).inc();
                 continue;
             }
             env.from = Some(from);
             env.rcpts.clear();
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["MAIL", "smtp587", "ok"]).inc();
         } else if upper.starts_with("RCPT TO:") {
             if env.authed_user.is_none() {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
+                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
                 continue;
             }
             if env.from.is_none() {
-                writer
-                    .write_all(b"503 Bad sequence: MAIL first\r\n")
-                    .await?;
+                writer.write_all(b"503 Bad sequence: MAIL first\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
             } else if env.rcpts.len() >= MAX_RCPTS {
                 writer.write_all(b"452 Too many recipients\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "reject"]).inc();
             } else {
                 env.rcpts.push(extract_angle(&line[8..]));
                 writer.write_all(b"250 OK\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["RCPT", "smtp587", "ok"]).inc();
             }
         } else if upper == "DATA" {
             if env.authed_user.is_none() {
-                writer
-                    .write_all(b"530 5.7.0 Authentication required\r\n")
-                    .await?;
+                writer.write_all(b"530 5.7.0 Authentication required\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "reject"]).inc();
             } else if env.from.is_none() || env.rcpts.is_empty() {
                 writer.write_all(b"503 Bad sequence\r\n").await?;
+                SMTP_COMMANDS_TOTAL.with_label_values(&["DATA", "smtp587", "reject"]).inc();
             } else {
-                writer
-                    .write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n")
-                    .await?;
+                writer.write_all(b"354 Start input; end with <CRLF>.<CRLF>\r\n").await?;
                 data_mode = true;
             }
         } else if upper == "RSET" {
@@ -424,16 +423,19 @@ where
                 ..Default::default()
             };
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["RSET", "smtp587", "ok"]).inc();
         } else if upper == "NOOP" {
             writer.write_all(b"250 OK\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["NOOP", "smtp587", "ok"]).inc();
         } else if upper == "QUIT" {
-            writer
-                .write_all(format!("221 {domain} Bye\r\n").as_bytes())
-                .await?;
+            writer.write_all(format!("221 {domain} Bye\r\n").as_bytes()).await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&["QUIT", "smtp587", "ok"]).inc();
             break;
         } else {
+            let verb = command_label(upper.split_whitespace().next().unwrap_or("OTHER"));
             warn!(cmd = %line, "unknown submission command");
             writer.write_all(b"500 Command not recognized\r\n").await?;
+            SMTP_COMMANDS_TOTAL.with_label_values(&[verb, "smtp587", "reject"]).inc();
         }
     }
 

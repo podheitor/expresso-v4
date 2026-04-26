@@ -1,6 +1,7 @@
 //! Minimal ESMTP server (RFC 5321) — receives inbound mail on port 25.
 //! Parses envelope → calls ingest pipeline → 250 OK or 4xx/5xx.
 
+pub mod metrics;
 pub mod session;
 pub mod submission;
 
@@ -13,6 +14,7 @@ use crate::state::AppState;
 /// Start listening for SMTP connections.
 /// Spawns a new task per connection.
 pub async fn serve(state: AppState, addr: SocketAddr) -> anyhow::Result<()> {
+    metrics::init();
     let listener = TcpListener::bind(addr).await?;
     info!(addr = %addr, "SMTP listener ready");
 
