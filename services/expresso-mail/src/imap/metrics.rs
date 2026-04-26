@@ -56,7 +56,7 @@ pub fn init() {
     for cmd in [
         "CAPABILITY", "LOGIN", "AUTHENTICATE", "LIST", "SELECT", "EXAMINE", "FETCH",
         "STORE", "EXPUNGE", "CLOSE", "LOGOUT", "NOOP", "IDLE", "STATUS",
-        "APPEND", "COPY", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB",
+        "APPEND", "COPY", "MOVE", "SEARCH", "SUBSCRIBE", "UNSUBSCRIBE", "LSUB",
         "CREATE", "DELETE", "RENAME", "UNSELECT", "OTHER",
     ] {
         for outcome in ["ok", "no", "bad"] {
@@ -92,6 +92,7 @@ pub fn command_label(name: &str) -> &'static str {
         "STATUS"     => "STATUS",
         "APPEND"      => "APPEND",
         "COPY"        => "COPY",
+        "MOVE"        => "MOVE",
         "SEARCH"      => "SEARCH",
         "SUBSCRIBE"   => "SUBSCRIBE",
         "UNSUBSCRIBE" => "UNSUBSCRIBE",
@@ -126,6 +127,7 @@ mod tests {
         assert_eq!(command_label("DELETE"),      "DELETE");
         assert_eq!(command_label("RENAME"),      "RENAME");
         assert_eq!(command_label("UNSELECT"),    "UNSELECT");
+        assert_eq!(command_label("MOVE"),        "MOVE");
     }
 
     #[test]

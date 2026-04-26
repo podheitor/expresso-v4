@@ -340,6 +340,12 @@ async fn dispatch(
             }
             cmd_copy(state, tag, sequence_set, mailbox, *uid, selected.as_ref().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
         }
+        CommandBody::Move { sequence_set, mailbox, uid, .. } => {
+            if selected.is_none() {
+                return vec![no_tagged(tag, "no mailbox selected")];
+            }
+            cmd_move(state, tag, sequence_set, mailbox, *uid, selected.as_mut().unwrap(), user_id.unwrap(), tenant_id.unwrap()).await
+        }
         CommandBody::ExpungeUid { sequence_set } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
@@ -383,6 +389,7 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Idle,
         Capability::UidPlus,
         Capability::Other(CapabilityOther(Atom::try_from("UNSELECT").unwrap())),
+        Capability::Other(CapabilityOther(Atom::try_from("MOVE").unwrap())),
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -1458,6 +1465,169 @@ async fn cmd_copy(
         }),
         "COPY completed",
     )]
+}
+
+/// MOVE / UID MOVE — RFC 6851.
+/// Atomically moves messages from the selected mailbox to a destination.
+/// Equivalent to COPY + expunge of the moved set (regardless of \Deleted flag).
+/// Returns untagged EXPUNGE responses followed by a tagged OK [COPYUID …].
+/// The selected mailbox exists count is updated after the move.
+async fn cmd_move(
+    state: &AppState,
+    tag: Tag<'static>,
+    sequence_set: &imap_codec::imap_types::sequence::SequenceSet,
+    dst_mailbox: &ImapMailbox<'_>,
+    uid: bool,
+    sel: &mut SelectedMailbox,
+    user_id: Uuid,
+    tenant_id: Uuid,
+) -> Vec<Response<'static>> {
+    let dst_name = mailbox_to_string(dst_mailbox);
+
+    // Fetch source messages and their seq positions atomically.
+    let src_rows = if uid {
+        let uid_w = uid_clause(&sequence_ranges(sequence_set, u32::MAX));
+        sqlx::query(&format!(
+            "SELECT id, uid, flags, size_bytes, body_path, \
+             ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
+             AND ({uid_w}) ORDER BY received_at ASC",
+        ))
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    } else {
+        let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
+        sqlx::query(&format!(
+            "SELECT id, uid, flags, size_bytes, body_path, seq FROM (\
+               SELECT id, uid, flags, size_bytes, body_path, \
+                      ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2\
+             ) AS ordered WHERE ({seq_w}) ORDER BY seq ASC",
+        ))
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .fetch_all(state.db())
+        .await
+        .unwrap_or_default()
+    };
+
+    if src_rows.is_empty() {
+        return vec![ok_tagged(tag, None, "MOVE completed")];
+    }
+
+    // Lock destination to serialise concurrent MOVE/COPY on same target.
+    let mut tx = match state.db().begin().await {
+        Ok(t) => t,
+        Err(_) => return vec![no_tagged(tag, "internal error")],
+    };
+
+    let dst_row: Option<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT id, uid_validity, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND folder_name = $2 AND tenant_id = $3 FOR UPDATE",
+    )
+    .bind(user_id)
+    .bind(&dst_name)
+    .bind(tenant_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .ok()
+    .flatten();
+
+    let (dst_mailbox_id, dst_uid_validity_raw, initial_next_uid) = match dst_row {
+        None => {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "mailbox not found")];
+        }
+        Some(r) => r,
+    };
+
+    let mut src_uids: Vec<NonZeroU32> = Vec::with_capacity(src_rows.len());
+    let mut dst_uids: Vec<NonZeroU32> = Vec::with_capacity(src_rows.len());
+    let mut src_ids: Vec<Uuid> = Vec::with_capacity(src_rows.len());
+    let mut src_seqs: Vec<i64> = Vec::with_capacity(src_rows.len());
+
+    for (i, row) in src_rows.iter().enumerate() {
+        let src_id: Uuid = row.get("id");
+        let src_uid_val: i64 = row.get("uid");
+        let dst_uid_val = initial_next_uid + i as i64;
+        let flags: Vec<String> = row.get("flags");
+        let size_bytes: i32 = row.get("size_bytes");
+        let body_path: String = row.get("body_path");
+        let seq_val: i64 = row.get("seq");
+
+        if sqlx::query(
+            "INSERT INTO messages (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+        )
+        .bind(Uuid::new_v4())
+        .bind(dst_mailbox_id)
+        .bind(tenant_id)
+        .bind(dst_uid_val)
+        .bind(&flags)
+        .bind(size_bytes)
+        .bind(&body_path)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+        {
+            let _ = tx.rollback().await;
+            return vec![no_tagged(tag, "internal error")];
+        }
+
+        src_uids.push(NonZeroU32::new(src_uid_val as u32).unwrap_or(NonZeroU32::MIN));
+        dst_uids.push(NonZeroU32::new(dst_uid_val as u32).unwrap_or(NonZeroU32::MIN));
+        src_ids.push(src_id);
+        src_seqs.push(seq_val);
+    }
+
+    // Delete source messages within the same transaction (atomic MOVE).
+    let id_list: Vec<String> = src_ids.iter().map(|id| format!("'{id}'")).collect();
+    let del_sql = format!(
+        "DELETE FROM messages WHERE id IN ({}) AND mailbox_id = $1 AND tenant_id = $2",
+        id_list.join(",")
+    );
+    if sqlx::query(&del_sql)
+        .bind(sel.mailbox_id)
+        .bind(tenant_id)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        let _ = tx.rollback().await;
+        return vec![no_tagged(tag, "internal error")];
+    }
+
+    if tx.commit().await.is_err() {
+        return vec![no_tagged(tag, "internal error")];
+    }
+
+    // Update cached exists count.
+    sel.exists = sel.exists.saturating_sub(src_seqs.len() as u32);
+
+    // RFC 6851 §4.4: emit * N EXPUNGE for each moved message (seq adjusted for
+    // preceding expunges in the same command).
+    let mut out: Vec<Response<'static>> = Vec::with_capacity(src_seqs.len() + 1);
+    for (i, &orig_seq) in src_seqs.iter().enumerate() {
+        let adj = (orig_seq as usize).saturating_sub(i);
+        if let Some(n) = NonZeroU32::new(adj as u32) {
+            out.push(Response::Data(Data::Expunge(n)));
+        }
+    }
+
+    let dst_uid_validity = NonZeroU32::new(dst_uid_validity_raw as u32).unwrap_or(NonZeroU32::MIN);
+    out.push(ok_tagged(
+        tag,
+        Some(Code::CopyUid {
+            uid_validity: dst_uid_validity,
+            source: build_uid_set(src_uids),
+            destination: build_uid_set(dst_uids),
+        }),
+        "MOVE completed",
+    ));
+    out
 }
 
 fn build_uid_set(uids: Vec<NonZeroU32>) -> UidSet {
