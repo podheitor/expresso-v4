@@ -561,7 +561,7 @@ async fn list_thread(
     State(state):    State<AppState>,
     ctx:             RequestCtx,
     Path(thread_id): Path<Uuid>,
-) -> Result<Json<Vec<MessageListItem>>> {
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let rows: Vec<MessageListItem> = sqlx::query_as(
         r#"
@@ -582,9 +582,26 @@ async fn list_thread(
     .bind(ctx.user_id)
     .fetch_all(&mut *tx)
     .await?;
+
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.thread_id = $1 AND m.tenant_id = $2 AND mb.tenant_id = $2 AND mb.user_id = $3",
+    )
+    .bind(thread_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap_or(0);
+
     tx.commit().await?;
 
-    Ok(Json(rows))
+    Ok((
+        StatusCode::OK,
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 /// DELETE /api/v1/mail/messages/:id — soft-delete: move to Trash
