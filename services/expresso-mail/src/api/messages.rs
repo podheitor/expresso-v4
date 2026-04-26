@@ -174,6 +174,7 @@ async fn search_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
     Query(params): Query<SearchParams>,
+    req_headers:   HeaderMap,
 ) -> Result<Response> {
     let limit = params.limit.unwrap_or(50).min(200);
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
@@ -228,6 +229,33 @@ async fn search_messages(
     let enum_filters = format!(
         "{folder_filter} {q_filter} {from_filter} {subject_filter} {cc_addr_filter} {since_filter} {before_date_filter} {thread_id_filter} {has_attachments_filter} {size_min_filter} {size_max_filter}"
     );
+
+    let max_sql = format!(
+        "SELECT MAX(m.received_at) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         {enum_filters}"
+    );
+    let max_received: Option<OffsetDateTime> = sqlx::query_scalar(&max_sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap_or(None);
+
+    if let Some(ts) = max_received {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        tx.commit().await?;
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
 
     let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
         let is_before = params.before_id.is_some();
@@ -309,11 +337,16 @@ async fn search_messages(
         .unwrap_or(0);
 
     tx.commit().await?;
-    Ok((
+    let mut resp = (
         StatusCode::OK,
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_received {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// GET /api/v1/mail/messages?folder=INBOX&limit=50[&before_id=UUID|&after_id=UUID|&page=0]
