@@ -7,6 +7,8 @@
 
 use axum::{
     extract::{Path, State},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{delete, get},
     Json, Router,
 };
@@ -79,9 +81,31 @@ pub async fn list_acl(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(cal_id): Path<Uuid>,
-) -> Result<Json<Vec<AclEntry>>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     assert_owner(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(created_at) FROM calendar_acl WHERE calendar_id = $1 AND tenant_id = $2",
+    )
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_created {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
 
     let rows: Vec<AclEntry> = sqlx::query_as(
         r#"SELECT a.calendar_id, a.tenant_id, a.grantee_id, a.privilege, u.email, a.created_at
@@ -95,7 +119,12 @@ pub async fn list_acl(
     .fetch_all(pool)
     .await?;
 
-    Ok(Json(rows))
+    let mut resp = Json(rows).into_response();
+    if let Some(ts) = max_created {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 pub async fn share(
