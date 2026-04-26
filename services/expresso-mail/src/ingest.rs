@@ -344,7 +344,7 @@ fn normalized_recipients(rcpts: &[String]) -> BTreeSet<String> {
         .collect()
 }
 
-async fn write_raw_message(state: &AppState, raw: &[u8]) -> anyhow::Result<String> {
+pub async fn write_raw_message(state: &AppState, raw: &[u8]) -> anyhow::Result<String> {
     let msg_id = Uuid::now_v7();
     // S3 path when object store available
     if let Some(store) = state.store() {

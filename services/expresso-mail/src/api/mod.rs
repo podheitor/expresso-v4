@@ -9,6 +9,7 @@ pub mod context;
 pub mod quota;
 pub mod vacation;
 pub mod sieve;
+pub mod drafts;
 
 use axum::Router;
 use tower_http::{
@@ -44,4 +45,5 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(quota::routes())
         .merge(vacation::routes())
         .merge(sieve::routes())
+        .merge(drafts::routes())
 }
