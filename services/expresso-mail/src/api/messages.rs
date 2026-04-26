@@ -867,12 +867,13 @@ async fn move_message(
     msg.map(Json).ok_or(MailError::MessageNotFound(id))
 }
 
-/// GET /api/v1/mail/messages/:id/flags — list flags of a message without marking it Seen
+/// GET /api/v1/mail/messages/:id/flags — list flags without marking Seen; ETag = sorted flags hash
 async fn get_message_flags(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<Vec<String>>> {
+    req_headers:  axum::http::HeaderMap,
+) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(Vec<String>,)> = sqlx::query_as(
         "SELECT m.flags \
@@ -888,8 +889,21 @@ async fn get_message_flags(
     .await?;
     tx.commit().await?;
 
-    let (flags,) = row.ok_or(MailError::MessageNotFound(id))?;
-    Ok(Json(flags))
+    let (mut flags,) = row.ok_or(MailError::MessageNotFound(id))?;
+    flags.sort_unstable();
+    let etag = format!("\"{}\"", flags.join(","));
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        [(header::ETAG, etag)],
+        Json(flags),
+    ).into_response())
 }
 
 /// PATCH /api/v1/mail/messages/:id/flags
