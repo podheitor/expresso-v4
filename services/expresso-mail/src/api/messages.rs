@@ -53,16 +53,21 @@ pub struct ListParams {
 #[derive(Debug, Deserialize)]
 pub struct SearchParams {
     /// Full-text search in subject, from, and preview_text
-    pub q:       Option<String>,
-    pub folder:  Option<String>,
-    pub from:    Option<String>,
-    pub subject: Option<String>,
+    pub q:         Option<String>,
+    pub folder:    Option<String>,
+    pub from:      Option<String>,
+    pub subject:   Option<String>,
     /// ISO-8601 date string — messages received on or after
-    pub since:   Option<String>,
+    pub since:     Option<String>,
     /// ISO-8601 date string — messages received before
-    pub before:  Option<String>,
-    pub page:    Option<i64>,
-    pub limit:   Option<i64>,
+    pub before:    Option<String>,
+    /// Legacy offset-based page (0-indexed). Ignored when before_id or after_id is set.
+    pub page:      Option<i64>,
+    pub limit:     Option<i64>,
+    /// Keyset cursor — return messages received strictly before this message (DESC order).
+    pub before_id: Option<Uuid>,
+    /// Keyset cursor — return messages received strictly after this message (ASC, then reversed).
+    pub after_id:  Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -123,14 +128,13 @@ pub struct FlagRequest {
 /// Full-text and envelope search across the user's mailbox.
 /// `q` searches subject + from_addr + preview_text (ILIKE).
 /// `since`/`before` are ISO-8601 date prefixes (YYYY-MM-DD).
+/// Supports the same `before_id`/`after_id` keyset cursor as `/mail/messages`.
 async fn search_messages(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<MessageListItem>>> {
-    let limit  = params.limit.unwrap_or(50).min(200);
-    let offset = params.page.unwrap_or(0) * limit;
-
+    let limit = params.limit.unwrap_or(50).min(200);
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let folder_filter = params.folder
@@ -151,29 +155,81 @@ async fn search_messages(
     let since_filter = params.since
         .map(|d| format!("AND m.received_at >= '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
-    let before_filter = params.before
+    let before_date_filter = params.before
         .map(|d| format!("AND m.received_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
 
-    let sql = format!(
+    let base_select =
         "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
                 m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
          FROM messages m \
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
-         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
-           {folder_filter} {q_filter} {from_filter} {subject_filter} \
-           {since_filter} {before_filter} \
-         ORDER BY m.received_at DESC \
-         LIMIT {limit} OFFSET {offset}"
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2";
+    let enum_filters = format!(
+        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter}"
     );
 
-    let rows: Vec<MessageListItem> = sqlx::query_as(&sql)
+    let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
+        let is_before = params.before_id.is_some();
+
+        let anchor: Option<(time::OffsetDateTime, Uuid)> = sqlx::query_as(
+            "SELECT m.received_at, m.id \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE m.id = $1 AND m.tenant_id = $2 AND mb.user_id = $3 \
+             LIMIT 1",
+        )
+        .bind(cursor_id)
         .bind(ctx.tenant_id)
         .bind(ctx.user_id)
-        .fetch_all(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
-    tx.commit().await?;
 
+        let (anchor_ts, anchor_id) = anchor.ok_or(MailError::MessageNotFound(cursor_id))?;
+
+        if is_before {
+            let sql = format!(
+                "{base_select} {enum_filters} \
+                 AND (m.received_at, m.id) < ($3::timestamptz, $4::uuid) \
+                 ORDER BY m.received_at DESC, m.id DESC LIMIT {limit}"
+            );
+            sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .fetch_all(&mut *tx)
+                .await?
+        } else {
+            let sql = format!(
+                "{base_select} {enum_filters} \
+                 AND (m.received_at, m.id) > ($3::timestamptz, $4::uuid) \
+                 ORDER BY m.received_at ASC, m.id ASC LIMIT {limit}"
+            );
+            let mut rows: Vec<MessageListItem> = sqlx::query_as(&sql)
+                .bind(ctx.tenant_id)
+                .bind(ctx.user_id)
+                .bind(anchor_ts)
+                .bind(anchor_id)
+                .fetch_all(&mut *tx)
+                .await?;
+            rows.reverse();
+            rows
+        }
+    } else {
+        let offset = params.page.unwrap_or(0) * limit;
+        let sql = format!(
+            "{base_select} {enum_filters} \
+             ORDER BY m.received_at DESC LIMIT {limit} OFFSET {offset}"
+        );
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_all(&mut *tx)
+            .await?
+    };
+
+    tx.commit().await?;
     Ok(Json(rows))
 }
 
