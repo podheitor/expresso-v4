@@ -750,6 +750,18 @@ async fn list_thread(
             return Ok(StatusCode::NOT_MODIFIED.into_response());
         }
     }
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        tx.commit().await?;
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
 
     let rows: Vec<MessageListItem> = sqlx::query_as(
         r#"
@@ -785,14 +797,19 @@ async fn list_thread(
 
     tx.commit().await?;
 
-    Ok((
+    let mut resp = (
         StatusCode::OK,
         [
             (header::HeaderName::from_static("x-total-count"), total.to_string()),
             (header::ETAG,                                     etag),
         ],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// DELETE /api/v1/mail/messages/:id — soft-delete: move to Trash
