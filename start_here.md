@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #320 (2026-04-26)
+**Último sprint commitado:** #322 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,20 +8,29 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#313–#320)
+## O que foi feito nesta sessão (#321–#322)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #313 | mail | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/mail/search` — MAX(received_at) com mesmos filtros |
-| #314 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/vacation` e `GET /mail/sieve` — `updated_at` |
-| #315 | calendar | `Last-Modified` + `If-Modified-Since` em `GET /calendars/:id/acl` — MAX(created_at) |
-| #316 | contacts,calendar | `Last-Modified` + `If-Modified-Since` em `GET /addressbooks/:id/acl` e `GET /calendars/:id/events/:id/attendees` |
-| #317 | drive | `Last-Modified` + `If-Modified-Since` em `GET /drive/files`, `/drive/files/:id/metadata`, `/drive/trash`, `/drive/files/:id/versions` |
-| #318 | admin | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/audit` — MAX(created_at) com mesmos filtros |
-| #319 | drive | `Last-Modified` + `If-Modified-Since` em `GET /drive/files/:id/shares` — MAX(created_at) |
-| #320 | mail | `If-Modified-Since` → 304 em `GET /mail/messages/:id/flags` — `received_at` imutável; fechou LM/IMS=31/31 |
+| #321 | drive | `ETag` + `If-None-Match` em `GET /drive/files/:id/metadata` — `updated_at + id` hash |
+| #322 | drive | `HEAD /drive/files/:id` — ETag + Last-Modified + Content-Length; INM + IMS → 304 |
 
-**Estado atual:** caching HTTP COMPLETO — LM/IMS 31/31 em todos os serviços.
+**Estado atual:** caching HTTP COMPLETO — todos os candidatos implementados. Próximos: IMAP (bloqueados) e features novas.
+
+---
+
+## Sprints anteriores (#313–#320)
+
+| Sprint | Escopo | O que foi feito |
+|--------|--------|-----------------|
+| #313 | mail | `Last-Modified` + `If-Modified-Since` em `GET /api/v1/mail/search` — MAX(received_at) |
+| #314 | mail | `Last-Modified` + `If-Modified-Since` em `GET /mail/vacation` e `GET /mail/sieve` |
+| #315 | calendar | `Last-Modified` + `If-Modified-Since` em `GET /calendars/:id/acl` — MAX(created_at) |
+| #316 | contacts,calendar | LM+IMS em `GET /addressbooks/:id/acl` e `GET /calendars/:id/events/:id/attendees` |
+| #317 | drive | LM+IMS em `GET /drive/files`, `/drive/files/:id/metadata`, `/drive/trash`, `/drive/files/:id/versions` |
+| #318 | admin | LM+IMS em `GET /api/v1/audit` — MAX(created_at) com mesmos filtros |
+| #319 | drive | LM+IMS em `GET /drive/files/:id/shares` — MAX(created_at) |
+| #320 | mail | IMS → 304 em `GET /mail/messages/:id/flags` — fechou LM/IMS=31/31 |
 
 ---
 
@@ -35,9 +44,7 @@ git log --oneline | head -10
 
 3. **notifications: testar Redis pub/sub cross-pod**
 
-4. **drive: ETag em `/drive/files/:id/metadata`** — usar hash de `updated_at + id`
-
-5. **drive: HEAD `/drive/files/:id`** — para checagem leve de existência + ETag
+4. **features novas** — a definir pelo user
 
 ---
 
@@ -87,7 +94,7 @@ if let Some(ts) = max_ts {
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
 }
 
-// ETag + LM + IMS em get_one
+// ETag + LM + IMS em get_one / metadata
 let etag = format!("\"{}-{}\"", resource.updated_at.unix_timestamp(), resource.id);
 if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
     if inm.as_bytes() == etag.as_bytes() { return Ok(StatusCode::NOT_MODIFIED.into_response()); }
@@ -100,6 +107,7 @@ if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         }
     }
 }
+// HEAD handler — mesmo padrão mas resp = StatusCode::OK.into_response() sem body
 ```
 
 ---
