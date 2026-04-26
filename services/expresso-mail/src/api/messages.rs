@@ -90,7 +90,9 @@ pub struct SearchParams {
     pub thread_id: Option<Uuid>,
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
-    pub sort:      Option<String>,
+    pub sort:            Option<String>,
+    /// If set, return only messages with (true) or without (false) attachments.
+    pub has_attachments: Option<bool>,
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -187,6 +189,12 @@ async fn search_messages(
         .map(|t| format!("AND m.thread_id = '{t}'"))
         .unwrap_or_default();
 
+    let has_attachments_filter = match params.has_attachments {
+        Some(true)  => "AND m.has_attachments = TRUE",
+        Some(false) => "AND m.has_attachments = FALSE",
+        None        => "",
+    };
+
     let base_select =
         "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
                 m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
@@ -194,7 +202,7 @@ async fn search_messages(
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2";
     let enum_filters = format!(
-        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter} {thread_id_filter}"
+        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter} {thread_id_filter} {has_attachments_filter}"
     );
 
     let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
