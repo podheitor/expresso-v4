@@ -15,6 +15,7 @@
 //!                   "or"            — any condition suffices.
 //!
 //! CRUD: GET/POST/PATCH/DELETE /api/v1/flows/rules        (JWT auth; ?enabled=true/false filter)
+//! GET  /api/v1/flows/rules/:id                           (JWT auth; returns ETag + Last-Modified)
 //! Reorder: PATCH  /api/v1/flows/rules/reorder            (JWT auth) — bulk priority update
 //! Bulk delete: DELETE /api/v1/flows/rules/bulk           (JWT auth) — delete multiple rules
 //! Trigger: POST /internal/process                        (internal, no auth)
@@ -302,13 +303,29 @@ async fn update_rule(
     }
 }
 
+/// GET /api/v1/flows/rules/:id — returns ETag (hash of updated_at+id) and Last-Modified header.
 async fn get_rule(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<FlowRule>, (StatusCode, Json<serde_json::Value>)> {
-    let row: Option<FlowRule> = sqlx::query_as(
-        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, actions \
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    #[derive(sqlx::FromRow)]
+    struct RuleRow {
+        id:             Uuid,
+        user_id:        Uuid,
+        tenant_id:      Uuid,
+        name:           String,
+        enabled:        bool,
+        priority:       i32,
+        conditions:     serde_json::Value,
+        condition_mode: String,
+        actions:        serde_json::Value,
+        updated_at:     time::OffsetDateTime,
+    }
+
+    let row: Option<RuleRow> = sqlx::query_as(
+        "SELECT id, user_id, tenant_id, name, enabled, priority, conditions, condition_mode, \
+                actions, updated_at \
          FROM flow_rules \
          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
     )
@@ -319,10 +336,33 @@ async fn get_rule(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    match row {
-        Some(r) => Ok(Json(r)),
-        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"})))),
-    }
+    let r = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "rule not found"}))))?;
+
+    let etag = format!("\"{}-{}\"", r.updated_at.unix_timestamp(), r.id);
+    let last_modified = r.updated_at
+        .format(&time::format_description::well_known::Rfc2822)
+        .unwrap_or_default();
+
+    let rule = FlowRule {
+        id:             r.id,
+        user_id:        r.user_id,
+        tenant_id:      r.tenant_id,
+        name:           r.name,
+        enabled:        r.enabled,
+        priority:       r.priority,
+        conditions:     r.conditions,
+        condition_mode: r.condition_mode,
+        actions:        r.actions,
+    };
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::ETAG,          etag),
+            (header::LAST_MODIFIED, last_modified),
+        ],
+        Json(rule),
+    ).into_response())
 }
 
 async fn delete_rule(
