@@ -14,7 +14,7 @@
 //!
 //! # REST
 //!
-//! GET/POST/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
+//! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped)
 //!
 //! Port: :8009
@@ -27,7 +27,7 @@ use axum::{
     http::{request::Parts, StatusCode},
     middleware::{self, Next},
     response::Response,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use expresso_auth_client::{AuthContext, Authenticated, AuthRejection, OidcConfig, OidcValidator};
@@ -66,6 +66,13 @@ struct RetentionPolicy {
 struct CreatePolicyRequest {
     pub folder_name: Option<String>,
     pub retain_days: i32,
+    pub action:      Option<String>,
+    pub enabled:     Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdatePolicyRequest {
+    pub retain_days: Option<i32>,
     pub action:      Option<String>,
     pub enabled:     Option<bool>,
 }
@@ -178,6 +185,48 @@ async fn create_policy(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     Ok((StatusCode::CREATED, Json(policy)))
+}
+
+async fn update_policy(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+    Json(req):    Json<UpdatePolicyRequest>,
+) -> Result<Json<RetentionPolicy>, (StatusCode, Json<serde_json::Value>)> {
+    if let Some(d) = req.retain_days {
+        if d <= 0 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be > 0"}))));
+        }
+    }
+
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let policy: Option<RetentionPolicy> = sqlx::query_as(
+        "UPDATE retention_policies \
+         SET retain_days = COALESCE($3, retain_days), \
+             action      = COALESCE($4, action), \
+             enabled     = COALESCE($5, enabled), \
+             updated_at  = NOW() \
+         WHERE id = $1 AND tenant_id = $2 \
+         RETURNING id, tenant_id, folder_name, retain_days, action, enabled",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(req.retain_days)
+    .bind(req.action)
+    .bind(req.enabled)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit().await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    match policy {
+        Some(p) => Ok(Json(p)),
+        None    => Err((StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"})))),
+    }
 }
 
 async fn delete_policy(
@@ -405,7 +454,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies",
                get(list_policies).post(create_policy))
         .route("/api/v1/compliance/retention-policies/:id",
-               delete(delete_policy))
+               patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
