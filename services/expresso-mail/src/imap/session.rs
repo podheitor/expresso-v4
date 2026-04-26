@@ -1414,8 +1414,9 @@ async fn cmd_fetch(
             }
         }
     }
+    // Fetch body bytes for BODYSTRUCTURE too — needed to detect Content-Type.
     let need_body = want_full_body || want_header || want_text || want_part_body || want_part_mime
-        || !header_fields_reqs.is_empty() || !partial_reqs.is_empty();
+        || w_bodystructure || !header_fields_reqs.is_empty() || !partial_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -1500,14 +1501,17 @@ async fn cmd_fetch(
                 }
             }
         }
-        if w_bodystructure {
-            let sz: i32 = row.try_get("size_bytes").unwrap_or(0);
-            items.push(MessageDataItem::BodyStructure(build_body_structure(sz as u32)));
-        }
         if need_body {
             let body_path: Option<String> = row.try_get("body_path").ok();
+            let sz: i32 = row.try_get("size_bytes").unwrap_or(0);
             if let Some(path) = body_path {
                 if let Some(raw) = fetch_body_bytes(state, &path).await {
+                    // BODYSTRUCTURE — parsed from raw Content-Type header so that
+                    // text/html, text/plain, and multipart/* are reported correctly.
+                    if w_bodystructure {
+                        items.push(MessageDataItem::BodyStructure(
+                            build_body_structure(sz as u32, Some(&raw))));
+                    }
                     // RFC822.HEADER ≡ BODY.PEEK[HEADER] — emits Rfc822Header item (no \Seen).
                     if w_rfc822_header {
                         let hdr = email_header_bytes(&raw);
@@ -1633,7 +1637,15 @@ async fn cmd_fetch(
                             data:    NString::from(Literal::unvalidated(slice)),
                         });
                     }
+                } else if w_bodystructure {
+                    // body_path fetch failed — emit minimal structure from size only.
+                    items.push(MessageDataItem::BodyStructure(
+                        build_body_structure(sz as u32, None)));
                 }
+            } else if w_bodystructure {
+                // No body_path stored — emit minimal structure from size only.
+                items.push(MessageDataItem::BodyStructure(
+                    build_body_structure(sz as u32, None)));
             }
         }
 
@@ -3024,9 +3036,22 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
 /// Returns a single-part TEXT/PLAIN 7BIT structure using the stored
 /// size_bytes. Without full MIME parsing this is conservative but
 /// RFC-compliant: clients use it for preview without downloading.
-fn build_body_structure(size_bytes: u32) -> BodyStructure<'static> {
-    BodyStructure::Single {
-        body: Body {
+/// Build a BODYSTRUCTURE response for a message.
+/// When raw bytes are available, Content-Type is parsed to set the correct
+/// type/subtype and transfer encoding. Without bytes, falls back to TEXT/PLAIN.
+fn build_body_structure(size_bytes: u32, raw: Option<&[u8]>) -> BodyStructure<'static> {
+    let (ct_type, ct_subtype, ct_params, ct_encoding) = if let Some(bytes) = raw {
+        parse_content_type(bytes)
+    } else {
+        ("TEXT".to_owned(), "PLAIN".to_owned(), vec![], "7BIT".to_owned())
+    };
+
+    // For multipart/* we emit a minimal Multi structure with a single TEXT/PLAIN
+    // inner part. True multipart parsing would require walking MIME boundaries —
+    // deferred; this gives clients the correct top-level type.
+    if ct_type.eq_ignore_ascii_case("MULTIPART") {
+        let subtype = IString::try_from(ct_subtype.to_uppercase()).unwrap_or_else(|_| IString::try_from("MIXED").unwrap());
+        let inner = Body {
             basic: BasicFields {
                 parameter_list: vec![],
                 id: NString(None),
@@ -3034,13 +3059,113 @@ fn build_body_structure(size_bytes: u32) -> BodyStructure<'static> {
                 content_transfer_encoding: IString::try_from("7BIT").unwrap(),
                 size: size_bytes,
             },
-            specific: SpecificFields::Basic {
-                r#type: IString::try_from("TEXT").unwrap(),
+            specific: SpecificFields::Text {
                 subtype: IString::try_from("PLAIN").unwrap(),
+                number_of_lines: 0,
             },
+        };
+        return BodyStructure::Multi {
+            bodies: Vec1::try_from(vec![BodyStructure::Single { body: inner, extension_data: None }]).unwrap(),
+            subtype,
+            extension_data: None,
+        };
+    }
+
+    let type_str  = IString::try_from(ct_type.to_uppercase()).unwrap_or_else(|_| IString::try_from("TEXT").unwrap());
+    let sub_str   = IString::try_from(ct_subtype.to_uppercase()).unwrap_or_else(|_| IString::try_from("PLAIN").unwrap());
+    let enc_str   = IString::try_from(ct_encoding.to_uppercase()).unwrap_or_else(|_| IString::try_from("7BIT").unwrap());
+
+    let specific = if ct_type.eq_ignore_ascii_case("TEXT") {
+        // Count approximate lines in the body for TEXT/* parts.
+        let lines = raw.map_or(0, |b| {
+            let body_start = b.windows(4).position(|w| w == b"\r\n\r\n").map_or(b.len(), |i| i + 4);
+            b[body_start..].iter().filter(|&&c| c == b'\n').count() as u32
+        });
+        SpecificFields::Text { subtype: sub_str, number_of_lines: lines }
+    } else {
+        SpecificFields::Basic { r#type: type_str, subtype: sub_str }
+    };
+
+    // Build parameter_list from Content-Type params (charset etc.).
+    let parameter_list: Vec<(IString<'static>, IString<'static>)> = ct_params.into_iter()
+        .filter_map(|(k, v)| {
+            let ks = IString::try_from(k).ok()?;
+            let vs = IString::try_from(v).ok()?;
+            Some((ks, vs))
+        })
+        .collect();
+
+    BodyStructure::Single {
+        body: Body {
+            basic: BasicFields {
+                parameter_list,
+                id: NString(None),
+                description: NString(None),
+                content_transfer_encoding: enc_str,
+                size: size_bytes,
+            },
+            specific,
         },
         extension_data: None,
     }
+}
+
+/// Parse Content-Type and Content-Transfer-Encoding from message headers.
+/// Returns (type, subtype, params[(name,value)], transfer_encoding).
+fn parse_content_type(raw: &[u8]) -> (String, String, Vec<(String, String)>, String) {
+    let default = ("TEXT".to_owned(), "PLAIN".to_owned(), vec![], "7BIT".to_owned());
+    let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n");
+    let header_bytes = match header_end {
+        Some(p) => &raw[..p],
+        None    => raw,
+    };
+    let text = String::from_utf8_lossy(header_bytes);
+
+    // Unfold headers.
+    let mut headers: Vec<(String, String)> = Vec::new();
+    for line in text.lines() {
+        if (line.starts_with(' ') || line.starts_with('\t')) && !headers.is_empty() {
+            if let Some(last) = headers.last_mut() {
+                last.1.push(' ');
+                last.1.push_str(line.trim());
+            }
+        } else if let Some(colon) = line.find(':') {
+            let name  = line[..colon].trim().to_ascii_lowercase();
+            let value = line[colon + 1..].trim().to_owned();
+            headers.push((name, value));
+        }
+    }
+
+    let ct_line = headers.iter().find(|(n, _)| n == "content-type")
+        .map(|(_, v)| v.as_str())
+        .unwrap_or("text/plain");
+    let enc_line = headers.iter().find(|(n, _)| n == "content-transfer-encoding")
+        .map(|(_, v)| v.trim().to_ascii_uppercase())
+        .unwrap_or_else(|| "7BIT".to_owned());
+
+    // Parse "type/subtype; param=value; ..." from Content-Type.
+    let mut parts = ct_line.splitn(2, ';');
+    let type_subtype = parts.next().unwrap_or("text/plain").trim();
+    let params_str   = parts.next().unwrap_or("");
+
+    let (ct_type, ct_subtype) = if let Some(pos) = type_subtype.find('/') {
+        (type_subtype[..pos].trim().to_owned(), type_subtype[pos + 1..].trim().to_owned())
+    } else {
+        return default;
+    };
+
+    // Parse semicolon-separated params.
+    let mut params: Vec<(String, String)> = Vec::new();
+    for param in params_str.split(';') {
+        let param = param.trim();
+        if let Some(eq) = param.find('=') {
+            let k = param[..eq].trim().to_ascii_lowercase();
+            let v = param[eq + 1..].trim().trim_matches('"').to_owned();
+            if !k.is_empty() { params.push((k, v)); }
+        }
+    }
+
+    (ct_type, ct_subtype, params, enc_line)
 }
 
 fn addr_from_str(addr: &str, name: Option<&str>) -> imap_codec::imap_types::envelope::Address<'static> {
