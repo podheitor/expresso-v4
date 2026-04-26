@@ -676,13 +676,40 @@ async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u
     }
 }
 
-/// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC
+/// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC.
+/// Returns ETag derived from MAX(received_at) of thread messages. Responds 304 if If-None-Match matches.
 async fn list_thread(
     State(state):    State<AppState>,
     ctx:             RequestCtx,
     Path(thread_id): Path<Uuid>,
+    req_headers:     axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    // Derive ETag from MAX(received_at) so it changes whenever the thread gains a new message.
+    let max_ts: Option<time::OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(m.received_at) FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.thread_id = $1 AND m.tenant_id = $2 AND mb.tenant_id = $2 AND mb.user_id = $3",
+    )
+    .bind(thread_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap_or(None);
+
+    let etag = max_ts
+        .map(|ts| format!("\"{}-{}\"", ts.unix_timestamp(), thread_id))
+        .unwrap_or_else(|| format!("\"0-{}\"", thread_id));
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            tx.commit().await?;
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
     let rows: Vec<MessageListItem> = sqlx::query_as(
         r#"
         SELECT
@@ -719,7 +746,10 @@ async fn list_thread(
 
     Ok((
         StatusCode::OK,
-        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        [
+            (header::HeaderName::from_static("x-total-count"), total.to_string()),
+            (header::ETAG,                                     etag),
+        ],
         Json(rows),
     ).into_response())
 }
