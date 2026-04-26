@@ -1102,13 +1102,26 @@ async fn cmd_fetch(
     // use this for preview/thread-pane rendering without downloading the body.
     let w_bodystructure  = wants(macro_or, "BODYSTRUCTURE") || wants(macro_or, "BODY");
 
+    // RFC822 / RFC822.HEADER / RFC822.TEXT aliases (RFC 3501 §6.4.5).
+    // RFC822       ≡ BODY[] (full message, sets \Seen implicitly)
+    // RFC822.HEADER ≡ BODY.PEEK[HEADER] (header only, does NOT set \Seen)
+    // RFC822.TEXT   ≡ BODY[TEXT] (body text, sets \Seen implicitly)
+    let w_rfc822        = wants(macro_or, "RFC822");
+    let w_rfc822_header = wants(macro_or, "RFC822.HEADER");
+    let w_rfc822_text   = wants(macro_or, "RFC822.TEXT");
+
     // Determine which body sections the client wants.
     // BODY[HEADER] / BODY.PEEK[HEADER] → want_header
     // BODY[TEXT]   / BODY.PEEK[TEXT]   → want_text
     // BODY[]       / BODY.PEEK[]       → want_full_body
     // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative:
     //   MIME part parsing is not implemented; returning full body is RFC-safe as fallback)
-    let (mut want_full_body, mut want_header, mut want_text, mut set_seen) = (false, false, false, false);
+    let (mut want_full_body, mut want_header, mut want_text, mut set_seen) = (
+        w_rfc822,
+        w_rfc822_header,
+        w_rfc822_text,
+        w_rfc822 || w_rfc822_text,
+    );
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
             if let MessageDataItemName::BodyExt { section, peek, .. } = name {
@@ -1203,9 +1216,29 @@ async fn cmd_fetch(
             let body_path: Option<String> = row.try_get("body_path").ok();
             if let Some(path) = body_path {
                 if let Some(raw) = fetch_body_bytes(state, &path).await {
+                    // RFC822.HEADER ≡ BODY.PEEK[HEADER] — emits Rfc822Header item (no \Seen).
+                    if w_rfc822_header {
+                        let hdr = email_header_bytes(&raw);
+                        items.push(MessageDataItem::Rfc822Header(
+                            NString::from(Literal::unvalidated(hdr.clone())),
+                        ));
+                    }
+                    // RFC822.TEXT ≡ BODY[TEXT] — emits Rfc822Text item (sets \Seen above).
+                    if w_rfc822_text {
+                        let txt = email_text_bytes(&raw);
+                        items.push(MessageDataItem::Rfc822Text(
+                            NString::from(Literal::unvalidated(txt.clone())),
+                        ));
+                    }
+                    // RFC822 ≡ BODY[] — emits Rfc822 item (sets \Seen above).
+                    if w_rfc822 {
+                        items.push(MessageDataItem::Rfc822(
+                            NString::from(Literal::unvalidated(raw.clone())),
+                        ));
+                    }
                     // BODY[HEADER] — RFC 3501 §6.4.5: header lines up to and
                     // including the blank separator (\r\n\r\n).
-                    if want_header {
+                    if want_header && !w_rfc822_header {
                         let hdr = email_header_bytes(&raw);
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Header(None)),
@@ -1214,7 +1247,7 @@ async fn cmd_fetch(
                         });
                     }
                     // BODY[TEXT] — everything after the blank separator.
-                    if want_text {
+                    if want_text && !w_rfc822_text {
                         let txt = email_text_bytes(&raw);
                         items.push(MessageDataItem::BodyExt {
                             section: Some(Section::Text(None)),
@@ -1223,7 +1256,7 @@ async fn cmd_fetch(
                         });
                     }
                     // BODY[] or fallback for unrecognised section specs.
-                    if want_full_body {
+                    if want_full_body && !w_rfc822 {
                         items.push(MessageDataItem::BodyExt {
                             section: None,
                             origin:  None,
@@ -2201,6 +2234,9 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
                 | ("BODYEXT",     MessageDataItemName::BodyExt { .. })
                 | ("BODY",        MessageDataItemName::Body)
                 | ("BODYSTRUCTURE", MessageDataItemName::BodyStructure)
+                | ("RFC822",        MessageDataItemName::Rfc822)
+                | ("RFC822.HEADER", MessageDataItemName::Rfc822Header)
+                | ("RFC822.TEXT",   MessageDataItemName::Rfc822Text)
             ))
         }
     }
