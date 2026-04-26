@@ -2280,6 +2280,36 @@ async fn handle_idle(
                             writer.write_all(&resp_codec.encode(&resp).dump()).await?;
                         }
                     }
+                    // Push unsolicited FETCH FLAGS for messages changed by other sessions.
+                    let current: Vec<(u32, Vec<String>)> = sqlx::query(
+                        "SELECT ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, flags \
+                         FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+                    )
+                    .bind(sel.mailbox_id)
+                    .bind(tid)
+                    .fetch_all(state.db())
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|r| { let s: i64 = r.get("seq"); let f: Vec<String> = r.get("flags"); (s as u32, f) })
+                    .collect();
+                    let mut new_snapshot: HashMap<u32, Vec<String>> = HashMap::with_capacity(current.len());
+                    for (seq, flags_now) in &current {
+                        let changed = sel.flags_snapshot.get(seq).map_or(true, |prev| prev != flags_now);
+                        if changed {
+                            let flag_items: Vec<FlagFetch<'static>> = flags_now.iter()
+                                .filter_map(|f| parse_flag(f).map(FlagFetch::Flag))
+                                .collect();
+                            if let Ok(items) = Vec1::try_from(vec![MessageDataItem::Flags(flag_items)]) {
+                                if let Some(seq_nz) = NonZeroU32::new(*seq) {
+                                    let resp = Response::Data(Data::Fetch { seq: seq_nz, items });
+                                    writer.write_all(&resp_codec.encode(&resp).dump()).await?;
+                                }
+                            }
+                        }
+                        new_snapshot.insert(*seq, flags_now.clone());
+                    }
+                    sel.flags_snapshot = new_snapshot;
                 }
             }
         }
