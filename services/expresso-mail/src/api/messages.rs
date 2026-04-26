@@ -24,6 +24,7 @@ use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppStat
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/messages",            get(list_messages))
+        .route("/mail/search",              get(search_messages))
         .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
@@ -37,6 +38,21 @@ pub fn routes() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 pub struct ListParams {
     pub folder:  Option<String>,
+    pub page:    Option<i64>,
+    pub limit:   Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchParams {
+    /// Full-text search in subject, from, and preview_text
+    pub q:       Option<String>,
+    pub folder:  Option<String>,
+    pub from:    Option<String>,
+    pub subject: Option<String>,
+    /// ISO-8601 date string — messages received on or after
+    pub since:   Option<String>,
+    /// ISO-8601 date string — messages received before
+    pub before:  Option<String>,
     pub page:    Option<i64>,
     pub limit:   Option<i64>,
 }
@@ -91,6 +107,66 @@ pub struct FlagRequest {
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
+
+/// GET /api/v1/mail/search?q=text&folder=INBOX&from=addr&subject=text&since=date&before=date
+///
+/// Full-text and envelope search across the user's mailbox.
+/// `q` searches subject + from_addr + preview_text (ILIKE).
+/// `since`/`before` are ISO-8601 date prefixes (YYYY-MM-DD).
+async fn search_messages(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<SearchParams>,
+) -> Result<Json<Vec<MessageListItem>>> {
+    let limit  = params.limit.unwrap_or(50).min(200);
+    let offset = params.page.unwrap_or(0) * limit;
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = params.folder
+        .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
+        .unwrap_or_default();
+    let q_filter = params.q.map(|q| {
+        let esc = q.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND (m.subject ILIKE '%{esc}%' OR m.from_addr ILIKE '%{esc}%' OR m.preview_text ILIKE '%{esc}%')")
+    }).unwrap_or_default();
+    let from_filter = params.from.map(|f| {
+        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND m.from_addr ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let subject_filter = params.subject.map(|s| {
+        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND m.subject ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let since_filter = params.since
+        .map(|d| format!("AND m.received_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND m.received_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
+                m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND m.expunged_at IS NULL \
+           {folder_filter} {q_filter} {from_filter} {subject_filter} \
+           {since_filter} {before_filter} \
+         ORDER BY m.received_at DESC \
+         LIMIT {limit} OFFSET {offset}"
+    );
+
+    let rows: Vec<MessageListItem> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    Ok(Json(rows))
+}
 
 /// GET /api/v1/mail/messages?folder=INBOX&page=0&limit=50
 async fn list_messages(
