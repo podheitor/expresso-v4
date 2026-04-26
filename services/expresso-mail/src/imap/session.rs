@@ -1064,6 +1064,11 @@ async fn cmd_append(
     };
 
     let msg_id = Uuid::new_v4();
+
+    // Parse envelope headers from raw RFC 2822 bytes so FETCH ENVELOPE,
+    // SEARCH, and SORT work on APPENDed messages without re-reading the body.
+    let parsed = parse_rfc2822_headers(raw_bytes);
+
     let body_path = if let Some(store) = state.store() {
         let key = format!("raw/{msg_id}.eml");
         if store.put(&key, raw_bytes.to_vec(), Some("message/rfc822")).await.is_err() {
@@ -1077,8 +1082,10 @@ async fn cmd_append(
 
     let insert = sqlx::query(
         "INSERT INTO messages \
-         (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+         (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, received_at, \
+          subject, from_addr, from_name, to_addrs, cc_addrs, message_id, in_reply_to, reply_to, date) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now(), \
+                 $8, $9, $10, $11, $12, $13, $14, $15, $16)",
     )
     .bind(msg_id)
     .bind(mailbox_id)
@@ -1087,6 +1094,15 @@ async fn cmd_append(
     .bind(&flag_strs)
     .bind(raw_bytes.len() as i32)
     .bind(&body_path)
+    .bind(parsed.subject)
+    .bind(parsed.from_addr)
+    .bind(parsed.from_name)
+    .bind(parsed.to_addrs)
+    .bind(parsed.cc_addrs)
+    .bind(parsed.message_id)
+    .bind(parsed.in_reply_to)
+    .bind(parsed.reply_to)
+    .bind(parsed.date)
     .execute(&mut *tx)
     .await;
 
@@ -2240,6 +2256,93 @@ fn email_text_bytes(raw: &[u8]) -> Vec<u8> {
         raw[pos + 4..].to_vec()
     } else {
         Vec::new()
+    }
+}
+
+struct ParsedHeaders {
+    subject:    Option<String>,
+    from_addr:  Option<String>,
+    from_name:  Option<String>,
+    to_addrs:   serde_json::Value,
+    cc_addrs:   serde_json::Value,
+    message_id: Option<String>,
+    in_reply_to:Option<String>,
+    reply_to:   Option<String>,
+    date:       Option<ChronoDateTime<Utc>>,
+}
+
+/// Parse the RFC 2822 header block of `raw` into structured envelope fields.
+/// Handles header folding (continuation lines). Date parsing uses RFC 2822 format.
+fn parse_rfc2822_headers(raw: &[u8]) -> ParsedHeaders {
+    let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n");
+    let header_bytes = match header_end {
+        Some(p) => &raw[..p],
+        None    => raw,
+    };
+    let text = String::from_utf8_lossy(header_bytes);
+
+    // Unfold header: join continuation lines (starting with whitespace) to the previous line.
+    let mut unfolded: Vec<(String, String)> = Vec::new();
+    for line in text.lines() {
+        if (line.starts_with(' ') || line.starts_with('\t')) && !unfolded.is_empty() {
+            if let Some(last) = unfolded.last_mut() {
+                last.1.push(' ');
+                last.1.push_str(line.trim());
+            }
+        } else if let Some(colon) = line.find(':') {
+            let name  = line[..colon].trim().to_ascii_lowercase();
+            let value = line[colon + 1..].trim().to_owned();
+            unfolded.push((name, value));
+        }
+    }
+
+    let get = |name: &str| -> Option<String> {
+        unfolded.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone())
+    };
+
+    // Parse "Display Name <addr@host>" or plain "addr@host".
+    let parse_addr = |raw_addr: &str| -> (Option<String>, Option<String>) {
+        let s = raw_addr.trim();
+        if let (Some(lt), Some(gt)) = (s.rfind('<'), s.rfind('>')) {
+            let name = s[..lt].trim().trim_matches('"').to_owned();
+            let addr = s[lt + 1..gt].trim().to_owned();
+            (
+                if addr.is_empty() { None } else { Some(addr) },
+                if name.is_empty() { None } else { Some(name) },
+            )
+        } else if !s.is_empty() {
+            (Some(s.to_owned()), None)
+        } else {
+            (None, None)
+        }
+    };
+
+    // Parse comma-separated address list into JSONB [{addr, name}] format.
+    let parse_addr_list = |raw_list: &str| -> serde_json::Value {
+        let entries: Vec<serde_json::Value> = raw_list.split(',').filter_map(|part| {
+            let (addr, name) = parse_addr(part);
+            addr.map(|a| serde_json::json!({"addr": a, "name": name.unwrap_or_default()}))
+        }).collect();
+        serde_json::Value::Array(entries)
+    };
+
+    let (from_addr, from_name) = get("from").map(|v| parse_addr(&v)).unwrap_or((None, None));
+
+    use chrono::DateTime as CDateTime;
+    let date: Option<ChronoDateTime<Utc>> = get("date").and_then(|d| {
+        CDateTime::parse_from_rfc2822(d.trim()).ok().map(|dt| dt.with_timezone(&Utc))
+    });
+
+    ParsedHeaders {
+        subject:     get("subject"),
+        from_addr,
+        from_name,
+        to_addrs:    get("to").map(|v| parse_addr_list(&v)).unwrap_or(serde_json::Value::Array(vec![])),
+        cc_addrs:    get("cc").map(|v| parse_addr_list(&v)).unwrap_or(serde_json::Value::Array(vec![])),
+        message_id:  get("message-id").map(|v| v.trim_matches(&['<', '>'][..]).to_owned()),
+        in_reply_to: get("in-reply-to").map(|v| v.trim_matches(&['<', '>'][..]).to_owned()),
+        reply_to:    get("reply-to").and_then(|v| parse_addr(&v).0),
+        date,
     }
 }
 
