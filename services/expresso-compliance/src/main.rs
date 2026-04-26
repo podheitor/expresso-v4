@@ -18,6 +18,7 @@
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr= ILIKE; keyset pagination via before_id/after_id; ?size_min=&size_max=)
 //! GET             /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped)
+//! DELETE          /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped; GDPR/legal hold removal)
 //!
 //! Port: :8009
 
@@ -465,6 +466,29 @@ async fn get_archive_entry(
     }
 }
 
+/// DELETE /api/v1/compliance/archive/:id — remove a single archived entry (GDPR/legal hold).
+async fn delete_archive_entry(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let result = sqlx::query(
+        "DELETE FROM compliance_archive WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ─── Retention enforcement background task ────────────────────────────────────
 
 async fn run_retention_loop(db: expresso_core::DbPool, mail_url: String, interval_secs: u64) {
@@ -616,7 +640,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies/:id",
                get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
-        .route("/api/v1/compliance/archive/:id",       get(get_archive_entry))
+        .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
