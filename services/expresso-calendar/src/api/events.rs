@@ -107,10 +107,26 @@ async fn list(
     ctx: RequestCtx,
     Path(cal_id): Path<Uuid>,
     Query(q): Query<EventQuery>,
-) -> Result<Json<Vec<Event>>> {
+) -> Result<impl IntoResponse> {
     let pool = state.db_or_unavailable()?;
+    let total: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM calendar_events
+            WHERE tenant_id = $1
+              AND calendar_id = $2
+              AND ($3::timestamptz IS NULL OR dtend   IS NULL OR dtend   >= $3)
+              AND ($4::timestamptz IS NULL OR dtstart IS NULL OR dtstart <= $4)"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.from)
+    .bind(q.to)
+    .fetch_one(pool)
+    .await?;
     let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
-    Ok(Json(events))
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(events),
+    ).into_response())
 }
 
 async fn get_one(
