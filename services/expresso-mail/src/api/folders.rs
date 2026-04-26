@@ -15,9 +15,12 @@ use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppStat
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/folders",                  get(list_folders).post(create_folder))
-        .route("/mail/folders/:name",            axum::routing::patch(rename_folder).delete(delete_folder))
-        .route("/mail/folders/:name/mark-read",  axum::routing::post(mark_folder_read))
+        .route("/mail/folders",                    get(list_folders).post(create_folder))
+        .route("/mail/folders/all",                get(list_all_folders))
+        .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
+        .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
+        .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
+        .route("/mail/folders/:name/unsubscribe",  axum::routing::post(unsubscribe_folder))
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -211,6 +214,89 @@ async fn delete_folder(
 
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/v1/mail/folders/all — list ALL folders including unsubscribed ones
+async fn list_all_folders(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<FolderDto>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<FolderDto> = sqlx::query_as(
+        r#"
+        SELECT
+            id,
+            folder_name AS name,
+            special_use,
+            message_count,
+            unseen_count,
+            subscribed
+        FROM mailboxes
+        WHERE tenant_id = $1
+          AND user_id   = $2
+        ORDER BY
+            CASE special_use
+                WHEN '\Inbox'  THEN 0
+                WHEN '\Sent'   THEN 1
+                WHEN '\Drafts' THEN 2
+                WHEN '\Trash'  THEN 3
+                WHEN '\Junk'   THEN 4
+                ELSE 10
+            END,
+            folder_name
+        "#
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Json(rows))
+}
+
+/// POST /api/v1/mail/folders/:name/subscribe — mark folder as subscribed
+async fn subscribe_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(name):   Path<String>,
+) -> Result<StatusCode> {
+    set_subscribed(&state, &ctx, &name, true).await
+}
+
+/// POST /api/v1/mail/folders/:name/unsubscribe — mark folder as unsubscribed
+async fn unsubscribe_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(name):   Path<String>,
+) -> Result<StatusCode> {
+    set_subscribed(&state, &ctx, &name, false).await
+}
+
+async fn set_subscribed(
+    state:      &AppState,
+    ctx:        &RequestCtx,
+    name:       &str,
+    subscribed: bool,
+) -> Result<StatusCode> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let affected = sqlx::query(
+        "UPDATE mailboxes SET subscribed = $1, updated_at = now() \
+         WHERE user_id = $2 AND tenant_id = $3 AND folder_name = $4",
+    )
+    .bind(subscribed)
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(name)
+    .execute(&mut *tx)
+    .await?
+    .rows_affected();
+    tx.commit().await?;
+
+    if affected == 0 {
+        Err(MailError::FolderNotFound { folder: name.to_string() })
+    } else {
+        Ok(StatusCode::NO_CONTENT)
+    }
 }
 
 /// POST /api/v1/mail/folders/:name/mark-read — mark all messages in folder as \Seen
