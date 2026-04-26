@@ -1152,6 +1152,7 @@ async fn cmd_fetch(
     // BODY[HEADER] / BODY.PEEK[HEADER] → want_header
     // BODY[TEXT]   / BODY.PEEK[TEXT]   → want_text
     // BODY[]       / BODY.PEEK[]       → want_full_body
+    // BODY[HEADER.FIELDS (...)] → header_fields_reqs (field names + is_not flag)
     // Other section specs (BODY[1], BODY[1.HEADER], …) → want_full_body (conservative:
     //   MIME part parsing is not implemented; returning full body is RFC-safe as fallback)
     let (mut want_full_body, mut want_header, mut want_text, mut set_seen) = (
@@ -1160,6 +1161,8 @@ async fn cmd_fetch(
         w_rfc822_text,
         w_rfc822 || w_rfc822_text,
     );
+    // Each entry: (field_names_lowercase, is_not)
+    let mut header_fields_reqs: Vec<(Vec<String>, bool)> = Vec::new();
     if let MacroOrMessageDataItemNames::MessageDataItemNames(names) = macro_or {
         for name in names.iter() {
             if let MessageDataItemName::BodyExt { section, peek, .. } = name {
@@ -1169,12 +1172,24 @@ async fn cmd_fetch(
                     None                      => want_full_body = true,
                     Some(Section::Header(_))  => want_header = true,
                     Some(Section::Text(_))    => want_text = true,
-                    _                         => want_full_body = true,
+                    Some(Section::HeaderFields(_, fields)) => {
+                        let names_lc: Vec<String> = fields.iter()
+                            .map(|f| astring_to_string(f).to_ascii_lowercase())
+                            .collect();
+                        header_fields_reqs.push((names_lc, false));
+                    }
+                    Some(Section::HeaderFieldsNot(_, fields)) => {
+                        let names_lc: Vec<String> = fields.iter()
+                            .map(|f| astring_to_string(f).to_ascii_lowercase())
+                            .collect();
+                        header_fields_reqs.push((names_lc, true));
+                    }
+                    _ => want_full_body = true,
                 }
             }
         }
     }
-    let need_body = want_full_body || want_header || want_text;
+    let need_body = want_full_body || want_header || want_text || !header_fields_reqs.is_empty();
 
     let mut out: Vec<Response<'static>> = Vec::with_capacity(rows.len() + 1);
     for row in &rows {
@@ -1295,6 +1310,30 @@ async fn cmd_fetch(
                             section: Some(Section::Header(None)),
                             origin:  None,
                             data:    NString::from(Literal::unvalidated(hdr)),
+                        });
+                    }
+                    // BODY[HEADER.FIELDS (...)] / BODY[HEADER.FIELDS.NOT (...)] —
+                    // RFC 3501 §6.4.5: return only the named header lines (or all
+                    // header lines EXCEPT the named ones for NOT variant).
+                    for (field_names, is_not) in &header_fields_reqs {
+                        let filtered = filter_header_fields(&raw, field_names, *is_not);
+                        let astrings: Vec<AString<'static>> = field_names.iter()
+                            .filter_map(|f| AString::try_from(f.clone()).ok())
+                            .collect();
+                        let section = if let Ok(v1) = Vec1::try_from(astrings.clone()) {
+                            if *is_not {
+                                Section::HeaderFieldsNot(None, v1)
+                            } else {
+                                Section::HeaderFields(None, v1)
+                            }
+                        } else {
+                            // Empty field list: fall back to full header
+                            Section::Header(None)
+                        };
+                        items.push(MessageDataItem::BodyExt {
+                            section: Some(section),
+                            origin:  None,
+                            data:    NString::from(Literal::unvalidated(filtered)),
                         });
                     }
                     // BODY[TEXT] — everything after the blank separator.
@@ -2138,6 +2177,40 @@ fn email_text_bytes(raw: &[u8]) -> Vec<u8> {
     } else {
         Vec::new()
     }
+}
+
+/// Return only the header lines whose field name (before the first ':') is in
+/// `fields` (or NOT in `fields` when `is_not` is true). Folded header lines
+/// (continuation lines starting with whitespace) are kept with their parent.
+/// The result always ends with the blank-line separator \r\n.
+fn filter_header_fields(raw: &[u8], fields: &[String], is_not: bool) -> Vec<u8> {
+    let header_end = raw.windows(4).position(|w| w == b"\r\n\r\n");
+    let header_bytes = match header_end {
+        Some(p) => &raw[..p],
+        None => raw,
+    };
+    let header_str = String::from_utf8_lossy(header_bytes);
+    let mut out = Vec::<u8>::new();
+    let mut include_current = false;
+    for line in header_str.split_inclusive('\n') {
+        let is_fold = line.starts_with(' ') || line.starts_with('\t');
+        if is_fold {
+            if include_current {
+                out.extend_from_slice(line.as_bytes());
+            }
+        } else if let Some(colon_pos) = line.find(':') {
+            let field_name = line[..colon_pos].trim().to_ascii_lowercase();
+            let matched = fields.iter().any(|f| f == &field_name);
+            include_current = matched ^ is_not;
+            if include_current {
+                out.extend_from_slice(line.as_bytes());
+            }
+        } else {
+            include_current = false;
+        }
+    }
+    out.extend_from_slice(b"\r\n");
+    out
 }
 
 // ─── Response helpers ────────────────────────────────────────────────────────
