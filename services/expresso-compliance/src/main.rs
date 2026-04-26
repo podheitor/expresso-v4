@@ -131,6 +131,9 @@ struct ArchiveListParams {
     pub size_min:  Option<i32>,
     /// Return only entries with size_bytes <= this value.
     pub size_max:  Option<i32>,
+    /// Sort order for offset pagination: "asc" or "desc" (default "desc").
+    /// Ignored when keyset cursors (before_id/after_id) are used.
+    pub sort:      Option<String>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -328,6 +331,11 @@ async fn list_archive(
     Query(params): Query<ArchiveListParams>,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let limit = params.limit.unwrap_or(50).min(200);
+    let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("asc")).unwrap_or(false) {
+        "ASC"
+    } else {
+        "DESC"
+    };
 
     let since_filter = params.since
         .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
@@ -416,7 +424,7 @@ async fn list_archive(
         let sql = format!(
             "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
              {to_addr_filter} {size_min_filter} {size_max_filter} \
-             ORDER BY archived_at DESC LIMIT {limit} OFFSET {offset}"
+             ORDER BY archived_at {order}, id {order} LIMIT {limit} OFFSET {offset}"
         );
         sqlx::query_as(&sql)
             .bind(ctx.tenant_id)
