@@ -26,7 +26,7 @@ use std::{env, net::SocketAddr, sync::Arc};
 
 use axum::{
     extract::{FromRequestParts, Path, Query, Request, State},
-    http::{header, request::Parts, StatusCode},
+    http::{header, request::Parts, HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{delete, get, patch, post},
@@ -303,11 +303,12 @@ async fn update_rule(
     }
 }
 
-/// GET /api/v1/flows/rules/:id — returns ETag (hash of updated_at+id) and Last-Modified header.
+/// GET /api/v1/flows/rules/:id — ETag + Last-Modified; responds 304 if If-None-Match matches.
 async fn get_rule(
     State(st):    State<AppState>,
     AuthCtx(ctx): AuthCtx,
     Path(id):     Path<Uuid>,
+    req_headers:  HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     #[derive(sqlx::FromRow)]
     struct RuleRow {
@@ -342,6 +343,12 @@ async fn get_rule(
     let last_modified = r.updated_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
 
     let rule = FlowRule {
         id:             r.id,
