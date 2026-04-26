@@ -33,7 +33,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/raw",    get(get_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
-        .route("/mail/messages/bulk",       post(bulk_action))
+        .route("/mail/messages/bulk",        post(bulk_action))
+        .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -812,6 +813,13 @@ struct BulkResult {
     affected: u64,
 }
 
+#[derive(Debug, Deserialize)]
+struct BulkFlagRequest {
+    pub ids:    Vec<Uuid>,
+    pub add:    Vec<String>,
+    pub remove: Vec<String>,
+}
+
 /// POST /api/v1/mail/messages/bulk
 ///
 /// Apply one action to a set of messages atomically.
@@ -904,6 +912,55 @@ async fn bulk_action(
             res.rows_affected()
         }
     };
+
+    tx.commit().await?;
+    Ok(Json(BulkResult { affected }))
+}
+
+/// PATCH /api/v1/mail/messages/bulk/flags
+///
+/// Add and/or remove flags from a set of messages in one request.
+/// Body: `{"ids":[…],"add":["\\Seen","\\Flagged"],"remove":["\\Draft"]}`
+/// Returns `{"affected": N}` — number of messages touched (add + remove counted separately).
+async fn bulk_update_flags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkFlagRequest>,
+) -> Result<Json<BulkResult>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let mut affected: u64 = 0;
+
+    if !body.add.is_empty() {
+        let res = sqlx::query(
+            "UPDATE messages \
+             SET flags = array(SELECT DISTINCT unnest(flags || $1::text[])) \
+             WHERE id = ANY($2) AND tenant_id = $3 \
+               AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
+        )
+        .bind(&body.add)
+        .bind(&body.ids)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .execute(&mut *tx)
+        .await?;
+        affected += res.rows_affected();
+    }
+
+    if !body.remove.is_empty() {
+        let res = sqlx::query(
+            "UPDATE messages \
+             SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest($1::text[])) \
+             WHERE id = ANY($2) AND tenant_id = $3 \
+               AND mailbox_id IN (SELECT id FROM mailboxes WHERE user_id = $4 AND tenant_id = $3)",
+        )
+        .bind(&body.remove)
+        .bind(&body.ids)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .execute(&mut *tx)
+        .await?;
+        affected += res.rows_affected();
+    }
 
     tx.commit().await?;
     Ok(Json(BulkResult { affected }))
