@@ -229,6 +229,61 @@ pub fn set_status(raw: &str, status: &str) -> Result<String> {
     Ok(lines.join("\r\n"))
 }
 
+/// Apply proposed DTSTART/DTEND from a COUNTER proposal to the organizer's
+/// stored ical_raw. Replaces existing DTSTART/DTEND lines within the first
+/// VEVENT; lines that are not present are inserted before `END:VEVENT`.
+/// Only replaces if the proposal has a value; None keeps the original.
+/// Used by the counter-accept flow (RFC 5546 §3.2.7).
+pub fn apply_proposed_times(
+    raw:             &str,
+    proposed_dtstart: Option<time::OffsetDateTime>,
+    proposed_dtend:   Option<time::OffsetDateTime>,
+) -> Result<String> {
+    use time::format_description::well_known::Iso8601;
+    let fmt_dt = |dt: time::OffsetDateTime| -> String {
+        // iCalendar UTC format: YYYYMMDDTHHmmssZ
+        let utc = dt.to_offset(time::UtcOffset::UTC);
+        format!(
+            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+            utc.year(), utc.month() as u8, utc.day(),
+            utc.hour(), utc.minute(), utc.second()
+        )
+    };
+    let _ = Iso8601; // suppress unused import warning
+    let new_start = proposed_dtstart.map(fmt_dt);
+    let new_end   = proposed_dtend.map(fmt_dt);
+
+    let mut lines: Vec<String> = raw.split('\n').map(|s| s.trim_end_matches('\r').to_owned()).collect();
+    let mut in_event   = false;
+    let mut found_start = false;
+    let mut found_end   = false;
+
+    for line in lines.iter_mut() {
+        let upper = line.to_ascii_uppercase();
+        if upper == "BEGIN:VEVENT" { in_event = true; continue; }
+        if upper == "END:VEVENT"   { break; }
+        if !in_event { continue; }
+        if upper.starts_with("DTSTART") {
+            if let Some(ref v) = new_start { *line = format!("DTSTART:{v}"); }
+            found_start = true;
+        } else if upper.starts_with("DTEND") {
+            if let Some(ref v) = new_end { *line = format!("DTEND:{v}"); }
+            found_end = true;
+        }
+    }
+    let end_pos = lines.iter().position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+        .ok_or_else(|| CalendarError::InvalidICal("END:VEVENT not found".into()))?;
+    if !found_start {
+        if let Some(ref v) = new_start { lines.insert(end_pos, format!("DTSTART:{v}")); }
+    }
+    let end_pos2 = lines.iter().position(|l| l.to_ascii_uppercase() == "END:VEVENT")
+        .unwrap_or(end_pos);
+    if !found_end {
+        if let Some(ref v) = new_end { lines.insert(end_pos2, format!("DTEND:{v}")); }
+    }
+    Ok(lines.join("\r\n"))
+}
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 fn inject_method(raw: &str, method: &str) -> String {

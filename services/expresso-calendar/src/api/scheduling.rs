@@ -4,7 +4,7 @@
 //! - POST /api/v1/scheduling/send   (body: VCALENDAR with METHOD:REQUEST, ATTENDEEs)
 
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -12,9 +12,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 use crate::api::context::RequestCtx;
 use crate::caldav::schedule;
+use crate::domain::counter::CounterRepo;
 use crate::domain::freebusy::{BusyInterval, FreeBusyRepo};
 use crate::domain::event::EventRepo;
 use crate::domain::{ical, itip};
@@ -26,6 +28,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/scheduling/freebusy", get(freebusy))
         .route("/api/v1/scheduling/send",     post(send))
         .route("/api/v1/scheduling/inbox",    post(inbox))
+        .route("/api/v1/scheduling/counters", get(list_counters))
+        .route("/api/v1/scheduling/counters/:id", get(get_counter))
+        .route("/api/v1/scheduling/counters/:id/accept", post(accept_counter))
+        .route("/api/v1/scheduling/counters/:id/reject", post(reject_counter))
 }
 
 /// Query shape: comma-separated `attendees`, rfc3339 `from`/`to`.
@@ -375,4 +381,90 @@ async fn handle_cancel(
     r.cancelled = true;
     r.message   = if already { "already cancelled".into() } else { "STATUS:CANCELLED applied".into() };
     Ok(Json(r))
+}
+
+// ─── Counter-proposal REST API ───────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CounterListQuery {
+    limit: Option<i64>,
+}
+
+/// GET /api/v1/scheduling/counters — list pending COUNTER proposals for tenant.
+async fn list_counters(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<CounterListQuery>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(50).min(200).max(1);
+    let rows = CounterRepo::new(pool).list_pending(ctx.tenant_id, limit).await?;
+    Ok(Json(rows))
+}
+
+/// GET /api/v1/scheduling/counters/:id — fetch one proposal.
+async fn get_counter(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    match CounterRepo::new(pool).get(ctx.tenant_id, id).await? {
+        Some(p) => Ok(Json(p).into_response()),
+        None    => Err(CalendarError::BadRequest(format!("counter proposal {id} not found"))),
+    }
+}
+
+/// POST /api/v1/scheduling/counters/:id/accept — accept: patch event times, mark resolved.
+async fn accept_counter(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool  = state.db_or_unavailable()?;
+    let crepo = CounterRepo::new(pool);
+    let prop  = crepo.get(ctx.tenant_id, id).await?
+        .ok_or_else(|| CalendarError::BadRequest(format!("counter proposal {id} not found")))?;
+    if prop.status != "pending" {
+        return Err(CalendarError::BadRequest(format!("proposal is already {}", prop.status)));
+    }
+
+    let erepo   = EventRepo::new(pool);
+    let event   = erepo.get(ctx.tenant_id, prop.event_id).await
+        .map_err(|_| CalendarError::EventNotFound(prop.event_id))?;
+    let new_raw = itip::apply_proposed_times(&event.ical_raw, prop.proposed_dtstart, prop.proposed_dtend)?;
+    erepo.update(ctx.tenant_id, event.id, &new_raw).await?;
+    crepo.resolve(ctx.tenant_id, id, "accepted", Some(ctx.user_id)).await?;
+
+    tracing::info!(
+        tenant_id   = %ctx.tenant_id,
+        proposal_id = %id,
+        event_id    = %prop.event_id,
+        "COUNTER proposal accepted — event times updated",
+    );
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/scheduling/counters/:id/reject — reject: mark resolved, event unchanged.
+async fn reject_counter(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool  = state.db_or_unavailable()?;
+    let crepo = CounterRepo::new(pool);
+    let prop  = crepo.get(ctx.tenant_id, id).await?
+        .ok_or_else(|| CalendarError::BadRequest(format!("counter proposal {id} not found")))?;
+    if prop.status != "pending" {
+        return Err(CalendarError::BadRequest(format!("proposal is already {}", prop.status)));
+    }
+    crepo.resolve(ctx.tenant_id, id, "rejected", Some(ctx.user_id)).await?;
+
+    tracing::info!(
+        tenant_id   = %ctx.tenant_id,
+        proposal_id = %id,
+        event_id    = %prop.event_id,
+        "COUNTER proposal rejected",
+    );
+    Ok(StatusCode::NO_CONTENT)
 }
