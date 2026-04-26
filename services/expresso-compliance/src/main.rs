@@ -16,7 +16,8 @@
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
-//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr= ILIKE; keyset pagination via before_id/after_id)
+//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr= ILIKE; keyset pagination via before_id/after_id; ?size_min=&size_max=)
+//! GET             /api/v1/compliance/archive/:id         (JWT auth, tenant-scoped)
 //!
 //! Port: :8009
 
@@ -439,6 +440,31 @@ async fn list_archive(
     ).into_response())
 }
 
+/// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
+async fn get_archive_entry(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<ArchiveEntry>, (StatusCode, Json<serde_json::Value>)> {
+    let row: Option<ArchiveEntry> = sqlx::query_as(
+        "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
+                to_addrs, subject, archived_at, size_bytes \
+         FROM compliance_archive \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    match row {
+        Some(entry) => Ok(Json(entry)),
+        None        => Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"})))),
+    }
+}
+
 // ─── Retention enforcement background task ────────────────────────────────────
 
 async fn run_retention_loop(db: expresso_core::DbPool, mail_url: String, interval_secs: u64) {
@@ -590,6 +616,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies/:id",
                get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
+        .route("/api/v1/compliance/archive/:id",       get(get_archive_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
