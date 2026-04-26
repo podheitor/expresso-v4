@@ -158,6 +158,7 @@ pub struct FlagRequest {
 /// Full-text and envelope search across the user's mailbox.
 /// `q` searches subject + from_addr + preview_text (ILIKE).
 /// `since`/`before` are ISO-8601 date prefixes (YYYY-MM-DD).
+/// `size_min`/`size_max` filter by `size_bytes` (inclusive range, bytes).
 /// Supports the same `before_id`/`after_id` keyset cursor as `/mail/messages`.
 /// `sort=asc/desc` controls offset-mode order (default `desc`); ignored with keyset cursors.
 async fn search_messages(
@@ -198,6 +199,12 @@ async fn search_messages(
         Some(false) => "AND m.has_attachments = FALSE",
         None        => "",
     };
+    let size_min_filter = params.size_min
+        .map(|v| format!("AND m.size_bytes >= {v}"))
+        .unwrap_or_default();
+    let size_max_filter = params.size_max
+        .map(|v| format!("AND m.size_bytes <= {v}"))
+        .unwrap_or_default();
 
     let base_select =
         "SELECT m.id, m.thread_id, m.subject, m.from_addr, m.from_name, \
@@ -206,7 +213,7 @@ async fn search_messages(
          JOIN mailboxes mb ON mb.id = m.mailbox_id \
          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2";
     let enum_filters = format!(
-        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter} {thread_id_filter} {has_attachments_filter}"
+        "{folder_filter} {q_filter} {from_filter} {subject_filter} {since_filter} {before_date_filter} {thread_id_filter} {has_attachments_filter} {size_min_filter} {size_max_filter}"
     );
 
     let rows: Vec<MessageListItem> = if let Some(cursor_id) = params.before_id.or(params.after_id) {
