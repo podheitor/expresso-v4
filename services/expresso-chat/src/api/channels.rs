@@ -9,8 +9,8 @@
 
 use axum::{
     extract::{Path, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
+    http::{header, HeaderValue, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -110,7 +110,8 @@ async fn get_one(
     State(state): State<AppState>,
     ctx: RequestCtx,
     Path(id): Path<Uuid>,
-) -> Result<Json<Channel>> {
+    req_headers: axum::http::HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let repo = ChannelRepo::new(pool);
     if !repo.is_member(ctx.tenant_id, id, ctx.user_id).await? {
@@ -118,7 +119,15 @@ async fn get_one(
     }
     let ch = repo.get(ctx.tenant_id, id).await
         .map_err(|_| ChatError::ChannelNotFound(id))?;
-    Ok(Json(ch))
+    let etag = format!("\"{}-{}\"", ch.updated_at.unix_timestamp(), ch.id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    let mut resp = Json(ch).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    Ok(resp)
 }
 
 async fn archive(
