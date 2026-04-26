@@ -390,14 +390,15 @@ async fn apply_flow_actions(
                 }
             }
             "forward" => {
-                // Forward: relay the raw bytes of this message to the specified address.
-                // Reads body_path from DB, then sends via expresso-mail /mail/send (internal path).
-                // Uses a fire-and-forget spawn to avoid blocking.
                 let to_addr = match action.get("params").and_then(|p| p.get("to")).and_then(|v| v.as_str()) {
                     Some(a) => a.to_owned(),
                     None    => { tracing::warn!("flows: forward missing params.to"); continue; }
                 };
-                let db = state.db().clone();
+                let db          = state.db().clone();
+                let store       = state.store().cloned();
+                let relay_host  = state.cfg().mail_server.relay_host.clone();
+                let relay_port  = state.cfg().mail_server.relay_port;
+                let domain      = state.cfg().mail_server.domain.clone();
                 tokio::spawn(async move {
                     let body_path: Option<String> = sqlx::query_scalar(
                         "SELECT body_path FROM messages WHERE id = $1 AND tenant_id = $2 LIMIT 1",
@@ -408,20 +409,98 @@ async fn apply_flow_actions(
                     .await
                     .unwrap_or(None);
 
-                    if let Some(path) = body_path {
-                        tracing::info!(
-                            message_id = %message_id,
-                            to = %to_addr,
-                            body_path = %path,
-                            "flows: forward scheduled (relay not yet wired)"
-                        );
-                        // TODO: relay raw bytes to `to_addr` via SMTP when relay client is extracted.
+                    let Some(path) = body_path else { return; };
+
+                    // Read raw bytes from store or filesystem.
+                    let raw: Option<Vec<u8>> = if let Some(s3_path) = path.strip_prefix("s3://") {
+                        if let Some(idx) = s3_path.find('/') {
+                            let key = &s3_path[idx + 1..];
+                            if let Some(s) = &store {
+                                s.get(key).await.ok()
+                            } else { None }
+                        } else { None }
+                    } else if path.starts_with('/') {
+                        tokio::fs::read(&path).await.ok()
+                    } else { None };
+
+                    let Some(raw) = raw else {
+                        tracing::warn!(message_id = %message_id, "flows: forward — body not found");
+                        return;
+                    };
+
+                    // Relay via plain SMTP to relay_host:relay_port.
+                    match relay_forward(&relay_host, relay_port, &domain, &to_addr, &raw).await {
+                        Ok(()) => tracing::info!(
+                            message_id = %message_id, to = %to_addr, "flows: forward sent"),
+                        Err(e) => tracing::warn!(
+                            error = %e, message_id = %message_id, to = %to_addr,
+                            "flows: forward relay failed"),
                     }
                 });
             }
             other => tracing::warn!(action_type = %other, "flows: unknown action type"),
         }
     }
+}
+
+/// Relay raw RFC 5321 message bytes to `to_addr` via plain SMTP on `relay_host:relay_port`.
+/// Implements the minimal SMTP exchange: EHLO → MAIL FROM → RCPT TO → DATA → QUIT.
+/// No auth, no TLS — intended for internal MTA relay (Postfix, etc.) on trusted network.
+async fn relay_forward(
+    relay_host: &str,
+    relay_port: u16,
+    domain:     &str,
+    to_addr:    &str,
+    raw:        &[u8],
+) -> anyhow::Result<()> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpStream;
+
+    let stream = TcpStream::connect((relay_host, relay_port)).await?;
+    let (reader, mut writer) = tokio::io::split(stream);
+    let mut lines = BufReader::new(reader).lines();
+
+    macro_rules! expect {
+        ($prefix:expr) => {{
+            let line = lines.next_line().await?.unwrap_or_default();
+            anyhow::ensure!(
+                line.starts_with($prefix),
+                "relay unexpected response: {line}"
+            );
+        }};
+    }
+
+    expect!("220");
+    writer.write_all(format!("EHLO {domain}\r\n").as_bytes()).await?;
+    // consume multi-line EHLO response
+    loop {
+        let line = lines.next_line().await?.unwrap_or_default();
+        if line.starts_with("250 ") || (!line.starts_with("250") && !line.is_empty()) {
+            break;
+        }
+        if line.is_empty() { break; }
+    }
+    writer.write_all(b"MAIL FROM:<>\r\n").await?;
+    expect!("250");
+    writer.write_all(format!("RCPT TO:<{to_addr}>\r\n").as_bytes()).await?;
+    expect!("250");
+    writer.write_all(b"DATA\r\n").await?;
+    expect!("354");
+
+    // Dot-stuff and send message body.
+    for line in raw.split(|&b| b == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        if line.starts_with(b".") {
+            writer.write_all(b".").await?;
+        }
+        writer.write_all(line).await?;
+        writer.write_all(b"\r\n").await?;
+    }
+    writer.write_all(b".\r\n").await?;
+    expect!("250");
+    writer.write_all(b"QUIT\r\n").await?;
+
+    Ok(())
 }
 
 /// Lock the target folder's mailbox row (FOR UPDATE) and return (id, next_uid).
