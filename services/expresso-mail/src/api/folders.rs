@@ -5,7 +5,7 @@
 //! explícitos, e RLS de `mailboxes` filtra junto. Sem essa combinação o
 //! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
-use axum::{Router, routing::get, extract::{State, Path}, Json, http::StatusCode};
+use axum::{Router, routing::get, extract::{State, Path}, http::{header, StatusCode}, response::IntoResponse, Json};
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -48,8 +48,15 @@ pub struct RenameFolderRequest {
 async fn list_folders(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<Json<Vec<FolderDto>>> {
+) -> Result<impl IntoResponse> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
     let rows: Vec<FolderDto> = sqlx::query_as(
         r#"
         SELECT
@@ -81,7 +88,10 @@ async fn list_folders(
     .await?;
     tx.commit().await?;
 
-    Ok(Json(rows))
+    Ok((
+        [(header::HeaderName::from_static("x-total-count"), total.to_string())],
+        Json(rows),
+    ).into_response())
 }
 
 /// POST /api/v1/mail/folders — create a new folder
