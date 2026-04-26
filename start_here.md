@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #292 (2026-04-26)
+**Último sprint commitado:** #297 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,34 +8,37 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#288–#292)
+## O que foi feito nesta sessão (#293–#297)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #288 | contacts | ETag + If-None-Match em `GET /api/v1/addressbooks/:id`; ETag=`"{updated_at_unix}-{id}"` |
-| #289 | calendar | ETag + If-None-Match em `GET /api/v1/calendars/:id`; mesmo padrão |
-| #290 | chat | ETag + If-None-Match em `GET /api/v1/channels/:id`; mesmo padrão |
-| #291 | contacts | `Last-Modified` em `GET /addressbooks/:id/contacts` — MAX(updated_at) num único query com COUNT |
-| #292 | calendar | `Last-Modified` em `GET /calendars/:id/events` — MAX(updated_at) mesmos filtros from/to |
+| #293 | contacts | `Last-Modified` em `GET /api/v1/addressbooks` — COUNT + MAX(updated_at) num único query |
+| #294 | calendar | `Last-Modified` em `GET /api/v1/calendars` — mesmo padrão |
+| #295 | chat | `Last-Modified` em `GET /api/v1/channels` — MAX(c.updated_at) com JOIN members + is_archived=FALSE |
+| #296 | contacts | `Last-Modified` em `GET /api/v1/addressbooks/:id` — get_one já tinha ETag; adicionado LM = updated_at |
+| #297 | calendar | `Last-Modified` em `GET /api/v1/calendars/:id` — mesmo padrão |
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **contacts: `GET /api/v1/addressbooks` — Last-Modified**
-   - `list` já tem X-Total-Count; adicionar MAX(updated_at) da tabela `addressbooks` tenant+user
+1. **chat: `GET /api/v1/channels/:id` — Last-Modified**
+   - `get_one` já tem ETag de `updated_at`; emitir também `Last-Modified` = `ch.updated_at` (Rfc2822)
+   - Capturar `ch.updated_at` antes de `Json(ch)` consumir o valor
 
-2. **calendar: `GET /api/v1/calendars` — Last-Modified**
-   - `list` já tem X-Total-Count; adicionar MAX(updated_at) da tabela `calendars` tenant+user
+2. **contacts: `GET /addressbooks/:id/contacts/:id` — Last-Modified**
+   - `get_one` já tem ETag (`c.etag`); `Contact` tem `updated_at` → emitir `Last-Modified`
+   - Handler usa `Response::builder()` — adicionar `.header(header::LAST_MODIFIED, lm)`
 
-3. **chat: `GET /api/v1/channels` — Last-Modified**
-   - `list` já tem X-Total-Count; MAX(c.updated_at) com JOIN chat_channel_members + is_archived=FALSE
+3. **contacts: `GET /addressbooks/:id/contacts` — If-Modified-Since**
+   - `list` já tem X-Total-Count + Last-Modified; adicionar `If-Modified-Since` → 304
+   - Comparar MAX(updated_at) ≤ IMS → 304
 
-4. **contacts: `GET /api/v1/addressbooks/:id` — Last-Modified**
-   - `get_one` já tem ETag (updated_at); emitir também `Last-Modified` = updated_at (Rfc2822)
+4. **calendar: `GET /calendars/:id/events` — If-Modified-Since**
+   - `list` já tem X-Total-Count + Last-Modified; adicionar `If-Modified-Since` → 304
 
-5. **calendar: `GET /api/v1/calendars/:id` — Last-Modified**
-   - `get_one` já tem ETag (updated_at); emitir também `Last-Modified` = updated_at (Rfc2822)
+5. **chat: `GET /api/v1/channels/:id` — If-Modified-Since**
+   - `get_one` terá LM após #298; adicionar `If-Modified-Since` → 304
 
 ---
 
@@ -60,31 +63,34 @@ git log --oneline | head -10
 ## Padrões usados recorrentemente
 
 ```rust
-// X-Total-Count em handler
-let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tbl WHERE tenant_id = $1 AND ...").bind(...).fetch_one(pool).await?;
-Ok(([(header::HeaderName::from_static("x-total-count"), total.to_string())], Json(rows)).into_response())
-
-// X-Total-Count + Last-Modified num único query (list com aggregate)
+// X-Total-Count + Last-Modified num único query (list)
 let (total, max_updated): (i64, Option<OffsetDateTime>) = sqlx::query_as(
     "SELECT COUNT(*), MAX(updated_at) FROM tbl WHERE tenant_id = $1 AND ..."
 ).bind(...).fetch_one(pool).await?;
-// ... build resp, then:
+let mut resp = ([(header::HeaderName::from_static("x-total-count"), total.to_string())], Json(rows)).into_response();
 if let Some(ts) = max_updated {
     let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
 }
 
-// ETag + If-None-Match/304 em get_one
+// ETag + Last-Modified em get_one (updated_at como base)
 let etag = format!("\"{}-{}\"", resource.updated_at.unix_timestamp(), resource.id);
-if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
-    if inm.as_bytes() == etag.as_bytes() {
-        return Ok(StatusCode::NOT_MODIFIED.into_response());
+// If-None-Match → 304 check
+let lm = resource.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+let mut resp = Json(resource).into_response();
+resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+
+// If-Modified-Since → 304 em get_one / list
+if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+    if let Ok(ims_str) = ims_val.to_str() {
+        if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+            if resource.updated_at <= ims_dt {
+                return Ok(StatusCode::NOT_MODIFIED.into_response());
+            }
+        }
     }
 }
-
-// Last-Modified em get_one (junto com ETag)
-let lm = resource.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
-resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
 ```
 
 ---
