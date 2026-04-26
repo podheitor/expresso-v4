@@ -80,13 +80,15 @@ struct UpdateRuleRequest {
 /// Payload from expresso-mail: metadata about the delivered message.
 #[derive(Debug, Deserialize)]
 struct ProcessRequest {
-    pub user_id:    Uuid,
-    pub tenant_id:  Uuid,
-    pub message_id: Uuid,
-    pub folder:     String,
-    pub from_addr:  Option<String>,
-    pub to_addrs:   Option<Vec<String>>,
-    pub subject:    Option<String>,
+    pub user_id:         Uuid,
+    pub tenant_id:       Uuid,
+    pub message_id:      Uuid,
+    pub folder:          String,
+    pub from_addr:       Option<String>,
+    pub to_addrs:        Option<Vec<String>>,
+    pub subject:         Option<String>,
+    pub has_attachments: Option<bool>,
+    pub size_bytes:      Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -322,6 +324,27 @@ fn rule_matches(conditions: &serde_json::Value, req: &ProcessRequest) -> bool {
                 let addrs = req.to_addrs.as_deref().unwrap_or(&[]);
                 let matched = addrs.iter().any(|a| str_op(a, op, val));
                 if !matched { return false; }
+                continue;
+            }
+            "has_attachment" => {
+                // val: "true" | "false"; op is ignored (always equality check)
+                let want = val.eq_ignore_ascii_case("true");
+                let has  = req.has_attachments.unwrap_or(false);
+                if has != want { return false; }
+                continue;
+            }
+            "size" => {
+                // op: "gt" | "lt" | "gte" | "lte"; val: bytes as string
+                let threshold = val.trim().parse::<i32>().unwrap_or(0);
+                let actual    = req.size_bytes.unwrap_or(0);
+                let ok = match op {
+                    "gt"  | "greater_than"          => actual > threshold,
+                    "lt"  | "less_than"             => actual < threshold,
+                    "gte" | "greater_than_or_equal" => actual >= threshold,
+                    "lte" | "less_than_or_equal"    => actual <= threshold,
+                    _                               => actual == threshold,
+                };
+                if !ok { return false; }
                 continue;
             }
             _ => None,

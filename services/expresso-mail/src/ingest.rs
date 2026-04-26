@@ -239,16 +239,18 @@ pub async fn process(
         let flows_url = state.cfg().flows_url.clone();
         if !flows_url.is_empty() {
             let payload = serde_json::json!({
-                "user_id":    user_id,
-                "tenant_id":  tenant_id,
-                "message_id": msg_row_id,
-                "folder":     target_folder,
-                "from_addr":  parsed.from_addr,
-                "to_addrs":   parsed.to_addrs
+                "user_id":         user_id,
+                "tenant_id":       tenant_id,
+                "message_id":      msg_row_id,
+                "folder":          target_folder,
+                "from_addr":       parsed.from_addr,
+                "to_addrs":        parsed.to_addrs
                     .as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect::<Vec<_>>())
                     .unwrap_or_default(),
-                "subject":    parsed.subject,
+                "subject":         parsed.subject,
+                "has_attachments": parsed.has_attachments,
+                "size_bytes":      size_bytes,
             });
             match reqwest::Client::new()
                 .post(format!("{flows_url}/internal/process"))
