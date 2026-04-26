@@ -9,7 +9,7 @@
 
 use axum::{
     Router,
-    routing::{get, delete, patch},
+    routing::{get, delete, patch, post},
     extract::{State, Path, Query},
     Json, http::StatusCode,
 };
@@ -29,6 +29,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id",        delete(delete_message))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  patch(update_flags))
+        .route("/mail/messages/bulk",       post(bulk_action))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -320,4 +321,119 @@ async fn update_flags(
     tx.commit().await?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Bulk ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum BulkRequest {
+    Delete {
+        ids: Vec<Uuid>,
+    },
+    Flag {
+        ids:    Vec<Uuid>,
+        add:    Vec<String>,
+        remove: Vec<String>,
+    },
+    Move {
+        ids:    Vec<Uuid>,
+        folder: String,
+    },
+}
+
+#[derive(Debug, Serialize)]
+struct BulkResult {
+    affected: u64,
+}
+
+/// POST /api/v1/mail/messages/bulk
+///
+/// Apply one action to a set of messages atomically.
+/// `{"action":"delete","ids":[…]}` — soft-delete (sets expunged_at)
+/// `{"action":"flag","ids":[…],"add":["\\Seen"],"remove":[]}` — update flags
+/// `{"action":"move","ids":[…],"folder":"Trash"}` — move to folder
+/// Returns `{"affected": N}` — count of rows modified.
+async fn bulk_action(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkRequest>,
+) -> Result<Json<BulkResult>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let affected = match &body {
+        BulkRequest::Delete { ids } => {
+            let res = sqlx::query(
+                "UPDATE messages \
+                 SET expunged_at = NOW() \
+                 WHERE id = ANY($1) AND user_id = $2 AND tenant_id = $3 AND expunged_at IS NULL",
+            )
+            .bind(ids)
+            .bind(ctx.user_id)
+            .bind(ctx.tenant_id)
+            .execute(&mut *tx)
+            .await?;
+            res.rows_affected()
+        }
+        BulkRequest::Flag { ids, add, remove } => {
+            let mut rows = 0u64;
+            if !add.is_empty() {
+                let res = sqlx::query(
+                    "UPDATE messages \
+                     SET flags = array(SELECT DISTINCT unnest(flags || $1::text[])) \
+                     WHERE id = ANY($2) AND user_id = $3 AND tenant_id = $4",
+                )
+                .bind(add)
+                .bind(ids)
+                .bind(ctx.user_id)
+                .bind(ctx.tenant_id)
+                .execute(&mut *tx)
+                .await?;
+                rows += res.rows_affected();
+            }
+            if !remove.is_empty() {
+                let res = sqlx::query(
+                    "UPDATE messages \
+                     SET flags = array(SELECT unnest(flags) EXCEPT SELECT unnest($1::text[])) \
+                     WHERE id = ANY($2) AND user_id = $3 AND tenant_id = $4",
+                )
+                .bind(remove)
+                .bind(ids)
+                .bind(ctx.user_id)
+                .bind(ctx.tenant_id)
+                .execute(&mut *tx)
+                .await?;
+                rows += res.rows_affected();
+            }
+            rows
+        }
+        BulkRequest::Move { ids, folder } => {
+            let mbox: Option<Uuid> = sqlx::query_scalar(
+                "SELECT id FROM mailboxes \
+                 WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+            )
+            .bind(ctx.user_id)
+            .bind(ctx.tenant_id)
+            .bind(folder)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let dst_id = mbox.ok_or_else(|| MailError::NotFound("folder not found".into()))?;
+            let res = sqlx::query(
+                "UPDATE messages \
+                 SET mailbox_id = $1, folder_name = $2 \
+                 WHERE id = ANY($3) AND user_id = $4 AND tenant_id = $5 AND expunged_at IS NULL",
+            )
+            .bind(dst_id)
+            .bind(folder)
+            .bind(ids)
+            .bind(ctx.user_id)
+            .bind(ctx.tenant_id)
+            .execute(&mut *tx)
+            .await?;
+            res.rows_affected()
+        }
+    };
+
+    tx.commit().await?;
+    Ok(Json(BulkResult { affected }))
 }
