@@ -16,7 +16,7 @@
 //!
 //! GET/POST/PATCH/DELETE /api/v1/compliance/retention-policies  (JWT auth, tenant-scoped)
 //! GET             /api/v1/compliance/retention-policies/:id    (JWT auth, tenant-scoped)
-//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; keyset pagination via before_id/after_id)
+//! GET             /api/v1/compliance/archive             (JWT auth, tenant-scoped; ?since=&before= date filters; ?subject=&from_addr= ILIKE; keyset pagination via before_id/after_id)
 //!
 //! Port: :8009
 
@@ -119,6 +119,10 @@ struct ArchiveListParams {
     pub before_id: Option<Uuid>,
     /// Keyset cursor — entries archived strictly after this entry (ASC, then reversed).
     pub after_id:  Option<Uuid>,
+    /// ILIKE filter on subject field.
+    pub subject:   Option<String>,
+    /// ILIKE filter on from_addr field.
+    pub from_addr: Option<String>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -323,6 +327,14 @@ async fn list_archive(
     let before_date_filter = params.before
         .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
         .unwrap_or_default();
+    let subject_filter = params.subject.map(|s| {
+        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND subject ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let from_addr_filter = params.from_addr.map(|f| {
+        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND from_addr ILIKE '%{esc}%'")
+    }).unwrap_or_default();
 
     let base =
         "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
@@ -350,7 +362,7 @@ async fn list_archive(
 
         if is_before {
             let sql = format!(
-                "{base} {since_filter} {before_date_filter} \
+                "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
                  AND (archived_at, id) < ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at DESC, id DESC LIMIT {limit}"
             );
@@ -364,7 +376,7 @@ async fn list_archive(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
         } else {
             let sql = format!(
-                "{base} {since_filter} {before_date_filter} \
+                "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
                  AND (archived_at, id) > ($4::timestamptz, $5::uuid) \
                  ORDER BY archived_at ASC, id ASC LIMIT {limit}"
             );
@@ -382,7 +394,7 @@ async fn list_archive(
     } else {
         let offset = params.offset.unwrap_or(0);
         let sql = format!(
-            "{base} {since_filter} {before_date_filter} \
+            "{base} {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
              ORDER BY archived_at DESC LIMIT {limit} OFFSET {offset}"
         );
         sqlx::query_as(&sql)
