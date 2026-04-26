@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #267 (2026-04-26)
+**Último sprint commitado:** #272 (2026-04-26)
 
 ```
 git log --oneline | head -10
@@ -8,34 +8,34 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#263–#267)
+## O que foi feito nesta sessão (#268–#272)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #263 | api | `cc_addr` ILIKE em `GET /mail/messages` e `GET /mail/search` — `jsonb_array_elements_text(m.cc_addrs)`; também adicionado `size_min`/`size_max` faltantes em `ListParams` |
-| #264 | api | `PATCH /mail/messages/:id/flags` retorna `200 + Json(flags)` em vez de `204 NO_CONTENT` |
-| #265 | api | `POST /mail/messages/bulk` — novos arms `mark_read` / `mark_unread` no enum `BulkRequest` |
-| #266 | flows | `If-Modified-Since` em `GET /api/v1/flows/rules/:id` — complemento ao If-None-Match (#254) |
-| #267 | compliance | sort param `asc`/`desc` em `GET /compliance/retention-policies` (antes fixo ASC) |
+| #268 | api | `If-Modified-Since` + `Last-Modified` em `GET /mail/messages/:id` — `received_at` imutável como Last-Modified |
+| #269 | api | ETag + If-None-Match em `GET /mail/threads/:id` — ETag = `MAX(received_at)` do thread |
+| #270 | api | `DELETE /mail/messages/bulk` — novo endpoint dedicado com body `{"ids":[…]}`; retorna `{"affected":N}` |
+| #271 | api | ETag + If-None-Match em `GET /mail/messages/:id/raw` — ETag = `"{size_bytes}-{id}"` (imutável) |
+| #272 | compliance | ETag + Last-Modified em `GET /compliance/archive/:id` — ETag = `"{archived_at_unix}-{id}"` |
 
 ---
 
 ## Próximos candidatos (por ordem de prioridade)
 
-1. **api: `GET /mail/messages/:id` — If-Modified-Since**
-   - Complemento ao ETag/If-None-Match (#261); `received_at` é imutável então Last-Modified = received_at; comparar com `If-Modified-Since` header
+1. **api: `GET /mail/folders` — X-Total-Count**
+   - Atualmente retorna apenas a lista; adicionar `COUNT(*)` como header `x-total-count`
 
-2. **api: `GET /mail/threads/:id` — ETag + If-None-Match**
-   - Derivar ETag do `MAX(received_at)` das mensagens no thread; retornar 304 se coincidir
+2. **api: `PATCH /mail/messages/:id/move` — retornar mensagem atualizada**
+   - Atualmente retorna `204 NO_CONTENT`; mudar para `200 + Json(MessageDetail)` com novo `mailbox_id`
 
-3. **compliance: `GET /compliance/archive` — X-Total-Count**
-   - Já tem paginação keyset+offset mas não retorna contagem total; adicionar `COUNT(*) FILTER` com mesmos filtros
+3. **flows: `POST /api/v1/flows/rules` — retornar `201 + Location` header**
+   - Atualmente retorna `201 + Json(rule)` mas sem `Location: /api/v1/flows/rules/{id}` header
 
-4. **flows: `GET /api/v1/flows/rules` — X-Total-Count**
-   - Mesmo padrão; COUNT(*) com mesmos filtros sem paginação → header `x-total-count`
+4. **compliance: `GET /compliance/retention-policies/:id` — ETag + Last-Modified**
+   - Mesmo padrão que archive/:id; ETag = `"{created_at_unix}-{id}"` (policies não mudam `updated_at`)
 
-5. **api: `DELETE /mail/messages/bulk`**
-   - Endpoint dedicado `DELETE /mail/messages/bulk` com body `{"ids":[…]}`; alternativa REST-pura ao `POST /bulk action:delete`
+5. **api: `GET /mail/messages/:id/flags` — ETag + If-None-Match**
+   - Flags mudam; ETag baseado em hash das flags ou timestamp do último update
 
 ---
 
@@ -64,15 +64,17 @@ Ok((StatusCode::OK,
 
 // ETag + If-None-Match/304
 let etag = format!("\"{}-{}\"", ts.unix_timestamp(), id);
-if req_headers.get(header::IF_NONE_MATCH).map(|v| v.as_bytes()) == Some(etag.as_bytes()) {
-    return Ok(StatusCode::NOT_MODIFIED.into_response());
+if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+    if inm.as_bytes() == etag.as_bytes() {
+        return Ok(StatusCode::NOT_MODIFIED.into_response());
+    }
 }
 
 // If-Modified-Since/304
 if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
     if let Ok(ims_str) = ims_val.to_str() {
         if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
-            if updated_at <= ims_dt {
+            if ts <= ims_dt {
                 return Ok(StatusCode::NOT_MODIFIED.into_response());
             }
         }
@@ -88,6 +90,11 @@ format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(col) t WHERE t ILIK
 
 // Numeric range filter
 params.size_min.map(|v| format!("AND size_bytes >= {v}")).unwrap_or_default()
+
+// Bulk DELETE body
+#[derive(Debug, Deserialize)]
+struct BulkDeleteRequest { ids: Vec<Uuid> }
+// DELETE /route — body via Json extractor
 ```
 
 ---
