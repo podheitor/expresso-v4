@@ -276,6 +276,7 @@ impl<'a> MeetingRepo<'a> {
         ends_at:       Option<Option<OffsetDateTime>>,
         lobby_enabled: Option<bool>,
         password:      Option<Option<String>>,
+        is_recurring:  Option<bool>,
     ) -> Result<Option<Meeting>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let row: Option<Meeting> = sqlx::query_as(
@@ -285,6 +286,7 @@ impl<'a> MeetingRepo<'a> {
                    ends_at        = CASE WHEN $6 THEN $7 ELSE ends_at END,
                    lobby_enabled  = COALESCE($8, lobby_enabled),
                    password       = CASE WHEN $9 THEN $10 ELSE password END,
+                   is_recurring   = COALESCE($11, is_recurring),
                    updated_at     = NOW()
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
@@ -300,6 +302,7 @@ impl<'a> MeetingRepo<'a> {
             .bind(lobby_enabled)
             .bind(password.is_some())
             .bind(password.and_then(|v| v))
+            .bind(is_recurring)
             .fetch_optional(&mut *tx).await?;
         tx.commit().await?;
         Ok(row)

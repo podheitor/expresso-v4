@@ -277,6 +277,7 @@ pub struct UpdateBody {
     pub lobby_enabled: Option<bool>,
     pub password:      Option<String>,
     pub clear_password: Option<bool>,
+    pub is_recurring:  Option<bool>,
 }
 
 async fn update(
@@ -328,6 +329,7 @@ async fn update(
         ends_at,
         body.lobby_enabled,
         password,
+        body.is_recurring,
     ).await?;
 
     match updated {
