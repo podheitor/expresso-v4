@@ -27,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files",                       get(list).post(upload))
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
+        .route("/api/v1/drive/files/:id/preview",           get(preview))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
         .route("/api/v1/drive/files/search",                 get(search))
         .route("/api/v1/drive/files/bulk-trash",             post(bulk_trash))
@@ -503,6 +504,53 @@ async fn download(
         event = "drive.file.download",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
     Ok(attachment_response(&f.name, f.mime_type.as_deref(), bytes))
+}
+
+/// GET /api/v1/drive/files/:id/preview
+///
+/// Returns the file content with `Content-Disposition: inline` so browsers
+/// render it directly rather than downloading it. Supported for image/* and
+/// application/pdf; returns 415 Unsupported Media Type for all other MIME types.
+async fn preview(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let f    = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+
+    if f.kind != "file" {
+        return Err(DriveError::BadRequest("target is a folder".into()));
+    }
+
+    let mime = f.mime_type.as_deref().unwrap_or("application/octet-stream");
+    let previewable = mime.starts_with("image/") || mime == "application/pdf";
+    if !previewable {
+        return Ok((StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            axum::Json(serde_json::json!({"error": "preview not supported for this file type", "mime": mime})))
+            .into_response());
+    }
+
+    let key   = f.storage_key.as_deref()
+        .ok_or_else(|| DriveError::BadRequest("file has no content".into()))?;
+    let bytes = fs::read(state.data_root().join(key)).await?;
+
+    let ct: HeaderValue = mime.parse()
+        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
+
+    let ascii: String = f.name.chars().map(|c| {
+        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
+    }).collect();
+    let ascii = if ascii.is_empty() { "preview".to_string() } else { ascii };
+    let cd: HeaderValue = format!("inline; filename=\"{ascii}\"")
+        .parse()
+        .unwrap_or_else(|_| HeaderValue::from_static("inline"));
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::CONTENT_TYPE, ct);
+    headers.insert(header::CONTENT_DISPOSITION, cd);
+
+    Ok((StatusCode::OK, headers, bytes).into_response())
 }
 
 async fn delete(
