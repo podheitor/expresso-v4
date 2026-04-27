@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #345 (2026-04-27)
+**Último sprint commitado:** #347 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -8,7 +8,7 @@ git log --oneline | head -15
 
 ---
 
-## O que foi feito nesta sessão (#336–#345)
+## O que foi feito nesta sessão (#336–#347)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
@@ -22,6 +22,8 @@ git log --oneline | head -15
 | #343 | meet | `PATCH /api/v1/meetings/:id` — atualiza title/schedule/lobby/password (moderator-only) |
 | #344 | drive | `PATCH /api/v1/drive/files/:id/metadata` — renomear arquivo/pasta sem reupload |
 | #345 | drive | `POST /api/v1/drive/files/:id/move` — mover arquivo/pasta para outro diretório |
+| #346 | drive | `POST /api/v1/drive/files/bulk-move` — mover até 200 itens atomicamente |
+| #347 | meet | `POST /api/v1/meetings/:id/restore` — reativa reunião arquivada (creator ou moderador) |
 
 ---
 
@@ -40,8 +42,8 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: mover múltiplos arquivos em batch** — `POST /drive/files/bulk-move`
-5. **meet: cancelar/reativar reunião arquivada** — `POST /meetings/:id/restore`
+4. **drive: copiar arquivo/pasta** — `POST /drive/files/:id/copy` (sem reupload de blob, nova row + hard-link de storage_key)
+5. **meet: listar reuniões arquivadas** — `GET /meetings?archived=true` (filtro na list_for_user)
 
 ---
 
