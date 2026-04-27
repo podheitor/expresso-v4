@@ -31,6 +31,7 @@ use imap_codec::{
         },
         status::{StatusDataItem, StatusDataItemName},
         extensions::binary::LiteralOrLiteral8,
+        extensions::condstore_qresync::*,
         extensions::namespace::Namespace,
         extensions::uidplus::{UidElement, UidSet},
         search::SearchKey,
@@ -351,12 +352,20 @@ async fn dispatch(
             sequence_set,
             macro_or_item_names,
             uid,
-            ..
+            modifiers,
         } => {
             if selected.is_none() {
                 return vec![no_tagged(tag, "no mailbox selected")];
             }
-            cmd_fetch(state, tag, sequence_set, macro_or_item_names, *uid, selected.as_ref().unwrap(), tenant_id.unwrap()).await
+            // Extract CHANGEDSINCE modifier value if present (RFC 7162 §3.1).
+            let changedsince: Option<u64> = modifiers.iter().find_map(|m| {
+                if let imap_codec::imap_types::command::FetchModifier::ChangedSince(v) = m {
+                    Some(v.get())
+                } else {
+                    None
+                }
+            });
+            cmd_fetch(state, tag, sequence_set, macro_or_item_names, *uid, selected.as_ref().unwrap(), tenant_id.unwrap(), changedsince).await
         }
         CommandBody::Store {
             sequence_set,
@@ -415,17 +424,20 @@ async fn dispatch(
             resp
         }
         // ENABLE — RFC 5161: acknowledge capability activation.
-        // We don't implement CONDSTORE/QRESYNC but must respond with * ENABLED <list>.
+        // Echo back only the capabilities we actually implement.
         CommandBody::Enable { capabilities } => {
             use imap_codec::imap_types::extensions::enable::CapabilityEnable;
             if *sess == SessionState::NotAuthenticated {
                 return vec![no_tagged(tag, "not authenticated")];
             }
-            // Respond with ENABLED containing only the capabilities we actually support.
-            // Currently none — return empty ENABLED so the client knows we processed it.
-            let _ = capabilities; // acknowledged but not acted upon
+            let enabled: Vec<CapabilityEnable<'static>> = capabilities.iter().filter_map(|c| {
+                match c {
+                    CapabilityEnable::CondStore => Some(CapabilityEnable::CondStore),
+                    _ => None,
+                }
+            }).collect();
             vec![
-                Response::Data(Data::Enabled { capabilities: vec![] }),
+                Response::Data(Data::Enabled { capabilities: enabled }),
                 ok_tagged(tag, None, "ENABLE completed"),
             ]
         }
@@ -501,6 +513,8 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Other(CapabilityOther(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("STATUS=SIZE").unwrap())),
         Capability::Namespace,
+        Capability::CondStore,
+        Capability::QResync,
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
@@ -921,6 +935,16 @@ async fn cmd_select(
             })
             .collect();
 
+            // RFC 7162 §3.1.1: HIGHESTMODSEQ — MAX mod_sequence in this mailbox.
+            let highest_modseq: Option<i64> = sqlx::query_scalar(
+                "SELECT MAX(mod_sequence) FROM messages WHERE mailbox_id = $1 AND tenant_id = $2",
+            )
+            .bind(mailbox_id)
+            .bind(tenant_id)
+            .fetch_one(state.db())
+            .await
+            .unwrap_or(None);
+
             *sess = SessionState::Selected;
             *selected = Some(SelectedMailbox { mailbox_id, exists, read_only, flags_snapshot });
 
@@ -962,6 +986,10 @@ async fn cmd_select(
             // Quando todas as msgs são vistas, COUNT(*)+1 > exists — omitido.
             if let Some(seq) = first_unseen.filter(|s| s.get() <= exists) {
                 out.push(untagged_ok(Code::Unseen(seq), "first unseen"));
+            }
+            // RFC 7162 §3.1.1: emit [HIGHESTMODSEQ N] when mailbox has messages.
+            if let Some(modseq) = highest_modseq.and_then(|v| std::num::NonZeroU64::new(v as u64)) {
+                out.push(untagged_ok(Code::HighestModSeq(modseq), "highest mod sequence"));
             }
             let (access_code, done_msg) = if read_only {
                 (Code::ReadOnly, "EXAMINE completed")
@@ -1011,7 +1039,9 @@ async fn cmd_status(
     let uid_next     = NonZeroU32::new(next_uid_raw    as u32).unwrap_or(NonZeroU32::MIN);
 
     // Fetch SIZE only when client asked for it — avoids the aggregate on every STATUS.
-    let needs_size = item_names.iter().any(|n| matches!(n, StatusDataItemName::Size));
+    let needs_size     = item_names.iter().any(|n| matches!(n, StatusDataItemName::Size));
+    let needs_modseq   = item_names.iter().any(|n| matches!(n, StatusDataItemName::HighestModSeq));
+
     let mailbox_size: u64 = if needs_size {
         sqlx::query_scalar(
             "SELECT COALESCE(SUM(m.size_bytes), 0) \
@@ -1029,16 +1059,34 @@ async fn cmd_status(
         0
     };
 
+    let highest_modseq: u64 = if needs_modseq {
+        sqlx::query_scalar(
+            "SELECT COALESCE(MAX(m.mod_sequence), 0) \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE mb.user_id = $1 AND mb.folder_name = $2 AND m.tenant_id = $3",
+        )
+        .bind(uid)
+        .bind(&mbox_name)
+        .bind(tenant_id)
+        .fetch_one(state.db())
+        .await
+        .unwrap_or(0i64) as u64
+    } else {
+        0
+    };
+
     let mut items: Vec<StatusDataItem> = Vec::with_capacity(item_names.len());
     for name in item_names {
         let item = match name {
-            StatusDataItemName::Messages    => StatusDataItem::Messages(msg_count as u32),
-            StatusDataItemName::Recent      => StatusDataItem::Recent(0),
-            StatusDataItemName::UidNext     => StatusDataItem::UidNext(uid_next),
-            StatusDataItemName::UidValidity => StatusDataItem::UidValidity(uid_validity),
-            StatusDataItemName::Unseen      => StatusDataItem::Unseen(unseen_count as u32),
-            StatusDataItemName::Size        => StatusDataItem::Size(mailbox_size),
-            // Deleted/DeletedStorage/HighestModSeq not tracked — skip silently.
+            StatusDataItemName::Messages      => StatusDataItem::Messages(msg_count as u32),
+            StatusDataItemName::Recent        => StatusDataItem::Recent(0),
+            StatusDataItemName::UidNext       => StatusDataItem::UidNext(uid_next),
+            StatusDataItemName::UidValidity   => StatusDataItem::UidValidity(uid_validity),
+            StatusDataItemName::Unseen        => StatusDataItem::Unseen(unseen_count as u32),
+            StatusDataItemName::Size          => StatusDataItem::Size(mailbox_size),
+            StatusDataItemName::HighestModSeq => StatusDataItem::HighestModSeq(highest_modseq),
+            // Deleted/DeletedStorage not tracked — skip silently.
             _ => continue,
         };
         items.push(item);
@@ -1437,7 +1485,15 @@ async fn cmd_fetch(
     uid: bool,
     sel: &SelectedMailbox,
     tenant_id: Uuid,
+    changedsince: Option<u64>,
 ) -> Vec<Response<'static>> {
+    // CHANGEDSINCE filter clause (RFC 7162 §3.1): only messages with
+    // mod_sequence > N are returned.
+    let cs_clause = match changedsince {
+        Some(v) => format!(" AND mod_sequence > {v}"),
+        None    => String::new(),
+    };
+
     // UID FETCH: sequence_set holds UID values; * resolves to u32::MAX (all).
     // Seq FETCH: sequence_set holds ordinal positions (1-based); * = exists.
     let rows = if uid {
@@ -1445,8 +1501,8 @@ async fn cmd_fetch(
         sqlx::query(&format!(
             "SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
              uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-             to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
-             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}) \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
+             FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 AND ({uid_w}){cs_clause} \
              ORDER BY received_at ASC",
         ))
         .bind(sel.mailbox_id)
@@ -1458,12 +1514,12 @@ async fn cmd_fetch(
         let seq_w = seq_clause(&sequence_ranges(sequence_set, sel.exists));
         sqlx::query(&format!(
             "SELECT id, seq, uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-             to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
+             to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
              FROM ( \
                SELECT id, ROW_NUMBER() OVER (ORDER BY received_at ASC) AS seq, \
                       uid, subject, from_addr, from_name, date, flags, size_bytes, received_at, body_path, \
-                      to_addrs, cc_addrs, message_id, in_reply_to, reply_to \
-               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2 \
+                      to_addrs, cc_addrs, message_id, in_reply_to, reply_to, mod_sequence \
+               FROM messages WHERE mailbox_id = $1 AND tenant_id = $2{cs_clause} \
              ) sub WHERE ({seq_w}) \
              ORDER BY seq ASC",
         ))
@@ -1481,6 +1537,8 @@ async fn cmd_fetch(
     // even when the client didn't explicitly request it.
     let w_uid            = uid || wants(macro_or, "UID");
     let w_internaldate   = wants(macro_or, "INTERNALDATE");
+    // RFC 7162 §3.1: MODSEQ data item — always included when CHANGEDSINCE modifier present.
+    let w_modseq         = changedsince.is_some() || wants(macro_or, "MODSEQ");
     // BODYSTRUCTURE — RFC 3501 §7.4.2: extensible body structure.
     // Macro::Full includes BODY (non-extensible). We serve a minimal single-part
     // TEXT/PLAIN structure for both BODYSTRUCTURE and BODY macros. Clients
@@ -1616,6 +1674,14 @@ async fn cmd_fetch(
             items.push(MessageDataItem::Uid(
                 NonZeroU32::new(uid_val as u32).unwrap_or(NonZeroU32::MIN),
             ));
+        }
+
+        // RFC 7162 §3.1: MODSEQ data item — per-message mod-sequence value.
+        if w_modseq {
+            let modseq_val: i64 = row.try_get("mod_sequence").unwrap_or(0);
+            if let Some(nz) = std::num::NonZeroU64::new(modseq_val as u64) {
+                items.push(MessageDataItem::ModSeq(nz));
+            }
         }
 
         // Flags are fetched unconditionally: needed for \Seen implicit-set
@@ -3471,6 +3537,7 @@ fn wants(macro_or: &MacroOrMessageDataItemNames<'_>, name: &str) -> bool {
                 | ("RFC822",        MessageDataItemName::Rfc822)
                 | ("RFC822.HEADER", MessageDataItemName::Rfc822Header)
                 | ("RFC822.TEXT",   MessageDataItemName::Rfc822Text)
+                | ("MODSEQ",        MessageDataItemName::ModSeq)
             ))
         }
     }
