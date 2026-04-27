@@ -1,7 +1,7 @@
 //! Meetings REST API.
 //!
 //! POST   /api/v1/meetings                    → create meeting + moderator JWT
-//! GET    /api/v1/meetings                    → list current user's meetings
+//! GET    /api/v1/meetings                    → list current user's meetings (?archived=true for archived)
 //! GET    /api/v1/meetings/:id                → meeting detail (participant-only)
 //! PATCH  /api/v1/meetings/:id                → update title/schedule/lobby/password (moderator-only)
 //! DELETE /api/v1/meetings/:id                → archive (creator OR moderator)
@@ -12,7 +12,7 @@
 //! GET    /api/v1/meetings/:id/participants   → list participants
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, patch, post},
@@ -175,17 +175,25 @@ async fn create(
     Ok((StatusCode::CREATED, Json(resp)))
 }
 
+#[derive(Debug, Deserialize)]
+struct ListQuery {
+    #[serde(default)]
+    archived: bool,
+}
+
 async fn list(
     State(state): State<AppState>,
     ctx:          RequestCtx,
+    Query(q):     Query<ListQuery>,
     req_headers:  HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let max_updated: Option<OffsetDateTime> = sqlx::query_scalar(
+    let archived_flag = if q.archived { "TRUE" } else { "FALSE" };
+    let max_updated: Option<OffsetDateTime> = sqlx::query_scalar(&format!(
         "SELECT MAX(m.updated_at) FROM meetings m \
          JOIN meeting_participants mp ON mp.meeting_id = m.id \
-         WHERE m.tenant_id = $1 AND mp.user_id = $2 AND m.is_archived = FALSE",
-    )
+         WHERE m.tenant_id = $1 AND mp.user_id = $2 AND m.is_archived = {archived_flag}",
+    ))
     .bind(ctx.tenant_id)
     .bind(ctx.user_id)
     .fetch_one(pool)
@@ -202,7 +210,12 @@ async fn list(
             }
         }
     }
-    let rows = MeetingRepo::new(pool).list_for_user(ctx.tenant_id, ctx.user_id).await?;
+    let repo = MeetingRepo::new(pool);
+    let rows = if q.archived {
+        repo.list_archived_for_user(ctx.tenant_id, ctx.user_id).await?
+    } else {
+        repo.list_for_user(ctx.tenant_id, ctx.user_id).await?
+    };
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_updated {
         let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();

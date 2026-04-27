@@ -122,6 +122,21 @@ impl<'a> MeetingRepo<'a> {
         Ok(rows)
     }
 
+    pub async fn list_archived_for_user(&self, tenant: Uuid, user: Uuid) -> Result<Vec<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<Meeting> = sqlx::query_as(
+            r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
+                      m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
+                      m.lobby_enabled, m.password, m.created_at, m.updated_at
+               FROM meetings m
+               JOIN meeting_participants p ON p.meeting_id = m.id
+               WHERE m.tenant_id = $1 AND p.user_id = $2 AND m.is_archived = TRUE
+               ORDER BY m.updated_at DESC"#)
+            .bind(tenant).bind(user).fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn participant_role(
         &self,
         tenant: Uuid,
