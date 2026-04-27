@@ -5,7 +5,8 @@
 //! explícitos, e RLS de `mailboxes` filtra junto. Sem essa combinação o
 //! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
-use axum::{Router, routing::get, extract::{State, Path}, http::{header, StatusCode}, response::IntoResponse, Json};
+use axum::{Router, routing::get, extract::{State, Path}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, Json};
+use time::OffsetDateTime;
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -48,7 +49,29 @@ pub struct RenameFolderRequest {
 async fn list_folders(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<impl IntoResponse> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(state.db())
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let total: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 AND subscribed = true",
@@ -88,10 +111,15 @@ async fn list_folders(
     .await?;
     tx.commit().await?;
 
-    Ok((
+    let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// POST /api/v1/mail/folders — create a new folder
@@ -231,7 +259,29 @@ async fn delete_folder(
 async fn list_all_folders(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<impl IntoResponse> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(state.db())
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let total: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM mailboxes WHERE tenant_id = $1 AND user_id = $2",
@@ -269,10 +319,16 @@ async fn list_all_folders(
     .fetch_all(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok((
+
+    let mut resp = (
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 /// POST /api/v1/mail/folders/:name/subscribe — mark folder as subscribed
