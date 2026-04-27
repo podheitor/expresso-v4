@@ -149,6 +149,8 @@ struct ArchiveListParams {
     /// Sort order for offset pagination: "asc" or "desc" (default "desc").
     /// Ignored when keyset cursors (before_id/after_id) are used.
     pub sort:      Option<String>,
+    /// Optional AES-256 password to encrypt the exported ZIP.
+    pub password:  Option<String>,
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -637,13 +639,20 @@ async fn export_archive(
     // Build ZIP in memory.
     let buf = std::io::Cursor::new(Vec::new());
     let mut zw = zip::ZipWriter::new(buf);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
+    // When a password is provided, apply AES-256 encryption to every file entry.
+    let pw_ref: Option<&str> = params.password.as_deref();
+    macro_rules! file_options {
+        () => {{
+            let o = zip::write::SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+            if let Some(pw) = pw_ref { o.with_aes_encryption(zip::AesMode::Aes256, pw) } else { o }
+        }};
+    }
 
     // manifest.json
     let manifest = serde_json::to_vec(&rows)
         .unwrap_or_else(|_| b"[]".to_vec());
-    zw.start_file("manifest.json", options)
+    zw.start_file("manifest.json", file_options!())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
     std::io::Write::write_all(&mut zw, &manifest)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
@@ -652,7 +661,7 @@ async fn export_archive(
     for entry in &rows {
         if let Ok(bytes) = tokio::fs::read(&entry.body_path).await {
             let name = format!("messages/{}.eml", entry.id);
-            if zw.start_file(&name, options).is_ok() {
+            if zw.start_file(&name, file_options!()).is_ok() {
                 let _ = std::io::Write::write_all(&mut zw, &bytes);
             }
         }

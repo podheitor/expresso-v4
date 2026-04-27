@@ -98,7 +98,7 @@ icalendar    = "0.16"
 tantivy      = "0.22"
 
 # Compression / Archive
-zip          = "2"
+zip          = { version = "2", features = ["aes-crypto"] }
 
 # HTTP client
 reqwest      = { version = "0.12", features = ["json", "stream", "native-tls"] }
