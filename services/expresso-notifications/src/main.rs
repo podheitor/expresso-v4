@@ -76,10 +76,12 @@ pub struct Notification {
 
 #[derive(Clone)]
 struct AppState {
-    tx:        Arc<broadcast::Sender<Notification>>,
-    validator: Option<Arc<OidcValidator>>,
+    tx:         Arc<broadcast::Sender<Notification>>,
+    validator:  Option<Arc<OidcValidator>>,
     /// Redis connection pool for cross-pod publish. None when REDIS_URL is unset.
-    redis_pub: Option<Arc<deadpool_redis::Pool>>,
+    redis_pub:  Option<Arc<deadpool_redis::Pool>>,
+    /// External webhook: (url, client). None when NOTIFICATIONS__WEBHOOK_URL is unset.
+    webhook:    Option<(Arc<str>, reqwest::Client)>,
 }
 
 // ─── Optional auth extractor ─────────────────────────────────────────────────
@@ -147,6 +149,18 @@ async fn internal_notify(
                 Err(e) => warn!(error = %e, "Redis pool get failed for publish"),
             }
         }
+    }
+
+    // Fire external webhook if configured.
+    if let Some((url, client)) = &st.webhook {
+        let url    = url.clone();
+        let client = client.clone();
+        let body   = serde_json::to_value(&notif).unwrap_or_default();
+        tokio::spawn(async move {
+            if let Err(e) = client.post(url.as_ref()).json(&body).send().await {
+                warn!(error = %e, "notification webhook dispatch failed");
+            }
+        });
     }
 
     Json(json!({"ok": true}))
@@ -331,7 +345,10 @@ async fn main() -> anyhow::Result<()> {
 
     let validator  = maybe_build_validator().await;
     let redis_pub  = maybe_build_redis_pub().await;
-    let state = AppState { tx, validator, redis_pub };
+    let webhook    = env::var("NOTIFICATIONS__WEBHOOK_URL").ok()
+        .filter(|v| !v.is_empty())
+        .map(|url| (Arc::<str>::from(url.as_str()), reqwest::Client::new()));
+    let state = AppState { tx, validator, redis_pub, webhook };
 
     let app = Router::new()
         .route("/health",               get(health))
