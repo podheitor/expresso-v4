@@ -171,6 +171,25 @@ impl<'a> MeetingRepo<'a> {
         Ok(())
     }
 
+    /// Update the role of an existing participant.
+    /// Returns the updated row, or None if the participant doesn't exist.
+    pub async fn set_participant_role(
+        &self,
+        tenant:  Uuid,
+        meeting: Uuid,
+        user:    Uuid,
+        role:    ParticipantRole,
+    ) -> Result<bool> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let r = sqlx::query(
+            r#"UPDATE meeting_participants SET role = $4
+               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
+            .bind(tenant).bind(meeting).bind(user).bind(role)
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(r.rows_affected() > 0)
+    }
+
     /// Remove a participant. Returns true if a row was deleted, false if not found.
     /// Caller must ensure the meeting's creator is never removed.
     pub async fn remove_participant(

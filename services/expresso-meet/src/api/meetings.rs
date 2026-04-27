@@ -11,6 +11,7 @@
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
 //! GET    /api/v1/meetings/:id/participants   → list participants
 //! DELETE /api/v1/meetings/:id/participants/:user_id → remove participant (moderator-only)
+//! PATCH  /api/v1/meetings/:id/participants/:user_id → promote/demote role (moderator-only)
 
 use axum::{
     extract::{Path, Query, State},
@@ -57,7 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
-        .route("/api/v1/meetings/:id/participants/:user_id", delete(remove_participant))
+        .route("/api/v1/meetings/:id/participants/:user_id", delete(remove_participant).patch(update_participant_role))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -524,6 +525,42 @@ async fn remove_participant(
     }
 
     repo.remove_participant(ctx.tenant_id, id, user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateRoleBody {
+    role: ParticipantRole,
+}
+
+/// PATCH /api/v1/meetings/:id/participants/:user_id — promote or demote a participant (moderator-only).
+/// The meeting creator's role cannot be demoted below moderator.
+async fn update_participant_role(
+    State(state):        State<AppState>,
+    ctx:                 RequestCtx,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+    Json(body):          Json<UpdateRoleBody>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+
+    // Creator must always remain a moderator.
+    let m = repo.get(ctx.tenant_id, id).await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+    if m.created_by == user_id && body.role != ParticipantRole::Moderator {
+        return Err(MeetError::BadRequest("cannot demote the meeting creator".into()));
+    }
+
+    let found = repo.set_participant_role(ctx.tenant_id, id, user_id, body.role).await?;
+    if !found {
+        return Err(MeetError::BadRequest("participant not found".into()));
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 
