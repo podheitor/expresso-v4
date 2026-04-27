@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
+        .route("/api/v1/drive/files/bulk-trash",             post(bulk_trash))
         .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
         .route("/api/v1/drive/files/:id/copy",               post(copy_file))
         .route("/api/v1/drive/files/:id/move",              post(move_file))
@@ -309,6 +310,34 @@ struct RenameBody {
 struct MoveBody {
     /// Destination folder id; omit or null to move to root.
     parent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkTrashBody {
+    /// File/folder ids to soft-delete (max 200).
+    ids: Vec<Uuid>,
+}
+
+/// POST /api/v1/drive/files/bulk-trash — soft-delete up to 200 items atomically.
+async fn bulk_trash(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkTrashBody>,
+) -> Result<Json<serde_json::Value>> {
+    if body.ids.is_empty() {
+        return Err(DriveError::BadRequest("ids must not be empty".into()));
+    }
+    if body.ids.len() > 200 {
+        return Err(DriveError::BadRequest(format!(
+            "too many ids: {} (max 200)", body.ids.len()
+        )));
+    }
+    let pool    = state.db_or_unavailable()?;
+    let trashed = FileRepo::new(pool).bulk_trash(ctx.tenant_id, &body.ids).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.bulk_trash",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, count = trashed);
+    Ok(Json(serde_json::json!({ "trashed": trashed })))
 }
 
 #[derive(Debug, Deserialize)]

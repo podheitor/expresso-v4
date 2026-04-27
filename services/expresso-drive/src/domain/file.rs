@@ -227,6 +227,21 @@ impl<'a> FileRepo<'a> {
         Ok(r.rows_affected())
     }
 
+    /// Soft-delete multiple files/folders in a single transaction.
+    /// Returns count of rows actually trashed (already-deleted rows are skipped).
+    pub async fn bulk_trash(&self, tenant_id: Uuid, ids: &[Uuid]) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let r = sqlx::query(
+            "UPDATE drive_files SET deleted_at = now() \
+             WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NULL",
+        )
+        .bind(tenant_id)
+        .bind(ids)
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(r.rows_affected())
+    }
+
     /// Clear deleted_at → move back to live tree. Conflict if a live
     /// sibling already holds the name (unique partial index raises 23505).
     pub async fn restore(&self, tenant_id: Uuid, id: Uuid) -> Result<DriveFile> {
