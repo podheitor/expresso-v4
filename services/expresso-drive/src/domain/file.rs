@@ -210,6 +210,32 @@ impl<'a> FileRepo<'a> {
         row.ok_or(DriveError::NotFound(id))
     }
 
+    /// Move multiple files/folders to a new parent in a single transaction.
+    /// Returns the list of moved rows. Skips ids that are deleted or belong
+    /// to a different tenant (they simply don't match the WHERE predicate).
+    pub async fn bulk_move(
+        &self,
+        tenant_id:     Uuid,
+        ids:           &[Uuid],
+        new_parent_id: Option<Uuid>,
+    ) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files SET parent_id = $3, updated_at = now() \
+             WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id)
+            .bind(ids)
+            .bind(new_parent_id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(map_conflict)?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// Move file/folder to a different parent (or root when parent_id = None).
     pub async fn move_to(&self, tenant_id: Uuid, id: Uuid, new_parent_id: Option<Uuid>) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;

@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
+        .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
         .route("/api/v1/drive/files/:id/move",              post(move_file))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
@@ -307,6 +308,43 @@ struct RenameBody {
 struct MoveBody {
     /// Destination folder id; omit or null to move to root.
     parent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkMoveBody {
+    /// File/folder ids to move (max 200).
+    ids:       Vec<Uuid>,
+    /// Destination folder id; omit or null to move to root.
+    parent_id: Option<Uuid>,
+}
+
+/// POST /api/v1/drive/files/bulk-move — atomically move up to 200 items.
+async fn bulk_move(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkMoveBody>,
+) -> Result<Json<Vec<DriveFile>>> {
+    if body.ids.is_empty() {
+        return Err(DriveError::BadRequest("ids must not be empty".into()));
+    }
+    if body.ids.len() > 200 {
+        return Err(DriveError::BadRequest(format!(
+            "too many ids: {} (max 200)", body.ids.len()
+        )));
+    }
+    let pool = state.db_or_unavailable()?;
+    if let Some(parent) = body.parent_id {
+        let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
+        if target.kind != "folder" {
+            return Err(DriveError::BadRequest("parent_id must be a folder".into()));
+        }
+        // Prevent moving any of the selected items into themselves.
+        if body.ids.contains(&target.id) {
+            return Err(DriveError::BadRequest("cannot move a folder into itself".into()));
+        }
+    }
+    let rows = FileRepo::new(pool).bulk_move(ctx.tenant_id, &body.ids, body.parent_id).await?;
+    Ok(Json(rows))
 }
 
 /// POST /api/v1/drive/files/:id/move — move a file or folder to a different parent.
