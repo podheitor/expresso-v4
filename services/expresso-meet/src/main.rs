@@ -9,6 +9,7 @@ mod domain;
 mod error;
 mod jitsi;
 mod state;
+pub mod webhook;
 
 use std::{env, net::SocketAddr, sync::Arc};
 
@@ -137,7 +138,11 @@ async fn main() -> anyhow::Result<()> {
     }
     let (multi, resolver) = resolve_multi_realm();
     let http_addr = resolve_addr()?;
-    let state = AppState::new(db, jitsi);
+    let webhook = webhook::WebhookConfig::from_env();
+    if webhook.is_some() {
+        info!("webhook dispatch enabled (MEET__WEBHOOK_URL)");
+    }
+    let state = AppState::new(db, jitsi, webhook);
     let app = api::router(state, oidc, multi, resolver);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 

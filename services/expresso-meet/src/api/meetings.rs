@@ -32,6 +32,7 @@ use crate::domain::{Meeting, MeetingParticipant, MeetingRepo, NewMeeting, Partic
 use crate::error::{MeetError, Result};
 use crate::jitsi::IssueRequest;
 use crate::state::AppState;
+use crate::webhook;
 
 /// Cap pra title — vai pro DB e UI; não tem necessidade de ser longo.
 pub const MAX_TITLE_BYTES: usize = 200;
@@ -157,6 +158,13 @@ async fn create(
     for u in body.invite {
         repo.add_participant(ctx.tenant_id, meeting.id, u, ParticipantRole::Participant).await?;
     }
+
+    webhook::dispatch(
+        state.webhook(),
+        "meeting.created",
+        ctx.tenant_id,
+        serde_json::to_value(&meeting).unwrap_or_default(),
+    );
 
     let mut resp = CreateResponse {
         meeting,
@@ -385,6 +393,12 @@ async fn archive(
         }
     }
     repo.archive(ctx.tenant_id, id).await?;
+    webhook::dispatch(
+        state.webhook(),
+        "meeting.archived",
+        ctx.tenant_id,
+        serde_json::to_value(&m).unwrap_or_default(),
+    );
     Ok(StatusCode::NO_CONTENT)
 }
 
