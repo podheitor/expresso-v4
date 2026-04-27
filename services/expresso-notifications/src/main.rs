@@ -25,6 +25,18 @@
 
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
+use once_cell::sync::Lazy;
+use prometheus::{register_int_counter_vec, IntCounterVec};
+
+static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
+    register_int_counter_vec!(
+        "notifications_dispatched_total",
+        "Total notifications dispatched, by kind",
+        &["kind"]
+    )
+    .expect("metric registration failed")
+});
+
 use axum::{
     async_trait,
     extract::{FromRequestParts, Query, Request, State},
@@ -119,6 +131,8 @@ async fn internal_notify(
 ) -> Json<serde_json::Value> {
     // Broadcast to local SSE streams on this pod.
     let _ = st.tx.send(notif.clone());
+
+    NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
 
     // Publish to Redis so other pods pick it up via their subscriber relay.
     if let Some(pool) = &st.redis_pub {
