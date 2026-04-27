@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
+        .route("/api/v1/drive/files/:id/move",              post(move_file))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version))
@@ -300,6 +301,35 @@ async fn head_file(
 #[derive(Debug, Deserialize)]
 struct RenameBody {
     name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MoveBody {
+    /// Destination folder id; omit or null to move to root.
+    parent_id: Option<Uuid>,
+}
+
+/// POST /api/v1/drive/files/:id/move — move a file or folder to a different parent.
+async fn move_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<MoveBody>,
+) -> Result<Json<DriveFile>> {
+    if let Some(parent) = body.parent_id {
+        // Sanity: target folder must exist in the same tenant.
+        let pool = state.db_or_unavailable()?;
+        let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
+        if target.kind != "folder" {
+            return Err(DriveError::BadRequest("parent_id must be a folder".into()));
+        }
+        if target.id == id {
+            return Err(DriveError::BadRequest("cannot move a folder into itself".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let f = FileRepo::new(pool).move_to(ctx.tenant_id, id, body.parent_id).await?;
+    Ok(Json(f))
 }
 
 /// PATCH /api/v1/drive/files/:id/metadata — rename a file or folder.

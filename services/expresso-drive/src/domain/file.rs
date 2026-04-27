@@ -210,6 +210,22 @@ impl<'a> FileRepo<'a> {
         row.ok_or(DriveError::NotFound(id))
     }
 
+    /// Move file/folder to a different parent (or root when parent_id = None).
+    pub async fn move_to(&self, tenant_id: Uuid, id: Uuid, new_parent_id: Option<Uuid>) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files SET parent_id = $3, updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(new_parent_id)
+            .fetch_optional(&mut *tx).await
+            .map_err(map_conflict)?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(id))
+    }
+
     /// Rename file/folder. name must already be validated by the caller.
     pub async fn rename(&self, tenant_id: Uuid, id: Uuid, new_name: String) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
