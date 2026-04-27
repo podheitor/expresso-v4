@@ -169,10 +169,24 @@ impl<'a> MeetingRepo<'a> {
     pub async fn archive(&self, tenant: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         sqlx::query(
-            r#"UPDATE meetings SET is_archived = TRUE WHERE tenant_id=$1 AND id=$2"#)
+            r#"UPDATE meetings SET is_archived = TRUE, updated_at = NOW()
+               WHERE tenant_id=$1 AND id=$2"#)
             .bind(tenant).bind(id).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    pub async fn restore(&self, tenant: Uuid, id: Uuid) -> Result<Option<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Meeting> = sqlx::query_as(
+            r#"UPDATE meetings SET is_archived = FALSE, updated_at = NOW()
+               WHERE tenant_id=$1 AND id=$2 AND is_archived = TRUE
+               RETURNING id, tenant_id, room_name, title, channel_id, created_by,
+                         scheduled_for, ends_at, is_recurring, is_archived,
+                         lobby_enabled, password, created_at, updated_at"#)
+            .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
     }
 
     pub async fn update(

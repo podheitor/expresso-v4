@@ -5,6 +5,7 @@
 //! GET    /api/v1/meetings/:id                → meeting detail (participant-only)
 //! PATCH  /api/v1/meetings/:id                → update title/schedule/lobby/password (moderator-only)
 //! DELETE /api/v1/meetings/:id                → archive (creator OR moderator)
+//! POST   /api/v1/meetings/:id/restore        → restore archived meeting (creator OR moderator)
 //! POST   /api/v1/meetings/:id/tokens         → mint a JWT for the caller (or for
 //!                                              a target user, moderator-only)
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
@@ -52,6 +53,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/meetings", post(create).get(list))
         .route("/api/v1/meetings/:id", get(get_one).patch(update).delete(archive))
+        .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
 }
@@ -310,6 +312,28 @@ async fn update(
     ).await?;
 
     match updated {
+        Some(m) => Ok(Json(m)),
+        None    => Err(MeetError::MeetingNotFound(id)),
+    }
+}
+
+/// POST /api/v1/meetings/:id/restore — reativa reunião arquivada (creator ou moderador).
+async fn restore(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Meeting>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let m = repo.get(ctx.tenant_id, id).await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+    if m.created_by != ctx.user_id {
+        match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+            Some(ParticipantRole::Moderator) => {}
+            _ => return Err(MeetError::Forbidden),
+        }
+    }
+    match repo.restore(ctx.tenant_id, id).await? {
         Some(m) => Ok(Json(m)),
         None    => Err(MeetError::MeetingNotFound(id)),
     }
