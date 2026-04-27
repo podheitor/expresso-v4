@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #365 (2026-04-27)
+**Último sprint commitado:** #369 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -42,6 +42,10 @@ git log --oneline | head -15
 | #363 | meet | `GET /api/v1/meetings/:id/participants?limit=N&offset=N` — paginação na lista de participantes |
 | #364 | imap | NAMESPACE (RFC 2342) — anuncia namespace pessoal prefix="" delim="."; feature `ext_namespace` habilitada |
 | #365 | notifications | Redis pub/sub cross-pod — `internal_notify` publica em `"expresso:notifications"`; outros pods recebem via relay subscriber |
+| #366 | imap | CONDSTORE/QRESYNC (RFC 7162) — `mod_sequence` em `messages`, `HIGHESTMODSEQ` em SELECT/STATUS, `CHANGEDSINCE` em FETCH, `MODSEQ` data item, `ENABLE CondStore` |
+| #367 | drive | `GET /api/v1/drive/files/:id/preview` — `Content-Disposition: inline` para image/* e application/pdf; 415 para outros tipos |
+| #368 | meet | Webhook on meeting created/archived — `MEET__WEBHOOK_URL` fire-and-forget POST `{event, tenant_id, meeting}` |
+| #369 | compliance | `GET /api/v1/compliance/archive/export` — ZIP em memória com `manifest.json` + `messages/*.eml`; mesmos filtros que list |
 
 ---
 
@@ -58,10 +62,11 @@ git log --oneline | head -15
 ## Próximos candidatos
 
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List`
-2. **IMAP: CONDSTORE / QRESYNC** — `HIGHESTMODSEQ`, `CHANGEDSINCE`, `VANISHED` (RFC 7162)
-3. **drive: thumbnail/preview endpoint** — `GET /drive/files/:id/preview`
-4. **meet: webhook on meeting start/end** — POST para URL configurável no tenant
-5. **compliance: export ZIP** — `GET /compliance/archive/:policy_id/export` stream zip de mensagens
+2. **IMAP: OBJECTID (RFC 8474)** — `EMAILID`, `THREADID` por mensagem (imutáveis)
+3. **drive: versioning delete** — `DELETE /drive/files/:id/versions/:v` remove versão específica
+4. **meet: webhook on meeting restored** — adicionar `meeting.restored` ao módulo webhook
+5. **compliance: export ZIP signed** — adicionar HMAC-SHA256 signature no header `X-Export-Signature`
+6. **notifications: metrics** — counter de eventos despachados por kind (Prometheus)
 
 ---
 
