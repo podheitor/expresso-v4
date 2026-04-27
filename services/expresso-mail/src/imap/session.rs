@@ -31,6 +31,7 @@ use imap_codec::{
         },
         status::{StatusDataItem, StatusDataItemName},
         extensions::binary::LiteralOrLiteral8,
+        extensions::namespace::Namespace,
         extensions::uidplus::{UidElement, UidSet},
         search::SearchKey,
         IntoStatic,
@@ -468,6 +469,15 @@ async fn dispatch(
             cmd_thread(state, tag, *uid,
                 search_criteria.as_ref(), selected.as_ref().unwrap(), tenant_id.unwrap()).await
         }
+        // NAMESPACE — RFC 2342: advertise personal/other/shared namespace prefixes.
+        // We expose a single personal namespace (prefix "" delimiter ".") and empty
+        // other/shared lists, matching the flat mailbox model already in use.
+        CommandBody::Namespace => {
+            if *sess == SessionState::NotAuthenticated {
+                return vec![no_tagged(tag, "not authenticated")];
+            }
+            cmd_namespace(tag)
+        }
         _ => {
             let msg = format!("{} not implemented", cmd.body.name());
             vec![bad_tagged(tag, &msg)]
@@ -490,10 +500,29 @@ fn cmd_capability(tag: Tag<'static>) -> Vec<Response<'static>> {
         Capability::Other(CapabilityOther(Atom::try_from("SORT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("THREAD=ORDEREDSUBJECT").unwrap())),
         Capability::Other(CapabilityOther(Atom::try_from("STATUS=SIZE").unwrap())),
+        Capability::Namespace,
     ]).unwrap();
     vec![
         Response::Data(Data::Capability(caps)),
         ok_tagged(tag, None, "CAPABILITY completed"),
+    ]
+}
+
+fn cmd_namespace(tag: Tag<'static>) -> Vec<Response<'static>> {
+    // Personal namespace: prefix "" delimiter "." (matches folder naming convention).
+    // Other users and shared namespaces are empty — not supported in this deployment.
+    let personal = vec![Namespace {
+        prefix:     imap_codec::imap_types::core::IString::try_from("").unwrap(),
+        delimiter:  Some(imap_codec::imap_types::core::QuotedChar::try_from('.').unwrap()),
+        extensions: vec![],
+    }];
+    vec![
+        Response::Data(Data::Namespace {
+            personal,
+            other:  vec![],
+            shared: vec![],
+        }),
+        ok_tagged(tag, None, "NAMESPACE completed"),
     ]
 }
 
