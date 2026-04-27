@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #347 (2026-04-27)
+**Último sprint commitado:** #349 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -24,6 +24,8 @@ git log --oneline | head -15
 | #345 | drive | `POST /api/v1/drive/files/:id/move` — mover arquivo/pasta para outro diretório |
 | #346 | drive | `POST /api/v1/drive/files/bulk-move` — mover até 200 itens atomicamente |
 | #347 | meet | `POST /api/v1/meetings/:id/restore` — reativa reunião arquivada (creator ou moderador) |
+| #348 | meet | `GET /api/v1/meetings?archived=true` — lista reuniões arquivadas do usuário |
+| #349 | drive | `POST /api/v1/drive/files/:id/copy` — cópia shallow: nova row, mesmo blob |
 
 ---
 
@@ -42,8 +44,8 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: copiar arquivo/pasta** — `POST /drive/files/:id/copy` (sem reupload de blob, nova row + hard-link de storage_key)
-5. **meet: listar reuniões arquivadas** — `GET /meetings?archived=true` (filtro na list_for_user)
+4. **drive: mover múltiplos para lixeira** — `POST /drive/files/bulk-trash` (soft-delete batch)
+5. **meet: remover participante** — `DELETE /meetings/:id/participants/:user_id` (moderator-only)
 
 ---
 
