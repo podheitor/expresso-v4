@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #369 (2026-04-27)
+**Último sprint commitado:** #375 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -46,6 +46,12 @@ git log --oneline | head -15
 | #367 | drive | `GET /api/v1/drive/files/:id/preview` — `Content-Disposition: inline` para image/* e application/pdf; 415 para outros tipos |
 | #368 | meet | Webhook on meeting created/archived — `MEET__WEBHOOK_URL` fire-and-forget POST `{event, tenant_id, meeting}` |
 | #369 | compliance | `GET /api/v1/compliance/archive/export` — ZIP em memória com `manifest.json` + `messages/*.eml`; mesmos filtros que list |
+| #370 | meet | Webhook on meeting restored — `meeting.restored` event via `webhook::dispatch` no handler `restore` |
+| #371 | compliance | Export ZIP signed — HMAC-SHA256 em `X-Export-Signature` via `COMPLIANCE__EXPORT_SECRET` (hmac+sha2+hex) |
+| #372 | notifications | Metrics — `IntCounterVec notifications_dispatched_total{kind}` incrementado em `internal_notify` |
+| #373 | drive | `DELETE /api/v1/drive/files/:id/versions/:v` — remove versão específica + blob em disco |
+| #374 | drive | `POST /api/v1/drive/files/bulk-copy` — shallow-copy até 200 itens com nome "<original> (cópia)" |
+| #375 | meet | Webhook retry — exponential backoff até 3 tentativas (1s/2s/4s) em `webhook::dispatch` |
 
 ---
 
@@ -61,12 +67,13 @@ git log --oneline | head -15
 
 ## Próximos candidatos
 
-1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List`
-2. **IMAP: OBJECTID (RFC 8474)** — `EMAILID`, `THREADID` por mensagem (imutáveis)
-3. **drive: versioning delete** — `DELETE /drive/files/:id/versions/:v` remove versão específica
-4. **meet: webhook on meeting restored** — adicionar `meeting.restored` ao módulo webhook
-5. **compliance: export ZIP signed** — adicionar HMAC-SHA256 signature no header `X-Export-Signature`
-6. **notifications: metrics** — counter de eventos despachados por kind (Prometheus)
+1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
+2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
+3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
+4. **drive: bulk-restore** — `POST /api/v1/drive/files/bulk-restore` — desfaz trash para até 200 itens
+5. **mail: thread view** — `GET /api/v1/mail/messages?thread_id=<root_id>` — agrupa por `in_reply_to`/`references`
+6. **compliance: export ZIP password** — proteção com senha no ZIP via `zip::write::SimpleFileOptions::with_aes_encryption`
+7. **notifications: webhook** — `POST /internal/notify` também dispara webhook HTTP externo (NOTIFICATIONS__WEBHOOK_URL)
 
 ---
 
