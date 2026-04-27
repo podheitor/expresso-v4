@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #361 (2026-04-27)
+**Último sprint commitado:** #365 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -38,6 +38,10 @@ git log --oneline | head -15
 | #359 | meet | `PATCH /api/v1/meetings/:id` — campo `is_recurring` adicionado ao `UpdateBody` |
 | #360 | drive | `GET /api/v1/drive/files?limit=N&offset=N` — paginação na listagem (limit 1–500, default 200) |
 | #361 | meet | `GET /api/v1/meetings?after=&before=` — filtro por `scheduled_for` em RFC 3339 |
+| #362 | drive | `GET /api/v1/drive/files/search?q=&limit=&offset=` — paginação na busca por nome |
+| #363 | meet | `GET /api/v1/meetings/:id/participants?limit=N&offset=N` — paginação na lista de participantes |
+| #364 | imap | NAMESPACE (RFC 2342) — anuncia namespace pessoal prefix="" delim="."; feature `ext_namespace` habilitada |
+| #365 | notifications | Redis pub/sub cross-pod — `internal_notify` publica em `"expresso:notifications"`; outros pods recebem via relay subscriber |
 
 ---
 
@@ -53,11 +57,11 @@ git log --oneline | head -15
 
 ## Próximos candidatos
 
-1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
-2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
-3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: paginação na busca** — `GET /drive/files/search?q=&limit=&offset=N`
-5. **meet: paginação na lista de participantes** — `GET /meetings/:id/participants?limit=N&offset=N`
+1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List`
+2. **IMAP: CONDSTORE / QRESYNC** — `HIGHESTMODSEQ`, `CHANGEDSINCE`, `VANISHED` (RFC 7162)
+3. **drive: thumbnail/preview endpoint** — `GET /drive/files/:id/preview`
+4. **meet: webhook on meeting start/end** — POST para URL configurável no tenant
+5. **compliance: export ZIP** — `GET /compliance/archive/:policy_id/export` stream zip de mensagens
 
 ---
 
