@@ -579,6 +579,96 @@ async fn list_archive(
     Ok(resp)
 }
 
+/// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
+///
+/// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
+/// filters as the list endpoint. Returns a ZIP containing:
+///   - `manifest.json` — JSON array of all entry metadata
+///   - `messages/<id>.eml` — raw message bytes for each entry (best-effort; skipped on I/O error)
+async fn export_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ArchiveListParams>,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
+    // Build the same filter clauses as list_archive but without pagination.
+    let since_filter = params.since.as_deref()
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_date_filter = params.before.as_deref()
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let subject_filter = params.subject.as_deref()
+        .map(|s| format!("AND subject ILIKE '%{}%'", s.replace('\'', "''")))
+        .unwrap_or_default();
+    let from_addr_filter = params.from_addr.as_deref()
+        .map(|s| format!("AND from_addr ILIKE '%{}%'", s.replace('\'', "''")))
+        .unwrap_or_default();
+    let to_addr_filter = params.to_addr.as_deref()
+        .map(|s| format!("AND to_addrs::text ILIKE '%{}%'", s.replace('\'', "''")))
+        .unwrap_or_default();
+    let size_min_filter = params.size_min
+        .map(|v| format!("AND size_bytes >= {v}"))
+        .unwrap_or_default();
+    let size_max_filter = params.size_max
+        .map(|v| format!("AND size_bytes <= {v}"))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT id, tenant_id, user_id, original_id, body_path, from_addr, \
+                to_addrs, subject, archived_at, size_bytes \
+         FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+         {to_addr_filter} {size_min_filter} {size_max_filter} \
+         ORDER BY archived_at ASC"
+    );
+
+    let rows: Vec<ArchiveEntry> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // Build ZIP in memory.
+    let buf = std::io::Cursor::new(Vec::new());
+    let mut zw = zip::ZipWriter::new(buf);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    // manifest.json
+    let manifest = serde_json::to_vec(&rows)
+        .unwrap_or_else(|_| b"[]".to_vec());
+    zw.start_file("manifest.json", options)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    std::io::Write::write_all(&mut zw, &manifest)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // One .eml file per entry — best-effort, skip unreadable files.
+    for entry in &rows {
+        if let Ok(bytes) = tokio::fs::read(&entry.body_path).await {
+            let name = format!("messages/{}.eml", entry.id);
+            if zw.start_file(&name, options).is_ok() {
+                let _ = std::io::Write::write_all(&mut zw, &bytes);
+            }
+        }
+    }
+
+    let buf = zw.finish()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let zip_bytes = buf.into_inner();
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,        "application/zip".to_string()),
+            (header::CONTENT_DISPOSITION, "attachment; filename=\"compliance-export.zip\"".to_string()),
+            (header::CONTENT_LENGTH,      zip_bytes.len().to_string()),
+        ],
+        zip_bytes,
+    ).into_response())
+}
+
 /// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
 /// Returns ETag (`"{archived_at_unix}-{id}"`) and Last-Modified. Responds 304 if If-None-Match matches.
 async fn get_archive_entry(
@@ -806,6 +896,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies/:id",
                get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
+        .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
