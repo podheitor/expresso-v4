@@ -5,7 +5,7 @@ use axum::{
     extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, head, post},
+    routing::{get, head, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -27,7 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files",                       get(list).post(upload))
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
-        .route("/api/v1/drive/files/:id/metadata",          get(metadata))
+        .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version))
@@ -295,6 +295,24 @@ async fn head_file(
         resp.headers_mut().insert(header::CONTENT_LENGTH, size);
     }
     Ok(resp)
+}
+
+#[derive(Debug, Deserialize)]
+struct RenameBody {
+    name: String,
+}
+
+/// PATCH /api/v1/drive/files/:id/metadata — rename a file or folder.
+async fn rename(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<RenameBody>,
+) -> Result<Json<DriveFile>> {
+    let name = sanitize_name(&body.name)?;
+    let pool = state.db_or_unavailable()?;
+    let f = FileRepo::new(pool).rename(ctx.tenant_id, id, name).await?;
+    Ok(Json(f))
 }
 
 async fn download(
