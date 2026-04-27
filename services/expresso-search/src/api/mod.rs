@@ -28,6 +28,8 @@ pub struct SearchParams {
     pub tenant_id: String,
     #[serde(default = "default_limit")]
     pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
 }
 
 fn default_limit() -> usize {
@@ -110,7 +112,7 @@ pub async fn bulk_index(
     Ok(Json(BulkIndexResponse { indexed, rejected }))
 }
 
-/// GET /api/v1/search?q=...&tenant_id=...&limit=20
+/// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0
 pub async fn search(
     State(store): State<IndexStore>,
     Query(mut params): Query<SearchParams>,
@@ -119,7 +121,7 @@ pub async fn search(
         return Err((StatusCode::BAD_REQUEST, msg));
     }
     let hits = store
-        .search(&params.q, &params.tenant_id, params.limit)
+        .search(&params.q, &params.tenant_id, params.limit, params.offset)
         .map_err(|e| {
             // bad_query: tag → input do usuário inválido; não vazar detalhes do schema.
             if e.to_string().starts_with("bad_query:") {

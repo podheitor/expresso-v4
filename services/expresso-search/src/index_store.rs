@@ -187,7 +187,7 @@ impl IndexStore {
     }
 
     /// Full-text search filtered by tenant.
-    pub fn search(&self, query_str: &str, tenant_id: &str, limit: usize) -> anyhow::Result<Vec<SearchHit>> {
+    pub fn search(&self, query_str: &str, tenant_id: &str, limit: usize, offset: usize) -> anyhow::Result<Vec<SearchHit>> {
         // Validação rígida: tenant_id precisa ser UUID. A versão antiga
         // injetava o valor cru no QueryParser via `format!`, escapando só
         // aspas — um tenant_id como `*` ou vazio puxaria docs de outros
@@ -247,7 +247,7 @@ impl IndexStore {
             SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok()
         }).map(|mut gen| { gen.set_max_num_chars(200); gen });
 
-        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit))?;
+        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).and_offset(offset))?;
 
         let mut results = Vec::with_capacity(top_docs.len());
         for (score, doc_addr) in top_docs {
@@ -295,7 +295,7 @@ mod tests {
         store.index_document(&doc).await.unwrap();
         store.reload().unwrap();
 
-        let hits = store.search("meeting", TENANT_A, 10).unwrap();
+        let hits = store.search("meeting", TENANT_A, 10, 0).unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].document_id, "msg-001");
         assert_eq!(hits[0].subject.as_deref(), Some("Meeting tomorrow"));
@@ -305,13 +305,13 @@ mod tests {
         assert!(snip.contains("meeting"), "snippet missing match term, got: {snip:?}");
 
         // Different tenant → no results
-        let hits2 = store.search("meeting", TENANT_B, 10).unwrap();
+        let hits2 = store.search("meeting", TENANT_B, 10, 0).unwrap();
         assert!(hits2.is_empty());
 
         // Delete and verify gone
         store.delete_document("msg-001").await.unwrap();
         store.reload().unwrap();
-        let hits3 = store.search("meeting", TENANT_A, 10).unwrap();
+        let hits3 = store.search("meeting", TENANT_A, 10, 0).unwrap();
         assert!(hits3.is_empty());
     }
 
@@ -319,9 +319,9 @@ mod tests {
     async fn rejects_non_uuid_tenant_in_search() {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
-        assert!(store.search("hello", "", 10).is_err());
-        assert!(store.search("hello", "*", 10).is_err());
-        assert!(store.search("hello", "tenant-abc", 10).is_err());
+        assert!(store.search("hello", "", 10, 0).is_err());
+        assert!(store.search("hello", "*", 10, 0).is_err());
+        assert!(store.search("hello", "tenant-abc", 10, 0).is_err());
     }
 
     #[tokio::test]
@@ -354,7 +354,7 @@ mod tests {
         store.reload().unwrap();
 
         // Tentativa de pivot cross-tenant via query string deve falhar.
-        let res = store.search(&format!("hello OR tenant_id:{TENANT_B}"), TENANT_A, 10);
+        let res = store.search(&format!("hello OR tenant_id:{TENANT_B}"), TENANT_A, 10, 0);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
     }
@@ -364,7 +364,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
         // Campo inexistente → QueryParserError → deve ser tagged bad_query (→ 400).
-        let res = store.search("nonexistent_field:hello", TENANT_A, 10);
+        let res = store.search("nonexistent_field:hello", TENANT_A, 10, 0);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
     }
@@ -374,7 +374,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = IndexStore::open(dir.path()).unwrap();
         // Parêntese sem fechar → QueryParserError::SyntaxError → bad_query.
-        let res = store.search("(subject:hello AND", TENANT_A, 10);
+        let res = store.search("(subject:hello AND", TENANT_A, 10, 0);
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
     }
