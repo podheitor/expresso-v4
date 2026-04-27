@@ -1,27 +1,37 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #335 (2026-04-27)
+**Último sprint commitado:** #345 (2026-04-27)
 
 ```
-git log --oneline | head -10
+git log --oneline | head -15
 ```
 
 ---
 
-## O que foi feito nesta sessão (#335)
+## O que foi feito nesta sessão (#336–#345)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
-| #335 | compliance | `Last-Modified` + `IMS` em `list_policies`; ETag/LM via `updated_at` (não `created_at`) em `get_policy` |
+| #336 | calendar | Last-Modified + IMS em `export.ics`; ETag + LM + INM + IMS em `itip/request.ics` |
+| #337 | drive | Last-Modified + IMS em `GET /quota` via `MAX(updated_at)` drive_files |
+| #338 | mail | ETag + INM em `HEAD /messages/:id/raw` — mesmo formato que GET /raw |
+| #339 | mail | ETag + INM em `GET /messages/:id/attachments` — imutável como raw |
+| #340 | mail | Last-Modified + IMS em `list_folders` e `list_all_folders` via `MAX(updated_at)` mailboxes |
+| #341 | mail | Last-Modified + IMS em `GET /quota` via `MAX(received_at)` messages |
+| #342 | search | Parâmetro `offset` em `GET /api/v1/search` — paginação via `TopDocs::and_offset()` |
+| #343 | meet | `PATCH /api/v1/meetings/:id` — atualiza title/schedule/lobby/password (moderator-only) |
+| #344 | drive | `PATCH /api/v1/drive/files/:id/metadata` — renomear arquivo/pasta sem reupload |
+| #345 | drive | `POST /api/v1/drive/files/:id/move` — mover arquivo/pasta para outro diretório |
 
 ---
 
-## Sessões anteriores (#333–#334)
+## Sessões anteriores (#333–#335)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
 | #333 | admin | Migration `updated_at` em `govbr_user_map` + trigger automático; `govbr.rs` usa `updated_at` direto para ETag/LM |
 | #334 | search | `POST /api/v1/index/bulk` — indexa até 500 docs por chamada; um único commit Tantivy |
+| #335 | compliance | `Last-Modified` + `IMS` em `list_policies`; ETag/LM via `updated_at` em `get_policy` |
 
 ---
 
@@ -30,7 +40,8 @@ git log --oneline | head -10
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **flows: ETag/LM em endpoints REST** — verificar quais têm `updated_at`
+4. **drive: mover múltiplos arquivos em batch** — `POST /drive/files/bulk-move`
+5. **meet: cancelar/reativar reunião arquivada** — `POST /meetings/:id/restore`
 
 ---
 
