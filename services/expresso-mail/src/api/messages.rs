@@ -765,6 +765,7 @@ async fn head_message_raw(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
+    req_headers:  axum::http::HeaderMap,
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row: Option<(String, i32)> = sqlx::query_as(
@@ -785,11 +786,19 @@ async fn head_message_raw(
 
     let (_body_path, size_bytes) = row.ok_or(MailError::MessageNotFound(id))?;
 
+    let etag = format!("\"{}-{}\"", size_bytes, id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
     Ok((
         StatusCode::OK,
         [
             (header::CONTENT_TYPE,   "message/rfc822".to_string()),
             (header::CONTENT_LENGTH, size_bytes.to_string()),
+            (header::ETAG,           etag),
         ],
         Body::empty(),
     ).into_response())
