@@ -371,8 +371,16 @@ async fn restore(
         }
     }
     match repo.restore(ctx.tenant_id, id).await? {
-        Some(m) => Ok(Json(m)),
-        None    => Err(MeetError::MeetingNotFound(id)),
+        Some(m) => {
+            webhook::dispatch(
+                state.webhook(),
+                "meeting.restored",
+                ctx.tenant_id,
+                serde_json::to_value(&m).unwrap_or_default(),
+            );
+            Ok(Json(m))
+        }
+        None => Err(MeetError::MeetingNotFound(id)),
     }
 }
 
