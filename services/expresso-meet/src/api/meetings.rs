@@ -10,12 +10,13 @@
 //!                                              a target user, moderator-only)
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
 //! GET    /api/v1/meetings/:id/participants   → list participants
+//! DELETE /api/v1/meetings/:id/participants/:user_id → remove participant (moderator-only)
 
 use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -56,6 +57,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
+        .route("/api/v1/meetings/:id/participants/:user_id", delete(remove_participant))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -498,6 +500,31 @@ async fn add_participant(
     let role = body.role.unwrap_or(ParticipantRole::Participant);
     repo.add_participant(ctx.tenant_id, id, body.user_id, role).await?;
     Ok((StatusCode::CREATED, Json(json!({"added": body.user_id}))))
+}
+
+/// DELETE /api/v1/meetings/:id/participants/:user_id — moderator-only; creator cannot be removed.
+async fn remove_participant(
+    State(state):        State<AppState>,
+    ctx:                 RequestCtx,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+
+    let m = repo.get(ctx.tenant_id, id).await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+    if m.created_by == user_id {
+        return Err(MeetError::BadRequest("cannot remove the meeting creator".into()));
+    }
+
+    repo.remove_participant(ctx.tenant_id, id, user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn list_participants(

@@ -171,6 +171,24 @@ impl<'a> MeetingRepo<'a> {
         Ok(())
     }
 
+    /// Remove a participant. Returns true if a row was deleted, false if not found.
+    /// Caller must ensure the meeting's creator is never removed.
+    pub async fn remove_participant(
+        &self,
+        tenant:  Uuid,
+        meeting: Uuid,
+        user:    Uuid,
+    ) -> Result<bool> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let r = sqlx::query(
+            r#"DELETE FROM meeting_participants
+               WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
+            .bind(tenant).bind(meeting).bind(user)
+            .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(r.rows_affected() > 0)
+    }
+
     pub async fn list_participants(&self, tenant: Uuid, meeting: Uuid) -> Result<Vec<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<MeetingParticipant> = sqlx::query_as(
