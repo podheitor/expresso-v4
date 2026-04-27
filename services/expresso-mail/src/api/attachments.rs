@@ -9,7 +9,7 @@ use axum::{
     Router,
     routing::get,
     extract::{Path, State},
-    http::{StatusCode, header},
+    http::{StatusCode, header, HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
     Json,
 };
@@ -55,11 +55,11 @@ async fn load_raw(state: &AppState, body_path: &str) -> Result<Vec<u8>> {
         .map_err(|e| MailError::InvalidMessage(format!("failed to read raw message: {e}")))
 }
 
-/// Fetch body_path for message id from DB, scoped to tenant+user.
-async fn fetch_body_path(state: &AppState, ctx: &RequestCtx, id: Uuid) -> Result<String> {
+/// Fetch body_path + size_bytes for message id from DB, scoped to tenant+user.
+async fn fetch_message_meta(state: &AppState, ctx: &RequestCtx, id: Uuid) -> Result<(String, i32)> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
-    let path: Option<String> = sqlx::query_scalar(
-        r#"SELECT m.body_path
+    let row: Option<(String, i32)> = sqlx::query_as(
+        r#"SELECT m.body_path, m.size_bytes
              FROM messages  m
              JOIN mailboxes mb ON mb.id = m.mailbox_id
             WHERE m.id         = $1
@@ -74,7 +74,7 @@ async fn fetch_body_path(state: &AppState, ctx: &RequestCtx, id: Uuid) -> Result
     .await?;
     tx.commit().await?;
 
-    path.ok_or(MailError::MessageNotFound(id))
+    row.ok_or(MailError::MessageNotFound(id))
 }
 
 /// Format content-type from ContentType struct
@@ -87,13 +87,23 @@ fn format_ct(ct: &mail_parser::ContentType) -> String {
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
-/// GET /api/v1/mail/messages/:id/attachments — list attachment metadata
+/// GET /api/v1/mail/messages/:id/attachments — list attachment metadata.
+/// ETag = `"{size_bytes}-{id}"` (immutable after delivery, same as GET /raw).
 async fn list_attachments(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
-) -> Result<Json<Vec<AttachmentMeta>>> {
-    let body_path = fetch_body_path(&state, &ctx, id).await?;
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let (body_path, size_bytes) = fetch_message_meta(&state, &ctx, id).await?;
+
+    let etag = format!("\"{}-{}\"", size_bytes, id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
     let raw = load_raw(&state, &body_path).await?;
     let msg = MessageParser::default()
         .parse(&raw)
@@ -116,7 +126,9 @@ async fn list_attachments(
         })
         .collect();
 
-    Ok(Json(attachments))
+    let mut resp = Json(attachments).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    Ok(resp)
 }
 
 /// GET /api/v1/mail/messages/:id/attachments/:index — download binary
@@ -125,7 +137,7 @@ async fn download_attachment(
     ctx:               RequestCtx,
     Path((id, index)): Path<(Uuid, usize)>,
 ) -> Result<Response> {
-    let body_path = fetch_body_path(&state, &ctx, id).await?;
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
     let raw = load_raw(&state, &body_path).await?;
     let msg = MessageParser::default()
         .parse(&raw)
