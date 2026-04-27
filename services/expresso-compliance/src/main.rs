@@ -73,7 +73,7 @@ struct RetentionPolicyDetail {
     pub retain_days: i32,
     pub action:      String,
     pub enabled:     bool,
-    pub created_at:  time::OffsetDateTime,
+    pub updated_at:  time::OffsetDateTime,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,15 +180,37 @@ struct ListPoliciesParams {
 }
 
 async fn list_policies(
-    State(st):    State<AppState>,
-    AuthCtx(ctx): AuthCtx,
-    Query(params): Query<ListPoliciesParams>,
+    State(st):      State<AppState>,
+    AuthCtx(ctx):   AuthCtx,
+    Query(params):  Query<ListPoliciesParams>,
+    req_headers:    axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
     let order = if params.sort.as_deref().map(|s| s.eq_ignore_ascii_case("desc")).unwrap_or(false) {
         "DESC"
     } else {
         "ASC"
     };
+
+    let max_ts: Option<time::OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM retention_policies WHERE tenant_id = $1",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(&st.db)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
     let total: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM retention_policies WHERE tenant_id = $1",
     )
@@ -200,7 +222,7 @@ async fn list_policies(
         "SELECT id, tenant_id, folder_name, retain_days, action, enabled \
          FROM retention_policies \
          WHERE tenant_id = $1 \
-         ORDER BY created_at {order}"
+         ORDER BY updated_at {order}"
     );
     let rows: Vec<RetentionPolicy> = sqlx::query_as(&sql)
         .bind(ctx.tenant_id)
@@ -208,11 +230,16 @@ async fn list_policies(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    Ok((
+    let mut resp = (
         StatusCode::OK,
         [(header::HeaderName::from_static("x-total-count"), total.to_string())],
         Json(rows),
-    ).into_response())
+    ).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, axum::http::HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
 
 async fn create_policy(
@@ -254,7 +281,7 @@ async fn get_policy(
     req_headers:  axum::http::HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let row: Option<RetentionPolicyDetail> = sqlx::query_as(
-        "SELECT id, tenant_id, folder_name, retain_days, action, enabled, created_at \
+        "SELECT id, tenant_id, folder_name, retain_days, action, enabled, updated_at \
          FROM retention_policies \
          WHERE id = $1 AND tenant_id = $2",
     )
@@ -266,8 +293,8 @@ async fn get_policy(
 
     let p = row.ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "policy not found"}))))?;
 
-    let etag = format!("\"{}-{}\"", p.created_at.unix_timestamp(), p.id);
-    let last_modified = p.created_at
+    let etag = format!("\"{}-{}\"", p.updated_at.unix_timestamp(), p.id);
+    let last_modified = p.updated_at
         .format(&time::format_description::well_known::Rfc2822)
         .unwrap_or_default();
 
@@ -279,7 +306,7 @@ async fn get_policy(
     if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
         if let Ok(ims_str) = ims_val.to_str() {
             if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
-                if p.created_at <= ims_dt {
+                if p.updated_at <= ims_dt {
                     return Ok(StatusCode::NOT_MODIFIED.into_response());
                 }
             }
