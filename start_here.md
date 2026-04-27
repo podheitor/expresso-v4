@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #375 (2026-04-27)
+**Último sprint commitado:** #378 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -52,6 +52,9 @@ git log --oneline | head -15
 | #373 | drive | `DELETE /api/v1/drive/files/:id/versions/:v` — remove versão específica + blob em disco |
 | #374 | drive | `POST /api/v1/drive/files/bulk-copy` — shallow-copy até 200 itens com nome "<original> (cópia)" |
 | #375 | meet | Webhook retry — exponential backoff até 3 tentativas (1s/2s/4s) em `webhook::dispatch` |
+| #376 | drive | `POST /api/v1/drive/files/bulk-restore` — desfaz trash de até 200 itens atomicamente |
+| #377 | compliance | Export ZIP password — AES-256 via `?password=` em `GET /api/v1/compliance/archive/export` |
+| #378 | notifications | Webhook externo — `NOTIFICATIONS__WEBHOOK_URL` dispara POST fire-and-forget em `internal_notify` |
 
 ---
 
@@ -70,10 +73,10 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
 2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
 3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **drive: bulk-restore** — `POST /api/v1/drive/files/bulk-restore` — desfaz trash para até 200 itens
-5. **mail: thread view** — `GET /api/v1/mail/messages?thread_id=<root_id>` — agrupa por `in_reply_to`/`references`
-6. **compliance: export ZIP password** — proteção com senha no ZIP via `zip::write::SimpleFileOptions::with_aes_encryption`
-7. **notifications: webhook** — `POST /internal/notify` também dispara webhook HTTP externo (NOTIFICATIONS__WEBHOOK_URL)
+4. **drive: file tags** — `POST /api/v1/drive/files/:id/tags` / `DELETE /api/v1/drive/files/:id/tags/:tag` — tabela `drive_file_tags(file_id, tag)`
+5. **mail: mark-all-read** — `POST /api/v1/mail/folders/:id/mark-read` — bulk UPDATE flags para remover `\Seen` negado (set `\Seen`) em todos os messages do mailbox
+6. **meet: recording** — `POST /api/v1/meetings/:id/recording/start` / `stop` — campo `recording_started_at` em meetings
+7. **search: facets** — `GET /api/v1/search?q=&facet=kind` — agrega contagens por campo (kind, folder) via Tantivy FacetCollector
 
 ---
 
