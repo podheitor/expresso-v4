@@ -142,6 +142,42 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+    pub async fn list_children_paged(
+        &self,
+        tenant_id: Uuid,
+        parent_id: Option<Uuid>,
+        sort_col:  &str,
+        order:     &str,
+        limit:     i64,
+        offset:    i64,
+    ) -> Result<Vec<DriveFile>> {
+        let order_clause = match (sort_col, order) {
+            ("name",       "asc")  => "kind DESC, lower(name) ASC",
+            ("name",       _)      => "kind DESC, lower(name) DESC",
+            ("updated_at", "asc")  => "updated_at ASC",
+            ("updated_at", _)      => "updated_at DESC",
+            ("created_at", "asc")  => "created_at ASC",
+            ("created_at", _)      => "created_at DESC",
+            ("size_bytes", "asc")  => "size_bytes ASC",
+            ("size_bytes", _)      => "size_bytes DESC",
+            _                      => "kind DESC, lower(name) ASC",
+        };
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files \
+             WHERE tenant_id = $1 \
+               AND deleted_at IS NULL \
+               AND parent_id IS NOT DISTINCT FROM $2 \
+             ORDER BY {order_clause} \
+             LIMIT $3 OFFSET $4"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id).bind(parent_id).bind(limit).bind(offset)
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn list_trash(&self, tenant_id: Uuid) -> Result<Vec<DriveFile>> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(

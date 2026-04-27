@@ -50,6 +50,10 @@ pub struct ListQuery {
     pub sort:      Option<String>,
     /// Sort direction: asc | desc. Default: asc.
     pub order:     Option<String>,
+    /// Max rows to return (1–500, default 200).
+    pub limit:     Option<i64>,
+    /// Rows to skip (default 0).
+    pub offset:    Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,8 +119,10 @@ async fn list(
     if !matches!(order, "asc" | "desc") {
         return Err(DriveError::BadRequest("order must be 'asc' or 'desc'".into()));
     }
+    let limit  = q.limit.unwrap_or(200).clamp(1, 500);
+    let offset = q.offset.unwrap_or(0).max(0);
     let mut rows = FileRepo::new(pool)
-        .list_children_sorted(ctx.tenant_id, q.parent_id, sort, order)
+        .list_children_paged(ctx.tenant_id, q.parent_id, sort, order, limit, offset)
         .await?;
     if let Some(k) = q.kind.as_deref() {
         rows.retain(|f| f.kind == k);
