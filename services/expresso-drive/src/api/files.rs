@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/mkdir",                 post(mkdir))
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
+        .route("/api/v1/drive/files/search",                 get(search))
         .route("/api/v1/drive/files/bulk-trash",             post(bulk_trash))
         .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
         .route("/api/v1/drive/files/:id/copy",               post(copy_file))
@@ -663,6 +664,43 @@ fn sanitize_name(raw: &str) -> Result<String> {
         return Err(DriveError::BadRequest("name too long".into()));
     }
     Ok(s.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchQuery {
+    q:     String,
+    #[serde(default = "default_search_limit")]
+    limit: i64,
+}
+fn default_search_limit() -> i64 { 50 }
+
+/// GET /api/v1/drive/files/search?q=<term>&limit=50
+/// Case-insensitive substring match on name within the caller's tenant.
+async fn search(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<SearchQuery>,
+) -> Result<Json<Vec<DriveFile>>> {
+    if q.q.trim().is_empty() {
+        return Err(DriveError::BadRequest("q must not be empty".into()));
+    }
+    let limit = q.limit.clamp(1, 200);
+    let pool  = state.db_or_unavailable()?;
+    let pattern = format!("%{}%", q.q.replace('%', "\\%").replace('_', "\\_"));
+    let rows: Vec<DriveFile> = sqlx::query_as(
+        "SELECT id, tenant_id, owner_user_id, parent_id, name, kind, \
+                mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name ILIKE $2 ESCAPE '\\' \
+         ORDER BY lower(name) \
+         LIMIT $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&pattern)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(rows))
 }
 
 async fn quota(
