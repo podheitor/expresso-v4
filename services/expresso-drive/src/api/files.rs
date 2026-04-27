@@ -44,6 +44,8 @@ pub fn routes() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     pub parent_id: Option<Uuid>,
+    /// Filter by kind: "file" or "folder". Omit for both.
+    pub kind:      Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +96,15 @@ async fn list(
             }
         }
     }
-    let rows = FileRepo::new(pool).list_children(ctx.tenant_id, q.parent_id).await?;
+    if let Some(ref k) = q.kind {
+        if k != "file" && k != "folder" {
+            return Err(DriveError::BadRequest("kind must be 'file' or 'folder'".into()));
+        }
+    }
+    let mut rows = FileRepo::new(pool).list_children(ctx.tenant_id, q.parent_id).await?;
+    if let Some(k) = q.kind.as_deref() {
+        rows.retain(|f| f.kind == k);
+    }
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_updated {
         let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
