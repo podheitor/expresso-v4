@@ -208,6 +208,16 @@ impl<'a> MeetingRepo<'a> {
         Ok(r.rows_affected() > 0)
     }
 
+    pub async fn count_participants(&self, tenant: Uuid, meeting: Uuid) -> Result<i64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let (n,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2",
+        )
+        .bind(tenant).bind(meeting).fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(n)
+    }
+
     pub async fn get_participant(
         &self,
         tenant:  Uuid,

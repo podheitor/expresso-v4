@@ -11,6 +11,7 @@
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
 //! GET    /api/v1/meetings/:id/participants   → list participants
 //! DELETE /api/v1/meetings/:id/participants/:user_id → remove participant (moderator-only)
+//! GET    /api/v1/meetings/:id/participants/count    → participant count (participant-only)
 //! GET    /api/v1/meetings/:id/participants/:user_id → get participant detail (participant-only)
 //! PATCH  /api/v1/meetings/:id/participants/:user_id → promote/demote role (moderator-only)
 
@@ -59,6 +60,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
+        .route("/api/v1/meetings/:id/participants/count", get(count_participants))
         .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
 }
 
@@ -502,6 +504,21 @@ async fn add_participant(
     let role = body.role.unwrap_or(ParticipantRole::Participant);
     repo.add_participant(ctx.tenant_id, id, body.user_id, role).await?;
     Ok((StatusCode::CREATED, Json(json!({"added": body.user_id}))))
+}
+
+/// GET /api/v1/meetings/:id/participants/count — total participant count (caller must be participant).
+async fn count_participants(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+        return Err(MeetError::NotParticipant);
+    }
+    let n = repo.count_participants(ctx.tenant_id, id).await?;
+    Ok(Json(serde_json::json!({ "count": n })))
 }
 
 /// GET /api/v1/meetings/:id/participants/:user_id — detail of one participant (must be a participant).
