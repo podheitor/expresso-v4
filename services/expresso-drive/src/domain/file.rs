@@ -103,13 +103,37 @@ impl<'a> FileRepo<'a> {
         tenant_id: Uuid,
         parent_id: Option<Uuid>,
     ) -> Result<Vec<DriveFile>> {
+        self.list_children_sorted(tenant_id, parent_id, "name", "asc").await
+    }
+
+    /// Like `list_children` but with caller-specified sort column and direction.
+    /// `sort_col` must be one of "name" | "updated_at" | "created_at" | "size_bytes"
+    /// (validated by caller). `order` is "asc" or "desc" (validated by caller).
+    pub async fn list_children_sorted(
+        &self,
+        tenant_id: Uuid,
+        parent_id: Option<Uuid>,
+        sort_col:  &str,
+        order:     &str,
+    ) -> Result<Vec<DriveFile>> {
+        let order_clause = match (sort_col, order) {
+            ("name",       "asc")  => "kind DESC, lower(name) ASC",
+            ("name",       _)      => "kind DESC, lower(name) DESC",
+            ("updated_at", "asc")  => "updated_at ASC",
+            ("updated_at", _)      => "updated_at DESC",
+            ("created_at", "asc")  => "created_at ASC",
+            ("created_at", _)      => "created_at DESC",
+            ("size_bytes", "asc")  => "size_bytes ASC",
+            ("size_bytes", _)      => "size_bytes DESC",
+            _                      => "kind DESC, lower(name) ASC",
+        };
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let sql = format!(
             "SELECT {SELECT_COLS} FROM drive_files \
              WHERE tenant_id = $1 \
                AND deleted_at IS NULL \
                AND parent_id IS NOT DISTINCT FROM $2 \
-             ORDER BY kind DESC, lower(name)"
+             ORDER BY {order_clause}"
         );
         let rows: Vec<DriveFile> = sqlx::query_as(&sql)
             .bind(tenant_id).bind(parent_id)

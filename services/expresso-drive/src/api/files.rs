@@ -46,6 +46,10 @@ pub struct ListQuery {
     pub parent_id: Option<Uuid>,
     /// Filter by kind: "file" or "folder". Omit for both.
     pub kind:      Option<String>,
+    /// Sort column: name | updated_at | created_at | size_bytes. Default: name.
+    pub sort:      Option<String>,
+    /// Sort direction: asc | desc. Default: asc.
+    pub order:     Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,7 +105,19 @@ async fn list(
             return Err(DriveError::BadRequest("kind must be 'file' or 'folder'".into()));
         }
     }
-    let mut rows = FileRepo::new(pool).list_children(ctx.tenant_id, q.parent_id).await?;
+    let sort  = q.sort.as_deref().unwrap_or("name");
+    let order = q.order.as_deref().unwrap_or("asc");
+    if !matches!(sort, "name" | "updated_at" | "created_at" | "size_bytes") {
+        return Err(DriveError::BadRequest(
+            "sort must be one of: name, updated_at, created_at, size_bytes".into()
+        ));
+    }
+    if !matches!(order, "asc" | "desc") {
+        return Err(DriveError::BadRequest("order must be 'asc' or 'desc'".into()));
+    }
+    let mut rows = FileRepo::new(pool)
+        .list_children_sorted(ctx.tenant_id, q.parent_id, sort, order)
+        .await?;
     if let Some(k) = q.kind.as_deref() {
         rows.retain(|f| f.kind == k);
     }
