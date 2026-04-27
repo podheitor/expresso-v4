@@ -13,9 +13,12 @@
 //! In-process broadcast: all SSE streams for a pod share a single
 //! `tokio::sync::broadcast` channel; each stream filters by (user_id, tenant_id).
 //!
-//! For multi-pod deployments the `REDIS_URL` env var enables a Redis pub/sub
-//! relay: a background task subscribes to "expresso:notifications" and rebroadcasts
-//! into the in-process channel, so every pod sees every event.
+//! Cross-pod (multi-pod deployments) via Redis pub/sub on "expresso:notifications":
+//!   - Subscriber side: background task subscribes and rebroadcasts into the
+//!     in-process channel, so every pod sees every event published by any pod.
+//!   - Publisher side: POST /internal/notify also publishes to Redis so remote
+//!     pods receive the event via their subscriber relay.
+//!   Both sides activate only when REDIS_URL is set.
 //!
 //! Ports:
 //!   :8006  HTTP (configurable via HOST/PORT)
@@ -63,6 +66,8 @@ pub struct Notification {
 struct AppState {
     tx:        Arc<broadcast::Sender<Notification>>,
     validator: Option<Arc<OidcValidator>>,
+    /// Redis connection pool for cross-pod publish. None when REDIS_URL is unset.
+    redis_pub: Option<Arc<deadpool_redis::Pool>>,
 }
 
 // ─── Optional auth extractor ─────────────────────────────────────────────────
@@ -112,7 +117,24 @@ async fn internal_notify(
     State(st):   State<AppState>,
     Json(notif): Json<Notification>,
 ) -> Json<serde_json::Value> {
-    let _ = st.tx.send(notif);
+    // Broadcast to local SSE streams on this pod.
+    let _ = st.tx.send(notif.clone());
+
+    // Publish to Redis so other pods pick it up via their subscriber relay.
+    if let Some(pool) = &st.redis_pub {
+        if let Ok(payload) = serde_json::to_string(&notif) {
+            match pool.get().await {
+                Ok(mut conn) => {
+                    use deadpool_redis::redis::AsyncCommands;
+                    if let Err(e) = conn.publish::<_, _, ()>("expresso:notifications", &payload).await {
+                        warn!(error = %e, "Redis publish failed");
+                    }
+                }
+                Err(e) => warn!(error = %e, "Redis pool get failed for publish"),
+            }
+        }
+    }
+
     Json(json!({"ok": true}))
 }
 
@@ -193,7 +215,24 @@ async fn ready() -> Json<serde_json::Value> {
     Json(json!({"ready": true}))
 }
 
-// ─── Redis relay (optional) ───────────────────────────────────────────────────
+// ─── Redis pub/sub (optional) ─────────────────────────────────────────────────
+
+/// Build a Redis connection pool for publishing cross-pod notifications.
+/// Returns None when REDIS_URL is unset.
+async fn maybe_build_redis_pub() -> Option<Arc<deadpool_redis::Pool>> {
+    let url = env::var("REDIS_URL").ok().filter(|u| !u.is_empty())?;
+    let cfg = deadpool_redis::Config::from_url(url);
+    match cfg.create_pool(Some(deadpool_redis::Runtime::Tokio1)) {
+        Ok(pool) => {
+            info!("Redis publish pool ready for cross-pod notifications");
+            Some(Arc::new(pool))
+        }
+        Err(e) => {
+            warn!(error = %e, "Redis publish pool init failed — cross-pod publish disabled");
+            None
+        }
+    }
+}
 
 /// If REDIS_URL is set, spawn a background task that subscribes to
 /// "expresso:notifications" and forwards messages into the in-process channel.
@@ -276,8 +315,9 @@ async fn main() -> anyhow::Result<()> {
 
     maybe_start_redis_relay(tx.clone()).await;
 
-    let validator = maybe_build_validator().await;
-    let state = AppState { tx, validator };
+    let validator  = maybe_build_validator().await;
+    let redis_pub  = maybe_build_redis_pub().await;
+    let state = AppState { tx, validator, redis_pub };
 
     let app = Router::new()
         .route("/health",               get(health))
