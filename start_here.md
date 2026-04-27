@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #355 (2026-04-27)
+**Último sprint commitado:** #357 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -32,6 +32,8 @@ git log --oneline | head -15
 | #353 | meet | `PATCH /api/v1/meetings/:id/participants/:user_id` — promover/rebaixar role (moderator-only) |
 | #354 | drive | `GET /api/v1/drive/files/search?q=` — busca por nome ILIKE no tenant |
 | #355 | meet | `GET /api/v1/meetings/:id/participants/:user_id` — detalhe de participante com ETag/LM |
+| #356 | drive | `GET /api/v1/drive/files?kind=file\|folder` — filtro por tipo na listagem |
+| #357 | meet | `GET /api/v1/meetings/:id/participants/count` — contagem de participantes |
 
 ---
 
@@ -50,8 +52,8 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: listar arquivos por tipo** — `GET /drive/files?kind=file|folder` (filtro na list)
-5. **meet: contagem de participantes** — `GET /meetings/:id/participants/count` (sem body, rápido)
+4. **drive: ordenação na listagem** — `GET /drive/files?sort=name|updated_at&order=asc|desc`
+5. **meet: atualizar lobby em reunião recorrente** — `PATCH /meetings/:id` `{is_recurring}` (campo faltante no update)
 
 ---
 
