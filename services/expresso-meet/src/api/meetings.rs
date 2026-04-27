@@ -3,6 +3,7 @@
 //! POST   /api/v1/meetings                    → create meeting + moderator JWT
 //! GET    /api/v1/meetings                    → list current user's meetings
 //! GET    /api/v1/meetings/:id                → meeting detail (participant-only)
+//! PATCH  /api/v1/meetings/:id                → update title/schedule/lobby/password (moderator-only)
 //! DELETE /api/v1/meetings/:id                → archive (creator OR moderator)
 //! POST   /api/v1/meetings/:id/tokens         → mint a JWT for the caller (or for
 //!                                              a target user, moderator-only)
@@ -13,7 +14,7 @@ use axum::{
     extract::{Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -50,7 +51,7 @@ pub const MAX_INVITE_LEN: usize = 100;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/v1/meetings", post(create).get(list))
-        .route("/api/v1/meetings/:id", get(get_one).delete(archive))
+        .route("/api/v1/meetings/:id", get(get_one).patch(update).delete(archive))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
 }
@@ -241,6 +242,77 @@ async fn get_one(
     resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateBody {
+    pub title:         Option<String>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub scheduled_for: Option<OffsetDateTime>,
+    pub clear_scheduled_for: Option<bool>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub ends_at:       Option<OffsetDateTime>,
+    pub clear_ends_at: Option<bool>,
+    pub lobby_enabled: Option<bool>,
+    pub password:      Option<String>,
+    pub clear_password: Option<bool>,
+}
+
+async fn update(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<UpdateBody>,
+) -> Result<Json<Meeting>> {
+    if let Some(ref t) = body.title {
+        if t.trim().is_empty() {
+            return Err(MeetError::BadRequest("title cannot be empty".into()));
+        }
+        if t.len() > MAX_TITLE_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "title too long: {} bytes (max {})", t.len(), MAX_TITLE_BYTES
+            )));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+
+    // Only moderators may update meeting details.
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        _ => return Err(MeetError::Forbidden),
+    }
+
+    let scheduled_for = if body.clear_scheduled_for.unwrap_or(false) {
+        Some(None)
+    } else {
+        body.scheduled_for.map(Some)
+    };
+    let ends_at = if body.clear_ends_at.unwrap_or(false) {
+        Some(None)
+    } else {
+        body.ends_at.map(Some)
+    };
+    let password = if body.clear_password.unwrap_or(false) {
+        Some(None)
+    } else {
+        body.password.map(Some)
+    };
+
+    let updated = repo.update(
+        ctx.tenant_id, id,
+        body.title,
+        scheduled_for,
+        ends_at,
+        body.lobby_enabled,
+        password,
+    ).await?;
+
+    match updated {
+        Some(m) => Ok(Json(m)),
+        None    => Err(MeetError::MeetingNotFound(id)),
+    }
 }
 
 async fn archive(

@@ -174,4 +174,42 @@ impl<'a> MeetingRepo<'a> {
         tx.commit().await?;
         Ok(())
     }
+
+    pub async fn update(
+        &self,
+        tenant:        Uuid,
+        id:            Uuid,
+        title:         Option<String>,
+        scheduled_for: Option<Option<OffsetDateTime>>,
+        ends_at:       Option<Option<OffsetDateTime>>,
+        lobby_enabled: Option<bool>,
+        password:      Option<Option<String>>,
+    ) -> Result<Option<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Meeting> = sqlx::query_as(
+            r#"UPDATE meetings
+               SET title          = COALESCE($3, title),
+                   scheduled_for  = CASE WHEN $4 THEN $5 ELSE scheduled_for END,
+                   ends_at        = CASE WHEN $6 THEN $7 ELSE ends_at END,
+                   lobby_enabled  = COALESCE($8, lobby_enabled),
+                   password       = CASE WHEN $9 THEN $10 ELSE password END,
+                   updated_at     = NOW()
+               WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
+               RETURNING id, tenant_id, room_name, title, channel_id, created_by,
+                         scheduled_for, ends_at, is_recurring, is_archived,
+                         lobby_enabled, password, created_at, updated_at"#)
+            .bind(tenant)
+            .bind(id)
+            .bind(title)
+            .bind(scheduled_for.is_some())
+            .bind(scheduled_for.and_then(|v| v))
+            .bind(ends_at.is_some())
+            .bind(ends_at.and_then(|v| v))
+            .bind(lobby_enabled)
+            .bind(password.is_some())
+            .bind(password.and_then(|v| v))
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
 }
