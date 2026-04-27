@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #357 (2026-04-27)
+**Último sprint commitado:** #359 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -34,6 +34,8 @@ git log --oneline | head -15
 | #355 | meet | `GET /api/v1/meetings/:id/participants/:user_id` — detalhe de participante com ETag/LM |
 | #356 | drive | `GET /api/v1/drive/files?kind=file\|folder` — filtro por tipo na listagem |
 | #357 | meet | `GET /api/v1/meetings/:id/participants/count` — contagem de participantes |
+| #358 | drive | `GET /api/v1/drive/files?sort=name\|updated_at\|created_at\|size_bytes&order=asc\|desc` |
+| #359 | meet | `PATCH /api/v1/meetings/:id` — campo `is_recurring` adicionado ao `UpdateBody` |
 
 ---
 
@@ -52,8 +54,8 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: ordenação na listagem** — `GET /drive/files?sort=name|updated_at&order=asc|desc`
-5. **meet: atualizar lobby em reunião recorrente** — `PATCH /meetings/:id` `{is_recurring}` (campo faltante no update)
+4. **drive: paginação na listagem** — `GET /drive/files?limit=N&offset=N`
+5. **meet: filtrar meetings por data** — `GET /meetings?after=<rfc3339>&before=<rfc3339>`
 
 ---
 
