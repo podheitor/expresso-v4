@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, QuotaRepo, VersionRepo},
+    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, QuotaRepo, UserUsage, VersionRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -37,6 +37,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version))
         .route("/api/v1/drive/trash",                       get(trash))
         .route("/api/v1/drive/quota",                       get(quota))
+        .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
 #[derive(Debug, Deserialize)]
@@ -693,6 +694,46 @@ async fn quota(
 
     let q = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
     let mut resp = Json(q).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
+}
+
+/// GET /api/v1/drive/users/:user_id/usage — bytes owned by a user in this tenant.
+async fn user_usage(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(user_id): Path<Uuid>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+
+    let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM drive_files \
+         WHERE tenant_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
+    let usage = QuotaRepo::new(pool).get_user_usage(ctx.tenant_id, user_id).await?;
+    let mut resp = Json(usage).into_response();
     if let Some(ts) = max_ts {
         let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());

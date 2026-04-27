@@ -27,12 +27,32 @@ impl Quota {
     }
 }
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct UserUsage {
+    pub user_id:    Uuid,
+    pub used_bytes: i64,
+}
+
 pub struct QuotaRepo<'a> {
     pool: &'a DbPool,
 }
 
 impl<'a> QuotaRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+
+    /// Total non-deleted bytes owned by a specific user within a tenant.
+    pub async fn get_user_usage(&self, tenant_id: Uuid, user_id: Uuid) -> Result<UserUsage> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let (used,): (Option<i64>,) = sqlx::query_as(
+            "SELECT SUM(size_bytes) FROM drive_files \
+             WHERE tenant_id = $1 AND owner_user_id = $2 AND deleted_at IS NULL"
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(UserUsage { user_id, used_bytes: used.unwrap_or(0) })
+    }
 
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
