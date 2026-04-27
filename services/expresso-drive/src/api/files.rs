@@ -700,13 +700,15 @@ fn sanitize_name(raw: &str) -> Result<String> {
 
 #[derive(Debug, Deserialize)]
 struct SearchQuery {
-    q:     String,
+    q:      String,
     #[serde(default = "default_search_limit")]
-    limit: i64,
+    limit:  i64,
+    #[serde(default)]
+    offset: i64,
 }
 fn default_search_limit() -> i64 { 50 }
 
-/// GET /api/v1/drive/files/search?q=<term>&limit=50
+/// GET /api/v1/drive/files/search?q=<term>&limit=50&offset=0
 /// Case-insensitive substring match on name within the caller's tenant.
 async fn search(
     State(state): State<AppState>,
@@ -716,8 +718,9 @@ async fn search(
     if q.q.trim().is_empty() {
         return Err(DriveError::BadRequest("q must not be empty".into()));
     }
-    let limit = q.limit.clamp(1, 200);
-    let pool  = state.db_or_unavailable()?;
+    let limit  = q.limit.clamp(1, 200);
+    let offset = q.offset.max(0);
+    let pool   = state.db_or_unavailable()?;
     let pattern = format!("%{}%", q.q.replace('%', "\\%").replace('_', "\\_"));
     let rows: Vec<DriveFile> = sqlx::query_as(
         "SELECT id, tenant_id, owner_user_id, parent_id, name, kind, \
@@ -725,11 +728,12 @@ async fn search(
          FROM drive_files \
          WHERE tenant_id = $1 AND deleted_at IS NULL AND name ILIKE $2 ESCAPE '\\' \
          ORDER BY lower(name) \
-         LIMIT $3",
+         LIMIT $3 OFFSET $4",
     )
     .bind(ctx.tenant_id)
     .bind(&pattern)
     .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await?;
     Ok(Json(rows))
