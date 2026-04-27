@@ -154,6 +154,40 @@ impl<'a> FileRepo<'a> {
         Ok(row)
     }
 
+    /// Insert a new row that shares the same blob (storage_key) as an existing
+    /// file. The caller is responsible for choosing the copy name and parent.
+    /// Folders get an empty-content copy (storage_key = None, size = 0).
+    pub async fn copy_file(
+        &self,
+        tenant_id:     Uuid,
+        owner_user_id: Uuid,
+        src_id:        Uuid,
+        new_name:      String,
+        new_parent_id: Option<Uuid>,
+    ) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "INSERT INTO drive_files \
+             (tenant_id, owner_user_id, parent_id, name, kind, mime_type, \
+              size_bytes, sha256, storage_key) \
+             SELECT $1, $2, $4, $5, kind, mime_type, size_bytes, sha256, storage_key \
+             FROM drive_files \
+             WHERE id = $3 AND tenant_id = $1 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id)
+            .bind(owner_user_id)
+            .bind(src_id)
+            .bind(new_parent_id)
+            .bind(new_name)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(map_conflict)?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(src_id))
+    }
+
     /// Swap storage_key + size + sha + mime in place. Used quando upload
     /// substitui versão corrente (histórico já foi arquivado em drive_file_versions).
     pub async fn update_content(

@@ -29,6 +29,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id",                   get(download).delete(delete).head(head_file))
         .route("/api/v1/drive/files/:id/metadata",          get(metadata).patch(rename))
         .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
+        .route("/api/v1/drive/files/:id/copy",               post(copy_file))
         .route("/api/v1/drive/files/:id/move",              post(move_file))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
@@ -345,6 +346,44 @@ async fn bulk_move(
     }
     let rows = FileRepo::new(pool).bulk_move(ctx.tenant_id, &body.ids, body.parent_id).await?;
     Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+struct CopyBody {
+    /// Optional destination name. Defaults to "<original name> (cópia)".
+    name:      Option<String>,
+    /// Destination parent; omit or null to place at root.
+    parent_id: Option<Uuid>,
+}
+
+/// POST /api/v1/drive/files/:id/copy — shallow copy: new row, same blob.
+async fn copy_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<CopyBody>,
+) -> Result<(StatusCode, Json<DriveFile>)> {
+    let pool = state.db_or_unavailable()?;
+    let src  = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+
+    let raw_name = body.name.unwrap_or_else(|| format!("{} (cópia)", src.name));
+    let new_name = sanitize_name(&raw_name)?;
+
+    if let Some(parent) = body.parent_id {
+        let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
+        if target.kind != "folder" {
+            return Err(DriveError::BadRequest("parent_id must be a folder".into()));
+        }
+    }
+
+    let row = FileRepo::new(pool)
+        .copy_file(ctx.tenant_id, ctx.user_id, id, new_name, body.parent_id)
+        .await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.copy",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        src_id = %id, copy_id = %row.id);
+    Ok((StatusCode::CREATED, Json(row)))
 }
 
 /// POST /api/v1/drive/files/:id/move — move a file or folder to a different parent.
