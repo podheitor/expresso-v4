@@ -377,6 +377,44 @@ impl<'a> FileRepo<'a> {
         row.ok_or(DriveError::NotFound(id))
     }
 
+    /// Bulk shallow-copy: one new row per source id sharing the same blob.
+    /// Each copy is named "<original name> (cópia)". Returns only the rows
+    /// that were successfully copied; missing/deleted source ids are skipped.
+    pub async fn bulk_copy_files(
+        &self,
+        tenant_id:    Uuid,
+        owner_id:     Uuid,
+        ids:          &[Uuid],
+        new_parent_id: Option<Uuid>,
+    ) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "INSERT INTO drive_files \
+             (tenant_id, owner_user_id, parent_id, name, kind, mime_type, size_bytes, sha256, storage_key) \
+             SELECT $1, $2, $5, CONCAT(name, ' (cópia)'), kind, mime_type, size_bytes, sha256, storage_key \
+             FROM drive_files \
+             WHERE id = $3 AND tenant_id = $4 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let mut copied: Vec<DriveFile> = Vec::new();
+        for &src_id in ids {
+            if let Some(row) = sqlx::query_as::<_, DriveFile>(&sql)
+                .bind(tenant_id)
+                .bind(owner_id)
+                .bind(src_id)
+                .bind(tenant_id)
+                .bind(new_parent_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(map_conflict)?
+            {
+                copied.push(row);
+            }
+        }
+        tx.commit().await?;
+        Ok(copied)
+    }
+
     /// Hard delete → caller must unlink the storage blob. Only soft-deleted
     /// rows may be purged to avoid accidental data loss.
     pub async fn purge(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<String>> {

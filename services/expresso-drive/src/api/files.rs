@@ -32,6 +32,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/search",                 get(search))
         .route("/api/v1/drive/files/bulk-trash",             post(bulk_trash))
         .route("/api/v1/drive/files/bulk-move",              post(bulk_move))
+        .route("/api/v1/drive/files/bulk-copy",              post(bulk_copy))
         .route("/api/v1/drive/files/:id/copy",               post(copy_file))
         .route("/api/v1/drive/files/:id/move",              post(move_file))
         .route("/api/v1/drive/files/:id/restore",           post(restore))
@@ -409,6 +410,46 @@ async fn bulk_move(
         }
     }
     let rows = FileRepo::new(pool).bulk_move(ctx.tenant_id, &body.ids, body.parent_id).await?;
+    Ok(Json(rows))
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkCopyBody {
+    /// File/folder ids to copy (max 200).
+    ids:       Vec<Uuid>,
+    /// Destination parent; omit or null to place at root.
+    parent_id: Option<Uuid>,
+}
+
+/// POST /api/v1/drive/files/bulk-copy — shallow-copy up to 200 items.
+/// Each copy is named "<original name> (cópia)". Folders are copied as empty
+/// rows (the same blob). Returns the list of newly created rows.
+async fn bulk_copy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<BulkCopyBody>,
+) -> Result<Json<Vec<DriveFile>>> {
+    if body.ids.is_empty() {
+        return Err(DriveError::BadRequest("ids must not be empty".into()));
+    }
+    if body.ids.len() > 200 {
+        return Err(DriveError::BadRequest(format!(
+            "too many ids: {} (max 200)", body.ids.len()
+        )));
+    }
+    let pool = state.db_or_unavailable()?;
+    if let Some(parent) = body.parent_id {
+        let target = FileRepo::new(pool).get(ctx.tenant_id, parent).await?;
+        if target.kind != "folder" {
+            return Err(DriveError::BadRequest("parent_id must be a folder".into()));
+        }
+    }
+    let rows = FileRepo::new(pool)
+        .bulk_copy_files(ctx.tenant_id, ctx.user_id, &body.ids, body.parent_id)
+        .await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.bulk_copy",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, count = rows.len());
     Ok(Json(rows))
 }
 
