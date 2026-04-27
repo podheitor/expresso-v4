@@ -220,12 +220,35 @@ async fn delete(
 /// raw calendar via CalDAV REPORT; this endpoint is for simple downloads.
 async fn export_ics(
     State(state): State<AppState>,
-    ctx: RequestCtx,
+    ctx:          RequestCtx,
     Path(cal_id): Path<Uuid>,
+    req_headers:  HeaderMap,
 ) -> Result<Response> {
     use crate::domain::ical;
 
     let pool = state.db_or_unavailable()?;
+
+    let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM calendar_events WHERE tenant_id = $1 AND calendar_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
     let events = EventRepo::new(pool)
         .list(ctx.tenant_id, cal_id, &crate::domain::EventQuery::default())
         .await?;
@@ -245,6 +268,10 @@ async fn export_ics(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static("attachment; filename=\"calendar.ics\""),
     );
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
     Ok(resp)
 }
 
@@ -291,12 +318,32 @@ async fn import_ics(
 /// event wrapped with METHOD:REQUEST for SMTP invitation attachment.
 async fn itip_request(
     State(state): State<AppState>,
-    ctx: RequestCtx,
+    ctx:          RequestCtx,
     Path((_cal, id)): Path<(Uuid, Uuid)>,
+    req_headers:  HeaderMap,
 ) -> Result<Response> {
     use crate::domain::itip;
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+
+    let etag = format!("\"{}-{}\"", ev.updated_at.unix_timestamp(), ev.id);
+    let lm   = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if ev.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+
     let ics = itip::build_request(&ev.ical_raw)?;
     let mut resp = (StatusCode::OK, ics).into_response();
     resp.headers_mut().insert(
@@ -307,6 +354,8 @@ async fn itip_request(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_static("attachment; filename=\"invite.ics\""),
     );
+    resp.headers_mut().insert(header::ETAG,          HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
 }
 
