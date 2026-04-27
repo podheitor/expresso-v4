@@ -513,8 +513,35 @@ fn sanitize_name(raw: &str) -> Result<String> {
 async fn quota(
     State(state): State<AppState>,
     ctx:          RequestCtx,
-) -> Result<Json<crate::domain::Quota>> {
+    req_headers:  HeaderMap,
+) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
-    let q    = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
-    Ok(Json(q))
+
+    let max_ts: Option<OffsetDateTime> = sqlx::query_scalar(
+        "SELECT MAX(updated_at) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(None);
+
+    if let Some(ts) = max_ts {
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+    }
+
+    let q = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
+    let mut resp = Json(q).into_response();
+    if let Some(ts) = max_ts {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    }
+    Ok(resp)
 }
