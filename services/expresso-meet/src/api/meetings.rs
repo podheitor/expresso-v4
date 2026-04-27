@@ -628,10 +628,20 @@ async fn update_participant_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+struct ListParticipantsQuery {
+    #[serde(default = "default_participants_limit")]
+    limit:  i64,
+    #[serde(default)]
+    offset: i64,
+}
+fn default_participants_limit() -> i64 { 50 }
+
 async fn list_participants(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
+    Query(q):     Query<ListParticipantsQuery>,
     req_headers:  HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
@@ -658,7 +668,9 @@ async fn list_participants(
             }
         }
     }
-    let rows = repo.list_participants(ctx.tenant_id, id).await?;
+    let limit  = q.limit.clamp(1, 200);
+    let offset = q.offset.max(0);
+    let rows = repo.list_participants_paged(ctx.tenant_id, id, limit, offset).await?;
     let mut resp = Json(rows).into_response();
     if let Some(ts) = max_invited {
         let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();

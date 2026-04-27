@@ -270,6 +270,18 @@ impl<'a> MeetingRepo<'a> {
         Ok(rows)
     }
 
+    pub async fn list_participants_paged(&self, tenant: Uuid, meeting: Uuid, limit: i64, offset: i64) -> Result<Vec<MeetingParticipant>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<MeetingParticipant> = sqlx::query_as(
+            r#"SELECT meeting_id, tenant_id, user_id, role, invited_at
+               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2
+               ORDER BY invited_at ASC
+               LIMIT $3 OFFSET $4"#)
+            .bind(tenant).bind(meeting).bind(limit).bind(offset).fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn archive(&self, tenant: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         sqlx::query(
