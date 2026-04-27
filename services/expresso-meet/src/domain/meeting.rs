@@ -208,6 +208,22 @@ impl<'a> MeetingRepo<'a> {
         Ok(r.rows_affected() > 0)
     }
 
+    pub async fn get_participant(
+        &self,
+        tenant:  Uuid,
+        meeting: Uuid,
+        user:    Uuid,
+    ) -> Result<Option<MeetingParticipant>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<MeetingParticipant> = sqlx::query_as(
+            r#"SELECT meeting_id, tenant_id, user_id, role, invited_at
+               FROM meeting_participants WHERE tenant_id=$1 AND meeting_id=$2 AND user_id=$3"#)
+            .bind(tenant).bind(meeting).bind(user)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
     pub async fn list_participants(&self, tenant: Uuid, meeting: Uuid) -> Result<Vec<MeetingParticipant>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<MeetingParticipant> = sqlx::query_as(

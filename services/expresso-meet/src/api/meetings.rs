@@ -11,6 +11,7 @@
 //! POST   /api/v1/meetings/:id/participants   → add participant (moderator-only)
 //! GET    /api/v1/meetings/:id/participants   → list participants
 //! DELETE /api/v1/meetings/:id/participants/:user_id → remove participant (moderator-only)
+//! GET    /api/v1/meetings/:id/participants/:user_id → get participant detail (participant-only)
 //! PATCH  /api/v1/meetings/:id/participants/:user_id → promote/demote role (moderator-only)
 
 use axum::{
@@ -58,7 +59,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
-        .route("/api/v1/meetings/:id/participants/:user_id", delete(remove_participant).patch(update_participant_role))
+        .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -501,6 +502,42 @@ async fn add_participant(
     let role = body.role.unwrap_or(ParticipantRole::Participant);
     repo.add_participant(ctx.tenant_id, id, body.user_id, role).await?;
     Ok((StatusCode::CREATED, Json(json!({"added": body.user_id}))))
+}
+
+/// GET /api/v1/meetings/:id/participants/:user_id — detail of one participant (must be a participant).
+async fn get_participant(
+    State(state):        State<AppState>,
+    ctx:                 RequestCtx,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+    req_headers:         HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    if repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?.is_none() {
+        return Err(MeetError::NotParticipant);
+    }
+    let p = repo.get_participant(ctx.tenant_id, id, user_id).await?
+        .ok_or(MeetError::BadRequest("participant not found".into()))?;
+    let etag = format!("\"{}-{}\"", p.invited_at.unix_timestamp(), p.user_id);
+    let lm   = p.invited_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if p.invited_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+    let mut resp = Json(p).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
 }
 
 /// DELETE /api/v1/meetings/:id/participants/:user_id — moderator-only; creator cannot be removed.
