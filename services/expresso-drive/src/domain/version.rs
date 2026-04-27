@@ -117,4 +117,20 @@ impl<'a> VersionRepo<'a> {
         tx.commit().await?;
         Ok(row)
     }
+
+    /// Delete a specific version row. Returns the deleted row so the caller can
+    /// remove the blob from storage. Returns None if not found.
+    pub async fn delete(&self, tenant_id: Uuid, file_id: Uuid, version_no: i32) -> Result<Option<FileVersion>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "DELETE FROM drive_file_versions \
+             WHERE tenant_id = $1 AND file_id = $2 AND version_no = $3 \
+             RETURNING {SELECT_COLS}"
+        );
+        let row = sqlx::query_as(&sql)
+            .bind(tenant_id).bind(file_id).bind(version_no)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
 }
