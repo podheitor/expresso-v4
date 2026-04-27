@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #334 (2026-04-26)
+**Último sprint commitado:** #335 (2026-04-27)
 
 ```
 git log --oneline | head -10
@@ -8,7 +8,15 @@ git log --oneline | head -10
 
 ---
 
-## O que foi feito nesta sessão (#333–#334)
+## O que foi feito nesta sessão (#335)
+
+| Sprint | Escopo | O que foi feito |
+|--------|--------|-----------------|
+| #335 | compliance | `Last-Modified` + `IMS` em `list_policies`; ETag/LM via `updated_at` (não `created_at`) em `get_policy` |
+
+---
+
+## Sessões anteriores (#333–#334)
 
 | Sprint | Escopo | O que foi feito |
 |--------|--------|-----------------|
@@ -17,23 +25,12 @@ git log --oneline | head -10
 
 ---
 
-## Sessões anteriores (#329–#332)
-
-| Sprint | Escopo | O que foi feito |
-|--------|--------|-----------------|
-| #329 | calendar | REST API para COUNTER proposals — GET/GET/:id/POST accept/POST reject em `/api/v1/scheduling/counters` |
-| #330 | mail | `GET /mail/search` integrado com Tantivy — fallback transparente para ILIKE |
-| #331 | chat | Last-Modified + IMS em `GET /channels/:id/members` — MAX(joined_at) |
-| #332 | admin | ETag + Last-Modified em `GET /govbr/mappings` e `GET /govbr/mappings/:cpf_hash` |
-
----
-
 ## Próximos candidatos
 
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **compliance: LM em list_retention_policies** — só tem `created_at`, sem updated_at
+4. **flows: ETag/LM em endpoints REST** — verificar quais têm `updated_at`
 
 ---
 
