@@ -287,6 +287,22 @@ impl<'a> FileRepo<'a> {
         Ok(r.rows_affected())
     }
 
+    /// Restore multiple trashed files/folders in a single transaction.
+    /// Returns count of rows actually restored (already-live rows are skipped).
+    pub async fn bulk_restore(&self, tenant_id: Uuid, ids: &[Uuid]) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let r = sqlx::query(
+            "UPDATE drive_files SET deleted_at = NULL, updated_at = now() \
+             WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NOT NULL",
+        )
+        .bind(tenant_id)
+        .bind(ids)
+        .execute(&mut *tx).await
+        .map_err(map_conflict)?;
+        tx.commit().await?;
+        Ok(r.rows_affected())
+    }
+
     /// Soft-delete multiple files/folders in a single transaction.
     /// Returns count of rows actually trashed (already-deleted rows are skipped).
     pub async fn bulk_trash(&self, tenant_id: Uuid, ids: &[Uuid]) -> Result<u64> {
