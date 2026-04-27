@@ -24,6 +24,10 @@
 
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
+type HmacSha256 = Hmac<Sha256>;
+
 use axum::{
     async_trait,
     extract::{FromRequestParts, Path, Query, Request, State},
@@ -658,7 +662,16 @@ async fn export_archive(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
     let zip_bytes = buf.into_inner();
 
-    Ok((
+    // HMAC-SHA256 signature over ZIP bytes, keyed by COMPLIANCE__EXPORT_SECRET.
+    // Emitted as hex in X-Export-Signature; omitted when the env var is absent.
+    let signature = env::var("COMPLIANCE__EXPORT_SECRET").ok().map(|secret| {
+        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+            .expect("HMAC accepts any key length");
+        mac.update(&zip_bytes);
+        hex::encode(mac.finalize().into_bytes())
+    });
+
+    let mut resp = (
         StatusCode::OK,
         [
             (header::CONTENT_TYPE,        "application/zip".to_string()),
@@ -666,7 +679,14 @@ async fn export_archive(
             (header::CONTENT_LENGTH,      zip_bytes.len().to_string()),
         ],
         zip_bytes,
-    ).into_response())
+    ).into_response();
+    if let Some(sig) = signature {
+        resp.headers_mut().insert(
+            header::HeaderName::from_static("x-export-signature"),
+            HeaderValue::from_str(&sig).unwrap(),
+        );
+    }
+    Ok(resp)
 }
 
 /// GET /api/v1/compliance/archive/:id — fetch a single archived entry by ID.
