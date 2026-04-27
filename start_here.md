@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #351 (2026-04-27)
+**Último sprint commitado:** #355 (2026-04-27)
 
 ```
 git log --oneline | head -15
@@ -28,6 +28,10 @@ git log --oneline | head -15
 | #349 | drive | `POST /api/v1/drive/files/:id/copy` — cópia shallow: nova row, mesmo blob |
 | #350 | drive | `POST /api/v1/drive/files/bulk-trash` — soft-delete até 200 itens em batch |
 | #351 | meet | `DELETE /api/v1/meetings/:id/participants/:user_id` — remover participante (moderator-only) |
+| #352 | drive | `GET /api/v1/drive/users/:user_id/usage` — bytes usados por usuário no tenant |
+| #353 | meet | `PATCH /api/v1/meetings/:id/participants/:user_id` — promover/rebaixar role (moderator-only) |
+| #354 | drive | `GET /api/v1/drive/files/search?q=` — busca por nome ILIKE no tenant |
+| #355 | meet | `GET /api/v1/meetings/:id/participants/:user_id` — detalhe de participante com ETag/LM |
 
 ---
 
@@ -46,8 +50,8 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types alpha
 2. **IMAP: NAMESPACE (RFC 2342)** — aguardar imap_types alpha
 3. **notifications: testar Redis pub/sub cross-pod** — ops concern
-4. **drive: quota por usuário** — `GET /drive/quota/:user_id` (admin view, total usage per user)
-5. **meet: atualizar role de participante** — `PATCH /meetings/:id/participants/:user_id` (promote/demote moderator)
+4. **drive: listar arquivos por tipo** — `GET /drive/files?kind=file|folder` (filtro na list)
+5. **meet: contagem de participantes** — `GET /meetings/:id/participants/count` (sem body, rápido)
 
 ---
 
