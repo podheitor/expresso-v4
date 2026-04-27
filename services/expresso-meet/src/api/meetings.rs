@@ -185,6 +185,12 @@ async fn create(
 struct ListQuery {
     #[serde(default)]
     archived: bool,
+    /// Only meetings with scheduled_for >= after (RFC 3339).
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:    Option<OffsetDateTime>,
+    /// Only meetings with scheduled_for <= before (RFC 3339).
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before:   Option<OffsetDateTime>,
 }
 
 async fn list(
@@ -219,6 +225,8 @@ async fn list(
     let repo = MeetingRepo::new(pool);
     let rows = if q.archived {
         repo.list_archived_for_user(ctx.tenant_id, ctx.user_id).await?
+    } else if q.after.is_some() || q.before.is_some() {
+        repo.list_for_user_filtered(ctx.tenant_id, ctx.user_id, q.after, q.before).await?
     } else {
         repo.list_for_user(ctx.tenant_id, ctx.user_id).await?
     };

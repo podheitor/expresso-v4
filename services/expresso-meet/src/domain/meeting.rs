@@ -122,6 +122,32 @@ impl<'a> MeetingRepo<'a> {
         Ok(rows)
     }
 
+    /// List active meetings for a user, optionally filtered by scheduled_for range.
+    /// Rows where scheduled_for IS NULL are excluded when a date filter is provided.
+    pub async fn list_for_user_filtered(
+        &self,
+        tenant: Uuid,
+        user:   Uuid,
+        after:  Option<OffsetDateTime>,
+        before: Option<OffsetDateTime>,
+    ) -> Result<Vec<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let rows: Vec<Meeting> = sqlx::query_as(
+            r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
+                      m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
+                      m.lobby_enabled, m.password, m.created_at, m.updated_at
+               FROM meetings m
+               JOIN meeting_participants p ON p.meeting_id = m.id
+               WHERE m.tenant_id = $1 AND p.user_id = $2 AND m.is_archived = FALSE
+                 AND ($3::timestamptz IS NULL OR m.scheduled_for >= $3)
+                 AND ($4::timestamptz IS NULL OR m.scheduled_for <= $4)
+               ORDER BY COALESCE(m.scheduled_for, m.created_at) DESC"#)
+            .bind(tenant).bind(user).bind(after).bind(before)
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     pub async fn list_archived_for_user(&self, tenant: Uuid, user: Uuid) -> Result<Vec<Meeting>> {
         let mut tx = begin_tenant_tx(self.pool, tenant).await?;
         let rows: Vec<Meeting> = sqlx::query_as(
