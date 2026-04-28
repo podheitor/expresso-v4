@@ -78,6 +78,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/breakouts/:room_id/participants", post(assign_breakout_participant).delete(remove_breakout_participant))
         .route("/api/v1/meetings/:id/transcript",           post(create_transcript).get(list_transcripts))
         .route("/api/v1/meetings/:id/transcript/search",   get(search_transcripts))
+        .route("/api/v1/meetings/:id/recordings",          post(create_recording).get(list_recordings))
+        .route("/api/v1/meetings/:id/recordings/:rec_id",  get(get_recording).delete(delete_recording))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -1582,4 +1584,148 @@ async fn search_transcripts(
     };
 
     Ok(Json(rows))
+}
+
+// ── Recording metadata (sprint #413) ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+struct Recording {
+    id:         Uuid,
+    meeting_id: Uuid,
+    tenant_id:  Uuid,
+    url:        String,
+    duration_s: Option<i32>,
+    size_bytes: Option<i64>,
+    format:     Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    starts_at:  Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    ends_at:    Option<OffsetDateTime>,
+    created_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateRecordingBody {
+    url:        String,
+    duration_s: Option<i32>,
+    size_bytes: Option<i64>,
+    format:     Option<String>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    starts_at:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    ends_at:    Option<OffsetDateTime>,
+}
+
+const RECORDING_COLS: &str =
+    "id, meeting_id, tenant_id, url, duration_s, size_bytes, format, starts_at, ends_at, created_by, created_at";
+
+/// GET /api/v1/meetings/:id/recordings — list recording metadata (participant-only).
+async fn list_recordings(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Vec<Recording>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(_) => {}
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let rows: Vec<Recording> = sqlx::query_as(
+        &format!("SELECT {RECORDING_COLS} FROM meeting_recordings \
+                  WHERE tenant_id = $1 AND meeting_id = $2 ORDER BY created_at ASC"),
+    )
+    .bind(ctx.tenant_id).bind(id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(rows))
+}
+
+/// POST /api/v1/meetings/:id/recordings — attach recording metadata (moderator-only).
+async fn create_recording(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<CreateRecordingBody>,
+) -> Result<(StatusCode, Json<Recording>)> {
+    if body.url.is_empty() {
+        return Err(MeetError::BadRequest("url is required".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let row: Recording = sqlx::query_as(
+        &format!("INSERT INTO meeting_recordings \
+                      (meeting_id, tenant_id, url, duration_s, size_bytes, format, starts_at, ends_at, created_by) \
+                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) \
+                  RETURNING {RECORDING_COLS}"),
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&body.url)
+    .bind(body.duration_s)
+    .bind(body.size_bytes)
+    .bind(&body.format)
+    .bind(body.starts_at)
+    .bind(body.ends_at)
+    .bind(ctx.user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
+/// GET /api/v1/meetings/:id/recordings/:rec_id — get a specific recording (participant-only).
+async fn get_recording(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, rec_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Recording>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(_) => {}
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let row: Option<Recording> = sqlx::query_as(
+        &format!("SELECT {RECORDING_COLS} FROM meeting_recordings \
+                  WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3"),
+    )
+    .bind(ctx.tenant_id).bind(id).bind(rec_id)
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        Some(r) => Ok(Json(r)),
+        None    => Err(MeetError::NotFound),
+    }
+}
+
+/// DELETE /api/v1/meetings/:id/recordings/:rec_id — remove recording metadata (moderator-only).
+async fn delete_recording(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, rec_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let r = sqlx::query(
+        "DELETE FROM meeting_recordings WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3",
+    )
+    .bind(ctx.tenant_id).bind(id).bind(rec_id)
+    .execute(pool)
+    .await?;
+    if r.rows_affected() == 0 {
+        return Err(MeetError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
