@@ -34,6 +34,8 @@ pub struct DriveFile {
     pub updated_at:    OffsetDateTime,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub deleted_at:    Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub expires_at:    Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,7 +56,7 @@ pub struct FileRepo<'a> {
 }
 
 const SELECT_COLS: &str = "id, tenant_id, owner_user_id, parent_id, name, kind, \
-    mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at";
+    mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at, expires_at";
 
 impl<'a> FileRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
@@ -455,6 +457,40 @@ impl<'a> FileRepo<'a> {
             }
         }
         Ok(results)
+    }
+
+    /// Set or clear the expiry timestamp on a file or folder.
+    /// Pass `expires_at = None` to remove a previously set expiry.
+    pub async fn set_expiry(
+        &self,
+        tenant_id:  Uuid,
+        id:         Uuid,
+        expires_at: Option<OffsetDateTime>,
+    ) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files SET expires_at = $3, updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(expires_at)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(id))
+    }
+
+    /// Hard-delete all live files whose `expires_at <= now()`.
+    /// Returns `(count, storage_keys)` so the caller can unlink blobs.
+    pub async fn purge_expired_files(&self) -> Result<Vec<(Uuid, Option<String>)>> {
+        let rows: Vec<(Uuid, Option<String>)> = sqlx::query_as(
+            "DELETE FROM drive_files \
+             WHERE expires_at IS NOT NULL AND expires_at <= now() AND deleted_at IS NULL \
+             RETURNING id, storage_key",
+        )
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
     }
 
     /// Hard delete → caller must unlink the storage blob. Only soft-deleted

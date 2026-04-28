@@ -138,6 +138,32 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // File expiry GC — hourly purge of files past their expires_at.
+    if let Some(pool) = db.clone() {
+        let root = data_root.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                let repo = domain::file::FileRepo::new(&pool);
+                match repo.purge_expired_files().await {
+                    Ok(rows) if !rows.is_empty() => {
+                        for (file_id, key) in &rows {
+                            if let Some(k) = key {
+                                let _ = tokio::fs::remove_file(root.join(k)).await;
+                            }
+                            info!(file_id = %file_id, "drive file expired and purged");
+                        }
+                        info!(count = rows.len(), "drive file expiry GC done");
+                    }
+                    Ok(_)  => {}
+                    Err(e) => warn!(error = %e, "drive file expiry GC failed"),
+                }
+            }
+        });
+    }
+
     let (multi, resolver) = resolve_multi_realm();
     let mut app = api::router(state);
     if let Some(m) = multi    { app = app.layer(axum::extract::Extension(m)); }

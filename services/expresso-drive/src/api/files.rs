@@ -42,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/tags/:tag",         delete(remove_tag))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
+        .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
         .route("/api/v1/drive/trash",                       get(trash))
         .route("/api/v1/drive/quota",                       get(quota))
@@ -1031,6 +1032,41 @@ async fn user_usage(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+#[derive(Debug, Deserialize)]
+struct ExpiryBody {
+    /// RFC 3339 timestamp; null or omitted clears the expiry.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    expires_at: Option<OffsetDateTime>,
+}
+
+/// PATCH /api/v1/drive/files/:id/expiry — set or clear the expiry timestamp.
+///
+/// Only the file owner or a moderator may call this. On expiry the file is
+/// hard-deleted by the background purge worker (hourly GC).
+async fn set_expiry(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<ExpiryBody>,
+) -> Result<Json<DriveFile>> {
+    let pool = state.db_or_unavailable()?;
+    let f    = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if f.owner_user_id != ctx.user_id {
+        return Err(DriveError::Forbidden);
+    }
+    if let Some(exp) = body.expires_at {
+        if exp <= OffsetDateTime::now_utc() {
+            return Err(DriveError::BadRequest("expires_at must be in the future".into()));
+        }
+    }
+    let updated = FileRepo::new(pool).set_expiry(ctx.tenant_id, id, body.expires_at).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.expiry_set",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        file_id = %id, expires_at = ?body.expires_at);
+    Ok(Json(updated))
 }
 
 /// GET /api/v1/drive/folders/:id/download
