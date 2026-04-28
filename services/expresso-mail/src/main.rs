@@ -165,6 +165,17 @@ async fn main() -> anyhow::Result<()> {
     let sched_state = state.clone();
     set.spawn(async move { scheduled_send_worker(sched_state).await });
 
+    // Snooze waker — wakes snoozed messages when snooze_until <= now()
+    {
+        let snooze_interval = std::env::var("MAIL_SNOOZE_WAKER_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60u64);
+        let snooze_pool = state.db().clone();
+        tracing::info!(interval_secs = snooze_interval, "spawning snooze waker");
+        api::snooze::spawn_waker(snooze_pool, snooze_interval);
+    }
+
     // IMAP4rev1 (plain, port 143)
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;
     let imap_state = state.clone();
