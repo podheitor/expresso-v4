@@ -63,6 +63,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
         .route("/api/v1/meetings/:id/participants/count", get(count_participants))
         .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
+        .route("/api/v1/meetings/:id/recording/start", post(recording_start))
+        .route("/api/v1/meetings/:id/recording/stop",  post(recording_stop))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -699,6 +701,48 @@ async fn list_participants(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// POST /api/v1/meetings/:id/recording/start — mark recording as started (moderator-only).
+/// Returns 409 if already recording, 404 if meeting not found or archived.
+async fn recording_start(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<crate::domain::Meeting>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        _ => return Err(MeetError::Forbidden),
+    }
+    let m = repo.start_recording(ctx.tenant_id, id).await?
+        .ok_or(MeetError::Conflict("meeting is already recording or not found".into()))?;
+    tracing::info!(target: "audit",
+        event = "meet.recording.started",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, meeting_id = %id);
+    Ok(Json(m))
+}
+
+/// POST /api/v1/meetings/:id/recording/stop — mark recording as stopped (moderator-only).
+/// Returns 409 if not currently recording, 404 if meeting not found or archived.
+async fn recording_stop(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<crate::domain::Meeting>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        _ => return Err(MeetError::Forbidden),
+    }
+    let m = repo.stop_recording(ctx.tenant_id, id).await?
+        .ok_or(MeetError::Conflict("meeting is not recording or not found".into()))?;
+    tracing::info!(target: "audit",
+        event = "meet.recording.stopped",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, meeting_id = %id);
+    Ok(Json(m))
 }
 
 #[cfg(test)]

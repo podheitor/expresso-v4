@@ -36,6 +36,8 @@ pub struct Meeting {
     pub is_archived:   bool,
     pub lobby_enabled: bool,
     pub password:      Option<String>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub recording_started_at: Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339")]
     pub created_at:    OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
@@ -78,7 +80,7 @@ impl<'a> MeetingRepo<'a> {
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, created_at, updated_at"#)
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
             .bind(tenant).bind(&n.room_name).bind(&n.title).bind(n.channel_id)
             .bind(creator).bind(n.scheduled_for).bind(n.ends_at)
             .bind(n.is_recurring.unwrap_or(false))
@@ -100,7 +102,7 @@ impl<'a> MeetingRepo<'a> {
         let row: Meeting = sqlx::query_as(
             r#"SELECT id, tenant_id, room_name, title, channel_id, created_by,
                       scheduled_for, ends_at, is_recurring, is_archived,
-                      lobby_enabled, password, created_at, updated_at
+                      lobby_enabled, password, recording_started_at, created_at, updated_at
                FROM meetings WHERE tenant_id=$1 AND id=$2"#)
             .bind(tenant).bind(id).fetch_one(&mut *tx).await?;
         tx.commit().await?;
@@ -112,7 +114,7 @@ impl<'a> MeetingRepo<'a> {
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
                       m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
-                      m.lobby_enabled, m.password, m.created_at, m.updated_at
+                      m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
                WHERE m.tenant_id = $1 AND p.user_id = $2 AND m.is_archived = FALSE
@@ -135,7 +137,7 @@ impl<'a> MeetingRepo<'a> {
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
                       m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
-                      m.lobby_enabled, m.password, m.created_at, m.updated_at
+                      m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
                WHERE m.tenant_id = $1 AND p.user_id = $2 AND m.is_archived = FALSE
@@ -153,7 +155,7 @@ impl<'a> MeetingRepo<'a> {
         let rows: Vec<Meeting> = sqlx::query_as(
             r#"SELECT m.id, m.tenant_id, m.room_name, m.title, m.channel_id, m.created_by,
                       m.scheduled_for, m.ends_at, m.is_recurring, m.is_archived,
-                      m.lobby_enabled, m.password, m.created_at, m.updated_at
+                      m.lobby_enabled, m.password, m.recording_started_at, m.created_at, m.updated_at
                FROM meetings m
                JOIN meeting_participants p ON p.meeting_id = m.id
                WHERE m.tenant_id = $1 AND p.user_id = $2 AND m.is_archived = TRUE
@@ -299,7 +301,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id=$1 AND id=$2 AND is_archived = TRUE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, created_at, updated_at"#)
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
             .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
         tx.commit().await?;
         Ok(row)
@@ -329,7 +331,7 @@ impl<'a> MeetingRepo<'a> {
                WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
                RETURNING id, tenant_id, room_name, title, channel_id, created_by,
                          scheduled_for, ends_at, is_recurring, is_archived,
-                         lobby_enabled, password, created_at, updated_at"#)
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
             .bind(tenant)
             .bind(id)
             .bind(title)
@@ -342,6 +344,36 @@ impl<'a> MeetingRepo<'a> {
             .bind(password.and_then(|v| v))
             .bind(is_recurring)
             .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Set recording_started_at = now(). Returns None if already recording or not found.
+    pub async fn start_recording(&self, tenant: Uuid, id: Uuid) -> Result<Option<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Meeting> = sqlx::query_as(
+            r#"UPDATE meetings SET recording_started_at = now(), updated_at = now()
+               WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
+                 AND recording_started_at IS NULL
+               RETURNING id, tenant_id, room_name, title, channel_id, created_by,
+                         scheduled_for, ends_at, is_recurring, is_archived,
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
+        .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Clear recording_started_at. Returns None if not recording or not found.
+    pub async fn stop_recording(&self, tenant: Uuid, id: Uuid) -> Result<Option<Meeting>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant).await?;
+        let row: Option<Meeting> = sqlx::query_as(
+            r#"UPDATE meetings SET recording_started_at = NULL, updated_at = now()
+               WHERE tenant_id = $1 AND id = $2 AND is_archived = FALSE
+                 AND recording_started_at IS NOT NULL
+               RETURNING id, tenant_id, room_name, title, channel_id, created_by,
+                         scheduled_for, ends_at, is_recurring, is_archived,
+                         lobby_enabled, password, recording_started_at, created_at, updated_at"#)
+        .bind(tenant).bind(id).fetch_optional(&mut *tx).await?;
         tx.commit().await?;
         Ok(row)
     }
