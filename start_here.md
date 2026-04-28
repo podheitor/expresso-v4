@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #385 (2026-04-28)
+**Último sprint commitado:** #389 (2026-04-28)
 
 ```
 git log --oneline | head -15
@@ -62,6 +62,10 @@ git log --oneline | head -15
 | #383 | mail | Scheduled send — `POST /api/v1/mail/messages/schedule` com `deliver_at TIMESTAMPTZ`; background worker 30s |
 | #384 | meet | Chat integration — `GET /api/v1/meetings/:id/chat` retorna metadados do canal via `chat_channels` |
 | #385 | notifications | Digest — `GET /api/v1/notifications/digest?since=` agrega não-lidas por kind; tabela `notifications` persistida |
+| #386 | drive | Folder download — `GET /api/v1/drive/folders/:id/download` — ZIP recursivo; `collect_files_recursive` em `FileRepo`; crate `zip` adicionado |
+| #387 | mail | Vacation toggle — `PATCH /api/v1/mail/vacation/toggle` com `is_active`; preserva outros campos; re-renderiza sieve_script |
+| #388 | meet | Waiting room — `GET /api/v1/meetings/:id/lobby` + `POST /approve/:user_id` + `DELETE /:user_id`; tabela `meeting_lobby` |
+| #389 | search | Delete by tenant — `DELETE /api/v1/index?tenant_id=` remove todos docs via `delete_term` no Tantivy |
 
 ---
 
@@ -80,10 +84,11 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
 2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
 3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **drive: folder download** — `GET /api/v1/drive/folders/:id/download` — ZIP recursivo de todos os arquivos da pasta
-5. **mail: vacation responder toggle** — `PATCH /api/v1/mail/vacation` — enable/disable sem recriar; campo `is_active`
-6. **meet: waiting room** — `GET /api/v1/meetings/:id/lobby` — lista usuários aguardando aprovação; `POST /approve/:user_id`
-7. **search: delete by tenant** — `DELETE /api/v1/index?tenant_id=` — remove todos os docs de um tenant do índice Tantivy
+4. **drive: file expiry** — `PATCH /api/v1/drive/files/:id/expiry` — define `expires_at TIMESTAMPTZ`; worker de purge periódico
+5. **mail: read receipts** — `POST /api/v1/mail/messages/:id/read-receipt` — dispara MDN (RFC 8098) para o remetente
+6. **meet: poll/vote** — `POST /api/v1/meetings/:id/polls` + `POST /vote` — enquetes simples dentro de reunião
+7. **notifications: mark read** — `PATCH /api/v1/notifications/:id/read` + `PATCH /api/v1/notifications/read-all`
+8. **compliance: retention policy** — `GET/PUT /api/v1/compliance/retention` — define dias de retenção por tenant; worker de purge
 
 ---
 
