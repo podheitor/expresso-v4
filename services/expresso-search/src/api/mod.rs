@@ -30,6 +30,8 @@ pub struct SearchParams {
     pub limit: usize,
     #[serde(default)]
     pub offset: usize,
+    /// When set to "kind", response includes a `facets.kind` map of counts.
+    pub facet: Option<String>,
 }
 
 fn default_limit() -> usize {
@@ -59,9 +61,17 @@ fn validate_search_params(params: &mut SearchParams) -> Option<String> {
 }
 
 #[derive(Debug, Serialize)]
+pub struct FacetEntry {
+    pub value: String,
+    pub count: u64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct SearchResponse {
     pub hits: Vec<SearchHit>,
     pub count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub facets: Option<std::collections::HashMap<String, Vec<FacetEntry>>>,
 }
 
 /// POST /api/v1/index — index a document
@@ -112,7 +122,15 @@ pub async fn bulk_index(
     Ok(Json(BulkIndexResponse { indexed, rejected }))
 }
 
-/// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0
+fn map_search_err(e: anyhow::Error) -> (StatusCode, String) {
+    if e.to_string().starts_with("bad_query:") {
+        (StatusCode::BAD_REQUEST, "invalid query syntax".to_string())
+    } else {
+        (StatusCode::INTERNAL_SERVER_ERROR, "search failed".to_string())
+    }
+}
+
+/// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0[&facet=kind]
 pub async fn search(
     State(store): State<IndexStore>,
     Query(mut params): Query<SearchParams>,
@@ -122,16 +140,24 @@ pub async fn search(
     }
     let hits = store
         .search(&params.q, &params.tenant_id, params.limit, params.offset)
-        .map_err(|e| {
-            // bad_query: tag → input do usuário inválido; não vazar detalhes do schema.
-            if e.to_string().starts_with("bad_query:") {
-                (StatusCode::BAD_REQUEST, "invalid query syntax".to_string())
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, "search failed".to_string())
-            }
-        })?;
+        .map_err(map_search_err)?;
     let count = hits.len();
-    Ok(Json(SearchResponse { hits, count }))
+
+    let facets = if params.facet.as_deref() == Some("kind") {
+        let counts = store
+            .facet_counts_by_kind(&params.q, &params.tenant_id)
+            .map_err(map_search_err)?;
+        let entries: Vec<FacetEntry> = counts.into_iter()
+            .map(|(value, count)| FacetEntry { value, count })
+            .collect();
+        let mut map = std::collections::HashMap::new();
+        map.insert("kind".to_string(), entries);
+        Some(map)
+    } else {
+        None
+    };
+
+    Ok(Json(SearchResponse { hits, count, facets }))
 }
 
 /// DELETE /api/v1/index/:id — remove document from index
@@ -155,6 +181,8 @@ mod tests {
             q:         q.to_string(),
             tenant_id: "00000000-0000-0000-0000-000000000000".into(),
             limit,
+            offset:    0,
+            facet:     None,
         }
     }
 

@@ -40,6 +40,7 @@ struct Inner {
     pub f_subject: Field,
     pub f_from_addr: Field,
     pub f_body: Field,
+    pub f_kind: Field,
 }
 
 /// Document to be indexed
@@ -50,6 +51,8 @@ pub struct IndexDoc {
     pub subject: Option<String>,
     pub from_addr: Option<String>,
     pub body: Option<String>,
+    /// Categorization (e.g. "mail", "drive", "contact"). Used for faceted search.
+    pub kind: Option<String>,
 }
 
 /// Search result item
@@ -62,6 +65,7 @@ pub struct SearchHit {
     /// Excerpt (~200 chars) from the body around the matched terms. None when
     /// the document was indexed before body became STORED (needs re-index).
     pub snippet: Option<String>,
+    pub kind: Option<String>,
 }
 
 impl IndexStore {
@@ -73,6 +77,7 @@ impl IndexStore {
         let f_subject = schema_builder.add_text_field("subject", TEXT | STORED);
         let f_from_addr = schema_builder.add_text_field("from_addr", TEXT | STORED);
         let f_body = schema_builder.add_text_field("body", TEXT | STORED);
+        let f_kind = schema_builder.add_text_field("kind", STRING | STORED);
         let schema = schema_builder.build();
 
         std::fs::create_dir_all(data_dir)?;
@@ -96,6 +101,7 @@ impl IndexStore {
                 f_subject,
                 f_from_addr,
                 f_body,
+                f_kind,
             }),
         })
     }
@@ -123,11 +129,12 @@ impl IndexStore {
         writer.delete_term(term);
 
         writer.add_document(doc!(
-            i.f_doc_id => doc_data.document_id.as_str(),
+            i.f_doc_id    => doc_data.document_id.as_str(),
             i.f_tenant_id => tenant_canonical.as_str(),
-            i.f_subject => doc_data.subject.as_deref().unwrap_or(""),
+            i.f_subject   => doc_data.subject.as_deref().unwrap_or(""),
             i.f_from_addr => doc_data.from_addr.as_deref().unwrap_or(""),
-            i.f_body => doc_data.body.as_deref().unwrap_or(""),
+            i.f_body      => doc_data.body.as_deref().unwrap_or(""),
+            i.f_kind      => doc_data.kind.as_deref().unwrap_or(""),
         ))?;
 
         writer.commit()?;
@@ -162,6 +169,7 @@ impl IndexStore {
                 i.f_subject   => doc_data.subject.as_deref().unwrap_or(""),
                 i.f_from_addr => doc_data.from_addr.as_deref().unwrap_or(""),
                 i.f_body      => doc_data.body.as_deref().unwrap_or(""),
+                i.f_kind      => doc_data.kind.as_deref().unwrap_or(""),
             ))?;
         }
 
@@ -258,16 +266,76 @@ impl IndexStore {
             };
             let subject   = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
             let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            let kind      = doc.get_first(i.f_kind).and_then(|v| TantivyValue::as_str(&v))
+                               .filter(|s| !s.is_empty()).map(str::to_owned);
             let snippet = snippet_gen.as_ref().map(|gen| {
                 let s = gen.snippet_from_doc(&doc);
                 let text = s.to_html();
                 // Strip tantivy's <b>…</b> highlight tags — return plain text.
                 text.replace("<b>", "").replace("</b>", "")
             }).filter(|s| !s.is_empty());
-            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet });
+            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind });
         }
 
         Ok(results)
+    }
+
+    /// Aggregate hit counts by `kind` field for a tenant+query combination.
+    /// Returns a sorted map of kind → count.
+    pub fn facet_counts_by_kind(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+    ) -> anyhow::Result<Vec<(String, u64)>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let final_query: Box<dyn Query> = if trimmed.is_empty() {
+            tenant_query
+        } else {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Must, tenant_query),
+                (Occur::Must, user_query),
+            ]))
+        };
+
+        // Collect all matching doc addresses.
+        use tantivy::collector::DocSetCollector;
+        let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
+
+        let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let kind = doc.get_first(i.f_kind)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("unknown")
+                .to_owned();
+            *counts.entry(kind).or_insert(0) += 1;
+        }
+
+        let mut sorted: Vec<(String, u64)> = counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        Ok(sorted)
     }
 }
 
