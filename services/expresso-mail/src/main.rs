@@ -161,6 +161,10 @@ async fn main() -> anyhow::Result<()> {
     let lmtp_state = state.clone();
     set.spawn(async move { lmtp::serve(lmtp_state, lmtp_addr).await });
 
+    // Scheduled send worker — polls every 30 s for messages with deliver_at <= now()
+    let sched_state = state.clone();
+    set.spawn(async move { scheduled_send_worker(sched_state).await });
+
     // IMAP4rev1 (plain, port 143)
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;
     let imap_state = state.clone();
@@ -185,6 +189,103 @@ async fn main() -> anyhow::Result<()> {
     }
 
     info!("expresso-mail shutdown complete");
+    Ok(())
+}
+
+/// Background worker: every 30 s, find messages with deliver_at <= now() and relay them.
+/// On SMTP failure the row is left untouched and retried on the next tick.
+async fn scheduled_send_worker(state: AppState) -> anyhow::Result<()> {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+    loop {
+        interval.tick().await;
+        if let Err(e) = dispatch_due_messages(&state).await {
+            tracing::error!(error = %e, "scheduled_send_worker tick failed");
+        }
+    }
+}
+
+async fn dispatch_due_messages(state: &AppState) -> anyhow::Result<()> {
+    use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor, address::Envelope, Address};
+    use tokio::fs;
+
+    #[derive(sqlx::FromRow)]
+    struct DueRow {
+        id:        uuid::Uuid,
+        tenant_id: uuid::Uuid,
+        body_path: String,
+        from_addr: Option<String>,
+        to_addrs:  sqlx::types::Json<Vec<String>>,
+    }
+
+    let due: Vec<DueRow> = sqlx::query_as(
+        "SELECT m.id, m.tenant_id, m.body_path, m.from_addr, m.to_addrs \
+         FROM messages m \
+         WHERE m.deliver_at IS NOT NULL AND m.deliver_at <= now() \
+         ORDER BY m.deliver_at \
+         LIMIT 50",
+    )
+    .fetch_all(state.db())
+    .await?;
+
+    let data_root = std::path::PathBuf::from(
+        std::env::var("MAIL__DATA_ROOT").unwrap_or_else(|_| "/var/lib/expresso/mail".into()),
+    );
+    let smtp_host = state.cfg().mail_server.relay_host.clone();
+    let smtp_port = state.cfg().mail_server.relay_port;
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp_host)
+        .port(smtp_port)
+        .build();
+
+    for row in due {
+        let raw = match fs::read(data_root.join(&row.body_path)).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!(msg_id = %row.id, error = %e, "scheduled send: cannot read body");
+                continue;
+            }
+        };
+
+        let from: Option<Address> = row.from_addr.as_deref()
+            .and_then(|s| s.parse().ok());
+        let to: Vec<Address> = row.to_addrs.0.iter()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        if to.is_empty() {
+            tracing::error!(msg_id = %row.id, "scheduled send: no valid to addresses");
+            continue;
+        }
+        let envelope = match Envelope::new(from, to) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::error!(msg_id = %row.id, error = %e, "scheduled send: bad envelope");
+                continue;
+            }
+        };
+
+        match mailer.send_raw(&envelope, &raw).await {
+            Ok(_) => {
+                if let Err(e) = sqlx::query(
+                    "UPDATE messages \
+                     SET deliver_at = NULL, \
+                         flags = array(SELECT DISTINCT unnest(flags || ARRAY[$2::text])) \
+                     WHERE id = $1",
+                )
+                .bind(row.id)
+                .bind(r"\Seen")
+                .execute(state.db())
+                .await {
+                    tracing::error!(msg_id = %row.id, error = %e, "scheduled send: status update failed");
+                } else {
+                    tracing::info!(target: "audit",
+                        event = "mail.scheduled_sent",
+                        msg_id = %row.id, tenant_id = %row.tenant_id);
+                }
+            }
+            Err(e) => {
+                tracing::warn!(msg_id = %row.id, error = %e, "scheduled send: relay failed, will retry");
+            }
+        }
+    }
     Ok(())
 }
 

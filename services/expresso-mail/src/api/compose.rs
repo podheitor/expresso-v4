@@ -13,7 +13,9 @@ use lettre::{
     message::{header::ContentType, Mailbox, Message, MultiPart, SinglePart},
     Address,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{api::context::RequestCtx, error::{MailError, Result}, ingest, state::AppState};
@@ -69,8 +71,9 @@ async fn assert_from_is_authenticated_user(
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/mail/send",      post(send_message))
-        .route("/mail/send-itip", post(send_itip))
+        .route("/mail/send",              post(send_message))
+        .route("/mail/send-itip",         post(send_itip))
+        .route("/mail/messages/schedule", post(schedule_message))
 }
 
 #[derive(Debug, Deserialize)]
@@ -209,6 +212,160 @@ pub async fn send_message(
     Ok(StatusCode::ACCEPTED)
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Scheduled send: store a draft message with deliver_at; background worker sends it.
+
+/// Min scheduling horizon: 60 s prevents accidental near-instant send while
+/// still allowing fine-grained control.
+const MIN_SCHEDULE_SECONDS: i64 = 60;
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct ScheduleRequest {
+    pub from:        String,
+    pub to:          Vec<String>,
+    pub cc:          Option<Vec<String>>,
+    pub bcc:         Option<Vec<String>>,
+    pub subject:     String,
+    pub body_text:   Option<String>,
+    pub body_html:   Option<String>,
+    pub reply_to_id: Option<Uuid>,
+    /// RFC 3339 timestamp — must be at least 60 s in the future.
+    #[serde(with = "time::serde::rfc3339")]
+    pub deliver_at:  OffsetDateTime,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ScheduleResp {
+    pub id:         Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub deliver_at: OffsetDateTime,
+}
+
+/// POST /api/v1/mail/messages/schedule
+///
+/// Stores the message as a draft with `deliver_at` set; the background
+/// `scheduled_send_worker` picks it up and relays it when the time comes.
+pub async fn schedule_message(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(req):    Json<ScheduleRequest>,
+) -> Result<(StatusCode, Json<ScheduleResp>)> {
+    let send_req = SendRequest {
+        from:        req.from.clone(),
+        to:          req.to.clone(),
+        cc:          req.cc.clone(),
+        bcc:         req.bcc.clone(),
+        subject:     req.subject.clone(),
+        body_text:   req.body_text.clone(),
+        body_html:   req.body_html.clone(),
+        reply_to_id: req.reply_to_id,
+    };
+    validate_send_request(&send_req)?;
+    assert_from_is_authenticated_user(&state, &ctx, &req.from).await?;
+
+    let now = OffsetDateTime::now_utc();
+    if (req.deliver_at - now).whole_seconds() < MIN_SCHEDULE_SECONDS {
+        return Err(MailError::InvalidMessage(format!(
+            "deliver_at must be at least {MIN_SCHEDULE_SECONDS}s in the future"
+        )));
+    }
+
+    let from_addr: Address = req.from.parse()
+        .map_err(|_| MailError::InvalidMessage(format!("invalid from: {}", req.from)))?;
+
+    let mut builder = Message::builder()
+        .from(Mailbox::new(None, from_addr))
+        .subject(&req.subject);
+
+    for addr_str in &req.to {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid to: {addr_str}")))?;
+        builder = builder.to(Mailbox::new(None, a));
+    }
+    for addr_str in req.cc.iter().flatten() {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid cc: {addr_str}")))?;
+        builder = builder.cc(Mailbox::new(None, a));
+    }
+    for addr_str in req.bcc.iter().flatten() {
+        let a: Address = addr_str.parse()
+            .map_err(|_| MailError::InvalidMessage(format!("invalid bcc: {addr_str}")))?;
+        builder = builder.bcc(Mailbox::new(None, a));
+    }
+
+    let email = match (req.body_html.as_deref(), req.body_text.as_deref()) {
+        (Some(html), Some(plain)) => builder.multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain.to_string()))
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string())),
+        ),
+        (Some(html), None) => builder.singlepart(
+            SinglePart::builder().header(ContentType::TEXT_HTML).body(html.to_string()),
+        ),
+        (None, plain_opt) => builder.singlepart(
+            SinglePart::builder()
+                .header(ContentType::TEXT_PLAIN)
+                .body(plain_opt.unwrap_or("").to_string()),
+        ),
+    }
+    .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
+
+    let raw = email.formatted();
+    let body_path = ingest::write_raw_message(&state, &raw).await
+        .map_err(|e| MailError::SendFailed(e.to_string()))?;
+    let size_bytes = raw.len().min(i32::MAX as usize) as i32;
+    let msg_id = Uuid::now_v7();
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let row: Option<(Uuid, i64)> = sqlx::query_as(
+        "SELECT id, next_uid FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3 FOR UPDATE",
+    )
+    .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
+    .fetch_optional(&mut *tx).await?;
+
+    let (mbox_id, uid) = if let Some(r) = row {
+        r
+    } else {
+        let mid: Uuid = sqlx::query_scalar(
+            "INSERT INTO mailboxes \
+               (user_id, tenant_id, folder_name, special_use, uid_validity, next_uid, subscribed) \
+             VALUES ($1, $2, 'Drafts', $3, EXTRACT(EPOCH FROM now())::BIGINT, 1, true) \
+             RETURNING id",
+        )
+        .bind(ctx.user_id).bind(ctx.tenant_id).bind(r"\Drafts")
+        .fetch_one(&mut *tx).await?;
+        (mid, 1i64)
+    };
+
+    sqlx::query("UPDATE mailboxes SET next_uid = next_uid + 1 WHERE id = $1")
+        .bind(mbox_id)
+        .execute(&mut *tx).await?;
+
+    let to_json = serde_json::to_value(&req.to).unwrap_or(serde_json::Value::Array(vec![]));
+    sqlx::query(
+        "INSERT INTO messages \
+           (id, mailbox_id, tenant_id, uid, flags, size_bytes, body_path, \
+            received_at, deliver_at, from_addr, to_addrs) \
+         VALUES ($1, $2, $3, $4, ARRAY[$5::text], $6, $7, now(), $8, $9, $10)",
+    )
+    .bind(msg_id).bind(mbox_id).bind(ctx.tenant_id).bind(uid)
+    .bind(r"\Draft").bind(size_bytes).bind(&body_path).bind(req.deliver_at)
+    .bind(&req.from).bind(to_json)
+    .execute(&mut *tx).await?;
+
+    tx.commit().await?;
+
+    tracing::info!(target: "audit",
+        event = "mail.schedule",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        msg_id = %msg_id, deliver_at = %req.deliver_at);
+
+    Ok((StatusCode::CREATED, Json(ScheduleResp { id: msg_id, deliver_at: req.deliver_at })))
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // iTIP delivery (RFC 6047): wrap an ICS body as a text/calendar MIME part with
