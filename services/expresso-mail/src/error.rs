@@ -26,6 +26,9 @@ pub enum MailError {
     #[error("invalid message format: {0}")]
     InvalidMessage(String),
 
+    #[error("not found")]
+    NotFound,
+
     #[error("forbidden")]
     Forbidden,
 
@@ -41,7 +44,7 @@ pub type Result<T> = std::result::Result<T, MailError>;
 impl IntoResponse for MailError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
-            MailError::MessageNotFound(_) | MailError::FolderNotFound { .. } => {
+            MailError::MessageNotFound(_) | MailError::FolderNotFound { .. } | MailError::NotFound => {
                 (StatusCode::NOT_FOUND, "not_found", self.to_string())
             }
             MailError::QuotaExceeded => {

@@ -10,6 +10,7 @@ pub mod quota;
 pub mod vacation;
 pub mod sieve;
 pub mod drafts;
+pub mod flag_presets;
 
 use axum::{
     Router,
@@ -63,4 +64,5 @@ fn api_routes(_state: AppState) -> Router<AppState> {
         .merge(vacation::routes())
         .merge(sieve::routes())
         .merge(drafts::routes())
+        .merge(flag_presets::routes())
 }
