@@ -27,6 +27,8 @@ use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
 use once_cell::sync::Lazy;
 use prometheus::{register_int_counter_vec, IntCounterVec};
+use expresso_core::{DbPool, create_db_pool};
+use std::collections::HashMap;
 
 static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
     register_int_counter_vec!(
@@ -40,12 +42,13 @@ static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
 use axum::{
     async_trait,
     extract::{FromRequestParts, Query, Request, State},
-    http::request::Parts,
+    http::{request::Parts, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
     Json, Router,
 };
+use time::OffsetDateTime;
 use expresso_auth_client::{AuthContext, Authenticated, OidcConfig, OidcValidator};
 use futures::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
@@ -82,6 +85,8 @@ struct AppState {
     redis_pub:  Option<Arc<deadpool_redis::Pool>>,
     /// External webhook: (url, client). None when NOTIFICATIONS__WEBHOOK_URL is unset.
     webhook:    Option<(Arc<str>, reqwest::Client)>,
+    /// PostgreSQL pool for persisting and querying notifications. None when DATABASE__URL is unset.
+    db:         Option<Arc<DbPool>>,
 }
 
 // ─── Optional auth extractor ─────────────────────────────────────────────────
@@ -163,6 +168,27 @@ async fn internal_notify(
         });
     }
 
+    // Persist to DB for digest/history queries.
+    if let Some(pool) = &st.db {
+        let pool = pool.clone();
+        let notif2 = notif.clone();
+        tokio::spawn(async move {
+            if let Err(e) = sqlx::query(
+                "INSERT INTO notifications (tenant_id, user_id, kind, folder, message_id) \
+                 VALUES ($1, $2, $3, $4, $5)",
+            )
+            .bind(notif2.tenant_id)
+            .bind(notif2.user_id)
+            .bind(&notif2.kind)
+            .bind(&notif2.folder)
+            .bind(notif2.message_id)
+            .execute(pool.as_ref())
+            .await {
+                warn!(error = %e, "failed to persist notification");
+            }
+        });
+    }
+
     Json(json!({"ok": true}))
 }
 
@@ -233,6 +259,76 @@ async fn notifications_stream(
             .interval(Duration::from_secs(25))
             .text("ping"),
     ))
+}
+
+#[derive(Debug, Deserialize)]
+struct DigestParams {
+    /// RFC 3339 timestamp — aggregate unread notifications since this point.
+    since: String,
+    /// Only used in dev mode (no validator). Ignored when JWT is present.
+    user_id:   Option<Uuid>,
+    tenant_id: Option<Uuid>,
+}
+
+/// GET /api/v1/notifications/digest?since=<rfc3339>
+///
+/// Returns counts of unread notifications grouped by kind since the given
+/// timestamp. Useful for badge counts and "what did I miss?" summaries.
+async fn digest(
+    State(st):     State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<DigestParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = if st.validator.is_some() {
+        match auth {
+            Some(ctx) => (ctx.user_id, ctx.tenant_id),
+            None => return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
+            )),
+        }
+    } else {
+        match (params.user_id, params.tenant_id) {
+            (Some(u), Some(t)) => (u, t),
+            _ => return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"})),
+            )),
+        }
+    };
+
+    let since = OffsetDateTime::parse(&params.since, &time::format_description::well_known::Rfc3339)
+        .map_err(|_| (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "bad_request", "message": "since must be RFC 3339"})),
+        ))?;
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    ))?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT \
+         FROM notifications \
+         WHERE tenant_id = $1 AND user_id = $2 AND is_read = false AND created_at >= $3 \
+         GROUP BY kind \
+         ORDER BY COUNT(*) DESC",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(since)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let by_kind: HashMap<&str, i64> = rows.iter().map(|(k, c)| (k.as_str(), *c)).collect();
+
+    Ok(Json(json!({ "total": total, "by_kind": by_kind })))
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -321,6 +417,26 @@ async fn maybe_build_validator() -> Option<Arc<OidcValidator>> {
 
 // ─── Entrypoint ───────────────────────────────────────────────────────────────
 
+async fn maybe_build_db() -> Option<Arc<DbPool>> {
+    let url = env::var("DATABASE__URL").ok().filter(|v| !v.is_empty())?;
+    let cfg = expresso_core::config::DatabaseConfig {
+        url,
+        max_connections: 5,
+        min_connections: 1,
+        acquire_timeout_secs: 5,
+    };
+    match create_db_pool(&cfg).await {
+        Ok(pool) => {
+            info!("database pool ready for notification persistence");
+            Some(Arc::new(pool))
+        }
+        Err(e) => {
+            warn!(error = %e, "database unavailable — digest endpoint disabled");
+            None
+        }
+    }
+}
+
 fn resolve_addr() -> anyhow::Result<SocketAddr> {
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = env::var("PORT")
@@ -348,13 +464,15 @@ async fn main() -> anyhow::Result<()> {
     let webhook    = env::var("NOTIFICATIONS__WEBHOOK_URL").ok()
         .filter(|v| !v.is_empty())
         .map(|url| (Arc::<str>::from(url.as_str()), reqwest::Client::new()));
-    let state = AppState { tx, validator, redis_pub, webhook };
+    let db = maybe_build_db().await;
+    let state = AppState { tx, validator, redis_pub, webhook, db };
 
     let app = Router::new()
-        .route("/health",               get(health))
-        .route("/ready",                get(ready))
-        .route("/internal/notify",      post(internal_notify))
-        .route("/notifications/stream", get(notifications_stream))
+        .route("/health",                          get(health))
+        .route("/ready",                           get(ready))
+        .route("/internal/notify",                 post(internal_notify))
+        .route("/notifications/stream",            get(notifications_stream))
+        .route("/api/v1/notifications/digest",     get(digest))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
