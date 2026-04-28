@@ -76,6 +76,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/breakouts",            post(create_breakout).get(list_breakouts))
         .route("/api/v1/meetings/:id/breakouts/:room_id",   get(get_breakout).delete(delete_breakout))
         .route("/api/v1/meetings/:id/breakouts/:room_id/participants", post(assign_breakout_participant).delete(remove_breakout_participant))
+        .route("/api/v1/meetings/:id/transcript",           post(create_transcript).get(list_transcripts))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -1441,4 +1442,89 @@ async fn remove_breakout_participant(
     .execute(pool)
     .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Transcript metadata ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+struct Transcript {
+    pub id:         Uuid,
+    pub meeting_id: Uuid,
+    pub tenant_id:  Uuid,
+    pub url:        String,
+    pub language:   Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub starts_at:  Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    pub ends_at:    Option<OffsetDateTime>,
+    pub created_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateTranscriptBody {
+    url:       String,
+    language:  Option<String>,
+    starts_at: Option<OffsetDateTime>,
+    ends_at:   Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/meetings/:id/transcript — list transcripts (participant-only).
+async fn list_transcripts(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Vec<Transcript>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(_) => {}
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let rows: Vec<Transcript> = sqlx::query_as(
+        "SELECT id, meeting_id, tenant_id, url, language, starts_at, ends_at, created_by, created_at \
+         FROM meeting_transcripts \
+         WHERE tenant_id = $1 AND meeting_id = $2 \
+         ORDER BY created_at ASC",
+    )
+    .bind(ctx.tenant_id).bind(id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(rows))
+}
+
+/// POST /api/v1/meetings/:id/transcript — attach transcript metadata (moderator-only).
+async fn create_transcript(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<CreateTranscriptBody>,
+) -> Result<(StatusCode, Json<Transcript>)> {
+    if body.url.is_empty() {
+        return Err(MeetError::BadRequest("url is required".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let row: Transcript = sqlx::query_as(
+        "INSERT INTO meeting_transcripts \
+             (meeting_id, tenant_id, url, language, starts_at, ends_at, created_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         RETURNING id, meeting_id, tenant_id, url, language, starts_at, ends_at, created_by, created_at",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&body.url)
+    .bind(&body.language)
+    .bind(body.starts_at)
+    .bind(body.ends_at)
+    .bind(ctx.user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((StatusCode::CREATED, Json(row)))
 }
