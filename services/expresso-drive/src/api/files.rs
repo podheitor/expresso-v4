@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
         .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
+        .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
         .route("/api/v1/drive/trash",                       get(trash))
         .route("/api/v1/drive/quota",                       get(quota))
@@ -1066,6 +1067,34 @@ async fn set_expiry(
         event = "drive.file.expiry_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         file_id = %id, expires_at = ?body.expires_at);
+    Ok(Json(updated))
+}
+
+/// POST /api/v1/drive/files/:id/lock — acquire optimistic lock (owner only or first caller)
+/// DELETE /api/v1/drive/files/:id/lock — release lock (only the lock holder may unlock)
+async fn lock_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool    = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool).lock_file(ctx.tenant_id, id, ctx.user_id).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.locked",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
+    Ok(Json(updated))
+}
+
+async fn unlock_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool    = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool).unlock_file(ctx.tenant_id, id, ctx.user_id).await?;
+    tracing::info!(target: "audit",
+        event = "drive.file.unlocked",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, file_id = %id);
     Ok(Json(updated))
 }
 

@@ -36,6 +36,9 @@ pub struct DriveFile {
     pub deleted_at:    Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub expires_at:    Option<OffsetDateTime>,
+    pub locked_by:     Option<Uuid>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub locked_at:     Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,7 +59,8 @@ pub struct FileRepo<'a> {
 }
 
 const SELECT_COLS: &str = "id, tenant_id, owner_user_id, parent_id, name, kind, \
-    mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at, expires_at";
+    mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at, expires_at, \
+    locked_by, locked_at";
 
 impl<'a> FileRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
@@ -491,6 +495,79 @@ impl<'a> FileRepo<'a> {
         .fetch_all(self.pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Acquire an optimistic lock on a file. Returns `Conflict` if already locked
+    /// by a different user, `NotFound` if the file does not exist.
+    pub async fn lock_file(
+        &self,
+        tenant_id: Uuid,
+        id:        Uuid,
+        user_id:   Uuid,
+    ) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files \
+               SET locked_by = $3, locked_at = now(), updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL \
+               AND (locked_by IS NULL OR locked_by = $3) \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(user_id)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        match row {
+            Some(f) => Ok(f),
+            None => {
+                // If the file exists but locked_by != user_id → Conflict
+                let exists: Option<(bool,)> = sqlx::query_as(
+                    "SELECT true FROM drive_files WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+                )
+                .bind(id).bind(tenant_id)
+                .fetch_optional(self.pool).await?;
+                if exists.is_some() {
+                    Err(DriveError::Conflict("file is locked by another user".into()))
+                } else {
+                    Err(DriveError::NotFound(id))
+                }
+            }
+        }
+    }
+
+    /// Release a lock on a file. Only the lock owner may unlock.
+    pub async fn unlock_file(
+        &self,
+        tenant_id: Uuid,
+        id:        Uuid,
+        user_id:   Uuid,
+    ) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files \
+               SET locked_by = NULL, locked_at = NULL, updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND locked_by = $3 \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(user_id)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        match row {
+            Some(f) => Ok(f),
+            None => {
+                let exists: Option<(bool,)> = sqlx::query_as(
+                    "SELECT true FROM drive_files WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+                )
+                .bind(id).bind(tenant_id)
+                .fetch_optional(self.pool).await?;
+                if exists.is_some() {
+                    Err(DriveError::Conflict("file is not locked by you".into()))
+                } else {
+                    Err(DriveError::NotFound(id))
+                }
+            }
+        }
     }
 
     /// Hard delete → caller must unlink the storage blob. Only soft-deleted
