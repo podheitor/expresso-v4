@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #394 (2026-04-28)
+**Último sprint commitado:** #400 (2026-04-28)
 
 ```
 git log --oneline | head -15
@@ -71,6 +71,12 @@ git log --oneline | head -15
 | #392 | meet | Poll/vote — `POST/GET /api/v1/meetings/:id/polls` + `GET/DELETE /:poll_id` + `POST /vote`; tabelas `meeting_polls` + `meeting_poll_votes` |
 | #393 | notifications | Mark read — `PATCH /api/v1/notifications/:id/read` + `/read-all`; UPDATE is_read=true |
 | #394 | compliance | Retention policy — `GET/PUT /api/v1/compliance/retention`; tabela `compliance_tenant_retention`; default 365 dias |
+| #395 | drive | File lock — `POST/DELETE /api/v1/drive/files/:id/lock`; campos `locked_by + locked_at`; lock otimista por usuário |
+| #396 | mail | Flag presets — `GET/POST /api/v1/mail/flag-presets` + `GET/PUT/DELETE /:id`; tabela `mail_flag_presets` com flags JSONB |
+| #397 | meet | Breakout rooms — `POST/GET /api/v1/meetings/:id/breakouts` + `GET/DELETE /:room_id` + `POST/DELETE /:room_id/participants`; tabelas `meeting_breakout_rooms` + `meeting_breakout_participants` |
+| #398 | contacts | Import CSV — `POST /api/v1/contacts/import`; multipart (book_id + file); parser CSV quoted; gera vCard 3.0 por linha |
+| #399 | — | Pulado — calendar event RSVP já implementado (detectado em `events.rs`) |
+| #400 | drive | Starred files — `POST/DELETE /api/v1/drive/files/:id/star` + `GET /api/v1/drive/starred`; campo `starred_at` |
 
 ---
 
@@ -89,11 +95,11 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
 2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
 3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **drive: file lock** — `POST /api/v1/drive/files/:id/lock` + `DELETE /unlock` — lock otimista para edição colaborativa
-5. **mail: flag presets** — `GET/POST /api/v1/mail/flag-presets` — salvar conjuntos de flags nomeados para ação rápida
-6. **meet: breakout rooms** — `POST /api/v1/meetings/:id/breakouts` — sub-salas de reunião com participantes designados
-7. **contacts: import CSV** — `POST /api/v1/contacts/import` — bulk import de contatos via multipart CSV
-8. **calendar: event RSVP** — `POST /api/v1/calendar/events/:id/rsvp` — aceitar/recusar/tentativa
+4. **calendar: event alarms** — `GET/POST /api/v1/calendars/:cal_id/events/:id/alarms` + `DELETE /:alarm_uid` — VALARM REST API
+5. **mail: thread view** — `GET /api/v1/mail/threads` — agrupar mensagens por `References`/`In-Reply-To`
+6. **notifications: push subscription** — `POST/DELETE /api/v1/notifications/push` — WebPush VAPID subscription per device
+7. **meet: transcript metadata** — `GET/POST /api/v1/meetings/:id/transcript` — armazenar URL + timestamps de transcrição
+8. **drive: comments** — `GET/POST /api/v1/drive/files/:id/comments` + `DELETE /:comment_id` — comentários por arquivo
 
 ---
 
