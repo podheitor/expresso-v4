@@ -8,7 +8,7 @@ use axum::{
     extract::State,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, patch},
     Json, Router,
 };
 use expresso_core::begin_tenant_tx;
@@ -34,7 +34,9 @@ pub const MAX_VACATION_SUBJECT_BYTES: usize = 998;
 pub const MAX_VACATION_BODY_BYTES:    usize = 8 * 1024;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/mail/vacation", get(get_vacation).put(put_vacation))
+    Router::new()
+        .route("/mail/vacation", get(get_vacation).put(put_vacation))
+        .route("/mail/vacation/toggle", patch(toggle_vacation))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -155,6 +157,69 @@ async fn put_vacation(
             interval_days = EXCLUDED.interval_days,
             sieve_script  = EXCLUDED.sieve_script,
             updated_at    = now()"
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(v.enabled)
+    .bind(v.starts_at)
+    .bind(v.ends_at)
+    .bind(&v.subject)
+    .bind(&v.body)
+    .bind(v.interval_days)
+    .bind(&v.sieve_script)
+    .execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(v))
+}
+
+#[derive(Debug, Deserialize)]
+struct ToggleBody {
+    is_active: bool,
+}
+
+/// PATCH /api/v1/mail/vacation/toggle — enable or disable without changing other fields.
+///
+/// If no vacation row exists yet, creates one with defaults (enabled = is_active).
+async fn toggle_vacation(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Json(body):   Json<ToggleBody>,
+) -> Result<Json<Vacation>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let row = sqlx::query(
+        "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script \
+         FROM user_vacation WHERE user_id = $1 AND tenant_id = $2"
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&mut *tx).await?;
+
+    let mut v = match row {
+        Some(r) => Vacation {
+            enabled:       r.get("enabled"),
+            starts_at:     r.try_get("starts_at").ok(),
+            ends_at:       r.try_get("ends_at").ok(),
+            subject:       r.get("subject"),
+            body:          r.get("body"),
+            interval_days: r.get("interval_days"),
+            sieve_script:  r.get("sieve_script"),
+        },
+        None => Vacation::default(),
+    };
+
+    v.enabled = body.is_active;
+    v.sieve_script = render_script(&v);
+
+    sqlx::query(
+        "INSERT INTO user_vacation \
+            (user_id, tenant_id, enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now()) \
+         ON CONFLICT (user_id) DO UPDATE SET \
+            enabled      = EXCLUDED.enabled, \
+            sieve_script = EXCLUDED.sieve_script, \
+            updated_at   = now()"
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
