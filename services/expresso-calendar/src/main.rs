@@ -147,7 +147,11 @@ async fn main() -> anyhow::Result<()> {
         let retention = env_i32("DAV_TOMBSTONE_RETENTION_DAYS", domain::tombstone_gc::DEFAULT_RETENTION_DAYS);
         let every = env_u64("DAV_TOMBSTONE_GC_INTERVAL_HOURS", domain::tombstone_gc::DEFAULT_INTERVAL_HOURS);
         info!(retention_days = retention, interval_hours = every, "spawning tombstone GC");
-        domain::tombstone_gc::spawn(pool, retention, every);
+        domain::tombstone_gc::spawn(pool.clone(), retention, every);
+
+        let alarm_interval = env_u64("ALARM_DELIVERY_INTERVAL_SECS", domain::alarm_delivery::DEFAULT_INTERVAL_SECS);
+        info!(interval_secs = alarm_interval, "spawning alarm delivery worker");
+        domain::alarm_delivery::spawn(pool, alarm_interval);
     }
     // Sprint #20: opt-in NATS JetStream publishing when NATS_URL is set.
     let bus = match std::env::var("NATS_URL").ok().filter(|v| !v.trim().is_empty()) {

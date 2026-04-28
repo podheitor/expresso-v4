@@ -8,6 +8,7 @@ pub mod itip;
 pub mod rrule;
 pub mod dead_props;
 pub mod tombstone_gc;
+pub mod alarm_delivery;
 pub mod counter;
 
 pub use calendar::{Calendar, CalendarRepo, NewCalendar, UpdateCalendar};
