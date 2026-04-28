@@ -8,6 +8,7 @@ mod shares;
 mod wopi;
 mod wopi_metrics;
 mod uploads;
+mod versions;
 
 pub use wopi_metrics::init as init_wopi_metrics;
 
@@ -27,6 +28,7 @@ pub fn router(state: AppState) -> Router {
         .merge(shares::routes())
         .merge(wopi::routes())
         .merge(uploads::routes())
+        .merge(versions::routes())
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .layer(CorsLayer::permissive())
