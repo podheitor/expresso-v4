@@ -15,6 +15,7 @@ use axum::{
     Json, http::{StatusCode, header, HeaderMap, HeaderValue},
     body::Body,
 };
+use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor, address::Envelope, Address};
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
@@ -35,6 +36,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
         .route("/mail/messages/bulk",        post(bulk_action).delete(bulk_delete))
         .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
+        .route("/mail/messages/:id/read-receipt", post(send_read_receipt))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1384,4 +1386,133 @@ async fn bulk_delete(
     }
 
     Ok(Json(BulkResult { affected: deleted.len() as u64 }))
+}
+
+/// POST /api/v1/mail/messages/:id/read-receipt
+///
+/// Sends an MDN (Message Disposition Notification, RFC 8098) back to the
+/// original sender. The caller's address is used as the Final-Recipient and
+/// Reporting-UA. Idempotent: sending multiple times just re-notifies.
+///
+/// Returns 204 on success, 404 if the message is not found, 422 if the
+/// message has no Return-Receipt-To / Reply-To / From to send to, or 502 if
+/// the SMTP relay is unreachable.
+async fn send_read_receipt(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<StatusCode> {
+    // Fetch the message; scope the tx to avoid borrow across await.
+    let (from_addr_raw, orig_message_id, subject_raw, received_at_ts) = {
+        let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+        let row: Option<(Option<String>, Option<String>, Option<String>, OffsetDateTime)> = sqlx::query_as(
+            r#"SELECT m.from_addr, m.message_id, m.subject, m.received_at
+               FROM messages  m
+               JOIN mailboxes mb ON mb.id = m.mailbox_id
+               WHERE m.id        = $1
+                 AND m.tenant_id = $2
+                 AND mb.user_id  = $3
+               LIMIT 1"#,
+        )
+        .bind(id)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        row.ok_or(MailError::MessageNotFound(id))?
+    };
+
+    // Who to notify: the From address of the original message.
+    let recipient_str = from_addr_raw
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| MailError::BadRequest(
+            "message has no From address to send MDN to".into(),
+        ))?;
+    let to_addr: Address = recipient_str
+        .parse()
+        .map_err(|_| MailError::BadRequest(format!("invalid from address: {recipient_str}")))?;
+
+    // Caller's address is the MDN sender — fetch from users table.
+    let caller_addr_str: String = {
+        let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+        let email: Option<String> = sqlx::query_scalar(
+            "SELECT email FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        email.ok_or(MailError::Forbidden)?
+    };
+    let from_addr: Address = caller_addr_str
+        .parse()
+        .map_err(|_| MailError::BadRequest("caller email address is invalid".into()))?;
+
+    // Build RFC 8098 MDN body.
+    // Part 1: human-readable notification.
+    let subject_display = subject_raw.as_deref().unwrap_or("(no subject)");
+    let human_part = format!(
+        "This is a Message Disposition Notification for: {subject_display}\r\n\
+         The message was displayed at {}.\r\n",
+        received_at_ts
+            .format(&time::format_description::well_known::Rfc2822)
+            .unwrap_or_else(|_| "unknown".into()),
+    );
+
+    // Part 2: machine-readable message/disposition-notification
+    let orig_mid_line = orig_message_id
+        .as_deref()
+        .map(|mid| format!("Original-Message-ID: {mid}\r\n"))
+        .unwrap_or_default();
+    let mdn_part = format!(
+        "Reporting-UA: expresso-mail; Expresso\r\n\
+         Final-Recipient: rfc822; {caller_addr_str}\r\n\
+         {orig_mid_line}\
+         Disposition: manual-action/MDN-sent-manually; displayed\r\n"
+    );
+
+    // Assemble raw RFC 2822 message manually to avoid lettre multipart/report
+    // content-type limitation (lettre uses multipart/mixed or alternative).
+    let boundary = format!("mdn_{}", id.simple());
+    let mdn_subject = format!("Read: {subject_display}");
+    let raw_msg = format!(
+        "From: {caller_addr_str}\r\n\
+         To: {recipient_str}\r\n\
+         Subject: {mdn_subject}\r\n\
+         MIME-Version: 1.0\r\n\
+         Content-Type: multipart/report; report-type=disposition-notification;\r\n\
+         \tboundary=\"{boundary}\"\r\n\
+         \r\n\
+         --{boundary}\r\n\
+         Content-Type: text/plain; charset=utf-8\r\n\
+         \r\n\
+         {human_part}\r\n\
+         --{boundary}\r\n\
+         Content-Type: message/disposition-notification\r\n\
+         \r\n\
+         {mdn_part}\r\n\
+         --{boundary}--\r\n"
+    );
+
+    let envelope = Envelope::new(Some(from_addr), vec![to_addr])
+        .map_err(|e| MailError::InvalidMessage(e.to_string()))?;
+
+    let smtp_host = &state.cfg().mail_server.relay_host;
+    let smtp_port = state.cfg().mail_server.relay_port;
+    let mailer = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
+        .port(smtp_port)
+        .build();
+    mailer
+        .send_raw(&envelope, raw_msg.as_bytes())
+        .await
+        .map_err(|e| MailError::SendFailed(e.to_string()))?;
+
+    tracing::info!(target: "audit",
+        event = "mail.read_receipt",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        message_id = %id, recipient = %recipient_str);
+    Ok(StatusCode::NO_CONTENT)
 }
