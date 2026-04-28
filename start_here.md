@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #378 (2026-04-27)
+**Último sprint commitado:** #381 (2026-04-28)
 
 ```
 git log --oneline | head -15
@@ -55,6 +55,9 @@ git log --oneline | head -15
 | #376 | drive | `POST /api/v1/drive/files/bulk-restore` — desfaz trash de até 200 itens atomicamente |
 | #377 | compliance | Export ZIP password — AES-256 via `?password=` em `GET /api/v1/compliance/archive/export` |
 | #378 | notifications | Webhook externo — `NOTIFICATIONS__WEBHOOK_URL` dispara POST fire-and-forget em `internal_notify` |
+| #379 | drive | File tags — `GET/POST /api/v1/drive/files/:id/tags` + `DELETE /:id/tags/:tag` — tabela `drive_file_tags` |
+| #380 | meet | Recording — `POST /api/v1/meetings/:id/recording/start|stop` — campo `recording_started_at`; `MeetError::Conflict` |
+| #381 | search | Facets — `GET /api/v1/search?facet=kind` retorna `facets.kind[]` via `DocSetCollector` + campo `kind` no schema |
 
 ---
 
@@ -73,10 +76,10 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
 2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
 3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **drive: file tags** — `POST /api/v1/drive/files/:id/tags` / `DELETE /api/v1/drive/files/:id/tags/:tag` — tabela `drive_file_tags(file_id, tag)`
-5. **mail: mark-all-read** — `POST /api/v1/mail/folders/:id/mark-read` — bulk UPDATE flags para remover `\Seen` negado (set `\Seen`) em todos os messages do mailbox
-6. **meet: recording** — `POST /api/v1/meetings/:id/recording/start` / `stop` — campo `recording_started_at` em meetings
-7. **search: facets** — `GET /api/v1/search?q=&facet=kind` — agrega contagens por campo (kind, folder) via Tantivy FacetCollector
+4. **drive: file share link** — `POST /api/v1/drive/files/:id/share-links` — token público sem auth; `GET /share/:token` retorna download
+5. **mail: scheduled send** — `POST /api/v1/mail/messages/schedule` — `deliver_at TIMESTAMPTZ` em drafts; background task `tokio::time::sleep_until` dispara envio
+6. **meet: chat integration** — `GET /api/v1/meetings/:id/chat` — lista mensagens do `channel_id` associado
+7. **notifications: digest** — `GET /api/v1/notifications/digest?since=` — agrega notifications não-lidas por kind desde timestamp
 
 ---
 
