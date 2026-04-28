@@ -3,7 +3,7 @@
 
 use axum::{
     body::Body,
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -62,6 +62,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/addressbooks/:book_id/import",
             post(import_vcf),
+        )
+        .route(
+            "/api/v1/contacts/import",
+            post(import_csv),
         )
 }
 
@@ -249,6 +253,177 @@ async fn import_vcf(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap())
+}
+
+/// POST /api/v1/contacts/import — bulk import via multipart CSV.
+///
+/// Multipart fields:
+///   - `book_id`  (text): UUID of the destination addressbook
+///   - `file`     (file): CSV with header row; recognized columns:
+///                        first_name, last_name, email, phone, organization
+///
+/// Returns `{ imported, failed, errors: [string] }`.
+async fn import_csv(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    mut mp:       Multipart,
+) -> Result<Json<serde_json::Value>> {
+    let mut book_id_raw: Option<String> = None;
+    let mut csv_bytes:   Option<Vec<u8>> = None;
+
+    while let Some(field) = mp.next_field().await
+        .map_err(|e| ContactsError::BadRequest(format!("multipart error: {e}")))?
+    {
+        match field.name() {
+            Some("book_id") => {
+                let text = field.text().await
+                    .map_err(|e| ContactsError::BadRequest(format!("book_id field: {e}")))?;
+                book_id_raw = Some(text);
+            }
+            Some("file") => {
+                let bytes = field.bytes().await
+                    .map_err(|e| ContactsError::BadRequest(format!("file field: {e}")))?;
+                if bytes.len() > 4 * 1024 * 1024 {
+                    return Err(ContactsError::BadRequest("CSV too large (max 4 MiB)".into()));
+                }
+                csv_bytes = Some(bytes.to_vec());
+            }
+            _ => {}
+        }
+    }
+
+    let book_id: Uuid = book_id_raw
+        .ok_or_else(|| ContactsError::BadRequest("missing book_id field".into()))
+        .and_then(|s| s.parse::<Uuid>().map_err(|_| ContactsError::BadRequest("invalid book_id".into())))?;
+
+    let csv_data = csv_bytes.ok_or_else(|| ContactsError::BadRequest("missing file field".into()))?;
+    let csv_str  = std::str::from_utf8(&csv_data)
+        .map_err(|_| ContactsError::BadRequest("CSV must be UTF-8".into()))?;
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, book_id, ctx.user_id).await?;
+
+    let records = parse_csv(csv_str)?;
+    if records.is_empty() {
+        return Err(ContactsError::BadRequest("CSV has no data rows".into()));
+    }
+
+    let repo = ContactRepo::new(pool);
+    let mut imported = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    for (idx, rec) in records.iter().enumerate() {
+        let uid  = format!("csv-import-{}-{}", book_id, uuid::Uuid::new_v4());
+        let vcard = build_vcard_from_csv(rec, &uid);
+        match repo.replace_by_uid(ctx.tenant_id, book_id, &vcard).await {
+            Ok(_)  => {
+                imported += 1;
+                state.bus().publish(ContactsEvent::ContactUpserted {
+                    tenant_id: ctx.tenant_id, addressbook_id: book_id, contact_id: uuid::Uuid::nil(),
+                });
+            }
+            Err(e) => errors.push(format!("row[{idx}]: {e}")),
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "imported": imported,
+        "failed":   errors.len(),
+        "errors":   errors,
+    })))
+}
+
+/// CSV record — columns recognized by name (case-insensitive).
+struct CsvRecord {
+    first_name:   Option<String>,
+    last_name:    Option<String>,
+    email:        Option<String>,
+    phone:        Option<String>,
+    organization: Option<String>,
+}
+
+fn parse_csv(csv: &str) -> Result<Vec<CsvRecord>> {
+    let mut lines = csv.lines();
+    let header_line = lines.next()
+        .ok_or_else(|| ContactsError::BadRequest("CSV is empty".into()))?;
+    let headers: Vec<String> = split_csv_row(header_line)
+        .into_iter().map(|h| h.trim().to_lowercase()).collect();
+
+    let idx = |name: &str| headers.iter().position(|h| h == name);
+    let col_first = idx("first_name");
+    let col_last  = idx("last_name");
+    let col_email = idx("email");
+    let col_phone = idx("phone");
+    let col_org   = idx("organization");
+
+    let mut records = Vec::new();
+    for line in lines {
+        if line.trim().is_empty() { continue; }
+        let cols = split_csv_row(line);
+        let get  = |ci: Option<usize>| -> Option<String> {
+            let s = cols.get(ci?)?;
+            if s.is_empty() { None } else { Some(s.clone()) }
+        };
+        records.push(CsvRecord {
+            first_name:   get(col_first),
+            last_name:    get(col_last),
+            email:        get(col_email),
+            phone:        get(col_phone),
+            organization: get(col_org),
+        });
+    }
+    Ok(records)
+}
+
+/// Minimal RFC 4918 compliant vCard 3.0 from a CSV record.
+fn build_vcard_from_csv(rec: &CsvRecord, uid: &str) -> String {
+    let mut lines = vec![
+        "BEGIN:VCARD".to_string(),
+        "VERSION:3.0".to_string(),
+        format!("UID:{uid}"),
+    ];
+    let fn_str = match (&rec.first_name, &rec.last_name) {
+        (Some(f), Some(l)) => format!("{f} {l}"),
+        (Some(f), None)    => f.clone(),
+        (None, Some(l))    => l.clone(),
+        (None, None)       => rec.email.clone().unwrap_or_else(|| "Unknown".to_string()),
+    };
+    let family  = rec.last_name.as_deref().unwrap_or("");
+    let given   = rec.first_name.as_deref().unwrap_or("");
+    lines.push(format!("FN:{fn_str}"));
+    lines.push(format!("N:{family};{given};;;"));
+    if let Some(email) = &rec.email {
+        lines.push(format!("EMAIL;TYPE=INTERNET:{email}"));
+    }
+    if let Some(phone) = &rec.phone {
+        lines.push(format!("TEL;TYPE=VOICE:{phone}"));
+    }
+    if let Some(org) = &rec.organization {
+        lines.push(format!("ORG:{org}"));
+    }
+    lines.push("END:VCARD".to_string());
+    lines.join("\r\n")
+}
+
+/// Naive CSV row splitter: handles double-quoted fields with embedded commas.
+fn split_csv_row(row: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur    = String::new();
+    let mut in_q   = false;
+    let mut chars  = row.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if !in_q => in_q = true,
+            '"' if in_q  => {
+                if chars.peek() == Some(&'"') { chars.next(); cur.push('"'); }
+                else { in_q = false; }
+            }
+            ',' if !in_q => { fields.push(cur.trim().to_string()); cur = String::new(); }
+            other        => cur.push(other),
+        }
+    }
+    fields.push(cur.trim().to_string());
+    fields
 }
 
 /// Gate aplicado em todos endpoints que aceitam vCard raw. Tamanho
