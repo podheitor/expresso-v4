@@ -1,0 +1,169 @@
+//! VALARM REST endpoints — sprint #401.
+//!
+//! Routes:
+//!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms
+//!   POST   /api/v1/calendars/:cal_id/events/:event_id/alarms
+//!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
+
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+use time::OffsetDateTime;
+use uuid::Uuid;
+
+use crate::api::context::RequestCtx;
+use crate::api::events::assert_can_write;
+use crate::error::{CalendarError, Result};
+use crate::state::AppState;
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct EventAlarm {
+    pub id:          Uuid,
+    pub event_id:    Uuid,
+    pub calendar_id: Uuid,
+    pub tenant_id:   Uuid,
+    pub uid:         String,
+    pub action:      String,
+    pub trigger_rel: Option<String>,
+    pub trigger_abs: Option<OffsetDateTime>,
+    pub description: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at:  OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAlarmBody {
+    uid:         Option<String>,
+    action:      Option<String>,
+    trigger_rel: Option<String>,
+    trigger_abs: Option<OffsetDateTime>,
+    description: Option<String>,
+}
+
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/v1/calendars/:cal_id/events/:event_id/alarms",
+            get(list_alarms).post(create_alarm),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid",
+            delete(delete_alarm),
+        )
+}
+
+async fn list_alarms(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    // Verify event belongs to calendar+tenant
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendar_events WHERE id = $1 AND calendar_id = $2 AND tenant_id = $3",
+    )
+    .bind(event_id)
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let alarms: Vec<EventAlarm> = sqlx::query_as(
+        "SELECT id, event_id, calendar_id, tenant_id, uid, action, trigger_rel, trigger_abs, description, created_at \
+         FROM calendar_event_alarms \
+         WHERE tenant_id = $1 AND event_id = $2 \
+         ORDER BY created_at ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(alarms))
+}
+
+async fn create_alarm(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<CreateAlarmBody>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    // Verify event belongs to calendar+tenant
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendar_events WHERE id = $1 AND calendar_id = $2 AND tenant_id = $3",
+    )
+    .bind(event_id)
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let uid = body.uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let action = body.action.unwrap_or_else(|| "DISPLAY".into());
+
+    if body.trigger_rel.is_none() && body.trigger_abs.is_none() {
+        return Err(CalendarError::BadRequest(
+            "trigger_rel or trigger_abs is required".into(),
+        ));
+    }
+
+    let alarm: EventAlarm = sqlx::query_as(
+        "INSERT INTO calendar_event_alarms \
+             (event_id, calendar_id, tenant_id, uid, action, trigger_rel, trigger_abs, description) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id, event_id, calendar_id, tenant_id, uid, action, trigger_rel, trigger_abs, description, created_at",
+    )
+    .bind(event_id)
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .bind(&uid)
+    .bind(&action)
+    .bind(&body.trigger_rel)
+    .bind(body.trigger_abs)
+    .bind(&body.description)
+    .fetch_one(pool)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(alarm)))
+}
+
+async fn delete_alarm(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id, alarm_uid)): Path<(Uuid, Uuid, String)>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let deleted = sqlx::query(
+        "DELETE FROM calendar_event_alarms \
+         WHERE tenant_id = $1 AND event_id = $2 AND uid = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .bind(&alarm_uid)
+    .execute(pool)
+    .await?;
+
+    if deleted.rows_affected() == 0 {
+        return Err(CalendarError::AlarmNotFound(event_id));
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}

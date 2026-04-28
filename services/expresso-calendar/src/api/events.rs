@@ -28,7 +28,7 @@ pub const MAX_EVENT_ICS_BYTES: usize = 256 * 1024;
 pub const MAX_IMPORT_ICS_BYTES: usize = 2 * 1024 * 1024;
 
 /// Gate: require OWNER/WRITE/ADMIN on the calendar, else 403.
-async fn assert_can_write(
+pub(crate) async fn assert_can_write(
     pool: &expresso_core::DbPool,
     tenant_id: uuid::Uuid,
     cal_id: uuid::Uuid,

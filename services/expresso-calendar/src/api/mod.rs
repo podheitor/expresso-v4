@@ -1,6 +1,7 @@
 //! Axum HTTP router for expresso-calendar
 
 pub mod context;
+mod alarms;
 mod calendars;
 mod events;
 mod health;
@@ -20,6 +21,7 @@ pub fn router(state: AppState) -> Router {
     let api = Router::new()
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
+        .merge(alarms::routes())
         .merge(calendars::routes())
         .merge(events::routes())
         .merge(scheduling::routes())

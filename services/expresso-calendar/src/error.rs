@@ -39,6 +39,9 @@ pub enum CalendarError {
 
     #[error("not supported: {0}")]
     NotSupported(&'static str),
+
+    #[error("alarm not found: {0}")]
+    AlarmNotFound(Uuid),
 }
 
 impl IntoResponse for CalendarError {
@@ -52,6 +55,7 @@ impl IntoResponse for CalendarError {
             Self::Forbidden            => (StatusCode::FORBIDDEN,             "forbidden",           self.to_string()),
             Self::DatabaseUnavailable  => (StatusCode::SERVICE_UNAVAILABLE,   "db_unavailable",      self.to_string()),
             Self::NotSupported(_)      => (StatusCode::NOT_IMPLEMENTED,       "not_supported",       self.to_string()),
+            Self::AlarmNotFound(_)     => (StatusCode::NOT_FOUND,             "alarm_not_found",     self.to_string()),
             // Unique violation → 409, FK violation / not-found → 404, everything else → 500.
             Self::Database(sqlx::Error::Database(db_err)) if db_err.is_unique_violation()
                                        => (StatusCode::CONFLICT,              "unique_violation",    "recurso duplicado".into()),
