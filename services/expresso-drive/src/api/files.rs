@@ -8,6 +8,7 @@ use axum::{
     routing::{get, head, patch, post},
     Json, Router,
 };
+use std::io::Write as IoWrite;
 use time::OffsetDateTime;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -41,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/tags/:tag",         delete(remove_tag))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
+        .route("/api/v1/drive/folders/:id/download",         get(download_folder))
         .route("/api/v1/drive/trash",                       get(trash))
         .route("/api/v1/drive/quota",                       get(quota))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
@@ -1029,4 +1031,68 @@ async fn user_usage(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/drive/folders/:id/download
+///
+/// Recursively packs all files inside the folder (including sub-folders) into a
+/// ZIP archive returned in-memory. Empty folders produce an empty ZIP.
+async fn download_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Response> {
+    let pool   = state.db_or_unavailable()?;
+    let repo   = FileRepo::new(pool);
+    let folder = repo.get(ctx.tenant_id, id).await?;
+    if folder.kind != "folder" {
+        return Err(DriveError::BadRequest("target is not a folder".into()));
+    }
+
+    let entries = repo.collect_files_recursive(ctx.tenant_id, id, "").await?;
+
+    let buf: Vec<u8> = Vec::new();
+    let cursor = std::io::Cursor::new(buf);
+    let mut zip = zip::ZipWriter::new(cursor);
+    let options = zip::write::FileOptions::<()>::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    for (rel_path, file) in &entries {
+        let key = match file.storage_key.as_deref() {
+            Some(k) => k,
+            None    => continue,
+        };
+        let bytes = match fs::read(state.data_root().join(key)).await {
+            Ok(b)  => b,
+            Err(e) => {
+                tracing::warn!(file_id = %file.id, error = %e, "skipping unreadable blob in folder download");
+                continue;
+            }
+        };
+        zip.start_file(rel_path, options).map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
+        zip.write_all(&bytes).map_err(DriveError::Io)?;
+    }
+
+    let cursor = zip.finish().map_err(|e| DriveError::Io(std::io::Error::other(e.to_string())))?;
+    let zip_bytes = cursor.into_inner();
+
+    let ascii: String = folder.name.chars().map(|c| {
+        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
+    }).collect();
+    let archive_name = if ascii.is_empty() { "folder".to_string() } else { ascii };
+    let cd = format!("attachment; filename=\"{archive_name}.zip\"");
+
+    tracing::info!(target: "audit",
+        event = "drive.folder.download",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id,
+        file_count = entries.len());
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,        HeaderValue::from_static("application/zip")),
+            (header::CONTENT_DISPOSITION, HeaderValue::from_str(&cd).unwrap_or_else(|_| HeaderValue::from_static("attachment"))),
+        ],
+        zip_bytes,
+    ).into_response())
 }

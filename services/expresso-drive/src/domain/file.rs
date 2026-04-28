@@ -431,6 +431,32 @@ impl<'a> FileRepo<'a> {
         Ok(copied)
     }
 
+    /// Recursively collect all descendant *files* (kind='file') under `folder_id`,
+    /// including files inside nested sub-folders. Returns pairs of `(relative_path, DriveFile)`.
+    pub async fn collect_files_recursive(
+        &self,
+        tenant_id: Uuid,
+        folder_id: Uuid,
+        prefix:    &str,
+    ) -> Result<Vec<(String, DriveFile)>> {
+        let mut results: Vec<(String, DriveFile)> = Vec::new();
+        let children = self.list_children(tenant_id, Some(folder_id)).await?;
+        for child in children {
+            let entry_path = if prefix.is_empty() {
+                child.name.clone()
+            } else {
+                format!("{}/{}", prefix, child.name)
+            };
+            if child.kind == "file" {
+                results.push((entry_path, child));
+            } else if child.kind == "folder" {
+                let sub = Box::pin(self.collect_files_recursive(tenant_id, child.id, &entry_path)).await?;
+                results.extend(sub);
+            }
+        }
+        Ok(results)
+    }
+
     /// Hard delete → caller must unlink the storage blob. Only soft-deleted
     /// rows may be purged to avoid accidental data loss.
     pub async fn purge(&self, tenant_id: Uuid, id: Uuid) -> Result<Option<String>> {

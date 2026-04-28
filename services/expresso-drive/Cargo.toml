@@ -29,6 +29,7 @@ rand               = { workspace = true }
 base64             = { workspace = true }
 hmac               = { workspace = true }
 hex                = { workspace = true }
+zip                = { workspace = true }
 
 expresso-core        = { path = "../../libs/expresso-core", package = "expresso-core" }
 expresso-observability = { workspace = true }
