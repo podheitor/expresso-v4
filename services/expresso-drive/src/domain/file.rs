@@ -39,6 +39,8 @@ pub struct DriveFile {
     pub locked_by:     Option<Uuid>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     pub locked_at:     Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub starred_at:    Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +62,7 @@ pub struct FileRepo<'a> {
 
 const SELECT_COLS: &str = "id, tenant_id, owner_user_id, parent_id, name, kind, \
     mime_type, size_bytes, sha256, storage_key, created_at, updated_at, deleted_at, expires_at, \
-    locked_by, locked_at";
+    locked_by, locked_at, starred_at";
 
 impl<'a> FileRepo<'a> {
     pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
@@ -494,6 +496,52 @@ impl<'a> FileRepo<'a> {
         )
         .fetch_all(self.pool)
         .await?;
+        Ok(rows)
+    }
+
+    /// Star a file — sets `starred_at = now()` idempotently.
+    pub async fn star_file(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files SET starred_at = now(), updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND owner_user_id = $3 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(user_id)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(id))
+    }
+
+    /// Unstar a file — clears `starred_at`.
+    pub async fn unstar_file(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<DriveFile> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "UPDATE drive_files SET starred_at = NULL, updated_at = now() \
+             WHERE id = $1 AND tenant_id = $2 AND owner_user_id = $3 AND deleted_at IS NULL \
+             RETURNING {SELECT_COLS}"
+        );
+        let row: Option<DriveFile> = sqlx::query_as(&sql)
+            .bind(id).bind(tenant_id).bind(user_id)
+            .fetch_optional(&mut *tx).await?;
+        tx.commit().await?;
+        row.ok_or(DriveError::NotFound(id))
+    }
+
+    /// List all starred files for the user, newest star first.
+    pub async fn list_starred(&self, tenant_id: Uuid, user_id: Uuid) -> Result<Vec<DriveFile>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let sql = format!(
+            "SELECT {SELECT_COLS} FROM drive_files \
+             WHERE tenant_id = $1 AND owner_user_id = $2 \
+               AND starred_at IS NOT NULL AND deleted_at IS NULL \
+             ORDER BY starred_at DESC"
+        );
+        let rows: Vec<DriveFile> = sqlx::query_as(&sql)
+            .bind(tenant_id).bind(user_id)
+            .fetch_all(&mut *tx).await?;
+        tx.commit().await?;
         Ok(rows)
     }
 

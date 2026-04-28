@@ -44,6 +44,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
         .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
         .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
+        .route("/api/v1/drive/files/:id/star",               post(star_file).delete(unstar_file))
+        .route("/api/v1/drive/starred",                      get(list_starred))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
         .route("/api/v1/drive/trash",                       get(trash))
         .route("/api/v1/drive/quota",                       get(quota))
@@ -1067,6 +1069,38 @@ async fn set_expiry(
         event = "drive.file.expiry_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         file_id = %id, expires_at = ?body.expires_at);
+    Ok(Json(updated))
+}
+
+/// POST /api/v1/drive/starred — list user's starred files (newest star first)
+async fn list_starred(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<DriveFile>>> {
+    let pool  = state.db_or_unavailable()?;
+    let files = FileRepo::new(pool).list_starred(ctx.tenant_id, ctx.user_id).await?;
+    Ok(Json(files))
+}
+
+/// POST /api/v1/drive/files/:id/star — mark file as starred
+async fn star_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool    = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool).star_file(ctx.tenant_id, id, ctx.user_id).await?;
+    Ok(Json(updated))
+}
+
+/// DELETE /api/v1/drive/files/:id/star — remove star
+async fn unstar_file(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<DriveFile>> {
+    let pool    = state.db_or_unavailable()?;
+    let updated = FileRepo::new(pool).unstar_file(ctx.tenant_id, id, ctx.user_id).await?;
     Ok(Json(updated))
 }
 
