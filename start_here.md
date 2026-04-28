@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #400 (2026-04-28)
+**Último sprint commitado:** #405 (2026-04-28)
 
 ```
 git log --oneline | head -15
@@ -77,6 +77,11 @@ git log --oneline | head -15
 | #398 | contacts | Import CSV — `POST /api/v1/contacts/import`; multipart (book_id + file); parser CSV quoted; gera vCard 3.0 por linha |
 | #399 | — | Pulado — calendar event RSVP já implementado (detectado em `events.rs`) |
 | #400 | drive | Starred files — `POST/DELETE /api/v1/drive/files/:id/star` + `GET /api/v1/drive/starred`; campo `starred_at` |
+| #401 | calendar | Event alarms — `GET/POST /api/v1/calendars/:cal_id/events/:event_id/alarms` + `DELETE /:alarm_uid`; tabela `calendar_event_alarms(uid, action, trigger_rel, trigger_abs, description)`; `CalendarError::AlarmNotFound` |
+| #402 | — | Pulado — mail thread view já implementado (`/mail/threads/:thread_id` + `list_thread` + `thread_id` filter em `list_messages`) |
+| #403 | notifications | Push subscription — `POST/DELETE /api/v1/notifications/push`; tabela `notification_push_subscriptions(endpoint, p256dh, auth)`; UPSERT por endpoint |
+| #404 | meet | Transcript metadata — `GET/POST /api/v1/meetings/:id/transcript`; tabela `meeting_transcripts(url, language, starts_at, ends_at, created_by)`; GET para participantes; POST moderator-only |
+| #405 | drive | Comments — `GET/POST /api/v1/drive/files/:id/comments` + `DELETE /:comment_id`; tabela `drive_file_comments(user_id, body)`; DELETE restrito ao autor |
 
 ---
 
@@ -95,11 +100,11 @@ git log --oneline | head -15
 1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
 2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
 3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **calendar: event alarms** — `GET/POST /api/v1/calendars/:cal_id/events/:id/alarms` + `DELETE /:alarm_uid` — VALARM REST API
-5. **mail: thread view** — `GET /api/v1/mail/threads` — agrupar mensagens por `References`/`In-Reply-To`
-6. **notifications: push subscription** — `POST/DELETE /api/v1/notifications/push` — WebPush VAPID subscription per device
-7. **meet: transcript metadata** — `GET/POST /api/v1/meetings/:id/transcript` — armazenar URL + timestamps de transcrição
-8. **drive: comments** — `GET/POST /api/v1/drive/files/:id/comments` + `DELETE /:comment_id` — comentários por arquivo
+4. **drive: comment reactions** — `POST/DELETE /api/v1/drive/files/:id/comments/:comment_id/reactions` — emoji reactions em comentários
+5. **calendar: alarm delivery** — worker que varre `calendar_event_alarms` com `trigger_abs <= now()` e publica via notifications
+6. **meet: transcript search** — `GET /api/v1/meetings/:id/transcript?q=` — fulltext search nos metadados de transcrição
+7. **mail: snooze** — `POST /api/v1/mail/messages/:id/snooze` com `snooze_until TIMESTAMPTZ`; worker que reativa mensagem no folder
+8. **drive: file activity log** — `GET /api/v1/drive/files/:id/activity` — audit trail de ações (upload, rename, lock, star, comment)
 
 ---
 
