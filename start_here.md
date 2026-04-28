@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #410 (2026-04-28)
+**Último sprint commitado:** #415 (2026-04-28)
 
 ```
 git log --oneline | head -15
