@@ -39,12 +39,16 @@ pub enum MeetError {
 
     #[error("conflict: {0}")]
     Conflict(String),
+
+    #[error("not found")]
+    NotFound,
 }
 
 impl IntoResponse for MeetError {
     fn into_response(self) -> Response {
         let (status, code, msg) = match &self {
             Self::MeetingNotFound(_)  => (StatusCode::NOT_FOUND,           "meeting_not_found", self.to_string()),
+            Self::NotFound            => (StatusCode::NOT_FOUND,           "not_found",         self.to_string()),
             Self::BadRequest(_)       => (StatusCode::BAD_REQUEST,         "bad_request",       self.to_string()),
             Self::Conflict(_)         => (StatusCode::CONFLICT,            "conflict",          self.to_string()),
             Self::NotParticipant      => (StatusCode::FORBIDDEN,           "not_participant",   self.to_string()),

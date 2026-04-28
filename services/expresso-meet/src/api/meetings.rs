@@ -73,6 +73,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/polls",           post(create_poll).get(list_polls))
         .route("/api/v1/meetings/:id/polls/:poll_id",  get(get_poll).delete(close_poll))
         .route("/api/v1/meetings/:id/polls/:poll_id/vote", post(cast_vote))
+        .route("/api/v1/meetings/:id/breakouts",            post(create_breakout).get(list_breakouts))
+        .route("/api/v1/meetings/:id/breakouts/:room_id",   get(get_breakout).delete(delete_breakout))
+        .route("/api/v1/meetings/:id/breakouts/:room_id/participants", post(assign_breakout_participant).delete(remove_breakout_participant))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -1230,4 +1233,212 @@ mod tests {
         assert!(MAX_INVITE_LEN  >= 10);
         assert!(MAX_EMAIL_BYTES >= 254);  // RFC 5321 baseline
     }
+}
+
+// ── Breakout rooms ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct BreakoutRoom {
+    id:         Uuid,
+    meeting_id: Uuid,
+    tenant_id:  Uuid,
+    name:       String,
+    created_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct BreakoutParticipant {
+    room_id:    Uuid,
+    user_id:    Uuid,
+    tenant_id:  Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    assigned_at: OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct BreakoutBody {
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BreakoutParticipantBody {
+    user_id: Uuid,
+}
+
+#[derive(Debug, Serialize)]
+struct BreakoutRoomDetail {
+    #[serde(flatten)]
+    room:         BreakoutRoom,
+    participants: Vec<Uuid>,
+}
+
+/// POST /api/v1/meetings/:id/breakouts — create sub-room (moderator-only)
+async fn create_breakout(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<BreakoutBody>,
+) -> Result<(StatusCode, Json<BreakoutRoom>)> {
+    if body.name.trim().is_empty() {
+        return Err(MeetError::BadRequest("name must not be empty".into()));
+    }
+    if body.name.len() > 100 {
+        return Err(MeetError::BadRequest("name must be <= 100 characters".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let room: BreakoutRoom = sqlx::query_as(
+        "INSERT INTO meeting_breakout_rooms (meeting_id, tenant_id, name, created_by) \
+         VALUES ($1, $2, $3, $4) \
+         RETURNING id, meeting_id, tenant_id, name, created_by, created_at",
+    )
+    .bind(id).bind(ctx.tenant_id).bind(&body.name).bind(ctx.user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((StatusCode::CREATED, Json(room)))
+}
+
+/// GET /api/v1/meetings/:id/breakouts — list breakout rooms with participants
+async fn list_breakouts(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Vec<BreakoutRoomDetail>>> {
+    let pool = state.db_or_unavailable()?;
+    let _ = MeetingRepo::new(pool).get(ctx.tenant_id, id).await.map_err(|_| MeetError::MeetingNotFound(id))?;
+    let rooms: Vec<BreakoutRoom> = sqlx::query_as(
+        "SELECT id, meeting_id, tenant_id, name, created_by, created_at \
+         FROM meeting_breakout_rooms \
+         WHERE meeting_id = $1 AND tenant_id = $2 \
+         ORDER BY created_at ASC",
+    )
+    .bind(id).bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut result = Vec::with_capacity(rooms.len());
+    for room in rooms {
+        let participants: Vec<(Uuid,)> = sqlx::query_as(
+            "SELECT user_id FROM meeting_breakout_participants \
+             WHERE room_id = $1 AND tenant_id = $2",
+        )
+        .bind(room.id).bind(ctx.tenant_id)
+        .fetch_all(pool)
+        .await?;
+        result.push(BreakoutRoomDetail {
+            participants: participants.into_iter().map(|(u,)| u).collect(),
+            room,
+        });
+    }
+    Ok(Json(result))
+}
+
+/// GET /api/v1/meetings/:id/breakouts/:room_id
+async fn get_breakout(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<BreakoutRoomDetail>> {
+    let pool = state.db_or_unavailable()?;
+    let room: Option<BreakoutRoom> = sqlx::query_as(
+        "SELECT id, meeting_id, tenant_id, name, created_by, created_at \
+         FROM meeting_breakout_rooms \
+         WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
+    )
+    .bind(room_id).bind(id).bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    let room = room.ok_or(MeetError::NotFound)?;
+    let participants: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT user_id FROM meeting_breakout_participants \
+         WHERE room_id = $1 AND tenant_id = $2",
+    )
+    .bind(room.id).bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(BreakoutRoomDetail {
+        participants: participants.into_iter().map(|(u,)| u).collect(),
+        room,
+    }))
+}
+
+/// DELETE /api/v1/meetings/:id/breakouts/:room_id (moderator-only)
+async fn delete_breakout(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let r = sqlx::query(
+        "DELETE FROM meeting_breakout_rooms \
+         WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
+    )
+    .bind(room_id).bind(id).bind(ctx.tenant_id)
+    .execute(pool)
+    .await?;
+    if r.rows_affected() == 0 {
+        return Err(MeetError::NotFound);
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/meetings/:id/breakouts/:room_id/participants — assign participant (moderator-only)
+async fn assign_breakout_participant(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+    Json(body):   Json<BreakoutParticipantBody>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    sqlx::query(
+        "INSERT INTO meeting_breakout_participants (room_id, meeting_id, tenant_id, user_id) \
+         VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+    )
+    .bind(room_id).bind(id).bind(ctx.tenant_id).bind(body.user_id)
+    .execute(pool)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /api/v1/meetings/:id/breakouts/:room_id/participants — remove participant (moderator-only)
+async fn remove_breakout_participant(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, room_id)): Path<(Uuid, Uuid)>,
+    Json(body):   Json<BreakoutParticipantBody>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    sqlx::query(
+        "DELETE FROM meeting_breakout_participants \
+         WHERE room_id = $1 AND meeting_id = $2 AND tenant_id = $3 AND user_id = $4",
+    )
+    .bind(room_id).bind(id).bind(ctx.tenant_id).bind(body.user_id)
+    .execute(pool)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
