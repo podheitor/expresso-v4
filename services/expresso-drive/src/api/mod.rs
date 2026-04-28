@@ -1,4 +1,5 @@
 pub mod context;
+mod activity;
 mod comments;
 mod files;
 mod health;
@@ -19,6 +20,7 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
+        .merge(activity::routes())
         .merge(comments::routes())
         .merge(reactions::routes())
         .merge(files::routes())
