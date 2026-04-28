@@ -77,6 +77,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/breakouts/:room_id",   get(get_breakout).delete(delete_breakout))
         .route("/api/v1/meetings/:id/breakouts/:room_id/participants", post(assign_breakout_participant).delete(remove_breakout_participant))
         .route("/api/v1/meetings/:id/transcript",           post(create_transcript).get(list_transcripts))
+        .route("/api/v1/meetings/:id/transcript/search",   get(search_transcripts))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -1527,4 +1528,58 @@ async fn create_transcript(
     .fetch_one(pool)
     .await?;
     Ok((StatusCode::CREATED, Json(row)))
+}
+
+#[derive(Debug, Deserialize)]
+struct TranscriptSearchQuery {
+    q: Option<String>,
+}
+
+/// GET /api/v1/meetings/:id/transcript/search?q= — fulltext search over transcript metadata (participant-only).
+///
+/// Matches against `url` and `language` fields using PostgreSQL ILIKE.
+/// Returns the same `Transcript` rows as the listing endpoint, filtered by `q`.
+async fn search_transcripts(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Query(qs):    Query<TranscriptSearchQuery>,
+) -> Result<Json<Vec<Transcript>>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(_) => {}
+        None    => return Err(MeetError::NotParticipant),
+    }
+
+    let pattern = qs.q.as_deref().unwrap_or("").trim().to_string();
+
+    let rows: Vec<Transcript> = if pattern.is_empty() {
+        sqlx::query_as(
+            "SELECT id, meeting_id, tenant_id, url, language, starts_at, ends_at, created_by, created_at \
+             FROM meeting_transcripts \
+             WHERE tenant_id = $1 AND meeting_id = $2 \
+             ORDER BY created_at ASC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(id)
+        .fetch_all(pool)
+        .await?
+    } else {
+        let like = format!("%{}%", pattern.replace('%', "\\%").replace('_', "\\_"));
+        sqlx::query_as(
+            "SELECT id, meeting_id, tenant_id, url, language, starts_at, ends_at, created_by, created_at \
+             FROM meeting_transcripts \
+             WHERE tenant_id = $1 AND meeting_id = $2 \
+               AND (url ILIKE $3 OR language ILIKE $3) \
+             ORDER BY created_at ASC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(id)
+        .bind(&like)
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(Json(rows))
 }
