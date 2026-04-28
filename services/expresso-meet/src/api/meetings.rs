@@ -66,6 +66,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/recording/start", post(recording_start))
         .route("/api/v1/meetings/:id/recording/stop",  post(recording_stop))
         .route("/api/v1/meetings/:id/chat",            get(get_chat))
+        .route("/api/v1/meetings/:id/lobby",           get(list_lobby).post(join_lobby))
+        .route("/api/v1/meetings/:id/lobby/approve/:user_id", post(approve_lobby))
+        .route("/api/v1/meetings/:id/lobby/:user_id",  delete(remove_from_lobby))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -784,6 +787,155 @@ async fn get_chat(
         "name":           name,
         "topic":          topic,
     })))
+}
+
+/// GET /api/v1/meetings/:id/lobby — list users waiting in the waiting room.
+///
+/// Requires moderator role. Returns waiting users ordered by `joined_at`.
+async fn list_lobby(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+    if role != ParticipantRole::Moderator {
+        return Err(MeetError::Forbidden);
+    }
+    // Verify meeting exists and lobby is enabled.
+    let meeting = repo.get(ctx.tenant_id, id).await?;
+    if !meeting.lobby_enabled {
+        return Err(MeetError::BadRequest("lobby is not enabled for this meeting".into()));
+    }
+
+    #[derive(sqlx::FromRow, Serialize)]
+    struct LobbyEntry {
+        user_id:   Uuid,
+        #[serde(with = "time::serde::rfc3339")]
+        joined_at: OffsetDateTime,
+    }
+    let entries: Vec<LobbyEntry> = sqlx::query_as(
+        "SELECT user_id, joined_at FROM meeting_lobby \
+         WHERE meeting_id = $1 AND tenant_id = $2 \
+         ORDER BY joined_at ASC",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    Ok(Json(json!({ "meeting_id": id, "waiting": entries })))
+}
+
+/// POST /api/v1/meetings/:id/lobby — join the waiting room.
+///
+/// Any authenticated user (not necessarily a participant yet) can knock.
+/// Idempotent: inserting twice just updates joined_at via ON CONFLICT DO NOTHING.
+async fn join_lobby(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<(StatusCode, Json<Value>)> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let meeting = repo.get(ctx.tenant_id, id).await?;
+    if !meeting.lobby_enabled {
+        return Err(MeetError::BadRequest("lobby is not enabled for this meeting".into()));
+    }
+    sqlx::query(
+        "INSERT INTO meeting_lobby (meeting_id, tenant_id, user_id) \
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    tracing::info!(target: "audit",
+        event = "meet.lobby.join",
+        tenant_id = %ctx.tenant_id, meeting_id = %id, user_id = %ctx.user_id);
+    Ok((StatusCode::CREATED, Json(json!({ "meeting_id": id, "status": "waiting" }))))
+}
+
+/// POST /api/v1/meetings/:id/lobby/approve/:user_id — admit a user from the waiting room.
+///
+/// Moderator-only. Removes the user from lobby and adds them as a participant.
+async fn approve_lobby(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+    if role != ParticipantRole::Moderator {
+        return Err(MeetError::Forbidden);
+    }
+    // Remove from lobby.
+    let r = sqlx::query(
+        "DELETE FROM meeting_lobby WHERE meeting_id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    if r.rows_affected() == 0 {
+        return Err(MeetError::BadRequest("user is not in the waiting room".into()));
+    }
+    // Add as participant (idempotent — skip if already a participant).
+    sqlx::query(
+        "INSERT INTO meeting_participants (meeting_id, tenant_id, user_id, role) \
+         VALUES ($1, $2, $3, 'participant') ON CONFLICT DO NOTHING",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    tracing::info!(target: "audit",
+        event = "meet.lobby.approve",
+        tenant_id = %ctx.tenant_id, meeting_id = %id,
+        moderator_id = %ctx.user_id, approved_user_id = %user_id);
+    Ok(Json(json!({ "meeting_id": id, "user_id": user_id, "status": "admitted" })))
+}
+
+/// DELETE /api/v1/meetings/:id/lobby/:user_id — dismiss a user from the waiting room.
+///
+/// Moderator-only. Removes the user from lobby without admitting them.
+async fn remove_from_lobby(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+    if role != ParticipantRole::Moderator {
+        return Err(MeetError::Forbidden);
+    }
+    sqlx::query(
+        "DELETE FROM meeting_lobby WHERE meeting_id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
