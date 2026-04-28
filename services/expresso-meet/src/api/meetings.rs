@@ -65,6 +65,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
         .route("/api/v1/meetings/:id/recording/start", post(recording_start))
         .route("/api/v1/meetings/:id/recording/stop",  post(recording_stop))
+        .route("/api/v1/meetings/:id/chat",            get(get_chat))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -743,6 +744,46 @@ async fn recording_stop(
         event = "meet.recording.stopped",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, meeting_id = %id);
     Ok(Json(m))
+}
+
+/// GET /api/v1/meetings/:id/chat — return the chat channel linked to this meeting.
+///
+/// Returns the channel metadata from `chat_channels` so the client can connect
+/// to expresso-chat for message history. 404 when the meeting has no channel.
+async fn get_chat(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    // Must be a participant to access chat.
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+
+    let meeting = repo.get(ctx.tenant_id, id).await?;
+    let channel_id = meeting.channel_id.ok_or_else(|| MeetError::BadRequest(
+        "this meeting has no linked chat channel".into(),
+    ))?;
+
+    let row: Option<(Uuid, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, matrix_room_id, name, topic \
+         FROM chat_channels \
+         WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(channel_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    let (ch_id, matrix_room_id, name, topic) = row.ok_or(MeetError::MeetingNotFound(id))?;
+    Ok(Json(json!({
+        "channel_id":     ch_id,
+        "matrix_room_id": matrix_room_id,
+        "name":           name,
+        "topic":          topic,
+    })))
 }
 
 #[cfg(test)]
