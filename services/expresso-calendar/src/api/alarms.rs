@@ -1,15 +1,17 @@
-//! VALARM REST endpoints — sprint #401.
+//! VALARM REST endpoints — sprint #401 + PATCH/GET single (sprint #412).
 //!
 //! Routes:
 //!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms
 //!   POST   /api/v1/calendars/:cal_id/events/:event_id/alarms
+//!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
+//!   PATCH  /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -38,6 +40,14 @@ pub struct EventAlarm {
 }
 
 #[derive(Debug, Deserialize)]
+struct PatchAlarmBody {
+    action:      Option<String>,
+    trigger_rel: Option<String>,
+    trigger_abs: Option<OffsetDateTime>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct CreateAlarmBody {
     uid:         Option<String>,
     action:      Option<String>,
@@ -54,7 +64,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid",
-            delete(delete_alarm),
+            get(get_alarm).patch(patch_alarm).delete(delete_alarm),
         )
 }
 
@@ -166,4 +176,86 @@ async fn delete_alarm(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid — fetch a single alarm.
+async fn get_alarm(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id, alarm_uid)): Path<(Uuid, Uuid, String)>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendar_events WHERE id = $1 AND calendar_id = $2 AND tenant_id = $3",
+    )
+    .bind(event_id)
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let alarm: Option<EventAlarm> = sqlx::query_as(
+        "SELECT id, event_id, calendar_id, tenant_id, uid, action, trigger_rel, trigger_abs, description, created_at \
+         FROM calendar_event_alarms \
+         WHERE tenant_id = $1 AND event_id = $2 AND uid = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .bind(&alarm_uid)
+    .fetch_optional(pool)
+    .await?;
+
+    match alarm {
+        Some(a) => Ok(Json(a)),
+        None    => Err(CalendarError::AlarmNotFound(event_id)),
+    }
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid — update an alarm.
+///
+/// Only fields provided in the body are updated; omitted fields are kept as-is.
+async fn patch_alarm(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id, alarm_uid)): Path<(Uuid, Uuid, String)>,
+    Json(body): Json<PatchAlarmBody>,
+) -> Result<impl IntoResponse> {
+    if body.action.is_none()
+        && body.trigger_rel.is_none()
+        && body.trigger_abs.is_none()
+        && body.description.is_none()
+    {
+        return Err(CalendarError::BadRequest("no fields to update".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated: Option<EventAlarm> = sqlx::query_as(
+        "UPDATE calendar_event_alarms SET \
+             action      = COALESCE($4, action), \
+             trigger_rel = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE trigger_rel END, \
+             trigger_abs = CASE WHEN $6::timestamptz IS NOT NULL THEN $6 ELSE trigger_abs END, \
+             description = CASE WHEN $7::text IS NOT NULL THEN $7 ELSE description END \
+         WHERE tenant_id = $1 AND event_id = $2 AND uid = $3 \
+         RETURNING id, event_id, calendar_id, tenant_id, uid, action, trigger_rel, trigger_abs, description, created_at",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .bind(&alarm_uid)
+    .bind(&body.action)
+    .bind(&body.trigger_rel)
+    .bind(body.trigger_abs)
+    .bind(&body.description)
+    .fetch_optional(pool)
+    .await?;
+
+    match updated {
+        Some(a) => Ok(Json(a)),
+        None    => Err(CalendarError::AlarmNotFound(event_id)),
+    }
 }
