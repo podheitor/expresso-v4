@@ -6,7 +6,7 @@
 //! `assert_from_is_authenticated_user` verifica que `req.from` bate com o
 //! email do usuário autenticado (case-insensitive) antes de enviar.
 
-use axum::{Router, routing::post, extract::State, Json, http::StatusCode};
+use axum::{Router, routing::post, extract::{Path, State}, Json, http::StatusCode};
 use expresso_core::begin_tenant_tx;
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
@@ -73,7 +73,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/send",              post(send_message))
         .route("/mail/send-itip",         post(send_itip))
-        .route("/mail/messages/schedule", post(schedule_message))
+        .route("/mail/messages/schedule",          post(schedule_message))
+        .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
 #[derive(Debug, Deserialize)]
@@ -601,6 +602,49 @@ fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// POST /api/v1/mail/messages/:id/cancel-send — cancel a scheduled send (undo-send).
+///
+/// Clears `deliver_at` on the message, converting it back to a plain draft.
+/// Returns 409 Conflict if the message was already sent (deliver_at IS NULL).
+/// Returns 404 if the message doesn't belong to this user/tenant.
+async fn cancel_send(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<StatusCode> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    // Verify message is owned by this user and still scheduled
+    let row: Option<(bool,)> = sqlx::query_as(
+        "SELECT (deliver_at IS NOT NULL) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.id = $1 AND m.tenant_id = $2 AND mb.user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    match row {
+        None              => return Err(MailError::MessageNotFound(id)),
+        Some((false,))    => return Err(MailError::Conflict("message already sent".into())),
+        Some((true,))     => {}
+    }
+
+    sqlx::query("UPDATE messages SET deliver_at = NULL WHERE id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    tracing::info!(target: "audit", event = "mail.cancel_send", msg_id = %id, tenant_id = %ctx.tenant_id);
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

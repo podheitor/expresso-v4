@@ -35,6 +35,9 @@ pub enum MailError {
     #[error("bad request: {0}")]
     BadRequest(String),
 
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     #[error("database error: {0}")]
     Database(#[from] sqlx::Error),
 }
@@ -58,6 +61,9 @@ impl IntoResponse for MailError {
             }
             MailError::BadRequest(m) => {
                 (StatusCode::BAD_REQUEST, "bad_request", m.clone())
+            }
+            MailError::Conflict(m) => {
+                (StatusCode::CONFLICT, "conflict", m.clone())
             }
             _ => {
                 tracing::error!(error = %self, "internal mail error");
