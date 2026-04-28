@@ -2,6 +2,7 @@ pub mod context;
 mod comments;
 mod files;
 mod health;
+mod reactions;
 mod shares;
 mod wopi;
 mod wopi_metrics;
@@ -19,6 +20,7 @@ pub fn router(state: AppState) -> Router {
         .merge(health::routes())
         .merge(expresso_observability::metrics_router())
         .merge(comments::routes())
+        .merge(reactions::routes())
         .merge(files::routes())
         .merge(shares::routes())
         .merge(wopi::routes())
