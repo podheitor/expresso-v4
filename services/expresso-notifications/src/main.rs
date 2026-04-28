@@ -391,6 +391,94 @@ async fn mark_read(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ─── Push subscription (WebPush VAPID) ───────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct PushSubscribeBody {
+    endpoint: String,
+    p256dh:   String,
+    auth:     String,
+}
+
+/// POST /api/v1/notifications/push — register a WebPush subscription.
+async fn push_subscribe(
+    State(st):     State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+    Json(body):    Json<PushSubscribeBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+
+    if body.endpoint.is_empty() || body.p256dh.is_empty() || body.auth.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "bad_request", "message": "endpoint, p256dh and auth are required"})),
+        ));
+    }
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    ))?;
+
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO notification_push_subscriptions (tenant_id, user_id, endpoint, p256dh, auth) \
+         VALUES ($1, $2, $3, $4, $5) \
+         ON CONFLICT (tenant_id, user_id, endpoint) DO UPDATE \
+             SET p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth \
+         RETURNING id",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(&body.endpoint)
+    .bind(&body.p256dh)
+    .bind(&body.auth)
+    .fetch_one(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+
+    Ok(Json(json!({"id": id, "ok": true})))
+}
+
+#[derive(Debug, Deserialize)]
+struct PushUnsubscribeBody {
+    endpoint: String,
+}
+
+/// DELETE /api/v1/notifications/push — remove a WebPush subscription.
+async fn push_unsubscribe(
+    State(st):     State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+    Json(body):    Json<PushUnsubscribeBody>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    ))?;
+
+    sqlx::query(
+        "DELETE FROM notification_push_subscriptions \
+         WHERE tenant_id = $1 AND user_id = $2 AND endpoint = $3",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(&body.endpoint)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// PATCH /api/v1/notifications/read-all — mark all unread notifications as read.
 async fn mark_all_read(
     State(st):     State<AppState>,
@@ -561,6 +649,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/digest",     get(digest))
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
+        .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
