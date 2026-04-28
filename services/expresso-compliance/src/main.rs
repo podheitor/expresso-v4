@@ -862,6 +862,104 @@ async fn enforce_retention(db: &expresso_core::DbPool, mail_url: &str) {
     }
 }
 
+// ─── Tenant-wide retention ────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+struct TenantRetention {
+    tenant_id:   Uuid,
+    retain_days: i32,
+    #[serde(with = "time::serde::rfc3339")]
+    updated_at:  time::OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct SetTenantRetentionRequest {
+    retain_days: i32,
+}
+
+/// GET /api/v1/compliance/retention — current tenant-wide default retention days.
+///
+/// Returns 200 with the current setting, or a default of 365 days when not set.
+async fn get_tenant_retention(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    req_headers:  axum::http::HeaderMap,
+) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    let row: Option<TenantRetention> = sqlx::query_as(
+        "SELECT tenant_id, retain_days, updated_at \
+         FROM compliance_tenant_retention WHERE tenant_id = $1",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_optional(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let (retention, updated_at) = match row {
+        Some(r) => {
+            let ts = r.updated_at;
+            (r, Some(ts))
+        }
+        None => (
+            TenantRetention {
+                tenant_id:   ctx.tenant_id,
+                retain_days: 365,
+                updated_at:  time::OffsetDateTime::UNIX_EPOCH,
+            },
+            None,
+        ),
+    };
+
+    if let Some(ts) = updated_at {
+        let lm = ts.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+        if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+            if let Ok(ims_str) = ims_val.to_str() {
+                if let Ok(ims_dt) = time::OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                    if ts <= ims_dt {
+                        return Ok(StatusCode::NOT_MODIFIED.into_response());
+                    }
+                }
+            }
+        }
+        let mut resp = Json(&retention).into_response();
+        resp.headers_mut().insert(header::LAST_MODIFIED, axum::http::HeaderValue::from_str(&lm).unwrap());
+        return Ok(resp);
+    }
+
+    Ok(Json(retention).into_response())
+}
+
+/// PUT /api/v1/compliance/retention — set or update tenant-wide default retention days.
+async fn put_tenant_retention(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(body):   Json<SetTenantRetentionRequest>,
+) -> Result<Json<TenantRetention>, (StatusCode, Json<serde_json::Value>)> {
+    if body.retain_days <= 0 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be > 0"}))));
+    }
+    if body.retain_days > 36500 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "retain_days must be <= 36500 (100 years)"}))));
+    }
+    let row: TenantRetention = sqlx::query_as(
+        "INSERT INTO compliance_tenant_retention (tenant_id, retain_days, updated_at) \
+         VALUES ($1, $2, now()) \
+         ON CONFLICT (tenant_id) DO UPDATE SET \
+            retain_days = EXCLUDED.retain_days, \
+            updated_at  = now() \
+         RETURNING tenant_id, retain_days, updated_at",
+    )
+    .bind(ctx.tenant_id)
+    .bind(body.retain_days)
+    .fetch_one(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tracing::info!(target: "audit",
+        event = "compliance.retention.set",
+        tenant_id = %ctx.tenant_id, retain_days = body.retain_days);
+    Ok(Json(row))
+}
+
 // ─── Misc ─────────────────────────────────────────────────────────────────────
 
 async fn health() -> Json<serde_json::Value> {
@@ -927,6 +1025,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive",           get(list_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
+        .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
