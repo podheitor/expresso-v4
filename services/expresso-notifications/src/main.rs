@@ -41,11 +41,11 @@ static NOTIFICATIONS_DISPATCHED: Lazy<IntCounterVec> = Lazy::new(|| {
 
 use axum::{
     async_trait,
-    extract::{FromRequestParts, Query, Request, State},
+    extract::{FromRequestParts, Path, Query, Request, State},
     http::{request::Parts, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response, Sse, sse::Event},
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -331,6 +331,92 @@ async fn digest(
     Ok(Json(json!({ "total": total, "by_kind": by_kind })))
 }
 
+/// Helper: resolve (user_id, tenant_id) from auth or query params (dev mode).
+fn resolve_identity(
+    st:     &AppState,
+    auth:   Option<AuthContext>,
+    user_q: Option<Uuid>,
+    ten_q:  Option<Uuid>,
+) -> Result<(Uuid, Uuid), (StatusCode, Json<serde_json::Value>)> {
+    if st.validator.is_some() {
+        match auth {
+            Some(ctx) => Ok((ctx.user_id, ctx.tenant_id)),
+            None => Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "unauthorized", "message": "missing_bearer"})),
+            )),
+        }
+    } else {
+        match (user_q, ten_q) {
+            (Some(u), Some(t)) => Ok((u, t)),
+            _ => Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "bad_request", "message": "user_id and tenant_id required in dev mode"})),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct IdentityParams {
+    user_id:   Option<Uuid>,
+    tenant_id: Option<Uuid>,
+}
+
+/// PATCH /api/v1/notifications/:id/read — mark a single notification as read.
+async fn mark_read(
+    State(st):     State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+    Path(id):      Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    ))?;
+    sqlx::query(
+        "UPDATE notifications SET is_read = true \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(tenant_id)
+    .bind(user_id)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// PATCH /api/v1/notifications/read-all — mark all unread notifications as read.
+async fn mark_all_read(
+    State(st):     State<AppState>,
+    MaybeAuthenticated(auth): MaybeAuthenticated,
+    Query(params): Query<IdentityParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let (user_id, tenant_id) = resolve_identity(&st, auth, params.user_id, params.tenant_id)?;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable", "message": "database not configured"})),
+    ))?;
+    let r = sqlx::query(
+        "UPDATE notifications SET is_read = true \
+         WHERE tenant_id = $1 AND user_id = $2 AND is_read = false",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+    Ok(Json(json!({ "marked_read": r.rows_affected() })))
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -473,6 +559,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/internal/notify",                 post(internal_notify))
         .route("/notifications/stream",            get(notifications_stream))
         .route("/api/v1/notifications/digest",     get(digest))
+        .route("/api/v1/notifications/:id/read",   patch(mark_read))
+        .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
