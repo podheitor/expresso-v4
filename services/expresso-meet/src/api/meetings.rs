@@ -24,6 +24,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sqlx::types::Json as SqlxJson;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -69,6 +70,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/lobby",           get(list_lobby).post(join_lobby))
         .route("/api/v1/meetings/:id/lobby/approve/:user_id", post(approve_lobby))
         .route("/api/v1/meetings/:id/lobby/:user_id",  delete(remove_from_lobby))
+        .route("/api/v1/meetings/:id/polls",           post(create_poll).get(list_polls))
+        .route("/api/v1/meetings/:id/polls/:poll_id",  get(get_poll).delete(close_poll))
+        .route("/api/v1/meetings/:id/polls/:poll_id/vote", post(cast_vote))
 }
 
 /// Aceita apenas chars URL-safe pra room_name (ASCII alphanum + `-` + `_`).
@@ -931,6 +935,255 @@ async fn remove_from_lobby(
     .bind(id)
     .bind(ctx.tenant_id)
     .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ─── Poll / Vote ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct CreatePollBody {
+    question: String,
+    /// List of option labels, min 2.
+    options:  Vec<String>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct Poll {
+    id:         Uuid,
+    meeting_id: Uuid,
+    created_by: Uuid,
+    question:   String,
+    options:    SqlxJson<Vec<String>>,
+    is_closed:  bool,
+    #[serde(with = "time::serde::rfc3339")]
+    created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct CastVoteBody {
+    /// Zero-based index into the poll's options array.
+    option_idx: i32,
+}
+
+/// POST /api/v1/meetings/:id/polls — create a poll (moderator-only).
+async fn create_poll(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<CreatePollBody>,
+) -> Result<(StatusCode, Json<Poll>)> {
+    if body.question.trim().is_empty() {
+        return Err(MeetError::BadRequest("question must not be empty".into()));
+    }
+    if body.options.len() < 2 {
+        return Err(MeetError::BadRequest("polls require at least 2 options".into()));
+    }
+    if body.options.len() > 20 {
+        return Err(MeetError::BadRequest("polls allow at most 20 options".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+    if role != ParticipantRole::Moderator {
+        return Err(MeetError::Forbidden);
+    }
+    // Ensure meeting exists and is not archived.
+    let meeting = repo.get(ctx.tenant_id, id).await?;
+    if meeting.is_archived {
+        return Err(MeetError::BadRequest("cannot create poll in an archived meeting".into()));
+    }
+    let opts_json = serde_json::to_value(&body.options)
+        .map_err(|e| MeetError::BadRequest(e.to_string()))?;
+    let row: Poll = sqlx::query_as(
+        "INSERT INTO meeting_polls (meeting_id, tenant_id, created_by, question, options) \
+         VALUES ($1, $2, $3, $4, $5) \
+         RETURNING id, meeting_id, created_by, question, options, is_closed, created_at",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&body.question)
+    .bind(&opts_json)
+    .fetch_one(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    tracing::info!(target: "audit",
+        event = "meet.poll.created",
+        tenant_id = %ctx.tenant_id, meeting_id = %id, poll_id = %row.id);
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
+/// GET /api/v1/meetings/:id/polls — list all polls for this meeting (participant-only).
+async fn list_polls(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+
+    let polls: Vec<Poll> = sqlx::query_as(
+        "SELECT id, meeting_id, created_by, question, options, is_closed, created_at \
+         FROM meeting_polls WHERE meeting_id = $1 AND tenant_id = $2 \
+         ORDER BY created_at ASC",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    Ok(Json(json!({ "meeting_id": id, "polls": polls })))
+}
+
+/// GET /api/v1/meetings/:id/polls/:poll_id — poll detail with vote tallies (participant-only).
+async fn get_poll(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, poll_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+
+    let poll: Option<Poll> = sqlx::query_as(
+        "SELECT id, meeting_id, created_by, question, options, is_closed, created_at \
+         FROM meeting_polls WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
+    )
+    .bind(poll_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(MeetError::Database)?;
+    let poll = poll.ok_or(MeetError::MeetingNotFound(poll_id))?;
+
+    // Tally votes per option.
+    #[derive(sqlx::FromRow)]
+    struct Tally { option_idx: i32, cnt: i64 }
+    let tallies: Vec<Tally> = sqlx::query_as(
+        "SELECT option_idx, COUNT(*)::BIGINT AS cnt \
+         FROM meeting_poll_votes WHERE poll_id = $1 \
+         GROUP BY option_idx ORDER BY option_idx",
+    )
+    .bind(poll_id)
+    .fetch_all(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    let mut tally_map: Vec<i64> = vec![0; poll.options.0.len()];
+    for t in &tallies {
+        let idx = t.option_idx as usize;
+        if idx < tally_map.len() { tally_map[idx] = t.cnt; }
+    }
+
+    // Caller's own vote if any.
+    let my_vote: Option<i32> = sqlx::query_scalar(
+        "SELECT option_idx FROM meeting_poll_votes \
+         WHERE poll_id = $1 AND user_id = $2",
+    )
+    .bind(poll_id)
+    .bind(ctx.user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    Ok(Json(json!({
+        "poll":    poll,
+        "tallies": tally_map,
+        "my_vote": my_vote,
+    })))
+}
+
+/// DELETE /api/v1/meetings/:id/polls/:poll_id — close a poll (moderator-only).
+///
+/// Closing prevents further votes but retains results.
+async fn close_poll(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, poll_id)): Path<(Uuid, Uuid)>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+    if role != ParticipantRole::Moderator {
+        return Err(MeetError::Forbidden);
+    }
+    let r = sqlx::query(
+        "UPDATE meeting_polls SET is_closed = true \
+         WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
+    )
+    .bind(poll_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .execute(pool)
+    .await
+    .map_err(MeetError::Database)?;
+
+    if r.rows_affected() == 0 {
+        return Err(MeetError::MeetingNotFound(poll_id));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// POST /api/v1/meetings/:id/polls/:poll_id/vote — cast or change vote (participant-only).
+///
+/// Uses UPSERT: voting again with a different option_idx replaces the previous vote.
+async fn cast_vote(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, poll_id)): Path<(Uuid, Uuid)>,
+    Json(body):   Json<CastVoteBody>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    let repo = MeetingRepo::new(pool);
+    repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+
+    // Load poll — verify it's open and option is valid.
+    let poll: Option<Poll> = sqlx::query_as(
+        "SELECT id, meeting_id, created_by, question, options, is_closed, created_at \
+         FROM meeting_polls WHERE id = $1 AND meeting_id = $2 AND tenant_id = $3",
+    )
+    .bind(poll_id)
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(MeetError::Database)?;
+    let poll = poll.ok_or(MeetError::MeetingNotFound(poll_id))?;
+
+    if poll.is_closed {
+        return Err(MeetError::BadRequest("this poll is closed".into()));
+    }
+    if body.option_idx < 0 || (body.option_idx as usize) >= poll.options.0.len() {
+        return Err(MeetError::BadRequest(format!(
+            "option_idx {} out of range (0–{})",
+            body.option_idx,
+            poll.options.0.len().saturating_sub(1),
+        )));
+    }
+
+    sqlx::query(
+        "INSERT INTO meeting_poll_votes (poll_id, tenant_id, user_id, option_idx) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (poll_id, user_id) DO UPDATE SET \
+            option_idx = EXCLUDED.option_idx, voted_at = now()",
+    )
+    .bind(poll_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(body.option_idx)
     .execute(pool)
     .await
     .map_err(MeetError::Database)?;
