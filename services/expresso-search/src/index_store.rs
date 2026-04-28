@@ -187,6 +187,20 @@ impl IndexStore {
         Ok(())
     }
 
+    /// Remove all documents belonging to a tenant.
+    pub async fn delete_tenant_documents(&self, tenant_id: &str) -> anyhow::Result<()> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let i = &self.inner;
+        let mut writer = i.writer.lock().await;
+        let term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        writer.delete_term(term);
+        writer.commit()?;
+        Ok(())
+    }
+
     /// Force reader reload — primarily for tests.
     #[cfg(test)]
     pub fn reload(&self) -> anyhow::Result<()> {

@@ -172,6 +172,32 @@ pub async fn delete_doc(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeleteByTenantParams {
+    pub tenant_id: String,
+}
+
+/// DELETE /api/v1/index?tenant_id= — remove all documents for a tenant
+pub async fn delete_by_tenant(
+    State(store): State<IndexStore>,
+    Query(params): Query<DeleteByTenantParams>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if params.tenant_id.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "tenant_id is required".into()));
+    }
+    store
+        .delete_tenant_documents(&params.tenant_id)
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("valid UUID") {
+                (StatusCode::BAD_REQUEST, e.to_string())
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

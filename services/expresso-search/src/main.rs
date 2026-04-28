@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let api_routes = Router::new()
-        .route("/api/v1/index", post(api::index_doc))
+        .route("/api/v1/index", post(api::index_doc).delete(api::delete_by_tenant))
         .route("/api/v1/index/bulk", post(api::bulk_index))
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
