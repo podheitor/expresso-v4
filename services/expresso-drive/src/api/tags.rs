@@ -2,6 +2,7 @@
 //!
 //! Routes:
 //!   POST   /api/v1/drive/files/:id/tags           — add a tag to a file
+//!   POST   /api/v1/drive/files/:id/tags/bulk      — add multiple tags atomically (sprint #421)
 //!   DELETE /api/v1/drive/files/:id/tags/:tag      — remove a tag from a file
 //!   DELETE /api/v1/drive/files/:id/tags           — clear all tags on a file (sprint #416)
 //!   GET    /api/v1/drive/files/:id/tags           — list tags on a file
@@ -39,11 +40,20 @@ struct AddTagBody {
     tag: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct BulkTagsBody {
+    tags: Vec<String>,
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/api/v1/drive/files/:id/tags",
             get(list_file_tags).post(add_tag).delete(clear_tags),
+        )
+        .route(
+            "/api/v1/drive/files/:id/tags/bulk",
+            post(bulk_add_tags),
         )
         .route(
             "/api/v1/drive/files/:id/tags/:tag",
@@ -53,6 +63,72 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/:tag",
             get(list_files_by_tag),
         )
+}
+
+/// POST /api/v1/drive/files/:id/tags/bulk — add multiple tags atomically (sprint #421).
+///
+/// Body: `{tags: ["a","b","c"]}`. Tags são normalizadas (trim+lowercase), deduplicadas
+/// e inseridas num único INSERT com UNNEST. Conflitos (tag já existente) são silenciosamente
+/// ignorados via ON CONFLICT DO NOTHING. Retorna a lista atual de tags do arquivo.
+async fn bulk_add_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<BulkTagsBody>,
+) -> Result<impl IntoResponse> {
+    use std::collections::BTreeSet;
+
+    let tags: BTreeSet<String> = body
+        .tags
+        .into_iter()
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty() && t.chars().count() <= 64)
+        .collect();
+    if tags.is_empty() {
+        return Err(DriveError::BadRequest("at least one valid tag required".into()));
+    }
+    if tags.len() > 100 {
+        return Err(DriveError::BadRequest("max 100 tags per bulk request".into()));
+    }
+    let tag_vec: Vec<String> = tags.into_iter().collect();
+
+    let pool = state.db_or_unavailable()?;
+
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM drive_files WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(DriveError::NotFound(id));
+    }
+
+    sqlx::query(
+        "INSERT INTO drive_file_tags (file_id, tenant_id, tag, created_by) \
+         SELECT $1, $2, t, $4 FROM UNNEST($3::text[]) AS t \
+         ON CONFLICT (file_id, tenant_id, tag) DO NOTHING",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(&tag_vec)
+    .bind(ctx.user_id)
+    .execute(pool)
+    .await?;
+
+    let result: Vec<FileTag> = sqlx::query_as(
+        "SELECT id, file_id, tenant_id, tag, created_by, created_at \
+         FROM drive_file_tags \
+         WHERE tenant_id = $1 AND file_id = $2 \
+         ORDER BY tag ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(result)))
 }
 
 /// POST /api/v1/drive/files/:id/tags — add a tag to a file.
