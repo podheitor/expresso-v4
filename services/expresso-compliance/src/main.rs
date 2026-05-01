@@ -697,6 +697,59 @@ async fn histogram_archive(
     Ok(Json(json!({ "bucket": bucket, "series": series })))
 }
 
+#[derive(Debug, Deserialize)]
+struct TopSendersParams {
+    /// ISO-8601 date prefix (YYYY-MM-DD) — limite inferior inclusive.
+    pub since:  Option<String>,
+    /// ISO-8601 date prefix — limite superior exclusive.
+    pub before: Option<String>,
+    /// Top-N (default 10, cap 100). Sidebar de "top remetentes" não precisa
+    /// mais que isso; cap protege payload contra `?limit=999999`.
+    pub limit:  Option<i64>,
+}
+
+/// GET /api/v1/compliance/archive/top-senders?since=&before=&limit=10 — retorna
+/// top-N remetentes mais frequentes no archive (sprint #440). Agrupa por from_addr,
+/// conta entries, ordena DESC + alfabético. Path com hífen pra deixar espaço pra
+/// `/archive/top-recipients` futuro sem colisão. Filtros since/before reusam mesmo
+/// padrão de escape do count_archive (#425) e histogram (#435). Útil pra dashboards
+/// de "quem mais arquivou", complementa histogram (volume temporal).
+async fn top_senders_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<TopSendersParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = params.limit.unwrap_or(10).clamp(1, 100);
+
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT COALESCE(from_addr, '(unknown)') AS sender, COUNT(*) AS c \
+         FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_filter} \
+         GROUP BY sender ORDER BY c DESC, sender ASC LIMIT {limit}"
+    );
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let senders: Vec<_> = rows.into_iter()
+        .map(|(sender, count)| json!({ "sender": sender, "count": count }))
+        .collect();
+
+    Ok(Json(json!({ "limit": limit, "senders": senders })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1137,6 +1190,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive",           get(list_archive))
         .route("/api/v1/compliance/archive/count",     get(count_archive))
         .route("/api/v1/compliance/archive/histogram", get(histogram_archive))
+        .route("/api/v1/compliance/archive/top-senders", get(top_senders_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
