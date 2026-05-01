@@ -750,6 +750,50 @@ async fn top_senders_archive(
     Ok(Json(json!({ "limit": limit, "senders": senders })))
 }
 
+/// GET /api/v1/compliance/archive/top-recipients?since=&before=&limit=10 — retorna
+/// top-N destinatários mais frequentes no archive (sprint #445). Complementa
+/// top-senders (#440): explode `to_addrs` (JSON array) com `jsonb_array_elements_text`
+/// e agrupa por destinatário. Mesmo schema de filtros (since/before) e mesmo
+/// padrão de escape via replace('\'', "''"). Útil pra "quem mais recebe" em
+/// retention/legal-hold dashboards. Entries sem to_addrs ficam fora do count
+/// (jsonb_array_elements_text de NULL ou '[]' não produz linhas).
+async fn top_recipients_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<TopSendersParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = params.limit.unwrap_or(10).clamp(1, 100);
+
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT t AS recipient, COUNT(*) AS c \
+         FROM compliance_archive, \
+              jsonb_array_elements_text(COALESCE(to_addrs, '[]'::jsonb)) AS t \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_filter} \
+         GROUP BY recipient ORDER BY c DESC, recipient ASC LIMIT {limit}"
+    );
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let recipients: Vec<_> = rows.into_iter()
+        .map(|(recipient, count)| json!({ "recipient": recipient, "count": count }))
+        .collect();
+
+    Ok(Json(json!({ "limit": limit, "recipients": recipients })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1191,6 +1235,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/count",     get(count_archive))
         .route("/api/v1/compliance/archive/histogram", get(histogram_archive))
         .route("/api/v1/compliance/archive/top-senders", get(top_senders_archive))
+        .route("/api/v1/compliance/archive/top-recipients", get(top_recipients_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
