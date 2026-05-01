@@ -19,6 +19,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders",                    get(list_folders).post(create_folder))
         .route("/mail/folders/all",                get(list_all_folders))
         .route("/mail/folders/unread-summary",     get(unread_summary))
+        .route("/mail/folders/stats",              get(folders_stats))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
@@ -443,6 +444,50 @@ async fn unread_summary(
 
     let result = rows.into_iter()
         .map(|(folder, unread)| serde_json::json!({"folder": folder, "unread": unread}))
+        .collect();
+    Ok(Json(result))
+}
+
+/// GET /api/v1/mail/folders/stats — agregados por mailbox (sprint #454).
+/// Retorna `[{folder, special_use, total, unread, size_bytes}]` calculado live
+/// (não usa cache `mailboxes.message_count`/`unseen_count`). Útil pra dashboard
+/// "ocupação por pasta" — top 10 pastas pesando mais bytes, distribuição de
+/// não-lidas, etc. Path estático `/folders/stats` precede `/folders/:name` por
+/// preferência axum (lição #443/#448), sem necessidade de hífen.
+async fn folders_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<serde_json::Value>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<String>, i64, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT mb.folder_name,
+               mb.special_use,
+               COUNT(m.id)                                                         AS total,
+               COUNT(m.id) FILTER (WHERE NOT ('\Seen' = ANY(m.flags)))             AS unread,
+               COALESCE(SUM(m.size_bytes)::bigint, 0)                              AS size_bytes
+        FROM mailboxes mb
+        LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1
+        WHERE mb.tenant_id = $1
+          AND mb.user_id   = $2
+        GROUP BY mb.folder_name, mb.special_use
+        ORDER BY mb.folder_name
+        "#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let result = rows.into_iter()
+        .map(|(folder, special_use, total, unread, size_bytes)| serde_json::json!({
+            "folder":      folder,
+            "special_use": special_use,
+            "total":       total,
+            "unread":      unread,
+            "size_bytes":  size_bytes,
+        }))
         .collect();
     Ok(Json(result))
 }
