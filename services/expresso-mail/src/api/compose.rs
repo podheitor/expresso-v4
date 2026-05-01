@@ -76,6 +76,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/schedule",          post(schedule_message))
         .route("/mail/messages/scheduled",         get(list_scheduled))
         .route("/mail/messages/scheduled/count",   get(count_scheduled))
+        .route("/mail/messages/scheduled/cancel-all", post(cancel_all_scheduled))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -681,6 +682,48 @@ async fn count_scheduled(
     tx.commit().await?;
 
     Ok(Json(ScheduledCount { count }))
+}
+
+#[derive(Debug, Serialize)]
+struct CancelAllResult {
+    cancelled: u64,
+}
+
+/// POST /api/v1/mail/messages/scheduled/cancel-all — cancela em batch todas as
+/// mensagens agendadas do usuário (sprint #429), convertendo-as de volta a drafts
+/// via UPDATE … SET deliver_at = NULL. Retorna `{cancelled: N}` com a contagem
+/// efetivamente afetada (0 se não havia nenhuma agendada).
+async fn cancel_all_scheduled(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<CancelAllResult>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let r = sqlx::query(
+        "UPDATE messages SET deliver_at = NULL \
+         WHERE tenant_id = $1 \
+           AND deliver_at IS NOT NULL \
+           AND mailbox_id IN ( \
+               SELECT id FROM mailboxes WHERE tenant_id = $1 AND user_id = $2 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let cancelled = r.rows_affected();
+    tracing::info!(
+        target: "audit",
+        event = "mail.cancel_all_scheduled",
+        cancelled = cancelled,
+        tenant_id = %ctx.tenant_id,
+        user_id = %ctx.user_id,
+    );
+
+    Ok(Json(CancelAllResult { cancelled }))
 }
 
 /// POST /api/v1/mail/messages/:id/cancel-send — cancel a scheduled send (undo-send).
