@@ -1146,6 +1146,117 @@ async fn delete_archive_entry(
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ─── Archive entry tags (sprint #460) ────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct ArchiveTagBody { tag: String }
+
+/// Garante que o entry exista no tenant/user antes de mexer em tags. Reusa o
+/// mesmo filtro de get_archive_entry/delete_archive_entry pra consistência.
+async fn assert_archive_entry_exists(
+    db: &expresso_core::DbPool,
+    id: Uuid,
+    tenant_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM compliance_archive \
+         WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id).bind(tenant_id).bind(user_id)
+    .fetch_optional(db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "archive entry not found"}))));
+    }
+    Ok(())
+}
+
+/// POST /api/v1/compliance/archive/:id/tags — adiciona uma tag a um entry do
+/// archive (sprint #460). Tag normalizada lowercase + trim, validação 1-64
+/// chars (mesmo schema do drive_file_tags). UNIQUE (archive_id, tenant_id, tag)
+/// torna a operação idempotente — re-POST do mesmo par não erra. Útil pra
+/// rotular evidências em e-discovery (case-IDs, hold-tags, classificação
+/// regulatória) sem mexer no schema do archive em si.
+async fn add_archive_tag(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<ArchiveTagBody>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    let tag = body.tag.trim().to_lowercase();
+    if tag.is_empty() || tag.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+    }
+    assert_archive_entry_exists(&st.db, id, ctx.tenant_id, ctx.user_id).await?;
+
+    let row: (Uuid, Uuid, Uuid, String, Uuid, time::OffsetDateTime) = sqlx::query_as(
+        "INSERT INTO compliance_archive_tags (archive_id, tenant_id, tag, created_by) \
+         VALUES ($1, $2, $3, $4) \
+         ON CONFLICT (archive_id, tenant_id, tag) DO UPDATE \
+             SET created_at = compliance_archive_tags.created_at \
+         RETURNING id, archive_id, tenant_id, tag, created_by, created_at",
+    )
+    .bind(id).bind(ctx.tenant_id).bind(&tag).bind(ctx.user_id)
+    .fetch_one(&st.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok((StatusCode::CREATED, Json(json!({
+        "id":         row.0,
+        "archive_id": row.1,
+        "tenant_id":  row.2,
+        "tag":        row.3,
+        "created_by": row.4,
+        "created_at": row.5.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+    }))))
+}
+
+/// GET /api/v1/compliance/archive/:id/tags — lista tags de um entry do archive
+/// (sprint #460). Retorna `{tags: ["...", ...]}` ordenado alfabeticamente. 404
+/// se o entry não existe ou não pertence ao user.
+async fn list_archive_tags(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    assert_archive_entry_exists(&st.db, id, ctx.tenant_id, ctx.user_id).await?;
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT tag FROM compliance_archive_tags \
+         WHERE archive_id = $1 AND tenant_id = $2 \
+         ORDER BY tag ASC",
+    )
+    .bind(id).bind(ctx.tenant_id)
+    .fetch_all(&st.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let tags: Vec<String> = rows.into_iter().map(|(t,)| t).collect();
+    Ok(Json(json!({ "archive_id": id, "tags": tags })))
+}
+
+/// DELETE /api/v1/compliance/archive/:id/tags/:tag — remove uma tag de um entry
+/// (sprint #460). 404 se o par (archive_id, tag) não existir. Tag normalizada
+/// lowercase pra match com add_archive_tag.
+async fn remove_archive_tag(
+    State(st):       State<AppState>,
+    AuthCtx(ctx):    AuthCtx,
+    Path((id, tag)): Path<(Uuid, String)>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let tag = tag.trim().to_lowercase();
+    let r = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+         WHERE archive_id = $1 AND tenant_id = $2 AND tag = $3",
+    )
+    .bind(id).bind(ctx.tenant_id).bind(&tag)
+    .execute(&st.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    if r.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "tag not found on entry"}))));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ─── Retention enforcement background task ────────────────────────────────────
 
 async fn run_retention_loop(db: expresso_core::DbPool, mail_url: String, interval_secs: u64) {
@@ -1404,6 +1515,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
+        .route("/api/v1/compliance/archive/:id/tags",  get(list_archive_tags).post(add_archive_tag))
+        .route("/api/v1/compliance/archive/:id/tags/:tag", delete(remove_archive_tag))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
