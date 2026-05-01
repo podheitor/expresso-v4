@@ -7,12 +7,13 @@
 //!   DELETE /api/v1/drive/files/:id/tags           — clear all tags on a file (sprint #416)
 //!   GET    /api/v1/drive/files/:id/tags           — list tags on a file
 //!   GET    /api/v1/drive/tags/:tag                — list files with this tag (tenant-scoped)
+//!   PATCH  /api/v1/drive/tags/:tag                — rename a tag em todas as files (sprint #430)
 
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -61,8 +62,69 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/drive/tags/:tag",
-            get(list_files_by_tag),
+            get(list_files_by_tag).patch(rename_tag),
         )
+}
+
+#[derive(Debug, Deserialize)]
+struct RenameTagBody {
+    new_tag: String,
+}
+
+#[derive(Debug, Serialize)]
+struct RenameTagResult {
+    renamed: u64,
+    new_tag: String,
+}
+
+/// PATCH /api/v1/drive/tags/:tag — renomeia uma tag em todos os arquivos do tenant
+/// (sprint #430). Body: `{new_tag: "..."}`. Idempotente: se algum arquivo já tinha
+/// `new_tag`, ON CONFLICT mantém o registro existente e o registro antigo é apagado.
+/// Retorna `{renamed: N, new_tag}` com a contagem de linhas afetadas pelo UPDATE.
+async fn rename_tag(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(tag):    Path<String>,
+    Json(body):   Json<RenameTagBody>,
+) -> Result<impl IntoResponse> {
+    let old = tag.trim().to_lowercase();
+    let new = body.new_tag.trim().to_lowercase();
+    if new.is_empty() || new.chars().count() > 64 {
+        return Err(DriveError::BadRequest("new_tag must be 1-64 characters".into()));
+    }
+    if new == old {
+        return Err(DriveError::BadRequest("new_tag must differ from old tag".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+
+    // Apaga registros que já tinham new_tag nos files que também têm old_tag — evita
+    // unique conflict ao renomear; o file já está taggeado com new, basta dropar o old.
+    let _ = sqlx::query(
+        "DELETE FROM drive_file_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND file_id IN ( \
+               SELECT file_id FROM drive_file_tags \
+               WHERE tenant_id = $1 AND tag = $3 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&new)
+    .bind(&old)
+    .execute(pool)
+    .await?;
+
+    let r = sqlx::query(
+        "UPDATE drive_file_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&new)
+    .bind(&old)
+    .execute(pool)
+    .await?;
+
+    Ok(Json(RenameTagResult { renamed: r.rows_affected(), new_tag: new }))
 }
 
 /// POST /api/v1/drive/files/:id/tags/bulk — add multiple tags atomically (sprint #421).
