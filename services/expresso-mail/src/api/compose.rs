@@ -77,6 +77,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/scheduled",         get(list_scheduled))
         .route("/mail/messages/scheduled/count",   get(count_scheduled))
         .route("/mail/messages/scheduled/cancel-all", post(cancel_all_scheduled))
+        .route("/mail/messages/sent/count",        get(count_sent))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -682,6 +683,42 @@ async fn count_scheduled(
     tx.commit().await?;
 
     Ok(Json(ScheduledCount { count }))
+}
+
+#[derive(Debug, Serialize)]
+struct SentCount {
+    count: i64,
+}
+
+/// GET /api/v1/mail/messages/sent/count — total de mensagens na mailbox Sent
+/// do usuário (sprint #434). Sent é identificada por `special_use = '\Sent'`
+/// (RFC 6154); contamos pela join messages → mailboxes filtrando por user_id +
+/// special_use. Retorna 0 quando o user nunca teve Sent criada (auto-criação
+/// rola só no primeiro send via save_to_sent). Útil pra badge "X enviadas hoje"
+/// num futuro filtro temporal — por ora é total all-time.
+async fn count_sent(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<SentCount>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 \
+           AND mb.user_id = $2 \
+           AND mb.special_use = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(r"\Sent")
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(SentCount { count }))
 }
 
 #[derive(Debug, Serialize)]
