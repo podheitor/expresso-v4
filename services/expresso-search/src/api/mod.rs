@@ -34,6 +34,7 @@ pub struct SearchParams {
     /// "subject_terms" → `facets.subject_terms` (top-N palavras-chave em subjects, sprint #431);
     /// "kind_x_from" → `facets.kind_x_from` (top-N pares "kind|from_addr", sprint #436).
     /// "domain" → `facets.domain` (top-N domínios after-@ do from_addr, sprint #441).
+    /// "domain_x_kind" → `facets.domain_x_kind` (top-N pares "domain|kind", sprint #446).
     pub facet: Option<String>,
 }
 
@@ -54,6 +55,9 @@ pub const FACET_KIND_X_FROM_TOP_N: usize = 100;
 /// menor que remetentes individuais (gmail.com, outlook.com, etc.), 50
 /// cobre cauda longa.
 pub const FACET_DOMAIN_TOP_N: usize = 50;
+
+/// Cap pra cross-facet domain×kind. Mesmo critério do kind_x_from (#436).
+pub const FACET_DOMAIN_X_KIND_TOP_N: usize = 100;
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT
@@ -207,6 +211,20 @@ pub async fn search(
                 .collect();
             let mut map = std::collections::HashMap::new();
             map.insert("domain".to_string(), entries);
+            Some(map)
+        }
+        Some("domain_x_kind") => {
+            let triples = store
+                .facet_domain_by_kind(&params.q, &params.tenant_id, FACET_DOMAIN_X_KIND_TOP_N)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = triples.into_iter()
+                .map(|(domain, kind, count)| FacetEntry {
+                    value: format!("{}|{}", domain, kind),
+                    count,
+                })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("domain_x_kind".to_string(), entries);
             Some(map)
         }
         Some("kind_x_from") => {
