@@ -80,6 +80,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/sent/count",        get(count_sent))
         .route("/mail/messages/drafts/count",      get(count_drafts))
         .route("/mail/messages/trash/count",       get(count_trash))
+        .route("/mail/messages/spam/count",        get(count_spam))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -791,6 +792,41 @@ async fn count_trash(
     tx.commit().await?;
 
     Ok(Json(TrashCount { count }))
+}
+
+#[derive(Debug, Serialize)]
+struct SpamCount {
+    count: i64,
+}
+
+/// GET /api/v1/mail/messages/spam/count — total em spam do usuário (sprint #449).
+/// Junk/spam identificada por `special_use = '\Junk'` (RFC 6154); mesma técnica do
+/// count_trash (#444). Retorna 0 se o filtro nunca marcou nada (Junk é auto-criada
+/// no primeiro move-to-spam). Útil pra badge "X em spam" e pra alertar usuários
+/// que estão perdendo legítimos no filtro.
+async fn count_spam(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<SpamCount>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 \
+           AND mb.user_id = $2 \
+           AND mb.special_use = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(r"\Junk")
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(SpamCount { count }))
 }
 
 #[derive(Debug, Serialize)]
