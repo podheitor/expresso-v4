@@ -33,6 +33,7 @@ pub struct SearchParams {
     /// "kind" → `facets.kind`; "from_addr" → `facets.from_addr` (top-N remetentes, sprint #426);
     /// "subject_terms" → `facets.subject_terms` (top-N palavras-chave em subjects, sprint #431);
     /// "kind_x_from" → `facets.kind_x_from` (top-N pares "kind|from_addr", sprint #436).
+    /// "domain" → `facets.domain` (top-N domínios after-@ do from_addr, sprint #441).
     pub facet: Option<String>,
 }
 
@@ -48,6 +49,11 @@ pub const FACET_SUBJECT_TOP_N: usize = 50;
 /// rápido (ex.: 5 kinds × 200 remetentes), 100 cobre matriz densa sem
 /// estourar payload.
 pub const FACET_KIND_X_FROM_TOP_N: usize = 100;
+
+/// Cap pra facet de domínio. Domínios costumam ter ordem-de-magnitude
+/// menor que remetentes individuais (gmail.com, outlook.com, etc.), 50
+/// cobre cauda longa.
+pub const FACET_DOMAIN_TOP_N: usize = 50;
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT
@@ -190,6 +196,17 @@ pub async fn search(
                 .collect();
             let mut map = std::collections::HashMap::new();
             map.insert("subject_terms".to_string(), entries);
+            Some(map)
+        }
+        Some("domain") => {
+            let counts = store
+                .facet_counts_by_domain(&params.q, &params.tenant_id, FACET_DOMAIN_TOP_N)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = counts.into_iter()
+                .map(|(value, count)| FacetEntry { value, count })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("domain".to_string(), entries);
             Some(map)
         }
         Some("kind_x_from") => {

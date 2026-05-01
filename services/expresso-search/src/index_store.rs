@@ -501,6 +501,66 @@ impl IndexStore {
         Ok(sorted)
     }
 
+    /// Aggrega hits por domínio do from_addr (parte after-@). Útil pra dashboards
+    /// "top domínios remetentes" quando o universo de remetentes individuais é
+    /// grande demais pra listar. Endereços sem '@' caem em "(unknown)".
+    pub fn facet_counts_by_domain(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        top_n: usize,
+    ) -> anyhow::Result<Vec<(String, u64)>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let final_query: Box<dyn Query> = if trimmed.is_empty() {
+            tenant_query
+        } else {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Must, tenant_query),
+                (Occur::Must, user_query),
+            ]))
+        };
+
+        use tantivy::collector::DocSetCollector;
+        let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
+
+        let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let domain = doc.get_first(i.f_from_addr)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .and_then(|s| s.rsplit_once('@').map(|(_, d)| d.to_ascii_lowercase()))
+                .unwrap_or_else(|| "(unknown)".to_owned());
+            *counts.entry(domain).or_insert(0) += 1;
+        }
+
+        let mut sorted: Vec<(String, u64)> = counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        sorted.truncate(top_n);
+        Ok(sorted)
+    }
+
     pub fn facet_counts_by_from(
         &self,
         query_str: &str,
