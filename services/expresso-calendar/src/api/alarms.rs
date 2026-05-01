@@ -4,6 +4,7 @@
 //! Routes:
 //!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms
 //!   POST   /api/v1/calendars/:cal_id/events/:event_id/alarms
+//!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms              (sprint #422)
 //!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   PATCH  /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
@@ -62,7 +63,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/api/v1/calendars/:cal_id/events/:event_id/alarms",
-            get(list_alarms).post(create_alarm),
+            get(list_alarms).post(create_alarm).delete(delete_all_alarms),
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid",
@@ -231,6 +232,41 @@ async fn delete_alarm(
     if deleted.rows_affected() == 0 {
         return Err(CalendarError::AlarmNotFound(event_id));
     }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms — apaga todos os alarmes
+/// do evento de uma vez (sprint #422). Retorna 204 sempre que o evento existe, mesmo
+/// se a contagem deletada for zero (idempotência).
+async fn delete_all_alarms(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendar_events WHERE id = $1 AND calendar_id = $2 AND tenant_id = $3",
+    )
+    .bind(event_id)
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    sqlx::query(
+        "DELETE FROM calendar_event_alarms \
+         WHERE tenant_id = $1 AND event_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .execute(pool)
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
