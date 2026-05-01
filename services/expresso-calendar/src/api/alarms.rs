@@ -9,6 +9,7 @@
 //!   PATCH  /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   GET    /api/v1/calendars/:cal_id/alarms/upcoming?within_hours=N
+//!   GET    /api/v1/calendars/:cal_id/alarms/count?delivered=false        (sprint #428)
 
 use axum::{
     extract::{Path, Query, State},
@@ -73,6 +74,64 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/alarms/upcoming",
             get(list_upcoming_alarms),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/alarms/count",
+            get(count_alarms),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+struct CountQuery {
+    /// Quando definido, filtra por `delivered_at IS NULL` (false) ou `IS NOT NULL` (true).
+    /// Omitido ⇒ sem filtro (conta todos os alarmes do calendário).
+    delivered: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+struct AlarmsCount {
+    count: i64,
+}
+
+/// GET /api/v1/calendars/:cal_id/alarms/count?delivered=false — retorna apenas
+/// a contagem de alarmes em todos os events do calendário (sprint #428).
+/// `?delivered=false` filtra pelos pendentes; `?delivered=true` pelos já entregues;
+/// omitido conta todos. Útil pra badge "alarms pendentes" no header do calendário.
+async fn count_alarms(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q): Query<CountQuery>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let cal_exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if cal_exists.is_none() {
+        return Err(CalendarError::CalendarNotFound(cal_id.to_string()));
+    }
+
+    let delivered_filter = match q.delivered {
+        Some(true)  => "AND delivered_at IS NOT NULL",
+        Some(false) => "AND delivered_at IS NULL",
+        None        => "",
+    };
+
+    let sql = format!(
+        "SELECT COUNT(*) FROM calendar_event_alarms \
+         WHERE tenant_id = $1 AND calendar_id = $2 {delivered_filter}"
+    );
+    let (count,): (i64,) = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(Json(AlarmsCount { count }))
 }
 
 #[derive(Debug, Deserialize)]
