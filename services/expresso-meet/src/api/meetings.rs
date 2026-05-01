@@ -62,6 +62,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/restore", post(restore))
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
+        .route("/api/v1/meetings/:id/participants-invite", post(invite_participant))
         .route("/api/v1/meetings/:id/participants/count", get(count_participants))
         .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
         .route("/api/v1/meetings/:id/recording/start", post(recording_start))
@@ -553,6 +554,84 @@ async fn add_participant(
     let role = body.role.unwrap_or(ParticipantRole::Participant);
     repo.add_participant(ctx.tenant_id, id, body.user_id, role).await?;
     Ok((StatusCode::CREATED, Json(json!({"added": body.user_id}))))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InviteParticipantBody {
+    pub user_id:      Uuid,
+    pub role:         Option<ParticipantRole>,
+    /// Display name pra estampar no JWT do convidado (default: "Guest").
+    pub display_name: Option<String>,
+    pub email:        Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InviteParticipantResponse {
+    pub user_id:          Uuid,
+    pub role:             ParticipantRole,
+    pub join_url:         String,
+    pub expires_at_epoch: i64,
+}
+
+/// POST /api/v1/meetings/:id/participants-invite — adiciona participante e
+/// retorna join URL pré-emitida (cliente entrega via mail). Path usa hífen
+/// pra evitar colisão com `participants/:user_id` que captura "invite" como Uuid.
+/// Moderator-only. Idempotente quanto à participação (add_participant já lida
+/// com conflito), mas sempre re-emite token novo.
+async fn invite_participant(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<InviteParticipantBody>,
+) -> Result<(StatusCode, Json<InviteParticipantResponse>)> {
+    let pool  = state.db_or_unavailable()?;
+    let jitsi = state.jitsi_or_unavailable()?;
+    let repo  = MeetingRepo::new(pool);
+
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+    let m = repo.get(ctx.tenant_id, id).await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+
+    if let Some(d) = body.display_name.as_deref() {
+        if d.len() > MAX_DISPLAY_NAME_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+            )));
+        }
+    }
+    if let Some(e) = body.email.as_deref() {
+        if e.len() > MAX_EMAIL_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+            )));
+        }
+    }
+
+    let role = body.role.unwrap_or(ParticipantRole::Participant);
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone()).await?;
+
+    let display_name = body.display_name.as_deref().unwrap_or("Guest");
+    let email        = body.email.as_deref().unwrap_or("");
+
+    let issued = jitsi.mint(&IssueRequest {
+        room:            &m.room_name,
+        user_id:         body.user_id,
+        display_name,
+        email,
+        moderator:       matches!(role, ParticipantRole::Moderator),
+        allow_recording: false,
+    })?;
+
+    Ok((StatusCode::CREATED, Json(InviteParticipantResponse {
+        user_id:          body.user_id,
+        role,
+        join_url:         issued.join_url,
+        expires_at_epoch: issued.expires_at_epoch,
+    })))
 }
 
 /// GET /api/v1/meetings/:id/participants/count — total participant count (caller must be participant).
