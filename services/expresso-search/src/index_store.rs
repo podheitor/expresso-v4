@@ -352,6 +352,80 @@ impl IndexStore {
         Ok(sorted)
     }
 
+    /// Aggregate top tokens from `subject` field across the hit set
+    /// (sprint #431). Tokeniza por whitespace + lowercase, filtra tokens curtos
+    /// (< 3 chars) e stop-words PT/EN comuns. Retorna até `top_n` tokens
+    /// ordenados por count desc, then alfabético. Útil pra "tag cloud" de
+    /// palavras-chave do conjunto filtrado.
+    pub fn facet_top_subject_terms(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        top_n: usize,
+    ) -> anyhow::Result<Vec<(String, u64)>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let final_query: Box<dyn Query> = if trimmed.is_empty() {
+            tenant_query
+        } else {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Must, tenant_query),
+                (Occur::Must, user_query),
+            ]))
+        };
+
+        use tantivy::collector::DocSetCollector;
+        let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
+
+        // Stop-words mínimas PT+EN. Ampliar se viramos múltiplos idiomas reais.
+        const STOP: &[&str] = &[
+            "the", "and", "for", "you", "from", "with", "this", "that", "are",
+            "was", "but", "not", "your", "have", "has", "all",
+            "que", "com", "para", "sem", "por", "uma", "dos", "das",
+            "como", "mas", "seu", "sua", "está", "ser", "fwd", "re",
+        ];
+
+        let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let subject = match doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)) {
+                Some(s) => s,
+                None    => continue,
+            };
+            for raw in subject.split(|c: char| !c.is_alphanumeric()) {
+                let t = raw.to_lowercase();
+                if t.chars().count() < 3 { continue; }
+                if STOP.contains(&t.as_str()) { continue; }
+                *counts.entry(t).or_insert(0) += 1;
+            }
+        }
+
+        let mut sorted: Vec<(String, u64)> = counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        sorted.truncate(top_n);
+        Ok(sorted)
+    }
+
     /// Aggregate hit counts by `from_addr` field for a tenant+query combination
     /// (sprint #426). Top remetentes para o conjunto de hits. Retorna até `top_n`
     /// entradas ordenadas por count desc, then alfabético.

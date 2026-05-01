@@ -30,13 +30,18 @@ pub struct SearchParams {
     pub limit: usize,
     #[serde(default)]
     pub offset: usize,
-    /// "kind" → `facets.kind`; "from_addr" → `facets.from_addr` (top-N remetentes, sprint #426).
+    /// "kind" → `facets.kind`; "from_addr" → `facets.from_addr` (top-N remetentes, sprint #426);
+    /// "subject_terms" → `facets.subject_terms` (top-N palavras-chave em subjects, sprint #431).
     pub facet: Option<String>,
 }
 
 /// Cap on top-N entries returned for high-cardinality facets like from_addr.
 /// 50 cobre uma sidebar de "top remetentes" sem explodir o payload.
 pub const FACET_FROM_TOP_N: usize = 50;
+
+/// Cap pra tag-cloud de palavras em subjects. 50 é tamanho típico de cloud
+/// renderizado sem virar parede de texto.
+pub const FACET_SUBJECT_TOP_N: usize = 50;
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT
@@ -168,6 +173,17 @@ pub async fn search(
                 .collect();
             let mut map = std::collections::HashMap::new();
             map.insert("from_addr".to_string(), entries);
+            Some(map)
+        }
+        Some("subject_terms") => {
+            let counts = store
+                .facet_top_subject_terms(&params.q, &params.tenant_id, FACET_SUBJECT_TOP_N)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = counts.into_iter()
+                .map(|(value, count)| FacetEntry { value, count })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("subject_terms".to_string(), entries);
             Some(map)
         }
         _ => None,
