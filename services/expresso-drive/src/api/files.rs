@@ -46,6 +46,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
         .route("/api/v1/drive/files/:id/star",               post(star_file).delete(unstar_file))
         .route("/api/v1/drive/starred",                      get(list_starred))
+        .route("/api/v1/drive/starred/count",                get(count_starred))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
         .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
         .route("/api/v1/drive/quota",                       get(quota))
@@ -1129,6 +1130,19 @@ async fn list_starred(
     let pool  = state.db_or_unavailable()?;
     let files = FileRepo::new(pool).list_starred(ctx.tenant_id, ctx.user_id).await?;
     Ok(Json(files))
+}
+
+/// GET /api/v1/drive/starred/count — count user's starred files (sprint #458).
+/// Mesma semântica de `list_starred` (filtra `starred_at IS NOT NULL` + `deleted_at IS NULL`),
+/// só retorna `{count: N}` pra badge de UI sem trafegar a lista. Path child de
+/// `/starred` (sem ambiguidade com `:id` em outros recursos).
+async fn count_starred(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let count = FileRepo::new(pool).count_starred(ctx.tenant_id, ctx.user_id).await?;
+    Ok(Json(serde_json::json!({ "count": count })))
 }
 
 /// POST /api/v1/drive/files/:id/star — mark file as starred

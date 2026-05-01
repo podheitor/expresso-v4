@@ -568,6 +568,22 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+    /// Conta quantos arquivos starred ativos o usuário tem (sprint #458). Mesma
+    /// semântica de `list_starred` (filtra `starred_at IS NOT NULL` e `deleted_at IS NULL`)
+    /// mas só agrega COUNT — útil pra badge sem trafegar payload da listagem.
+    pub async fn count_starred(&self, tenant_id: Uuid, user_id: Uuid) -> Result<i64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM drive_files \
+             WHERE tenant_id = $1 AND owner_user_id = $2 \
+               AND starred_at IS NOT NULL AND deleted_at IS NULL",
+        )
+        .bind(tenant_id).bind(user_id)
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(count)
+    }
+
     /// Acquire an optimistic lock on a file. Returns `Conflict` if already locked
     /// by a different user, `NotFound` if the file does not exist.
     pub async fn lock_file(
