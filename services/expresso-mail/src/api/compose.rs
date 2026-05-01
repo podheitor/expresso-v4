@@ -6,7 +6,7 @@
 //! `assert_from_is_authenticated_user` verifica que `req.from` bate com o
 //! email do usuário autenticado (case-insensitive) antes de enviar.
 
-use axum::{Router, routing::post, extract::{Path, State}, Json, http::StatusCode};
+use axum::{Router, routing::{get, post}, extract::{Path, State}, Json, http::StatusCode};
 use expresso_core::begin_tenant_tx;
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
@@ -74,6 +74,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/send",              post(send_message))
         .route("/mail/send-itip",         post(send_itip))
         .route("/mail/messages/schedule",          post(schedule_message))
+        .route("/mail/messages/scheduled",         get(list_scheduled))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -602,6 +603,51 @@ fn validate_itip_request(req: &SendItipRequest) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct ScheduledItem {
+    id:         Uuid,
+    subject:    Option<String>,
+    from_addr:  Option<String>,
+    to_addrs:   serde_json::Value,
+    #[serde(with = "time::serde::rfc3339")]
+    deliver_at: OffsetDateTime,
+    size_bytes: i32,
+}
+
+/// GET /api/v1/mail/messages/scheduled — lista mensagens agendadas (deliver_at no
+/// futuro) do usuário autenticado, ordenadas por horário de entrega (sprint #419).
+async fn list_scheduled(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<Vec<ScheduledItem>>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(Uuid, Option<String>, Option<String>, serde_json::Value, OffsetDateTime, i32)> =
+        sqlx::query_as(
+            "SELECT m.id, m.subject, m.from_addr, m.to_addrs, m.deliver_at, m.size_bytes \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id \
+             WHERE m.tenant_id = $1 \
+               AND mb.user_id = $2 \
+               AND m.deliver_at IS NOT NULL \
+             ORDER BY m.deliver_at ASC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+
+    let items = rows.into_iter()
+        .map(|(id, subject, from_addr, to_addrs, deliver_at, size_bytes)| ScheduledItem {
+            id, subject, from_addr, to_addrs, deliver_at, size_bytes,
+        })
+        .collect();
+
+    Ok(Json(items))
 }
 
 /// POST /api/v1/mail/messages/:id/cancel-send — cancel a scheduled send (undo-send).
