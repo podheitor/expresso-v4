@@ -11,6 +11,7 @@
 //!   POST   /api/v1/drive/tags/:tag/merge          — funde 2 tags numa só (sprint #433)
 //!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
 //!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
+//!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
 
 use axum::{
     extract::{Path, State},
@@ -70,6 +71,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/:tag/merge",
             post(merge_tag),
+        )
+        .route(
+            "/api/v1/drive/tags/:tag/count",
+            get(count_files_by_tag),
         )
         .route(
             "/api/v1/drive/tags/orphans",
@@ -481,4 +486,39 @@ async fn list_files_by_tag(
     .await?;
 
     Ok(Json(tags))
+}
+
+#[derive(Debug, Serialize)]
+struct TagCount {
+    tag:        String,
+    file_count: i64,
+}
+
+/// GET /api/v1/drive/tags/:tag/count — count antes de listar (sprint #455).
+/// Retorna `{tag, file_count}` filtrando files ativos (deleted_at IS NULL),
+/// igual `tag_stats` (#448) mas para uma única tag — útil quando UI quer
+/// exibir badge ("foo (12)") sem fetchar a lista inteira via /tags/:tag.
+/// COUNT DISTINCT pra robustez caso (file_id, tag) duplicasse por algum bug
+/// (unique constraint cobre, mas defesa em profundidade). Tag normalizada
+/// pra lowercase igual list_files_by_tag.
+async fn count_files_by_tag(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(tag):    Path<String>,
+) -> Result<impl IntoResponse> {
+    let tag = tag.trim().to_lowercase();
+    let pool = state.db_or_unavailable()?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(DISTINCT t.file_id) \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 AND t.tag = $2 AND f.deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&tag)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(TagCount { tag, file_count: count }))
 }
