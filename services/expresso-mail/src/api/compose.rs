@@ -75,6 +75,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/send-itip",         post(send_itip))
         .route("/mail/messages/schedule",          post(schedule_message))
         .route("/mail/messages/scheduled",         get(list_scheduled))
+        .route("/mail/messages/scheduled/count",   get(count_scheduled))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -648,6 +649,38 @@ async fn list_scheduled(
         .collect();
 
     Ok(Json(items))
+}
+
+#[derive(Debug, Serialize)]
+struct ScheduledCount {
+    count: i64,
+}
+
+/// GET /api/v1/mail/messages/scheduled/count — retorna apenas o total de mensagens
+/// agendadas do usuário, sem listá-las (sprint #423). Útil pra badges/counters de UI
+/// sem o custo de serializar o body completo de list_scheduled.
+async fn count_scheduled(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<ScheduledCount>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 \
+           AND mb.user_id = $2 \
+           AND m.deliver_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(ScheduledCount { count }))
 }
 
 /// POST /api/v1/mail/messages/:id/cancel-send — cancel a scheduled send (undo-send).
