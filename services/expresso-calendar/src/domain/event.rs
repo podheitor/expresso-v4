@@ -242,6 +242,36 @@ impl<'a> EventRepo<'a> {
         Ok(())
     }
 
+    /// Bulk-delete events whose `dtstart` cai em `[from, to)`. Retorna a contagem
+    /// de linhas removidas. Eventos sem `dtstart` ficam de fora (sem timestamp pra
+    /// posicionar no range). Útil pra sweep de eventos antigos ou cleanup em massa
+    /// de calendário poluído (ex: import duplicado). Sprint #457.
+    pub async fn delete_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        from: OffsetDateTime,
+        to: OffsetDateTime,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"DELETE FROM calendar_events
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND dtstart >= $3
+                  AND dtstart <  $4"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

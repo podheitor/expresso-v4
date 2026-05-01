@@ -72,6 +72,10 @@ pub fn routes() -> Router<AppState> {
             get(events_conflicts),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-bulk-delete",
+            post(events_bulk_delete),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -376,6 +380,39 @@ async fn events_conflicts(
         "to":        to_s,
         "conflicts": rows,
     })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EventsBulkDeleteParams {
+    pub from: OffsetDateTime,
+    pub to:   OffsetDateTime,
+}
+
+/// POST /api/v1/calendars/:cal_id/events-bulk-delete?from=&to= — apaga em massa
+/// todos os eventos cujo `dtstart` ∈ `[from, to)` no calendário (sprint #457).
+/// Útil pra cleanup pós-import duplicado, sweep de calendário antigo, ou
+/// remoção sazonal (apagar todos os eventos do trimestre passado). Eventos sem
+/// `dtstart` são preservados — não há critério temporal pra incluí-los.
+/// Requer WRITE (mesmo gate do delete single). POST em vez de DELETE pra
+/// evitar query string em verbo DELETE (alguns proxies/CDNs descartam body
+/// e query) e marcar a operação como "irreversível, lê params".
+async fn events_bulk_delete(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Path(cal_id):  Path<Uuid>,
+    Query(params): Query<EventsBulkDeleteParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let deleted = EventRepo::new(pool)
+        .delete_range(ctx.tenant_id, cal_id, params.from, params.to)
+        .await?;
+
+    Ok(Json(serde_json::json!({ "deleted": deleted })))
 }
 
 async fn list(
