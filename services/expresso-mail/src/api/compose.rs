@@ -79,6 +79,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/scheduled/cancel-all", post(cancel_all_scheduled))
         .route("/mail/messages/sent/count",        get(count_sent))
         .route("/mail/messages/drafts/count",      get(count_drafts))
+        .route("/mail/messages/trash/count",       get(count_trash))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -755,6 +756,41 @@ async fn count_drafts(
     tx.commit().await?;
 
     Ok(Json(DraftsCount { count }))
+}
+
+#[derive(Debug, Serialize)]
+struct TrashCount {
+    count: i64,
+}
+
+/// GET /api/v1/mail/messages/trash/count — total na lixeira do usuário (sprint #444).
+/// Trash identificada por `special_use = '\Trash'` (RFC 6154); mesma técnica do
+/// count_drafts (#439) e count_sent (#434). Retorna 0 se o user nunca apagou
+/// nada (Trash é auto-criada no primeiro move-to-trash). Útil pra badge "X na
+/// lixeira" e pra confirmar antes de empty-trash.
+async fn count_trash(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<TrashCount>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 \
+           AND mb.user_id = $2 \
+           AND mb.special_use = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(r"\Trash")
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(TrashCount { count }))
 }
 
 #[derive(Debug, Serialize)]
