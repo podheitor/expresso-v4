@@ -3,6 +3,7 @@
 //! Routes:
 //!   POST   /api/v1/drive/files/:id/tags           — add a tag to a file
 //!   DELETE /api/v1/drive/files/:id/tags/:tag      — remove a tag from a file
+//!   DELETE /api/v1/drive/files/:id/tags           — clear all tags on a file (sprint #416)
 //!   GET    /api/v1/drive/files/:id/tags           — list tags on a file
 //!   GET    /api/v1/drive/tags/:tag                — list files with this tag (tenant-scoped)
 
@@ -42,7 +43,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route(
             "/api/v1/drive/files/:id/tags",
-            get(list_file_tags).post(add_tag),
+            get(list_file_tags).post(add_tag).delete(clear_tags),
         )
         .route(
             "/api/v1/drive/files/:id/tags/:tag",
@@ -117,6 +118,36 @@ async fn remove_tag(
     if r.rows_affected() == 0 {
         return Err(DriveError::NotFound(id));
     }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /api/v1/drive/files/:id/tags — remove all tags from a file (sprint #416).
+async fn clear_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM drive_files WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(DriveError::NotFound(id));
+    }
+
+    sqlx::query(
+        "DELETE FROM drive_file_tags WHERE file_id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .execute(pool)
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
