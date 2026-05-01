@@ -1,4 +1,5 @@
-//! VALARM REST endpoints — sprint #401 + PATCH/GET single (sprint #412).
+//! VALARM REST endpoints — sprint #401 + PATCH/GET single (sprint #412)
+//! + cross-event upcoming list (sprint #418).
 //!
 //! Routes:
 //!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms
@@ -6,9 +7,10 @@
 //!   GET    /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   PATCH  /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
 //!   DELETE /api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid
+//!   GET    /api/v1/calendars/:cal_id/alarms/upcoming?within_hours=N
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
@@ -66,6 +68,61 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:event_id/alarms/:alarm_uid",
             get(get_alarm).patch(patch_alarm).delete(delete_alarm),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/alarms/upcoming",
+            get(list_upcoming_alarms),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+struct UpcomingQuery {
+    /// Janela em horas a partir de now() (default 24, max 168 = 7 dias).
+    within_hours: Option<u32>,
+}
+
+/// GET /api/v1/calendars/:cal_id/alarms/upcoming — lista alarmes não-entregues
+/// com `trigger_abs` entre now() e now()+within_hours, em todos os events do
+/// calendário (sprint #418).
+async fn list_upcoming_alarms(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q): Query<UpcomingQuery>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let cal_exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM calendars WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(cal_id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if cal_exists.is_none() {
+        return Err(CalendarError::CalendarNotFound(cal_id.to_string()));
+    }
+
+    let hours = q.within_hours.unwrap_or(24).clamp(1, 168) as i64;
+
+    let alarms: Vec<EventAlarm> = sqlx::query_as(
+        "SELECT a.id, a.event_id, a.calendar_id, a.tenant_id, a.uid, a.action, \
+                a.trigger_rel, a.trigger_abs, a.description, a.created_at \
+         FROM calendar_event_alarms a \
+         WHERE a.tenant_id = $1 \
+           AND a.calendar_id = $2 \
+           AND a.delivered_at IS NULL \
+           AND a.trigger_abs IS NOT NULL \
+           AND a.trigger_abs >= now() \
+           AND a.trigger_abs <= now() + ($3 || ' hours')::interval \
+         ORDER BY a.trigger_abs ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(hours.to_string())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(alarms))
 }
 
 async fn list_alarms(
