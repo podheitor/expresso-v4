@@ -884,6 +884,79 @@ async fn top_domains_archive(
     Ok(Json(json!({ "limit": limit, "domains": domains })))
 }
 
+/// GET /api/v1/compliance/archive/size-histogram?since=&before= — distribuição
+/// de tamanho de mensagens arquivadas em buckets de bytes (sprint #456). Retorna
+/// `{buckets: [{bucket, min_bytes, max_bytes, count}]}` em ordem crescente.
+/// Buckets fixos cobrem espectro típico de email: <1KB, 1-10KB, 10-100KB,
+/// 100KB-1MB, 1-10MB, 10-25MB, >25MB. Use `width_bucket` do Postgres com
+/// thresholds explícitos pra classificação O(log N) por linha. Mesmo schema
+/// since/before do histogram temporal (#435). Path com hífen evita colisão com
+/// `/archive/:id` (lição #443/#448 — rotas estáticas precedem `:id`, mas mantemos
+/// hífen porque `size-histogram` tem dois segmentos lógicos).
+async fn size_histogram_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<TopSendersParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    // Thresholds em bytes (exclusivo no upper). width_bucket(v, lo, hi, n) retorna
+    // 0 quando v < lo, n+1 quando v >= hi; usamos thresholds custom via CASE.
+    let sql = format!(
+        "SELECT bucket, COUNT(*) AS c FROM ( \
+            SELECT CASE \
+                WHEN size_bytes <       1024 THEN 0 \
+                WHEN size_bytes <      10240 THEN 1 \
+                WHEN size_bytes <     102400 THEN 2 \
+                WHEN size_bytes <    1048576 THEN 3 \
+                WHEN size_bytes <   10485760 THEN 4 \
+                WHEN size_bytes <   26214400 THEN 5 \
+                ELSE                              6 \
+            END AS bucket \
+            FROM compliance_archive \
+            WHERE tenant_id = $1 AND user_id = $2 \
+            {since_filter} {before_filter} \
+         ) sub GROUP BY bucket ORDER BY bucket ASC"
+    );
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let labels: [(&str, i64, Option<i64>); 7] = [
+        ("<1KB",        0,         Some(1024)),
+        ("1-10KB",      1024,      Some(10240)),
+        ("10-100KB",    10240,     Some(102400)),
+        ("100KB-1MB",   102400,    Some(1048576)),
+        ("1-10MB",      1048576,   Some(10485760)),
+        ("10-25MB",     10485760,  Some(26214400)),
+        (">25MB",       26214400,  None),
+    ];
+
+    // Materializa todos os buckets (mesmo zero) pra UI estável.
+    let mut counts = [0i64; 7];
+    for (b, c) in rows { if (0..7).contains(&b) { counts[b as usize] = c; } }
+
+    let buckets: Vec<_> = labels.iter().enumerate()
+        .map(|(i, (label, lo, hi))| json!({
+            "bucket":    label,
+            "min_bytes": lo,
+            "max_bytes": hi,
+            "count":     counts[i],
+        }))
+        .collect();
+
+    Ok(Json(json!({ "buckets": buckets })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1328,6 +1401,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-recipients", get(top_recipients_archive))
         .route("/api/v1/compliance/archive/top-subjects", get(top_subjects_archive))
         .route("/api/v1/compliance/archive/top-domains", get(top_domains_archive))
+        .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
