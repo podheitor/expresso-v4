@@ -56,6 +56,10 @@ pub fn routes() -> Router<AppState> {
             get(count_events),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-histogram",
+            get(events_histogram),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -133,6 +137,61 @@ async fn count_events(
     .fetch_one(pool)
     .await?;
     Ok(Json(serde_json::json!({ "count": count })).into_response())
+}
+
+/// GET /api/v1/calendars/:cal_id/events-histogram?from=&to=&bucket=day
+/// Agrupa eventos do calendário por bucket temporal (dtstart trunc) e retorna
+/// {bucket, series:[{ts, count}]} ordenado ASC. Bucket aceita day (default),
+/// week ou month — whitelist obrigatória antes de injetar em date_trunc()
+/// (lição #435: SQL injection sem whitelist). Eventos sem dtstart são
+/// ignorados (NULL não agrupa). Útil pra heatmap de calendário sem listar.
+async fn events_histogram(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(params): Query<EventsHistogramParams>,
+) -> Result<Response> {
+    let bucket = match params.bucket.as_deref().unwrap_or("day") {
+        "day" => "day",
+        "week" => "week",
+        "month" => "month",
+        other => return Err(CalendarError::BadRequest(format!(
+            "bucket must be day|week|month, got {other}"
+        ))),
+    };
+    let pool = state.db_or_unavailable()?;
+    let sql = format!(
+        r#"SELECT date_trunc('{bucket}', dtstart) AS ts, COUNT(*)::bigint AS count
+             FROM calendar_events
+            WHERE tenant_id = $1
+              AND calendar_id = $2
+              AND dtstart IS NOT NULL
+              AND ($3::timestamptz IS NULL OR dtstart >= $3)
+              AND ($4::timestamptz IS NULL OR dtstart <= $4)
+            GROUP BY ts
+            ORDER BY ts ASC"#,
+    );
+    let rows: Vec<(OffsetDateTime, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .bind(params.from)
+        .bind(params.to)
+        .fetch_all(pool)
+        .await?;
+    let series: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ts, count)| serde_json::json!({
+            "ts":    ts.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+            "count": count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({ "bucket": bucket, "series": series })).into_response())
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EventsHistogramParams {
+    pub from:   Option<OffsetDateTime>,
+    pub to:     Option<OffsetDateTime>,
+    pub bucket: Option<String>,
 }
 
 async fn list(
