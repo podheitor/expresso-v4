@@ -5,6 +5,7 @@
 //!   POST /api/v1/drive/files/:id/versions                  — record a new version snapshot
 //!   GET  /api/v1/drive/files/:id/versions/:version         — get a specific version
 //!   POST /api/v1/drive/files/:id/versions/:version/restore — copia snapshot de uma versão antiga como nova versão head
+//!   GET  /api/v1/drive/files/:id/versions/:a/diff/:b       — diff metadata entre duas versões (sprint #424)
 
 use axum::{
     extract::{Path, State},
@@ -57,6 +58,65 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/files/:id/versions/:version_num/restore",
             post(restore_version),
         )
+        .route(
+            "/api/v1/drive/files/:id/versions/:a/diff/:b",
+            get(diff_versions),
+        )
+}
+
+#[derive(Debug, Serialize)]
+struct VersionDiff {
+    file_id:     Uuid,
+    version_a:   i64,
+    version_b:   i64,
+    size_a:      i64,
+    size_b:      i64,
+    size_delta:  i64,
+    sha_a:       Option<String>,
+    sha_b:       Option<String>,
+    sha_changed: bool,
+}
+
+/// GET /api/v1/drive/files/:id/versions/:a/diff/:b — retorna metadados comparativos
+/// entre duas versões do mesmo arquivo (sprint #424). Não computa byte-diff do conteúdo,
+/// só `size_delta` (b - a) e `sha_changed`. 404 se qualquer das versões não existe.
+async fn diff_versions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, a, b)): Path<(Uuid, i64, i64)>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i64, i64, Option<String>)> = sqlx::query_as(
+        "SELECT version_num, size_bytes, sha256 \
+         FROM drive_file_versions \
+         WHERE tenant_id = $1 AND file_id = $2 AND version_num = ANY($3::bigint[])",
+    )
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .bind(vec![a, b])
+    .fetch_all(pool)
+    .await?;
+
+    let row_a = rows.iter().find(|r| r.0 == a);
+    let row_b = rows.iter().find(|r| r.0 == b);
+    let (Some(va), Some(vb)) = (row_a, row_b) else {
+        return Err(DriveError::NotFound(id));
+    };
+
+    let diff = VersionDiff {
+        file_id:     id,
+        version_a:   a,
+        version_b:   b,
+        size_a:      va.1,
+        size_b:      vb.1,
+        size_delta:  vb.1 - va.1,
+        sha_a:       va.2.clone(),
+        sha_b:       vb.2.clone(),
+        sha_changed: va.2 != vb.2,
+    };
+
+    Ok(Json(diff))
 }
 
 /// POST /api/v1/drive/files/:id/versions/:version_num/restore — restaura o snapshot
