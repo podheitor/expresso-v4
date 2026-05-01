@@ -68,6 +68,10 @@ pub fn routes() -> Router<AppState> {
             get(events_digest_range),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-conflicts",
+            get(events_conflicts),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -293,6 +297,85 @@ async fn events_digest_range(
         HeaderValue::from_static("attachment; filename=\"digest-range.ics\""),
     );
     Ok(resp)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EventsConflictsParams {
+    pub from: OffsetDateTime,
+    pub to:   OffsetDateTime,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+struct ConflictPairRow {
+    a_id:      Uuid,
+    a_summary: Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    a_dtstart: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    a_dtend:   Option<OffsetDateTime>,
+    b_id:      Uuid,
+    b_summary: Option<String>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    b_dtstart: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
+    b_dtend:   Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-conflicts?from=&to=
+/// Retorna pares de eventos que se sobrepõem temporalmente dentro do range.
+/// Self-join em calendar_events com `a.id < b.id` pra evitar pares duplicados
+/// (a,b)/(b,a). Overlap clássico: `a.dtstart < b.dtend AND b.dtstart < a.dtend`.
+/// Eventos sem dtstart/dtend são ignorados (não há intervalo a comparar).
+/// Útil pra UI de "double booking" — destaca slots conflitantes antes do envio
+/// de invites. Mantemos hífen no path (events-conflicts) seguindo padrão das
+/// outras rotas estáticas sob /:cal_id que conflitariam com /:event_id.
+async fn events_conflicts(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Path(cal_id):  Path<Uuid>,
+    Query(params): Query<EventsConflictsParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<ConflictPairRow> = sqlx::query_as(
+        r#"SELECT a.id AS a_id, a.summary AS a_summary, a.dtstart AS a_dtstart, a.dtend AS a_dtend,
+                  b.id AS b_id, b.summary AS b_summary, b.dtstart AS b_dtstart, b.dtend AS b_dtend
+             FROM calendar_events a
+             JOIN calendar_events b
+               ON b.tenant_id   = a.tenant_id
+              AND b.calendar_id = a.calendar_id
+              AND b.id          > a.id
+            WHERE a.tenant_id   = $1
+              AND a.calendar_id = $2
+              AND a.dtstart IS NOT NULL AND a.dtend IS NOT NULL
+              AND b.dtstart IS NOT NULL AND b.dtend IS NOT NULL
+              AND a.dtstart < b.dtend
+              AND b.dtstart < a.dtend
+              AND a.dtend   >  $3
+              AND a.dtstart <  $4
+              AND b.dtend   >  $3
+              AND b.dtstart <  $4
+            ORDER BY a.dtstart ASC, b.dtstart ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(params.from)
+    .bind(params.to)
+    .fetch_all(pool)
+    .await?;
+
+    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::new());
+    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::new());
+    Ok(Json(serde_json::json!({
+        "from":      from_s,
+        "to":        to_s,
+        "conflicts": rows,
+    })))
 }
 
 async fn list(
