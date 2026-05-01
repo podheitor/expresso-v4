@@ -635,6 +635,68 @@ async fn count_archive(
     Ok(Json(json!({"count": count})))
 }
 
+#[derive(Debug, Deserialize)]
+struct ArchiveHistogramParams {
+    /// ISO-8601 date prefix (YYYY-MM-DD) — bucket inferior inclusive.
+    pub since:  Option<String>,
+    /// ISO-8601 date prefix — bucket superior exclusive.
+    pub before: Option<String>,
+    /// "day" (default), "week", or "month". Whitelist evita injection no date_trunc.
+    pub bucket: Option<String>,
+}
+
+/// GET /api/v1/compliance/archive/histogram?since=&before=&bucket=day — agrupa
+/// entradas do archive por bucket temporal (sprint #435). Retorna `{bucket, series:
+/// [{ts, count}]}` ordenado por ts ascendente. Bucket é whitelist (day/week/month);
+/// usa `date_trunc()` no Postgres pra agrupar archived_at. Não exposto outros filtros
+/// (subject/from_addr) — histogram é primariamente pra dashboards de volume temporal.
+async fn histogram_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ArchiveHistogramParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let bucket = match params.bucket.as_deref().unwrap_or("day") {
+        "day"   => "day",
+        "week"  => "week",
+        "month" => "month",
+        other   => return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": format!("invalid bucket '{other}': expected day/week/month")})),
+        )),
+    };
+
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT date_trunc('{bucket}', archived_at) AS ts, COUNT(*) AS c \
+         FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_filter} \
+         GROUP BY ts ORDER BY ts ASC"
+    );
+
+    let rows: Vec<(time::OffsetDateTime, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let series: Vec<_> = rows.into_iter()
+        .map(|(ts, c)| json!({
+            "ts":    ts.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+            "count": c,
+        }))
+        .collect();
+
+    Ok(Json(json!({ "bucket": bucket, "series": series })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1074,6 +1136,7 @@ async fn main() -> anyhow::Result<()> {
                get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
         .route("/api/v1/compliance/archive/count",     get(count_archive))
+        .route("/api/v1/compliance/archive/histogram", get(histogram_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
