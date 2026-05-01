@@ -22,6 +22,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/stats",              get(folders_stats))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
+        .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
         .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
         .route("/mail/folders/:name/unsubscribe",  axum::routing::post(unsubscribe_folder))
 }
@@ -413,6 +414,46 @@ async fn mark_folder_read(
 
     tx.commit().await?;
     Ok(Json(serde_json::json!({ "marked": res.rows_affected() })))
+}
+
+/// POST /api/v1/mail/folders/:name/empty — delete ALL messages in a folder, but
+/// preserve the mailbox row itself (sprint #459). Útil pra esvaziar Trash/Spam
+/// pós-purge ou limpar pasta de teste sem perder a configuração da mailbox
+/// (subscribed, special_use, uid_validity). Retorna `{deleted: N}`. 404 se a
+/// pasta não existe pro user. Diferente de `delete_folder` (que remove o
+/// mailbox e tudo via CASCADE) — esvaziamento é não-destrutivo pra pastas
+/// de sistema (`special_use` set), por isso não bloqueia em \Trash/\Junk
+/// como delete_folder bloqueia em qualquer system folder.
+async fn empty_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(name):   Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let mbox_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&name)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let mbox_id = mbox_id.ok_or(MailError::FolderNotFound { folder: name })?;
+
+    let res = sqlx::query(
+        r#"DELETE FROM messages
+           WHERE mailbox_id = $1
+             AND tenant_id  = $2"#,
+    )
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "deleted": res.rows_affected() })))
 }
 
 /// GET /api/v1/mail/folders/unread-summary — live unread count per folder (not cached).
