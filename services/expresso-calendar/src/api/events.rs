@@ -60,6 +60,10 @@ pub fn routes() -> Router<AppState> {
             get(events_histogram),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-digest",
+            get(events_digest),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -192,6 +196,53 @@ pub struct EventsHistogramParams {
     pub from:   Option<OffsetDateTime>,
     pub to:     Option<OffsetDateTime>,
     pub bucket: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EventsDigestParams {
+    pub day: String,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-digest?day=YYYY-MM-DD
+/// Retorna VCALENDAR consolidado dos eventos cujo dtstart cai no dia (UTC).
+/// Reusa wrap_vcalendar/extract_vevent_block do export_ics; o filtro vem via
+/// EventQuery::from/to com bordas [00:00Z, 24:00Z). Path com hífen evita
+/// colisão com `events/:id` (lição #427).
+async fn events_digest(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(params): Query<EventsDigestParams>,
+) -> Result<Response> {
+    use crate::domain::ical;
+    use time::{Date, Time, format_description::well_known::Iso8601};
+
+    let date = Date::parse(&params.day, &Iso8601::DATE)
+        .map_err(|_| CalendarError::BadRequest(format!("day must be YYYY-MM-DD, got {}", params.day)))?;
+    let start = date.with_time(Time::MIDNIGHT).assume_utc();
+    let end = start + time::Duration::days(1);
+
+    let pool = state.db_or_unavailable()?;
+    let q = crate::domain::EventQuery { from: Some(start), to: Some(end), limit: None };
+    let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
+
+    let blocks: Vec<String> = events
+        .iter()
+        .filter_map(|e| ical::extract_vevent_block(&e.ical_raw))
+        .collect();
+    let body = ical::wrap_vcalendar(&blocks);
+
+    let mut resp = (StatusCode::OK, body).into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/calendar; charset=utf-8"),
+    );
+    resp.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"digest-{}.ics\"", params.day))
+            .unwrap_or_else(|_| HeaderValue::from_static("attachment; filename=\"digest.ics\"")),
+    );
+    Ok(resp)
 }
 
 async fn list(
