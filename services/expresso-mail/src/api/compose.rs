@@ -78,6 +78,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/scheduled/count",   get(count_scheduled))
         .route("/mail/messages/scheduled/cancel-all", post(cancel_all_scheduled))
         .route("/mail/messages/sent/count",        get(count_sent))
+        .route("/mail/messages/drafts/count",      get(count_drafts))
         .route("/mail/messages/:id/cancel-send",   post(cancel_send))
 }
 
@@ -719,6 +720,41 @@ async fn count_sent(
     tx.commit().await?;
 
     Ok(Json(SentCount { count }))
+}
+
+#[derive(Debug, Serialize)]
+struct DraftsCount {
+    count: i64,
+}
+
+/// GET /api/v1/mail/messages/drafts/count — total de drafts do usuário (sprint #439).
+/// Drafts identificadas por `special_use = '\Drafts'` (RFC 6154); mesma técnica
+/// do count_sent (#434) — JOIN messages → mailboxes filtrando por user_id +
+/// special_use. Retorna 0 se o user nunca abriu compose (Drafts é auto-criada
+/// no primeiro save). Útil pra badge "X rascunhos" no UI sem listar.
+async fn count_drafts(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<DraftsCount>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 \
+           AND mb.user_id = $2 \
+           AND mb.special_use = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(r"\Drafts")
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(DraftsCount { count }))
 }
 
 #[derive(Debug, Serialize)]
