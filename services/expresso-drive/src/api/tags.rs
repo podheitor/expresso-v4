@@ -10,6 +10,7 @@
 //!   PATCH  /api/v1/drive/tags/:tag                — rename a tag em todas as files (sprint #430)
 //!   POST   /api/v1/drive/tags/:tag/merge          — funde 2 tags numa só (sprint #433)
 //!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
+//!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
 
 use axum::{
     extract::{Path, State},
@@ -74,6 +75,39 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/orphans",
             delete(delete_orphan_tags),
         )
+        .route(
+            "/api/v1/drive/tags/stats",
+            get(tag_stats),
+        )
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagStat {
+    tag:        String,
+    file_count: i64,
+}
+
+/// GET /api/v1/drive/tags/stats — contagem de files distintos por tag no tenant.
+/// Conta apenas files ativos (deleted_at IS NULL). Ordenado por count DESC, depois
+/// alfabético. Útil pra "tag cloud" e dashboards. Path estático ganha precedência
+/// sobre `/:tag` (lição #443).
+async fn tag_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let stats: Vec<TagStat> = sqlx::query_as(
+        "SELECT t.tag, COUNT(DISTINCT t.file_id) AS file_count \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 AND f.deleted_at IS NULL \
+         GROUP BY t.tag \
+         ORDER BY file_count DESC, t.tag ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(stats))
 }
 
 #[derive(Debug, Serialize)]
