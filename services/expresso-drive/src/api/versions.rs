@@ -6,6 +6,7 @@
 //!   GET  /api/v1/drive/files/:id/versions/:version         — get a specific version
 //!   POST /api/v1/drive/files/:id/versions/:version/restore — copia snapshot de uma versão antiga como nova versão head
 //!   GET  /api/v1/drive/files/:id/versions/:a/diff/:b       — diff metadata entre duas versões (sprint #424)
+//!   GET  /api/v1/drive/files/:id/versions-count            — count rápido sem listar (sprint #427)
 
 use axum::{
     extract::{Path, State},
@@ -62,6 +63,49 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/files/:id/versions/:a/diff/:b",
             get(diff_versions),
         )
+        .route(
+            "/api/v1/drive/files/:id/versions-count",
+            get(count_versions),
+        )
+}
+
+#[derive(Debug, Serialize)]
+struct VersionsCount {
+    count: i64,
+}
+
+/// GET /api/v1/drive/files/:id/versions-count — retorna apenas a contagem
+/// de versões do arquivo (sprint #427), sem listar. Útil pra badges de UI.
+/// Path com hífen evita colisão de matching com `versions/:version_num`.
+/// 404 se o arquivo não pertence ao tenant ou está soft-deleted.
+async fn count_versions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+
+    let exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM drive_files WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(DriveError::NotFound(id));
+    }
+
+    let (count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM drive_file_versions \
+         WHERE tenant_id = $1 AND file_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(VersionsCount { count }))
 }
 
 #[derive(Debug, Serialize)]
