@@ -64,6 +64,10 @@ pub fn routes() -> Router<AppState> {
             get(events_digest),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-digest-range",
+            get(events_digest_range),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -241,6 +245,52 @@ async fn events_digest(
         header::CONTENT_DISPOSITION,
         HeaderValue::from_str(&format!("attachment; filename=\"digest-{}.ics\"", params.day))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment; filename=\"digest.ics\"")),
+    );
+    Ok(resp)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct EventsDigestRangeParams {
+    pub from: OffsetDateTime,
+    pub to:   OffsetDateTime,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-digest-range?from=&to=
+/// Digest de eventos cujo dtstart cai em [from, to). Variant de events-digest
+/// pra ranges arbitrários (semana, sprint, mês). Reusa EventRepo::list +
+/// extract_vevent_block + wrap_vcalendar igual events-digest single-day.
+async fn events_digest_range(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Path(cal_id):  Path<Uuid>,
+    Query(params): Query<EventsDigestRangeParams>,
+) -> Result<Response> {
+    use crate::domain::ical;
+
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let q = crate::domain::EventQuery {
+        from: Some(params.from), to: Some(params.to), limit: None,
+    };
+    let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
+
+    let blocks: Vec<String> = events
+        .iter()
+        .filter_map(|e| ical::extract_vevent_block(&e.ical_raw))
+        .collect();
+    let body = ical::wrap_vcalendar(&blocks);
+
+    let mut resp = (StatusCode::OK, body).into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/calendar; charset=utf-8"),
+    );
+    resp.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"digest-range.ics\""),
     );
     Ok(resp)
 }
