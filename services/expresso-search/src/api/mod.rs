@@ -30,9 +30,13 @@ pub struct SearchParams {
     pub limit: usize,
     #[serde(default)]
     pub offset: usize,
-    /// When set to "kind", response includes a `facets.kind` map of counts.
+    /// "kind" → `facets.kind`; "from_addr" → `facets.from_addr` (top-N remetentes, sprint #426).
     pub facet: Option<String>,
 }
+
+/// Cap on top-N entries returned for high-cardinality facets like from_addr.
+/// 50 cobre uma sidebar de "top remetentes" sem explodir o payload.
+pub const FACET_FROM_TOP_N: usize = 50;
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT
@@ -143,18 +147,30 @@ pub async fn search(
         .map_err(map_search_err)?;
     let count = hits.len();
 
-    let facets = if params.facet.as_deref() == Some("kind") {
-        let counts = store
-            .facet_counts_by_kind(&params.q, &params.tenant_id)
-            .map_err(map_search_err)?;
-        let entries: Vec<FacetEntry> = counts.into_iter()
-            .map(|(value, count)| FacetEntry { value, count })
-            .collect();
-        let mut map = std::collections::HashMap::new();
-        map.insert("kind".to_string(), entries);
-        Some(map)
-    } else {
-        None
+    let facets = match params.facet.as_deref() {
+        Some("kind") => {
+            let counts = store
+                .facet_counts_by_kind(&params.q, &params.tenant_id)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = counts.into_iter()
+                .map(|(value, count)| FacetEntry { value, count })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("kind".to_string(), entries);
+            Some(map)
+        }
+        Some("from_addr") => {
+            let counts = store
+                .facet_counts_by_from(&params.q, &params.tenant_id, FACET_FROM_TOP_N)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = counts.into_iter()
+                .map(|(value, count)| FacetEntry { value, count })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("from_addr".to_string(), entries);
+            Some(map)
+        }
+        _ => None,
     };
 
     Ok(Json(SearchResponse { hits, count, facets }))
