@@ -52,6 +52,10 @@ pub fn routes() -> Router<AppState> {
             post(create).get(list),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-count",
+            get(count_events),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -101,6 +105,34 @@ async fn create(
     resp.headers_mut().insert(header::ETAG,     HeaderValue::from_str(&etag).unwrap());
     resp.headers_mut().insert(header::LOCATION, HeaderValue::from_str(&location).unwrap());
     Ok(resp)
+}
+
+/// GET /api/v1/calendars/:cal_id/events-count?from=&to= — conta eventos do calendário
+/// (sprint #432). Usa os mesmos filtros from/to de `list` mas sem paginação nem
+/// caching headers; útil pra badges/dashboards. Path com hífen evita colisão com
+/// `events/:id` (lição do sprint #427). RLS filtra tenant; não verifica access_level
+/// porque list também não verifica — quem não tem visibilidade vê 0.
+async fn count_events(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q): Query<EventQuery>,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let (count,): (i64,) = sqlx::query_as(
+        r#"SELECT COUNT(*) FROM calendar_events
+            WHERE tenant_id = $1
+              AND calendar_id = $2
+              AND ($3::timestamptz IS NULL OR dtend   IS NULL OR dtend   >= $3)
+              AND ($4::timestamptz IS NULL OR dtstart IS NULL OR dtstart <= $4)"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.from)
+    .bind(q.to)
+    .fetch_one(pool)
+    .await?;
+    Ok(Json(serde_json::json!({ "count": count })).into_response())
 }
 
 async fn list(
