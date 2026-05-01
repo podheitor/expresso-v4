@@ -837,6 +837,53 @@ async fn top_subjects_archive(
     Ok(Json(json!({ "limit": limit, "subjects": subjects })))
 }
 
+/// GET /api/v1/compliance/archive/top-domains?since=&before=&limit=10 — retorna
+/// top-N domínios remetentes mais frequentes no archive (sprint #451). Paralelo SQL
+/// do facet `domain` em search (#441) e cross `domain_x_kind` (#446): extrai parte
+/// after-@ do from_addr via `split_part(from_addr, '@', 2)`, normaliza com LOWER.
+/// Entries sem '@' (from_addr legacy ou malformado) caem no bucket '(unknown)'.
+/// Mesmo schema de filtros (since/before) e padrão de escape via replace('\'', "''").
+/// Útil pra "quais domínios dominam o tráfego arquivado" — detecta vendors,
+/// newsletters massivas, parceiros B2B recorrentes.
+async fn top_domains_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<TopSendersParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = params.limit.unwrap_or(10).clamp(1, 100);
+
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT CASE \
+            WHEN from_addr IS NULL OR position('@' in from_addr) = 0 THEN '(unknown)' \
+            ELSE LOWER(split_part(from_addr, '@', 2)) \
+         END AS domain, COUNT(*) AS c \
+         FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_filter} \
+         GROUP BY domain ORDER BY c DESC, domain ASC LIMIT {limit}"
+    );
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let domains: Vec<_> = rows.into_iter()
+        .map(|(domain, count)| json!({ "domain": domain, "count": count }))
+        .collect();
+
+    Ok(Json(json!({ "limit": limit, "domains": domains })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1280,6 +1327,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-senders", get(top_senders_archive))
         .route("/api/v1/compliance/archive/top-recipients", get(top_recipients_archive))
         .route("/api/v1/compliance/archive/top-subjects", get(top_subjects_archive))
+        .route("/api/v1/compliance/archive/top-domains", get(top_domains_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
