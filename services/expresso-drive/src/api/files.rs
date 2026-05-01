@@ -47,7 +47,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/star",               post(star_file).delete(unstar_file))
         .route("/api/v1/drive/starred",                      get(list_starred))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
-        .route("/api/v1/drive/trash",                       get(trash))
+        .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
         .route("/api/v1/drive/quota",                       get(quota))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
@@ -709,6 +709,55 @@ async fn trash(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+#[derive(Debug, Deserialize)]
+struct PurgeTrashParams {
+    /// Idade mínima (em dias) do `deleted_at` pra purgar. Default 30, cap 1..3650.
+    older_than_days: Option<i64>,
+}
+
+/// DELETE /api/v1/drive/trash?older_than_days=30 — hard-delete files com
+/// `deleted_at <= now() - older_than_days`. Tenant-scoped via begin_tenant_tx.
+/// Best-effort blob removal (loga mas não falha se já sumiu). Retorna
+/// `{purged: N, file_ids: [...]}`. Útil pra sweep manual antes do GC automático
+/// kick-in. older_than_days default 30, clamp [1, 3650] (10 anos).
+async fn purge_trash(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(params): Query<PurgeTrashParams>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let days = params.older_than_days.unwrap_or(30).clamp(1, 3650);
+    let cutoff = OffsetDateTime::now_utc() - time::Duration::days(days);
+
+    let purged = FileRepo::new(pool)
+        .purge_trashed_older_than(ctx.tenant_id, cutoff)
+        .await?;
+
+    let data_root = state.data_root();
+    let mut ids = Vec::with_capacity(purged.len());
+    for (id, key) in &purged {
+        ids.push(*id);
+        if let Some(k) = key {
+            let blob = data_root.join(k);
+            if let Err(e) = fs::remove_file(&blob).await {
+                tracing::warn!(target: "audit",
+                    event = "drive.trash.purge_blob_skipped",
+                    file_id = %id, key = %k, error = %e);
+            }
+        }
+    }
+
+    tracing::info!(target: "audit",
+        event = "drive.trash.purge",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        older_than_days = days, purged = ids.len());
+
+    Ok(Json(serde_json::json!({
+        "purged":   ids.len(),
+        "file_ids": ids,
+    })))
 }
 
 async fn list_versions(

@@ -499,6 +499,29 @@ impl<'a> FileRepo<'a> {
         Ok(rows)
     }
 
+    /// Hard-delete files trashed (deleted_at NOT NULL) há mais de `older_than_days`.
+    /// Tenant-scoped via begin_tenant_tx. Retorna `(id, storage_key)` pra caller
+    /// remover blobs físicos. Não usa `now() - interval '...'` interpolado pra
+    /// evitar SQL injection — passa o cutoff como timestamptz bind.
+    pub async fn purge_trashed_older_than(
+        &self,
+        tenant_id: Uuid,
+        cutoff: time::OffsetDateTime,
+    ) -> Result<Vec<(Uuid, Option<String>)>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let rows: Vec<(Uuid, Option<String>)> = sqlx::query_as(
+            "DELETE FROM drive_files \
+             WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND deleted_at <= $2 \
+             RETURNING id, storage_key",
+        )
+        .bind(tenant_id)
+        .bind(cutoff)
+        .fetch_all(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(rows)
+    }
+
     /// Star a file — sets `starred_at = now()` idempotently.
     pub async fn star_file(&self, tenant_id: Uuid, id: Uuid, user_id: Uuid) -> Result<DriveFile> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
