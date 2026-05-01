@@ -429,6 +429,78 @@ impl IndexStore {
     /// Aggregate hit counts by `from_addr` field for a tenant+query combination
     /// (sprint #426). Top remetentes para o conjunto de hits. Retorna até `top_n`
     /// entradas ordenadas por count desc, then alfabético.
+    /// Cross-facet kind×from_addr: pra cada (kind, from_addr) presente no hit-set,
+    /// conta ocorrências e retorna top-N pares ordenados por count desc + alfabético.
+    /// Útil pra "top remetentes por categoria" sem rodar dois facets separados
+    /// e cruzar no cliente. Chave externa = "kind|from_addr"; cliente faz split.
+    pub fn facet_kind_by_from(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        top_n: usize,
+    ) -> anyhow::Result<Vec<(String, String, u64)>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let final_query: Box<dyn Query> = if trimmed.is_empty() {
+            tenant_query
+        } else {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Must, tenant_query),
+                (Occur::Must, user_query),
+            ]))
+        };
+
+        use tantivy::collector::DocSetCollector;
+        let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
+
+        let mut counts: std::collections::HashMap<(String, String), u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let kind = doc.get_first(i.f_kind)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("(unknown)")
+                .to_owned();
+            let from = doc.get_first(i.f_from_addr)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("(unknown)")
+                .to_owned();
+            *counts.entry((kind, from)).or_insert(0) += 1;
+        }
+
+        let mut sorted: Vec<(String, String, u64)> = counts.into_iter()
+            .map(|((k, f), c)| (k, f, c))
+            .collect();
+        sorted.sort_by(|a, b| {
+            b.2.cmp(&a.2)
+                .then(a.0.cmp(&b.0))
+                .then(a.1.cmp(&b.1))
+        });
+        sorted.truncate(top_n);
+        Ok(sorted)
+    }
+
     pub fn facet_counts_by_from(
         &self,
         query_str: &str,

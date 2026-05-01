@@ -31,7 +31,8 @@ pub struct SearchParams {
     #[serde(default)]
     pub offset: usize,
     /// "kind" → `facets.kind`; "from_addr" → `facets.from_addr` (top-N remetentes, sprint #426);
-    /// "subject_terms" → `facets.subject_terms` (top-N palavras-chave em subjects, sprint #431).
+    /// "subject_terms" → `facets.subject_terms` (top-N palavras-chave em subjects, sprint #431);
+    /// "kind_x_from" → `facets.kind_x_from` (top-N pares "kind|from_addr", sprint #436).
     pub facet: Option<String>,
 }
 
@@ -42,6 +43,11 @@ pub const FACET_FROM_TOP_N: usize = 50;
 /// Cap pra tag-cloud de palavras em subjects. 50 é tamanho típico de cloud
 /// renderizado sem virar parede de texto.
 pub const FACET_SUBJECT_TOP_N: usize = 50;
+
+/// Cap pra cross-facet kind×from_addr — produto cartesiano pode crescer
+/// rápido (ex.: 5 kinds × 200 remetentes), 100 cobre matriz densa sem
+/// estourar payload.
+pub const FACET_KIND_X_FROM_TOP_N: usize = 100;
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT
@@ -184,6 +190,21 @@ pub async fn search(
                 .collect();
             let mut map = std::collections::HashMap::new();
             map.insert("subject_terms".to_string(), entries);
+            Some(map)
+        }
+        Some("kind_x_from") => {
+            let triples = store
+                .facet_kind_by_from(&params.q, &params.tenant_id, FACET_KIND_X_FROM_TOP_N)
+                .map_err(map_search_err)?;
+            // value = "kind|from_addr" — cliente faz split('|', 1) pra recuperar.
+            let entries: Vec<FacetEntry> = triples.into_iter()
+                .map(|(kind, from, count)| FacetEntry {
+                    value: format!("{}|{}", kind, from),
+                    count,
+                })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("kind_x_from".to_string(), entries);
             Some(map)
         }
         _ => None,
