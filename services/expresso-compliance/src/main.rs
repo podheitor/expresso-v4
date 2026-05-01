@@ -585,6 +585,56 @@ async fn list_archive(
     Ok(resp)
 }
 
+/// GET /api/v1/compliance/archive/count — retorna apenas a contagem de entradas
+/// no archive do usuário, com os mesmos filtros do list_archive (since, before,
+/// subject, from_addr, to_addr, size_min, size_max), sem listar nem paginar
+/// (sprint #425). Útil pra dashboards e badges sem custo de serializar payload.
+async fn count_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ArchiveListParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let since_filter = params.since
+        .map(|d| format!("AND archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_date_filter = params.before
+        .map(|d| format!("AND archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let subject_filter = params.subject.map(|s| {
+        let esc = s.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND subject ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let from_addr_filter = params.from_addr.map(|f| {
+        let esc = f.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND from_addr ILIKE '%{esc}%'")
+    }).unwrap_or_default();
+    let to_addr_filter = params.to_addr.map(|t| {
+        let esc = t.replace('\'', "''").replace('%', "\\%").replace('_', "\\_");
+        format!("AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(to_addrs) t WHERE t ILIKE '%{esc}%')")
+    }).unwrap_or_default();
+    let size_min_filter = params.size_min
+        .map(|v| format!("AND size_bytes >= {v}"))
+        .unwrap_or_default();
+    let size_max_filter = params.size_max
+        .map(|v| format!("AND size_bytes <= {v}"))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT COUNT(*) FROM compliance_archive \
+         WHERE tenant_id = $1 AND user_id = $2 \
+         {since_filter} {before_date_filter} {subject_filter} {from_addr_filter} \
+         {to_addr_filter} {size_min_filter} {size_max_filter}"
+    );
+    let count: i64 = sqlx::query_scalar(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({"count": count})))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1023,6 +1073,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/retention-policies/:id",
                get(get_policy).patch(update_policy).delete(delete_policy))
         .route("/api/v1/compliance/archive",           get(list_archive))
+        .route("/api/v1/compliance/archive/count",     get(count_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/retention",         get(get_tenant_retention).put(put_tenant_retention))
