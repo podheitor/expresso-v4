@@ -8,6 +8,7 @@
 //!   GET    /api/v1/drive/files/:id/tags           — list tags on a file
 //!   GET    /api/v1/drive/tags/:tag                — list files with this tag (tenant-scoped)
 //!   PATCH  /api/v1/drive/tags/:tag                — rename a tag em todas as files (sprint #430)
+//!   POST   /api/v1/drive/tags/:tag/merge          — funde 2 tags numa só (sprint #433)
 
 use axum::{
     extract::{Path, State},
@@ -64,6 +65,73 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/:tag",
             get(list_files_by_tag).patch(rename_tag),
         )
+        .route(
+            "/api/v1/drive/tags/:tag/merge",
+            post(merge_tag),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+struct MergeTagBody {
+    into: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MergeTagResult {
+    merged: u64,
+    into:   String,
+}
+
+/// POST /api/v1/drive/tags/:tag/merge — funde `:tag` em `into` (sprint #433),
+/// consolidando todos os files do tag-fonte no tag-destino. Body: `{into: "..."}`.
+/// Diferente de rename: ambas as tags podem existir; arquivos que já tinham `into`
+/// têm o registro de `:tag` apagado (pré-DELETE evita unique conflict), e os
+/// demais têm o tag UPDATEado para `into`. Idempotente. Retorna `{merged: N, into}`
+/// com a contagem de UPDATEs efetuados.
+async fn merge_tag(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(tag):    Path<String>,
+    Json(body):   Json<MergeTagBody>,
+) -> Result<impl IntoResponse> {
+    let src  = tag.trim().to_lowercase();
+    let dst  = body.into.trim().to_lowercase();
+    if dst.is_empty() || dst.chars().count() > 64 {
+        return Err(DriveError::BadRequest("into must be 1-64 characters".into()));
+    }
+    if dst == src {
+        return Err(DriveError::BadRequest("into must differ from source tag".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+
+    // Mesma técnica do rename (#430): pré-DELETE dos files que já tinham `dst`
+    // pra liberar a chave única (file_id, tenant_id, tag) antes do UPDATE.
+    let _ = sqlx::query(
+        "DELETE FROM drive_file_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND file_id IN ( \
+               SELECT file_id FROM drive_file_tags \
+               WHERE tenant_id = $1 AND tag = $3 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .execute(pool)
+    .await?;
+
+    let r = sqlx::query(
+        "UPDATE drive_file_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&dst)
+    .bind(&src)
+    .execute(pool)
+    .await?;
+
+    Ok(Json(MergeTagResult { merged: r.rows_affected(), into: dst }))
 }
 
 #[derive(Debug, Deserialize)]
