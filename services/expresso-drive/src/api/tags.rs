@@ -9,6 +9,7 @@
 //!   GET    /api/v1/drive/tags/:tag                — list files with this tag (tenant-scoped)
 //!   PATCH  /api/v1/drive/tags/:tag                — rename a tag em todas as files (sprint #430)
 //!   POST   /api/v1/drive/tags/:tag/merge          — funde 2 tags numa só (sprint #433)
+//!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
 
 use axum::{
     extract::{Path, State},
@@ -69,6 +70,40 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/:tag/merge",
             post(merge_tag),
         )
+        .route(
+            "/api/v1/drive/tags/orphans",
+            delete(delete_orphan_tags),
+        )
+}
+
+#[derive(Debug, Serialize)]
+struct OrphansCleanupResult {
+    removed: u64,
+}
+
+/// DELETE /api/v1/drive/tags/orphans — apaga tags do tenant que apontam pra
+/// files inexistentes ou com deleted_at definido (soft-deleted). Idempotente.
+/// Retorna `{removed: N}` com a contagem de linhas apagadas. Path estático
+/// `/orphans` ganha precedência sobre `/:tag` em axum (lição #440).
+async fn delete_orphan_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let r = sqlx::query(
+        "DELETE FROM drive_file_tags t \
+          WHERE t.tenant_id = $1 \
+            AND NOT EXISTS ( \
+                SELECT 1 FROM drive_files f \
+                 WHERE f.id = t.file_id \
+                   AND f.tenant_id = t.tenant_id \
+                   AND f.deleted_at IS NULL \
+            )",
+    )
+    .bind(ctx.tenant_id)
+    .execute(pool)
+    .await?;
+    Ok(Json(OrphansCleanupResult { removed: r.rows_affected() }))
 }
 
 #[derive(Debug, Deserialize)]
