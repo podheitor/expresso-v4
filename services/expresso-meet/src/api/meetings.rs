@@ -1705,7 +1705,8 @@ async fn get_recording(
     }
 }
 
-/// DELETE /api/v1/meetings/:id/recordings/:rec_id — remove recording metadata (moderator-only).
+/// DELETE /api/v1/meetings/:id/recordings/:rec_id — remove recording metadata.
+/// Permitido para moderador OU para o usuário que criou o recording (sprint #417).
 async fn delete_recording(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -1713,11 +1714,24 @@ async fn delete_recording(
 ) -> Result<StatusCode> {
     let pool = state.db_or_unavailable()?;
     let repo = MeetingRepo::new(pool);
-    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
-        Some(ParticipantRole::Moderator) => {}
-        Some(_) => return Err(MeetError::Forbidden),
-        None    => return Err(MeetError::NotParticipant),
+    let role = repo.participant_role(ctx.tenant_id, id, ctx.user_id).await?
+        .ok_or(MeetError::NotParticipant)?;
+
+    if !matches!(role, ParticipantRole::Moderator) {
+        let creator: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT created_by FROM meeting_recordings \
+             WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3",
+        )
+        .bind(ctx.tenant_id).bind(id).bind(rec_id)
+        .fetch_optional(pool)
+        .await?;
+        match creator {
+            Some((cb,)) if cb == ctx.user_id => {}
+            Some(_) => return Err(MeetError::Forbidden),
+            None    => return Err(MeetError::NotFound),
+        }
     }
+
     let r = sqlx::query(
         "DELETE FROM meeting_recordings WHERE tenant_id = $1 AND meeting_id = $2 AND id = $3",
     )
