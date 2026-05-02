@@ -23,6 +23,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/size-summary",       get(folders_size_summary))
         .route("/mail/folders/special-use/empty",       axum::routing::post(empty_special_use_folders_bulk))
         .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
+        .route("/mail/folders/rename-history",     get(list_folder_rename_history))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
@@ -173,6 +174,11 @@ async fn create_folder(
 }
 
 /// PATCH /api/v1/mail/folders/:name — rename folder
+///
+/// Sprint #480: além do UPDATE, grava INSERT em mail_folder_rename_history na
+/// mesma tx (begin_tenant_tx) — atomicidade garantida; se history falhar, todo
+/// o rename roda rollback. Habilita audit trail e UI tipo "histórico de
+/// renames" via GET /api/v1/mail/folders/rename-history.
 async fn rename_folder(
     State(state):  State<AppState>,
     ctx:           RequestCtx,
@@ -184,8 +190,8 @@ async fn rename_folder(
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     // Protect system folders from rename.
-    let special: Option<String> = sqlx::query_scalar(
-        "SELECT special_use FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    let lookup: Option<(Uuid, Option<String>)> = sqlx::query_as(
+        "SELECT id, special_use FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
     )
     .bind(ctx.user_id)
     .bind(ctx.tenant_id)
@@ -193,11 +199,11 @@ async fn rename_folder(
     .fetch_optional(&mut *tx)
     .await?;
 
-    match special {
+    let mailbox_id = match lookup {
         None => return Err(MailError::FolderNotFound { folder: old_name }),
-        Some(Some(_)) => return Err(MailError::BadRequest("cannot rename a system folder".into())),
-        Some(None) => {}
-    }
+        Some((_, Some(_))) => return Err(MailError::BadRequest("cannot rename a system folder".into())),
+        Some((id, None)) => id,
+    };
 
     let row: Option<FolderDto> = sqlx::query_as(
         r#"UPDATE mailboxes
@@ -218,8 +224,81 @@ async fn rename_folder(
     .fetch_optional(&mut *tx)
     .await?;
 
+    let dto = row.ok_or_else(|| MailError::FolderNotFound { folder: old_name.clone() })?;
+
+    sqlx::query(
+        "INSERT INTO mail_folder_rename_history \
+            (tenant_id, user_id, mailbox_id, old_name, new_name, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5, $6)",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(mailbox_id)
+    .bind(&old_name)
+    .bind(&body.name)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+
     tx.commit().await?;
-    row.map(Json).ok_or(MailError::FolderNotFound { folder: old_name })
+    Ok(Json(dto))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct FolderRenameHistoryQuery {
+    limit:      Option<i64>,
+    since:      Option<time::OffsetDateTime>,
+    before:     Option<time::OffsetDateTime>,
+    name:       Option<String>,
+    mailbox_id: Option<Uuid>,
+}
+
+#[derive(Debug, serde::Serialize, sqlx::FromRow)]
+struct FolderRenameHistoryEntry {
+    id:         Uuid,
+    mailbox_id: Uuid,
+    old_name:   String,
+    new_name:   String,
+    renamed_by: Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    renamed_at: time::OffsetDateTime,
+}
+
+/// GET /api/v1/mail/folders/rename-history?limit=&since=&before=&name=&mailbox_id=
+/// — audit trail dos renames de folder do user (sprint #480). Filtros: range
+/// temporal, `name` matching old_name OR new_name (literal), `mailbox_id` pra
+/// limitar a uma única mailbox (rastreia toda a história de renames daquela
+/// mailbox). Limit padrão 50, cap 1..500. Path estático precede `/:name`
+/// porque axum prefere static sobre `:capture` (lição #443/#448).
+async fn list_folder_rename_history(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<FolderRenameHistoryQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+
+    let entries: Vec<FolderRenameHistoryEntry> = sqlx::query_as(
+        "SELECT id, mailbox_id, old_name, new_name, renamed_by, renamed_at \
+           FROM mail_folder_rename_history \
+          WHERE tenant_id = $1 AND user_id = $2 \
+            AND ($3::timestamptz IS NULL OR renamed_at >= $3) \
+            AND ($4::timestamptz IS NULL OR renamed_at <  $4) \
+            AND ($5::text IS NULL OR old_name = $5 OR new_name = $5) \
+            AND ($6::uuid IS NULL OR mailbox_id = $6) \
+          ORDER BY renamed_at DESC \
+          LIMIT $7",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(q.since)
+    .bind(q.before)
+    .bind(q.name)
+    .bind(q.mailbox_id)
+    .bind(limit)
+    .fetch_all(state.db())
+    .await?;
+
+    Ok(Json(serde_json::json!({ "limit": limit, "entries": entries })))
 }
 
 /// DELETE /api/v1/mail/folders/:name — delete folder and all its messages
