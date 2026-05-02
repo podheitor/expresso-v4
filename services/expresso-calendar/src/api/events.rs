@@ -131,6 +131,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/exdates/:instance",
             delete_route(delete_exdate),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/override-instance",
+            post(override_event_instance),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -1467,6 +1471,212 @@ fn remove_exdate_value(raw: &str, target_utc: OffsetDateTime) -> String {
         out.push_str("EXDATE:");
         out.push_str(&kept.join(","));
         out.push_str(eol);
+    }
+    out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OverrideInstanceBody {
+    /// Original instance dtstart (RFC3339 UTC).
+    #[serde(with = "time::serde::rfc3339")]
+    instance: OffsetDateTime,
+    /// Campos opcionais a sobrescrever na occurrence — pelo menos um precisa
+    /// vir, senão o override é no-op.
+    summary:     Option<String>,
+    description: Option<String>,
+    location:    Option<String>,
+    /// Se omitido, override mantém dtstart=instance.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtstart:     Option<OffsetDateTime>,
+    /// Se omitido, override não emite DTEND (cliente herda do master).
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtend:       Option<OffsetDateTime>,
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/override-instance
+/// Cria override para uma ocorrência específica de um evento recorrente
+/// sem cancelar (sprint #495, extensão do #488). Em RFC 5545 isso é feito
+/// via VEVENT separado no mesmo VCALENDAR com UID idêntico ao master +
+/// linha `RECURRENCE-ID:<dtstamp UTC>` apontando pra ocorrência original.
+/// Implementação MVP: injeta novo bloco VEVENT antes de END:VCALENDAR
+/// reusando o UID extraído do master. Body permite sobrescrever
+/// summary/description/location/dtstart/dtend (pelo menos 1 obrigatório).
+/// Idempotência: 409 se override pra esse RECURRENCE-ID já existe (use
+/// PUT no master pra editar in-place — fora do escopo MVP). 400 se evento
+/// não tem rrule. 404 se evento não existe. Requer WRITE+. Retorna
+/// `{event_id, instance, recurrence_id, sequence}`.
+async fn override_event_instance(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Json(body):   Json<OverrideInstanceBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        return Err(CalendarError::BadRequest(
+            "event has no rrule — overrides only apply to recurring series".into()
+        ));
+    }
+    if body.summary.is_none() && body.description.is_none()
+        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into()
+        ));
+    }
+
+    let inst_utc = body.instance.to_offset(time::UtcOffset::UTC);
+    let recurrence_id = format_compact_utc(inst_utc);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot create override".into()
+    ))?;
+
+    if has_recurrence_id_override(&ev.ical_raw, &uid, &recurrence_id) {
+        return Err(CalendarError::BadRequest(
+            format!("override for RECURRENCE-ID:{recurrence_id} already exists")
+        ));
+    }
+
+    let dtstart = body.dtstart.unwrap_or(inst_utc).to_offset(time::UtcOffset::UTC);
+    let mut block = String::new();
+    let eol = if ev.ical_raw.contains("\r\n") { "\r\n" } else { "\n" };
+
+    block.push_str("BEGIN:VEVENT");                block.push_str(eol);
+    block.push_str(&format!("UID:{uid}"));          block.push_str(eol);
+    block.push_str(&format!("RECURRENCE-ID:{recurrence_id}")); block.push_str(eol);
+    block.push_str(&format!("DTSTAMP:{}", format_compact_utc(OffsetDateTime::now_utc())));
+    block.push_str(eol);
+    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart))); block.push_str(eol);
+    if let Some(end) = body.dtend {
+        block.push_str(&format!("DTEND:{}", format_compact_utc(end.to_offset(time::UtcOffset::UTC))));
+        block.push_str(eol);
+    }
+    if let Some(s) = body.summary.as_deref() {
+        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    if let Some(s) = body.description.as_deref() {
+        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    if let Some(s) = body.location.as_deref() {
+        block.push_str(&format!("LOCATION:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    block.push_str("END:VEVENT"); block.push_str(eol);
+
+    let new_raw = inject_before_end_vcalendar(&ev.ical_raw, &block);
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":      ev.id,
+        "instance":      recurrence_id,
+        "recurrence_id": recurrence_id,
+        "sequence":      updated.sequence,
+    })))
+}
+
+/// `YYYYMMDDTHHMMSSZ` — formato compact UTC dos VEVENT properties.
+fn format_compact_utc(t: OffsetDateTime) -> String {
+    let t = t.to_offset(time::UtcOffset::UTC);
+    format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        t.year(), u8::from(t.month()), t.day(),
+        t.hour(), t.minute(), t.second(),
+    )
+}
+
+/// Extrai o UID do primeiro bloco VEVENT do ical raw. Linha "UID:..."
+/// case-insensitive no nome da prop.
+fn extract_uid(raw: &str) -> Option<String> {
+    for line in raw.lines() {
+        let trimmed = line.trim_start();
+        let upper: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if upper.starts_with("UID:") {
+            return Some(trimmed["UID:".len()..].trim().to_string());
+        }
+    }
+    None
+}
+
+/// True se o ical raw já contém um VEVENT com (UID,RECURRENCE-ID) pareados.
+/// Walk simples por blocos VEVENT (BEGIN:VEVENT...END:VEVENT) checando
+/// ambas linhas dentro de cada bloco. Match por UID exato + RECURRENCE-ID
+/// compact (caller já normalizou).
+fn has_recurrence_id_override(raw: &str, uid: &str, recurrence_id: &str) -> bool {
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut found_recid = false;
+    for line in raw.lines() {
+        let trimmed = line.trim_start();
+        let upper_head: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        if upper_head.starts_with("BEGIN:VEVENT") {
+            in_event = true; found_uid = false; found_recid = false; continue;
+        }
+        if upper_head.starts_with("END:VEVENT") {
+            if in_event && found_uid && found_recid { return true; }
+            in_event = false; continue;
+        }
+        if !in_event { continue; }
+        let upper_short: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if upper_short.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid { found_uid = true; }
+        } else {
+            let upper_long: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+            if upper_long.starts_with("RECURRENCE-ID:") {
+                let v = trimmed["RECURRENCE-ID:".len()..].trim();
+                if v == recurrence_id { found_recid = true; }
+            }
+        }
+    }
+    false
+}
+
+/// Injeta `block` antes da última linha END:VCALENDAR. Mantém EOL original.
+fn inject_before_end_vcalendar(raw: &str, block: &str) -> String {
+    let crlf = raw.contains("\r\n");
+    let eol  = if crlf { "\r\n" } else { "\n" };
+    let mut out = String::with_capacity(raw.len() + block.len() + 2);
+    let mut injected = false;
+    for src_line in raw.split_inclusive('\n') {
+        if !injected {
+            let probe: String = src_line.trim_end().to_ascii_uppercase();
+            if probe == "END:VCALENDAR" {
+                out.push_str(block);
+                injected = true;
+            }
+        }
+        out.push_str(src_line);
+    }
+    if !injected {
+        out.push_str(block);
+        out.push_str(eol);
+    }
+    out
+}
+
+/// Escape RFC 5545 minimal: `\` → `\\`, `;` → `\;`, `,` → `\,`, newlines → `\n`.
+fn escape_ics_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            ';'  => out.push_str("\\;"),
+            ','  => out.push_str("\\,"),
+            '\n' => out.push_str("\\n"),
+            '\r' => {}
+            c    => out.push(c),
+        }
     }
     out
 }
