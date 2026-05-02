@@ -13,6 +13,7 @@
 //!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
 //!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
 //!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
+//!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
 
 use axum::{
     extract::{Path, Query, State},
@@ -88,6 +89,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/intersect",
             get(intersect_files_by_tags),
+        )
+        .route(
+            "/api/v1/drive/tags/union",
+            get(union_files_by_tags),
         )
 }
 
@@ -599,4 +604,66 @@ async fn intersect_files_by_tags(
     let file_count = file_ids.len() as i64;
 
     Ok(Json(IntersectResult { tags, file_ids, file_count }))
+}
+
+#[derive(Debug, Serialize)]
+struct UnionResult {
+    tags:         Vec<String>,
+    file_ids:     Vec<Uuid>,
+    file_count:   i64,
+}
+
+/// GET /api/v1/drive/tags/union?tags=a,b,c — retorna file_ids que possuem
+/// **PELO MENOS UMA** das tags listadas (OR, sprint #467). Complementa o
+/// intersect (#465, AND) e o `/tags/:tag` (uma tag só). Mesma normalização
+/// (lowercase + trim + dedup, 1-32 tags, 1-64 chars cada) e filtro de files
+/// ativos (deleted_at IS NULL). Implementação: `WHERE t.tag = ANY($2)` +
+/// `GROUP BY t.file_id` (sem HAVING — qualquer match basta). Path estático
+/// `/tags/union` precede `/tags/:tag` (lição #443/#448).
+async fn union_files_by_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<IntersectQuery>,
+) -> Result<impl IntoResponse> {
+    let mut tags: Vec<String> = q.tags
+        .split(',')
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    tags.sort();
+    tags.dedup();
+
+    if tags.is_empty() {
+        return Err(DriveError::BadRequest("at least one tag required".into()));
+    }
+    if tags.len() > 32 {
+        return Err(DriveError::BadRequest("max 32 tags per query".into()));
+    }
+    for t in &tags {
+        if t.chars().count() > 64 {
+            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT t.file_id \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 \
+           AND t.tag = ANY($2::text[]) \
+           AND f.deleted_at IS NULL \
+         GROUP BY t.file_id \
+         ORDER BY t.file_id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&tags)
+    .fetch_all(pool)
+    .await?;
+
+    let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    let file_count = file_ids.len() as i64;
+
+    Ok(Json(UnionResult { tags, file_ids, file_count }))
 }
