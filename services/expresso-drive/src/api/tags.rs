@@ -12,9 +12,10 @@
 //!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
 //!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
 //!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
+//!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
@@ -83,6 +84,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/stats",
             get(tag_stats),
+        )
+        .route(
+            "/api/v1/drive/tags/intersect",
+            get(intersect_files_by_tags),
         )
 }
 
@@ -521,4 +526,77 @@ async fn count_files_by_tag(
     .await?;
 
     Ok(Json(TagCount { tag, file_count: count }))
+}
+
+#[derive(Debug, Deserialize)]
+struct IntersectQuery {
+    /// Comma-separated list of tags (e.g. `?tags=foo,bar,baz`).
+    tags: String,
+}
+
+#[derive(Debug, Serialize)]
+struct IntersectResult {
+    tags:        Vec<String>,
+    file_ids:    Vec<Uuid>,
+    file_count:  i64,
+}
+
+/// GET /api/v1/drive/tags/intersect?tags=a,b,c — retorna file_ids que possuem
+/// **TODAS** as tags listadas (AND, sprint #465). Complementa
+/// `/api/v1/drive/tags/:tag` que faz busca por uma tag só. Tags normalizadas
+/// lowercase + trim, deduplicated. Filtra apenas files ativos
+/// (deleted_at IS NULL). Implementação: `WHERE t.tag = ANY($3)` + `GROUP BY
+/// file_id HAVING COUNT(DISTINCT t.tag) = N` (clássico AND-set query, evita
+/// N self-joins). Aceita 1-32 tags. Path estático precede `/:tag` (lição
+/// #443/#448) — sem hífen necessário porque `intersect` é distinto de qualquer
+/// tag legítima (tag não pode bater com static segment).
+async fn intersect_files_by_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<IntersectQuery>,
+) -> Result<impl IntoResponse> {
+    let mut tags: Vec<String> = q.tags
+        .split(',')
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    tags.sort();
+    tags.dedup();
+
+    if tags.is_empty() {
+        return Err(DriveError::BadRequest("at least one tag required".into()));
+    }
+    if tags.len() > 32 {
+        return Err(DriveError::BadRequest("max 32 tags per query".into()));
+    }
+    for t in &tags {
+        if t.chars().count() > 64 {
+            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let n = tags.len() as i64;
+
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT t.file_id \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 \
+           AND t.tag = ANY($2::text[]) \
+           AND f.deleted_at IS NULL \
+         GROUP BY t.file_id \
+         HAVING COUNT(DISTINCT t.tag) = $3 \
+         ORDER BY t.file_id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&tags)
+    .bind(n)
+    .fetch_all(pool)
+    .await?;
+
+    let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    let file_count = file_ids.len() as i64;
+
+    Ok(Json(IntersectResult { tags, file_ids, file_count }))
 }
