@@ -1294,36 +1294,171 @@ fn inject_exdate_line(raw: &str, line: &str) -> String {
     out
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct ListExdatesQuery {
+    #[serde(default)]
+    detail: Option<String>,
+}
+
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates — lista EXDATEs do
 /// VEVENT no formato compacto UTC (`YYYYMMDDTHHMMSSZ`) e RFC3339 paralelo
-/// pra UI (sprint #491, inverso de #488). Reusa `parse_exdates`. Retorna
-/// `{event_id, count, exdates:[{compact, rfc3339}]}`. Não requer WRITE
-/// (read-only). 404 se evento não existe.
+/// pra UI (sprint #491, inverso de #488). Reusa `parse_exdates` no modo
+/// default (`?detail=summary`) retornando `{event_id, count,
+/// exdates:[{compact, rfc3339}]}` — só EXDATEs UTC parseáveis.
+///
+/// `?detail=full` (sprint #511, paralelo simétrico do #503) usa
+/// `parse_exdates_rich` cobrindo TAMBÉM linhas com TZID, parametros e
+/// formatos não-UTC que `parse_exdates` ignora silenciosamente; cada item
+/// ganha `tzid?`, `params?`, `kind` (`"utc"|"tzid"|"date-only"|"unknown"`)
+/// e `raw_value` (token original). Útil pra debug/inspeção quando ICS
+/// importado tem EXDATEs em formato não-MVP. Não requer WRITE
+/// (read-only). 400 em valor de detail desconhecido. 404 se evento não
+/// existe.
 async fn list_exdates(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<ListExdatesQuery>,
 ) -> Result<Json<serde_json::Value>> {
+    let full = match q.detail.as_deref() {
+        None | Some("") | Some("summary") => false,
+        Some("full") => true,
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("detail must be 'summary' or 'full', got '{other}'")
+        )),
+    };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
-    let dates = parse_exdates(&ev.ical_raw);
-    let items: Vec<serde_json::Value> = dates.iter().map(|t| {
-        let utc = t.to_offset(time::UtcOffset::UTC);
-        let compact = format!(
-            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
-            utc.year(), u8::from(utc.month()), utc.day(),
-            utc.hour(), utc.minute(), utc.second(),
-        );
-        let rfc = utc.format(&time::format_description::well_known::Rfc3339)
-            .unwrap_or_default();
-        serde_json::json!({ "compact": compact, "rfc3339": rfc })
-    }).collect();
+
+    let items: Vec<serde_json::Value> = if full {
+        parse_exdates_rich(&ev.ical_raw).into_iter().map(|info| {
+            let (compact, rfc) = match info.parsed_utc {
+                Some(t) => {
+                    let utc = t.to_offset(time::UtcOffset::UTC);
+                    let c = format!(
+                        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+                        utc.year(), u8::from(utc.month()), utc.day(),
+                        utc.hour(), utc.minute(), utc.second(),
+                    );
+                    let r = utc.format(&time::format_description::well_known::Rfc3339)
+                        .unwrap_or_default();
+                    (serde_json::Value::String(c), serde_json::Value::String(r))
+                }
+                None => (serde_json::Value::Null, serde_json::Value::Null),
+            };
+            let mut item = serde_json::json!({
+                "compact":   compact,
+                "rfc3339":   rfc,
+                "kind":      info.kind,
+                "raw_value": info.raw_value,
+            });
+            if let Some(obj) = item.as_object_mut() {
+                obj.insert("tzid".into(),
+                    info.tzid.map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null));
+                obj.insert("params".into(),
+                    info.params.map(serde_json::Value::String)
+                        .unwrap_or(serde_json::Value::Null));
+            }
+            item
+        }).collect()
+    } else {
+        parse_exdates(&ev.ical_raw).iter().map(|t| {
+            let utc = t.to_offset(time::UtcOffset::UTC);
+            let compact = format!(
+                "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+                utc.year(), u8::from(utc.month()), utc.day(),
+                utc.hour(), utc.minute(), utc.second(),
+            );
+            let rfc = utc.format(&time::format_description::well_known::Rfc3339)
+                .unwrap_or_default();
+            serde_json::json!({ "compact": compact, "rfc3339": rfc })
+        }).collect()
+    };
 
     Ok(Json(serde_json::json!({
         "event_id": ev.id,
         "count":    items.len(),
         "exdates":  items,
     })))
+}
+
+/// Variante "rica" do `parse_exdates` que captura TAMBÉM linhas com TZID,
+/// parametros e formatos não-UTC (date-only, RFC3339 com offset não-Z).
+/// Cada token EXDATE vira um `ExdateInfo` com `kind` classificando o
+/// formato. Usada exclusivamente pelo `list_exdates?detail=full` (#511) —
+/// `parse_exdates` plain continua sendo a fonte autoritativa pro filter
+/// de expansão (subset MVP UTC-only).
+fn parse_exdates_rich(ical_raw: &str) -> Vec<ExdateInfo> {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT_UTC: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    static FMT_DATE: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]"
+    );
+    let mut out = Vec::new();
+    for line in ical_raw.lines() {
+        let trimmed = line.trim_start();
+        let upper6: String = trimmed.chars().take(6).collect::<String>().to_ascii_uppercase();
+        if !upper6.starts_with("EXDATE") {
+            continue;
+        }
+        // EXDATE pode ser "EXDATE:..." ou "EXDATE;PARAM=...:..."
+        let after_name = &trimmed["EXDATE".len()..];
+        let (params_str, value): (Option<String>, &str) = match after_name.chars().next() {
+            Some(':') => (None, &after_name[1..]),
+            Some(';') => {
+                if let Some(colon_idx) = after_name.find(':') {
+                    (Some(after_name[1..colon_idx].to_string()), &after_name[colon_idx + 1..])
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
+        };
+        let tzid = params_str.as_ref().and_then(|p| {
+            for kv in p.split(';') {
+                let kv_trim = kv.trim();
+                let upper_kv: String = kv_trim.chars().take(5).collect::<String>().to_ascii_uppercase();
+                if upper_kv.starts_with("TZID=") {
+                    return Some(kv_trim[5..].to_string());
+                }
+            }
+            None
+        });
+        for tok in value.split(',') {
+            let tok = tok.trim();
+            if tok.is_empty() { continue; }
+            let (kind, parsed): (&'static str, Option<OffsetDateTime>) =
+                if let Ok(ts) = OffsetDateTime::parse(tok, &FMT_UTC) {
+                    ("utc", Some(ts))
+                } else if tzid.is_some() {
+                    ("tzid", None)
+                } else if time::Date::parse(tok, &FMT_DATE).is_ok() {
+                    ("date-only", None)
+                } else {
+                    ("unknown", None)
+                };
+            out.push(ExdateInfo {
+                raw_value:   tok.to_string(),
+                tzid:        tzid.clone(),
+                params:      params_str.clone(),
+                parsed_utc:  parsed,
+                kind,
+            });
+        }
+    }
+    out
+}
+
+struct ExdateInfo {
+    raw_value:   String,
+    tzid:        Option<String>,
+    params:      Option<String>,
+    parsed_utc:  Option<OffsetDateTime>,
+    kind:        &'static str,
 }
 
 /// DELETE /api/v1/calendars/:cal_id/events/:id/exdates — remove TODAS as
