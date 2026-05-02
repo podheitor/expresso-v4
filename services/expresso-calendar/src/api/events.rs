@@ -2727,6 +2727,12 @@ struct TouchOverridesBulkBody {
     instances: Vec<String>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct TouchOverridesBulkQuery {
+    /// `?dry=true` retorna o plano sem aplicar (sprint #511). Default false.
+    dry: Option<bool>,
+}
+
 /// POST /api/v1/calendars/:cal_id/events/:id/touch-overrides — bulk variant
 /// do #505 (sprint #507). Body `{"instances":["20260601T120000Z",…]}` toca
 /// DTSTAMP de N overrides num único write — útil pra ressuscitar série
@@ -2740,10 +2746,20 @@ struct TouchOverridesBulkBody {
 /// semantics do #505: sequence NÃO bumpa, ETag/`updated_at` refrescam.
 /// Requer WRITE+. Retorna `{event_id, touched:[…compacts…], not_found:[…],
 /// dtstamp, etag, sequence}`.
+///
+/// `?dry=true` (sprint #511, paralelo de #510): só retorna o plano (lista
+/// de compacts que SERIAM tocados + `not_found` particionado igual) sem
+/// `EventRepo::update`, sem alterar ETag/`updated_at`/DTSTAMP, sem
+/// publicar `EventUpdated`. Útil pra UI confirmar "instances X/Y/Z viram
+/// tocadas, A/B não existem" antes de rodar. Mesma validação 400 (lista
+/// 1..256, master sem UID) e 404 (touched vazio) — preserva semantics do
+/// path real. Retorna `{dry:true, event_id, touched:[…], not_found:[…]}`
+/// (sem etag/sequence/dtstamp).
 async fn touch_overrides_bulk(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<TouchOverridesBulkQuery>,
     Json(body):   Json<TouchOverridesBulkBody>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
@@ -2761,6 +2777,35 @@ async fn touch_overrides_bulk(
     let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
         "master event has no UID — cannot locate overrides".into()
     ))?;
+
+    let dry = q.dry.unwrap_or(false);
+
+    if dry {
+        let mut touched:   Vec<String> = Vec::new();
+        let mut not_found: Vec<String> = Vec::new();
+        for inst in &body.instances {
+            let target = match parse_one_exdate(inst) {
+                Some(t) => t,
+                None    => { not_found.push(inst.clone()); continue; }
+            };
+            let target_compact = format_compact_utc(target);
+            if touched.iter().any(|c| c == &target_compact) { continue; }
+            if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+                not_found.push(target_compact);
+                continue;
+            }
+            touched.push(target_compact);
+        }
+        if touched.is_empty() {
+            return Err(CalendarError::EventNotFound(id));
+        }
+        return Ok(Json(serde_json::json!({
+            "dry":       true,
+            "event_id":  ev.id,
+            "touched":   touched,
+            "not_found": not_found,
+        })));
+    }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
     let mut raw         = ev.ical_raw.clone();

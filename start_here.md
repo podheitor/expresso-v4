@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #510 (2026-05-02)
+**Último sprint commitado:** #511 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -108,6 +108,7 @@ git log --oneline | head -15
 | #508 | calendar | Master+overrides touch-all — `POST /:id/touch-all` combina #506 + #507; descobre overrides via `list_recurrence_id_overrides(raw, uid, false)` (mesmo walker do #503), itera extraindo `compact` e aplica `patch_recurrence_id_override_block(..., None×5, &dtstamp_now)` in-memory; depois `patch_master_dtstamp(raw, uid, &dtstamp_now)` no fim; 1 único `EventRepo::update`; cache-nuke total do VCALENDAR sem cliente listar nada; mesma semantics #505/#506/#507 (sequence NÃO bumpa, ETag/updated_at refrescam); sem body; 400 se master sem UID; retorna `{event_id, master_touched:true, overrides_touched:[…compact…], dtstamp, etag, sequence}`; requer WRITE+ |
 | #509 | calendar | Override touch by range — `POST /:id/touch-overrides-by-range?after=&before=` variante range do #507 sem listar instances; descobre overrides via `list_recurrence_id_overrides`, parseia cada `compact` via `parse_one_exdate`, filtra `[after, before)` (half-open, ambos opcionais — sem nenhum ≡ #508 sem master); aplica `patch_recurrence_id_override_block(..., None×5)` in-memory; 1 único `EventRepo::update`; mesma semantics #505 (sequence NÃO bumpa, ETag/updated_at refrescam); 400 se `after >= before`; 404 se nenhum override no range; retorna `{event_id, touched:[…compacts…], skipped:[…fora do range…], dtstamp, etag, sequence}`; use case: ressuscitar só overrides futuros sem afetar histórico, ou janela de migração específica; requer WRITE+ |
 | #510 | calendar | Touch-all dry-run — `?dry=true` no #508 retorna o plano (lista de compacts que SERIAM tocados + master:true) sem chamar `EventRepo::update`, sem alterar ETag/updated_at/DTSTAMP, sem publicar `EventUpdated`; nova `TouchAllQuery` struct + `Query<TouchAllQuery>` extractor no `touch_all`; quando `dry`, walka `list_recurrence_id_overrides` igual ao path real mas só popula `overrides_touched` sem patches; retorna `{dry:true, event_id, master_touched:true, overrides_touched:[…]}` (sem etag/sequence/dtstamp); 400 ainda fired se master sem UID; default `dry=false` preserva semantics original; útil pra UI confirmar "vai mexer em N overrides + master, ok?" antes de cache-nuke; paralelo do #494 (mail revert-all dry-run) — sprint #510 |
+| #511 | calendar | Touch-overrides bulk dry-run — `?dry=true` no #507 retorna `{dry:true, event_id, touched, not_found}` sem `EventRepo::update`, sem ETag/updated_at/DTSTAMP, sem `EventUpdated`; nova `TouchOverridesBulkQuery` struct + `Query<TouchOverridesBulkQuery>` extractor adicionado ao `touch_overrides_bulk`; ramo dry valida instances igual ao real (parse `parse_one_exdate`, dedup `target_compact`, check `has_recurrence_id_override(&ev.ical_raw, …)`) e particiona em `touched`/`not_found` sem aplicar `patch_recurrence_id_override_block`; mesma validação 400 (lista 1..256, master sem UID) e 404 (touched vazio) que path real; default `dry=false` preserva semantics #507; UI consegue prever "instances X/Y/Z viram tocadas, A/B não existem" antes de rodar; segundo dry-run da família touch (#510 fez touch-all primeiro) — sprint #511 |
 
 ---
 
@@ -121,7 +122,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#511-#516)
+## Próximos candidatos (#512-#517)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -131,8 +132,8 @@ git log --oneline | head -15
 6. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 7. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
 8. **calendar:** EXDATE list filter por kind — `GET /:id/exdates?detail=full&kind=utc|tzid|date-only|unknown` filtra a lista (extensão do #504)
-9. **calendar:** touch-overrides-by-range dry-run — `?dry=true` no #509 retorna `{planned, skipped}` sem UPDATE (mesmo padrão do #494/#510)
-10. **calendar:** touch-overrides bulk dry-run — `?dry=true` no #507 retorna `{planned, not_found}` sem UPDATE; cobre o último gap da família touch sem dry-run
+9. **calendar:** touch-overrides-by-range dry-run — `?dry=true` no #509 retorna `{planned, skipped}` sem UPDATE (fecha o último gap dry-run da família touch após #510 e #511)
+10. **calendar:** touch-master/touch-override single dry-run — `?dry=true` no #505/#506 (caso granular pra completar 100% da família)
 
 ---
 
