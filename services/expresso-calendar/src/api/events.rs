@@ -2960,6 +2960,9 @@ struct TouchOverridesByRangeQuery {
     after:  Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
+    /// `?dry=true` retorna o plano sem aplicar (sprint #512). Default false.
+    #[serde(default)]
+    dry:    Option<bool>,
 }
 
 /// POST /api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range
@@ -2980,6 +2983,14 @@ struct TouchOverridesByRangeQuery {
 /// `{event_id, touched:[…compacts…], skipped:[…compacts fora do range…],
 /// dtstamp, etag, sequence}` ou 404 se nenhum bate (compatible com
 /// EventNotFound mas semantica é "no overrides in range").
+///
+/// `?dry=true` (sprint #512, fecha trio bulk dry-run após #510 e #511):
+/// só retorna o plano (`{dry:true, event_id, touched, skipped}`) sem
+/// `EventRepo::update`, sem alterar ETag/`updated_at`/DTSTAMP, sem
+/// publicar `EventUpdated`. Mesmas validações 400 (`after >= before`,
+/// master sem UID) e 404 (touched vazio) que path real — UI não vê
+/// dry "ok" mas real "fail". Útil pra UI confirmar "vai tocar N
+/// overrides em [after,before), N' fora, ok?" antes de rodar.
 async fn touch_overrides_by_range(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -3001,6 +3012,39 @@ async fn touch_overrides_by_range(
     let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
         "master event has no UID — cannot locate overrides".into()
     ))?;
+
+    let dry = q.dry.unwrap_or(false);
+
+    if dry {
+        let mut touched: Vec<String> = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
+        let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+        for item in &listed {
+            let compact = match item.get("compact").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None    => continue,
+            };
+            if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
+                continue;
+            }
+            let parsed = match parse_one_exdate(&compact) {
+                Some(t) => t,
+                None    => { skipped.push(compact); continue; }
+            };
+            if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
+            if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+            touched.push(compact);
+        }
+        if touched.is_empty() {
+            return Err(CalendarError::EventNotFound(id));
+        }
+        return Ok(Json(serde_json::json!({
+            "dry":      true,
+            "event_id": ev.id,
+            "touched":  touched,
+            "skipped":  skipped,
+        })));
+    }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
     let mut raw = ev.ical_raw.clone();
