@@ -119,6 +119,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/instances",
             get(events_instances),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/cancel-instance",
+            post(cancel_event_instance),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -999,7 +1003,9 @@ async fn events_instances(
                  .into_iter().collect(),
     };
 
+    let exdates = parse_exdates(&ev.ical_raw);
     let instances: Vec<EventInstance> = pairs.into_iter()
+        .filter(|(s, _)| !exdates.iter().any(|x| x == s))
         .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
         .collect();
 
@@ -1085,7 +1091,9 @@ async fn events_instances_bulk(
                      .into_iter().collect(),
         };
 
+        let exdates = parse_exdates(&ev.ical_raw);
         let mut instances: Vec<EventInstance> = pairs.into_iter()
+            .filter(|(s, _)| !exdates.iter().any(|x| x == s))
             .take(per_cap)
             .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
             .collect();
@@ -1119,6 +1127,134 @@ async fn events_instances_bulk(
         "total_instances": total_instances,
         "events":          groups,
     })))
+}
+
+/// Parse linhas `EXDATE:...` do VEVENT (formato UTC `YYYYMMDDTHHMMSSZ`,
+/// múltiplos valores separados por vírgula numa mesma linha permitidos).
+/// Ignora EXDATE com TZID/parametros (subset MVP — eventos criados pelo
+/// próprio backend usam UTC). Retorna timestamps que devem ser excluídos
+/// da expansão de instâncias. Usado por `events_instances` /
+/// `events_instances_bulk` (sprint #488).
+fn parse_exdates(ical_raw: &str) -> Vec<OffsetDateTime> {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    let mut out = Vec::new();
+    for line in ical_raw.lines() {
+        let trimmed = line.trim_start();
+        let upper: String = trimmed.chars().take(7).collect::<String>().to_ascii_uppercase();
+        if !upper.starts_with("EXDATE:") {
+            continue;
+        }
+        let value = &trimmed["EXDATE:".len()..];
+        for tok in value.split(',') {
+            let tok = tok.trim();
+            if tok.is_empty() { continue; }
+            if let Ok(ts) = OffsetDateTime::parse(tok, &FMT) {
+                out.push(ts);
+            }
+        }
+    }
+    out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CancelInstanceBody {
+    #[serde(with = "time::serde::rfc3339")]
+    instance: OffsetDateTime,
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/cancel-instance
+/// Cancela 1 ocorrência específica de um evento recorrente sem afetar
+/// resto da série (sprint #488). Adiciona linha `EXDATE:<dtstamp UTC>` ao
+/// VEVENT — no próximo expand de instâncias, `parse_exdates` filtra essa
+/// occurrence. Body: `{instance: "2026-05-15T14:00:00Z"}` (RFC 3339,
+/// canonicalizado pra UTC e formato compacto antes de ser inserido).
+/// Idempotente: se EXDATE já existir pra esse instante, retorna `{added:
+/// false}`. 400 se evento não tem rrule (cancelar uma série não-recorrente
+/// = delete o evento). 404 se evento não existe. Requer WRITE+ no
+/// calendário (assert_can_write). Retorna `{event_id, instance, added}`.
+async fn cancel_event_instance(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Json(body):   Json<CancelInstanceBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        return Err(CalendarError::BadRequest(
+            "event has no rrule — use DELETE to remove single instance".into()
+        ));
+    }
+
+    let inst_utc = body.instance.to_offset(time::UtcOffset::UTC);
+    let inst_str = format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        inst_utc.year(),
+        u8::from(inst_utc.month()),
+        inst_utc.day(),
+        inst_utc.hour(),
+        inst_utc.minute(),
+        inst_utc.second(),
+    );
+
+    let already: bool = parse_exdates(&ev.ical_raw)
+        .iter()
+        .any(|t| t.to_offset(time::UtcOffset::UTC) == inst_utc);
+    if already {
+        return Ok(Json(serde_json::json!({
+            "event_id": ev.id,
+            "instance": inst_str,
+            "added":    false,
+        })));
+    }
+
+    let new_line = format!("EXDATE:{inst_str}");
+    let new_raw = inject_exdate_line(&ev.ical_raw, &new_line);
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id, summary: updated.summary.clone(),
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "instance": inst_str,
+        "added":    true,
+    })))
+}
+
+/// Insere `line` antes do END:VEVENT. Mantém line endings do raw original
+/// (CRLF se presente, LF caso contrário).
+fn inject_exdate_line(raw: &str, line: &str) -> String {
+    let crlf = raw.contains("\r\n");
+    let eol  = if crlf { "\r\n" } else { "\n" };
+    let mut out = String::with_capacity(raw.len() + line.len() + 2);
+    let mut injected = false;
+    for src_line in raw.split_inclusive('\n') {
+        if !injected {
+            let probe: String = src_line.trim_end().to_ascii_uppercase();
+            if probe == "END:VEVENT" {
+                out.push_str(line);
+                out.push_str(eol);
+                injected = true;
+            }
+        }
+        out.push_str(src_line);
+    }
+    if !injected {
+        out.push_str(line);
+        out.push_str(eol);
+    }
+    out
 }
 
 #[cfg(test)]
