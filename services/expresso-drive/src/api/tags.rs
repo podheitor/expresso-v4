@@ -103,6 +103,10 @@ pub fn routes() -> Router<AppState> {
             get(tag_co_occurrence),
         )
         .route(
+            "/api/v1/drive/tags/co-occurrence-by-user",
+            get(tag_co_occurrence_by_user),
+        )
+        .route(
             "/api/v1/drive/tags/intersect",
             get(intersect_files_by_tags),
         )
@@ -252,6 +256,84 @@ async fn tag_co_occurrence(
           LIMIT $4",
     )
     .bind(ctx.tenant_id)
+    .bind(tag_filter)
+    .bind(min_count)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "limit":     limit,
+        "min_count": min_count,
+        "pairs":     rows,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct CoOccurrenceByUserQuery {
+    limit:     Option<i64>,
+    /// Filtra a um user específico (UUID). Se omitido, retorna pares de
+    /// todos os users (top-N global agrupado por user).
+    user_id:   Option<Uuid>,
+    /// Filtra pares onde uma das tags == this (tag_a OR tag_b), lowercase.
+    tag:       Option<String>,
+    /// Threshold mínimo de co-occurrence_count, default 1.
+    min_count: Option<i64>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagCoOccurrenceByUser {
+    created_by: Uuid,
+    tag_a:      String,
+    tag_b:      String,
+    /// Files distintos onde ESSE user aplicou ambas tags.
+    co_count:   i64,
+}
+
+/// GET /api/v1/drive/tags/co-occurrence-by-user?limit=&user_id=&tag=&min_count=
+/// — top-N pares de tags + autor que aplicou ambos no mesmo file (sprint #493,
+/// extensão de #484 paralela ao #479 stats-by-user). Self-join
+/// `drive_file_tags` por file_id com `t1.tag < t2.tag` lex order +
+/// `t2.created_by = t1.created_by` (mesmo user em ambos elos). GROUP BY
+/// `(t1.created_by, t1.tag, t2.tag)`. Conta `COUNT(DISTINCT t1.file_id)`.
+/// Filtra files ativos. Filtros opcionais: `user_id` (escopa a 1 user),
+/// `tag` (matching tag_a OR tag_b), `min_count` threshold. Útil pra
+/// auditoria "quais combinações cada user usa" e pra UI "minhas tag
+/// suggestions personalizadas". Default limit 50, cap 1..500. Path com
+/// hífen evita colisão com `/:tag` (lição #443/#448).
+async fn tag_co_occurrence_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<CoOccurrenceByUserQuery>,
+) -> Result<impl IntoResponse> {
+    let limit      = q.limit.unwrap_or(50).clamp(1, 500);
+    let min_count  = q.min_count.unwrap_or(1).max(1);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<TagCoOccurrenceByUser> = sqlx::query_as(
+        "SELECT t1.created_by, t1.tag AS tag_a, t2.tag AS tag_b, \
+                COUNT(DISTINCT t1.file_id) AS co_count \
+           FROM drive_file_tags t1 \
+           JOIN drive_file_tags t2 \
+             ON t2.file_id    = t1.file_id \
+            AND t2.tenant_id  = t1.tenant_id \
+            AND t2.created_by = t1.created_by \
+            AND t1.tag < t2.tag \
+           JOIN drive_files f \
+             ON f.id = t1.file_id AND f.tenant_id = t1.tenant_id \
+          WHERE t1.tenant_id = $1 \
+            AND f.deleted_at IS NULL \
+            AND ($2::uuid IS NULL OR t1.created_by = $2) \
+            AND ($3::text IS NULL OR t1.tag = $3 OR t2.tag = $3) \
+          GROUP BY t1.created_by, t1.tag, t2.tag \
+         HAVING COUNT(DISTINCT t1.file_id) >= $4 \
+          ORDER BY co_count DESC, t1.created_by, t1.tag ASC, t2.tag ASC \
+          LIMIT $5",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.user_id)
     .bind(tag_filter)
     .bind(min_count)
     .bind(limit)
