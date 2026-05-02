@@ -14,6 +14,7 @@
 //!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
 //!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
 //!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
+//!   GET    /api/v1/drive/tags/rename-history       — audit trail de renames passados (sprint #470)
 
 use axum::{
     extract::{Path, Query, State},
@@ -26,6 +27,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+use expresso_core::begin_tenant_tx;
 
 use crate::api::context::RequestCtx;
 use crate::error::{DriveError, Result};
@@ -93,6 +96,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/union",
             get(union_files_by_tags),
+        )
+        .route(
+            "/api/v1/drive/tags/rename-history",
+            get(list_tag_rename_history),
         )
 }
 
@@ -233,6 +240,11 @@ struct RenameTagResult {
 /// (sprint #430). Body: `{new_tag: "..."}`. Idempotente: se algum arquivo já tinha
 /// `new_tag`, ON CONFLICT mantém o registro existente e o registro antigo é apagado.
 /// Retorna `{renamed: N, new_tag}` com a contagem de linhas afetadas pelo UPDATE.
+///
+/// Sprint #470: pré-DELETE + UPDATE + insert na drive_tag_rename_history são
+/// agora atômicos via begin_tenant_tx (RLS) — se a tabela history falhar, todo o
+/// rename roda rollback. History grava `{tenant_id, old_tag, new_tag,
+/// renamed_count, renamed_by, renamed_at}` para audit trail.
 async fn rename_tag(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -249,6 +261,7 @@ async fn rename_tag(
     }
 
     let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
     // Apaga registros que já tinham new_tag nos files que também têm old_tag — evita
     // unique conflict ao renomear; o file já está taggeado com new, basta dropar o old.
@@ -263,7 +276,7 @@ async fn rename_tag(
     .bind(ctx.tenant_id)
     .bind(&new)
     .bind(&old)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     let r = sqlx::query(
@@ -273,10 +286,86 @@ async fn rename_tag(
     .bind(ctx.tenant_id)
     .bind(&new)
     .bind(&old)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(Json(RenameTagResult { renamed: r.rows_affected(), new_tag: new }))
+    let renamed = r.rows_affected();
+
+    sqlx::query(
+        "INSERT INTO drive_tag_rename_history \
+            (tenant_id, old_tag, new_tag, renamed_count, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&old)
+    .bind(&new)
+    .bind(renamed as i64)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(RenameTagResult { renamed, new_tag: new }))
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagRenameHistoryEntry {
+    id:            Uuid,
+    old_tag:       String,
+    new_tag:       String,
+    renamed_count: i64,
+    renamed_by:    Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    renamed_at:    OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct TagRenameHistoryQuery {
+    limit:  Option<i64>,
+    since:  Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
+    tag:    Option<String>,
+}
+
+/// GET /api/v1/drive/tags/rename-history?limit=&since=&before=&tag= — lista
+/// renames passados no tenant, ordem decrescente por `renamed_at` (sprint #470).
+/// Filtros opcionais: range temporal (`since`/`before`) e `tag` (matching tanto
+/// old_tag quanto new_tag, normalizada lowercase). Limit padrão 50, cap 1..500.
+/// Útil pra audit ("quem renomeou X pra Y, quando, quantos arquivos afetou") e
+/// pra UI de undo manual. Path estático precede `/:tag` (lição #443/#448).
+async fn list_tag_rename_history(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<TagRenameHistoryQuery>,
+) -> Result<impl IntoResponse> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let pool = state.db_or_unavailable()?;
+
+    let entries: Vec<TagRenameHistoryEntry> = sqlx::query_as(
+        "SELECT id, old_tag, new_tag, renamed_count, renamed_by, renamed_at \
+           FROM drive_tag_rename_history \
+          WHERE tenant_id = $1 \
+            AND ($2::timestamptz IS NULL OR renamed_at >= $2) \
+            AND ($3::timestamptz IS NULL OR renamed_at <  $3) \
+            AND ($4::text IS NULL OR old_tag = $4 OR new_tag = $4) \
+          ORDER BY renamed_at DESC \
+          LIMIT $5",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.since)
+    .bind(q.before)
+    .bind(tag_filter)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "limit":   limit,
+        "entries": entries,
+    })))
 }
 
 /// POST /api/v1/drive/files/:id/tags/bulk — add multiple tags atomically (sprint #421).
