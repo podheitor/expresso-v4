@@ -111,6 +111,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/attendees",
             get(list_attendees),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/instances",
+            get(events_instances),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -931,6 +935,77 @@ fn validate_ics(raw: &str, max_bytes: usize) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct InstancesParams {
+    #[serde(with = "time::serde::rfc3339")]
+    from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    to:   OffsetDateTime,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EventInstance {
+    #[serde(with = "time::serde::rfc3339")]
+    dtstart: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    dtend:   OffsetDateTime,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/instances?from=&to= — expande
+/// recorrências de um evento dentro de [from, to) (sprint #478). Usa o
+/// `Rrule::expand` (RFC 5545 subset: FREQ, INTERVAL, COUNT, UNTIL, BYDAY) ou
+/// fallback `single_instance` quando rrule está vazia/inválida. `from < to`
+/// obrigatório. Retorna `{event_id, summary, rrule, count, instances:
+/// [{dtstart, dtend}]}` com instâncias clamped pra dentro do range. Útil pra
+/// timeline/calendar UI que precisa renderizar série inteira sem precisar
+/// re-implementar expander client-side.
+async fn events_instances(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(params): Query<InstancesParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+
+    let dtstart = match ev.dtstart {
+        Some(s) => s,
+        None    => return Ok(Json(serde_json::json!({
+            "event_id": ev.id, "summary": ev.summary,
+            "rrule": ev.rrule, "count": 0, "instances": [],
+        }))),
+    };
+    let duration = match ev.dtend {
+        Some(e) if e > dtstart => e - dtstart,
+        _ => time::Duration::ZERO,
+    };
+
+    let pairs: Vec<(OffsetDateTime, OffsetDateTime)> = match ev.rrule.as_deref() {
+        Some(raw) if !raw.trim().is_empty() => match crate::domain::rrule::Rrule::parse(raw) {
+            Some(rule) => rule.expand(dtstart, duration, params.from, params.to),
+            None       => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                              .into_iter().collect(),
+        },
+        _ => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                 .into_iter().collect(),
+    };
+
+    let instances: Vec<EventInstance> = pairs.into_iter()
+        .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "event_id":  ev.id,
+        "summary":   ev.summary,
+        "rrule":     ev.rrule,
+        "count":     instances.len(),
+        "instances": instances,
+    })))
 }
 
 #[cfg(test)]
