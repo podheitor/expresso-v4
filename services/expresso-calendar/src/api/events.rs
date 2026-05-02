@@ -139,6 +139,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/overrides",
             get(list_overrides),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
+            delete_route(delete_override),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -1705,6 +1709,115 @@ async fn list_overrides(
         "count":     items.len(),
         "overrides": items,
     })))
+}
+
+/// DELETE /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
+/// remove o VEVENT override correspondente (sprint #497, inverso de #495).
+/// `:recurrence_id` aceita compact `YYYYMMDDTHHMMSSZ` ou RFC3339;
+/// canonicalizado pra UTC compact antes do match. Idempotente: `{removed:
+/// false}` se não existir. Requer WRITE+. Reescreve o ical_raw removendo
+/// o bloco BEGIN:VEVENT...END:VEVENT cujo UID == master e
+/// RECURRENCE-ID == alvo.
+async fn delete_override(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
+        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
+    ))?;
+    let target_compact = format_compact_utc(target);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate override".into()
+    ))?;
+
+    if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+        return Ok(Json(serde_json::json!({
+            "event_id":      ev.id,
+            "recurrence_id": target_compact,
+            "removed":       false,
+        })));
+    }
+
+    let new_raw = remove_recurrence_id_override_block(&ev.ical_raw, &uid, &target_compact);
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":      ev.id,
+        "recurrence_id": target_compact,
+        "removed":       true,
+        "sequence":      updated.sequence,
+    })))
+}
+
+/// Remove o bloco VEVENT (BEGIN:VEVENT..END:VEVENT inclusivos) cujo UID
+/// confere com `uid_master` e RECURRENCE-ID confere com `target_compact`.
+/// Faz buffering por bloco: acumula linhas de um VEVENT, decide ao bater
+/// END:VEVENT se descarta ou flushea. Linhas fora de VEVENT (BEGIN:
+/// VCALENDAR, master event antes deste, etc.) passam direto.
+fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compact: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut buf = String::new();
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut found_recid_match = false;
+
+    for src_line in raw.split_inclusive('\n') {
+        let trimmed = src_line.trim_start();
+        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+
+        if upper14.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            found_uid = false;
+            found_recid_match = false;
+            buf.clear();
+            buf.push_str(src_line);
+            continue;
+        }
+
+        if !in_event {
+            out.push_str(src_line);
+            continue;
+        }
+
+        if upper14.starts_with("END:VEVENT") {
+            buf.push_str(src_line);
+            if !(found_uid && found_recid_match) {
+                out.push_str(&buf);
+            }
+            in_event = false;
+            buf.clear();
+            continue;
+        }
+
+        let upper4:  String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if upper4.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid_master { found_uid = true; }
+        } else if upper14.starts_with("RECURRENCE-ID:") {
+            let v = trimmed["RECURRENCE-ID:".len()..].trim();
+            if v == target_compact { found_recid_match = true; }
+        }
+        buf.push_str(src_line);
+    }
+
+    if !buf.is_empty() {
+        out.push_str(&buf);
+    }
+    out
 }
 
 /// Walk pelos blocos VEVENT do raw retornando os RECURRENCE-IDs cujo UID

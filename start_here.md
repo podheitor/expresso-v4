@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #495 (2026-05-02)
+**Último sprint commitado:** #497 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -93,6 +93,8 @@ git log --oneline | head -15
 | #493 | drive | Tag co-occurrence by user — `GET /tags/co-occurrence-by-user?user_id=&tag=&min_count=` (extensão #484 + #479) |
 | #494 | mail | Folder rename revert-all dry-run — `?dry=true` em `revert-all` (preview SELECT-only) |
 | #495 | calendar | RECURRENCE-ID instance override — `POST /:id/override-instance {instance, summary?,...}` (alternativa não-destrutiva ao EXDATE cancel #488) |
+| #496 | calendar | RECURRENCE-ID override list — `GET /:id/overrides` lista os VEVENT overrides existentes (paralelo ao #491 EXDATE list) |
+| #497 | calendar | RECURRENCE-ID override delete — `DELETE /:id/overrides/:recurrence_id` remove um override (inverso de #495) |
 
 ---
 
@@ -106,18 +108,18 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#496-#500)
+## Próximos candidatos (#498-#502)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
 3. **mail:** sieve filter test endpoint — `POST /api/v1/mail/sieve/test`
 4. **drive:** trash auto-purge schedule — config tenant pra auto-rodar #453 periodicamente
 5. **calendar:** events bulk-update por range — PATCH em massa (mover, mudar calendar, set RRULE)
-6. **calendar:** RECURRENCE-ID override list — `GET /:id/overrides` (paralelo ao #491 EXDATE list)
-7. **calendar:** RECURRENCE-ID override delete — `DELETE /:id/overrides/:recurrence_id` (inverso de #495)
-8. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
-9. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
-10. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
+6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
+7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
+8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
+9. **calendar:** RECURRENCE-ID override patch — `PATCH /:id/overrides/:recurrence_id` (edita campos sem recriar; complemento de #495+#496+#497)
+10. **calendar:** EXDATE conflict-aware override — error 409 em `override-instance` se já há EXDATE pra mesma data (consistência cross-#488/#495)
 
 ---
 
