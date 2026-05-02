@@ -2538,6 +2538,13 @@ async fn patch_override(
     })))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct TouchSingleQuery {
+    /// `?dry=true` retorna o plano sem aplicar (sprint #513). Default false.
+    /// Compartilhada entre `touch_override` (#505) e `touch_master` (#506).
+    dry: Option<bool>,
+}
+
 /// POST /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/touch —
 /// refresca SÓ o DTSTAMP do VEVENT override sem alterar nenhum campo
 /// (sprint #505, complemento do quinteto CRUD #495/#496/#497/#498/#500).
@@ -2556,6 +2563,7 @@ async fn touch_override(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+    Query(q):     Query<TouchSingleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -2574,6 +2582,15 @@ async fn touch_override(
 
     if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
         return Err(CalendarError::EventNotFound(id));
+    }
+
+    if q.dry.unwrap_or(false) {
+        return Ok(Json(serde_json::json!({
+            "dry":           true,
+            "event_id":      ev.id,
+            "recurrence_id": target_compact,
+            "touched":       true,
+        })));
     }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
@@ -2618,6 +2635,7 @@ async fn touch_master(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<TouchSingleQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -2628,6 +2646,14 @@ async fn touch_master(
     let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
         "master event has no UID — cannot locate master block".into()
     ))?;
+
+    if q.dry.unwrap_or(false) {
+        return Ok(Json(serde_json::json!({
+            "dry":      true,
+            "event_id": ev.id,
+            "touched":  true,
+        })));
+    }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
     let new_raw = patch_master_dtstamp(&ev.ical_raw, &uid, &dtstamp_now);
