@@ -135,6 +135,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/override-instance",
             post(override_event_instance),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides",
+            get(list_overrides),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -1676,6 +1680,96 @@ fn escape_ics_text(s: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => {}
             c    => out.push(c),
+        }
+    }
+    out
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/overrides — lista os
+/// RECURRENCE-ID overrides existentes no VCALENDAR (sprint #496, paralelo
+/// ao EXDATE list #491). Retorna `{event_id, count, overrides:[{compact,
+/// rfc3339, summary?, dtstart?, dtend?}]}`. Reusa `extract_uid` do master
+/// e walk por blocos VEVENT pareando UID + RECURRENCE-ID. Read-only,
+/// não exige WRITE+. 404 se evento não existe.
+async fn list_overrides(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
+    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid);
+    Ok(Json(serde_json::json!({
+        "event_id":  ev.id,
+        "count":     items.len(),
+        "overrides": items,
+    })))
+}
+
+/// Walk pelos blocos VEVENT do raw retornando os RECURRENCE-IDs cujo UID
+/// confere com `uid_master`. Para cada match coleta também SUMMARY/
+/// DTSTART/DTEND opcionais pra UI exibir. compact = valor original do
+/// RECURRENCE-ID (preservado); rfc3339 = canonicalizado se parseável como
+/// UTC compact, senão null.
+fn list_recurrence_id_overrides(raw: &str, uid_master: &str) -> Vec<serde_json::Value> {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+
+    let mut out = Vec::new();
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut cur_recid:   Option<String> = None;
+    let mut cur_summary: Option<String> = None;
+    let mut cur_dtstart: Option<String> = None;
+    let mut cur_dtend:   Option<String> = None;
+
+    for line in raw.lines() {
+        let trimmed = line.trim_start();
+        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+        if upper14.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            found_uid = false;
+            cur_recid = None; cur_summary = None; cur_dtstart = None; cur_dtend = None;
+            continue;
+        }
+        if upper14.starts_with("END:VEVENT") {
+            if in_event && found_uid {
+                if let Some(rec) = cur_recid.take() {
+                    let rfc = OffsetDateTime::parse(rec.trim(), &FMT).ok().and_then(|t| {
+                        t.format(&time::format_description::well_known::Rfc3339).ok()
+                    });
+                    out.push(serde_json::json!({
+                        "compact":  rec,
+                        "rfc3339":  rfc,
+                        "summary":  cur_summary.take(),
+                        "dtstart":  cur_dtstart.take(),
+                        "dtend":    cur_dtend.take(),
+                    }));
+                }
+            }
+            in_event = false;
+            continue;
+        }
+        if !in_event { continue; }
+
+        let upper4:  String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        let upper6:  String = trimmed.chars().take(6).collect::<String>().to_ascii_uppercase();
+        let upper8:  String = trimmed.chars().take(8).collect::<String>().to_ascii_uppercase();
+        if upper4.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid_master { found_uid = true; }
+        } else if upper14.starts_with("RECURRENCE-ID:") {
+            cur_recid = Some(trimmed["RECURRENCE-ID:".len()..].trim().to_string());
+        } else if upper8.starts_with("SUMMARY:") {
+            cur_summary = Some(trimmed["SUMMARY:".len()..].trim().to_string());
+        } else if upper8.starts_with("DTSTART:") {
+            cur_dtstart = Some(trimmed["DTSTART:".len()..].trim().to_string());
+        } else if upper6.starts_with("DTEND:") {
+            cur_dtend = Some(trimmed["DTEND:".len()..].trim().to_string());
         }
     }
     out
