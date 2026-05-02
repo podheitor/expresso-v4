@@ -1098,6 +1098,73 @@ async fn archive_entries_union(
     Ok(Json(json!({ "tags": tags, "entries": entries })))
 }
 
+#[derive(Debug, Deserialize)]
+struct ArchiveCoOccurrenceQuery {
+    limit:     Option<i64>,
+    tag:       Option<String>,
+    min_count: Option<i64>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct ArchiveTagCoOccurrence {
+    tag_a:    String,
+    tag_b:    String,
+    co_count: i64,
+}
+
+/// GET /api/v1/compliance/archive/tags/co-occurrence?limit=&tag=&min_count= —
+/// top-N pares de tags que aparecem juntos em mais archive entries do user
+/// (sprint #486, paralelo do drive #484). Self-join compliance_archive_tags
+/// por archive_id com `t1.tag < t2.tag` (lex order) pra evitar pares
+/// duplicados/auto-pares; `COUNT(DISTINCT t1.archive_id)` conta entries
+/// distintos com ambas tags. Diferente do drive: archive tags são USER-scoped,
+/// então JOIN compliance_archive filtra por `a.user_id`. Filtros opcionais:
+/// `tag` matching tag_a OR tag_b (lowercase), `min_count` threshold (default
+/// 1). Default limit 50, cap 1..500. Static `/tags/co-occurrence` precede
+/// `/tags/:tag` (lição #443/#448).
+async fn archive_tag_co_occurrence(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Query(q):     Query<ArchiveCoOccurrenceQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit      = q.limit.unwrap_or(50).clamp(1, 500);
+    let min_count  = q.min_count.unwrap_or(1).max(1);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let rows: Vec<ArchiveTagCoOccurrence> = sqlx::query_as(
+        "SELECT t1.tag AS tag_a, t2.tag AS tag_b, \
+                COUNT(DISTINCT t1.archive_id) AS co_count \
+           FROM compliance_archive_tags t1 \
+           JOIN compliance_archive_tags t2 \
+             ON t2.archive_id = t1.archive_id \
+            AND t2.tenant_id = t1.tenant_id \
+            AND t1.tag < t2.tag \
+           JOIN compliance_archive a \
+             ON a.id = t1.archive_id AND a.tenant_id = t1.tenant_id \
+          WHERE t1.tenant_id = $1 \
+            AND a.user_id = $2 \
+            AND ($3::text IS NULL OR t1.tag = $3 OR t2.tag = $3) \
+          GROUP BY t1.tag, t2.tag \
+         HAVING COUNT(DISTINCT t1.archive_id) >= $4 \
+          ORDER BY co_count DESC, t1.tag ASC, t2.tag ASC \
+          LIMIT $5",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(tag_filter)
+    .bind(min_count)
+    .bind(limit)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "limit":     limit,
+        "min_count": min_count,
+        "pairs":     rows,
+    })))
+}
+
 /// GET /api/v1/compliance/archive/tags/:tag — lista archive entries que
 /// possuem a tag (sprint #462). Tag normalizada lowercase pra match com
 /// add_archive_tag. Retorna `{tag, entries: [...]}` ordenado por archived_at
@@ -2241,6 +2308,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
         .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
         .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
+        .route("/api/v1/compliance/archive/tags/co-occurrence", get(archive_tag_co_occurrence))
         .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
         .route("/api/v1/compliance/archive/tags/rename-history/:id/undo", post(undo_archive_tag_rename))
         .route("/api/v1/compliance/archive/tags/merge", post(merge_archive_tags))
