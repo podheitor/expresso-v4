@@ -1285,6 +1285,108 @@ async fn list_archive_tag_rename_history(
     Ok(Json(json!({ "limit": limit, "entries": entries })))
 }
 
+/// POST /api/v1/compliance/archive/tags/rename-history/:id/undo — desfaz rename
+/// pelo id da history (sprint #476). Paralelo do drive undo (#472). Lê entry,
+/// aplica rename reverso (new→old) escopado por user_id, e grava NOVO history
+/// row (com tags invertidas) tudo numa única tx via `begin_tenant_tx`. 404 se
+/// id não existir no tenant. Idempotente em archives (reverted: 0 se nenhum
+/// entry está mais com new_tag, mas history grava entrada do undo). Retorna
+/// `{undone_id, reverted, old_tag, new_tag, history_id}` — habilita "undo do
+/// undo" mantendo audit trail completo.
+async fn undo_archive_tag_rename(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let entry: Option<(String, String)> = sqlx::query_as(
+        "SELECT old_tag, new_tag FROM compliance_archive_tag_rename_history \
+          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let (orig_old, orig_new) = match entry {
+        Some(t) => t,
+        None => return Err((StatusCode::NOT_FOUND, Json(json!({"error": "history entry not found"})))),
+    };
+
+    // Reverse: undo do rename (old→new) é (new→old).
+    let from = orig_new;
+    let to   = orig_old;
+
+    // Pré-DELETE de conflitos: archives que já têm `to` e também `from`.
+    let _ = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND archive_id IN ( \
+               SELECT t.archive_id FROM compliance_archive_tags t \
+               JOIN compliance_archive a ON a.id = t.archive_id AND a.tenant_id = t.tenant_id \
+               WHERE t.tenant_id = $1 AND t.tag = $3 AND a.user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&to)
+    .bind(&from)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let r = sqlx::query(
+        "UPDATE compliance_archive_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3 \
+           AND archive_id IN ( \
+               SELECT id FROM compliance_archive \
+               WHERE tenant_id = $1 AND user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&to)
+    .bind(&from)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let reverted = r.rows_affected();
+
+    let new_history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO compliance_archive_tag_rename_history \
+            (tenant_id, user_id, old_tag, new_tag, renamed_count, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&from)
+    .bind(&to)
+    .bind(reverted as i64)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "undone_id":  id,
+        "reverted":   reverted,
+        "old_tag":    from,
+        "new_tag":    to,
+        "history_id": new_history_id.0,
+    })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1845,6 +1947,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
         .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
         .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
+        .route("/api/v1/compliance/archive/tags/rename-history/:id/undo", post(undo_archive_tag_rename))
         .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag).patch(rename_archive_tag))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
