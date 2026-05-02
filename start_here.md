@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #501 (2026-05-02)
+**Último sprint commitado:** #502 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -99,6 +99,7 @@ git log --oneline | head -15
 | #499 | calendar | EXDATE/RECURRENCE-ID conflict-aware — 409 em `override-instance` se EXDATE pra mesma instance e em `cancel-instance` se override existe; `Conflict` enum agora carrega `String` |
 | #500 | calendar | RECURRENCE-ID override get-one — `GET /:id/overrides/:recurrence_id` snapshot completo (summary/description/location/dtstart/dtend/dtstamp) com ETag/LM herdados do master, 304 em INM/IMS, 404 se não existe |
 | #501 | calendar | Override→cancel migration — `POST /:id/overrides/:recurrence_id/cancel` substitui workflow 2-passos (DELETE override + POST cancel-instance) por 1 chamada atômica; 1 só DB write, sequence bumpa 1 vez |
+| #502 | calendar | Cancel→override migration — `POST /:id/exdates/:instance/override {summary?,description?,location?,dtstart?,dtend?}` inverso simétrico do #501; `remove_exdate_value` + `inject_before_end_vcalendar` compostos antes do único `update`; 1 DB write, sequence bumpa 1 vez; 404 se EXDATE não existe; 409 se override já existe; 400 se sem rrule ou sem campos override |
 
 ---
 
@@ -112,7 +113,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#502-#506)
+## Próximos candidatos (#503-#507)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -122,8 +123,8 @@ git log --oneline | head -15
 6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
 7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
-9. **calendar:** cancel→override migration — inverso do #501: `POST /:id/exdates/:instance/override` remove EXDATE e cria VEVENT override no mesmo call
-10. **calendar:** override list rica — incluir `description` + `location` em `list_recurrence_id_overrides` (#496) pra paridade com get-one (#500), ou flag `?detail=full`
+9. **calendar:** override list rica — incluir `description` + `location` em `list_recurrence_id_overrides` (#496) pra paridade com get-one (#500), ou flag `?detail=full`
+10. **calendar:** override patch DTSTAMP-only refresh — `POST /:id/overrides/:recurrence_id/touch` que só atualiza DTSTAMP (sem mudar campos) pra force re-sync de clients caching
 
 ---
 

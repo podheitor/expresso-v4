@@ -132,6 +132,10 @@ pub fn routes() -> Router<AppState> {
             delete_route(delete_exdate),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates/:instance/override",
+            post(migrate_cancel_to_override),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/override-instance",
             post(override_event_instance),
         )
@@ -1958,6 +1962,131 @@ async fn migrate_override_to_cancel(
         "removed_override": true,
         "added_exdate":     true,
         "sequence":         updated.sequence,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MigrateCancelToOverrideBody {
+    summary:     Option<String>,
+    description: Option<String>,
+    location:    Option<String>,
+    /// Se omitido, override mantém dtstart=instance original (a EXDATE alvo).
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtstart:     Option<OffsetDateTime>,
+    /// Se omitido, override não emite DTEND (cliente herda do master).
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtend:       Option<OffsetDateTime>,
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/exdates/:instance/override —
+/// migra um EXDATE pra RECURRENCE-ID override num único call (sprint #502,
+/// inverso simétrico do #501). Equivale a:
+/// (1) DELETE /exdates/:instance seguido de
+/// (2) POST /override-instance {instance: <inst>, ...}.
+/// Vantagem: 1 só DB write + sequence bumpa 1 vez + atomicidade ICS (sem
+/// estado transitório onde a instância nem é cancelled nem overridden).
+/// Útil pra "mudei de ideia, na verdade quero customizar essa occurrence
+/// em vez de cancelar". `:instance` aceita compact `YYYYMMDDTHHMMSSZ` ou
+/// RFC3339; canonicalizado pra UTC compact antes do match. Body permite
+/// summary/description/location/dtstart/dtend (pelo menos 1 obrigatório —
+/// override no-op não faz sentido). Requer WRITE+. 404 se EXDATE pra
+/// instance não existe (fail-loud, paralelo ao #501). 400 se evento não
+/// tem rrule. 409 se RECURRENCE-ID override pra mesma instance já existe
+/// (anômalo dado pre-checks #499 mas validação defensiva). Retorna
+/// `{event_id, recurrence_id, removed_exdate:true, added_override:true,
+/// sequence}`.
+async fn migrate_cancel_to_override(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, instance)): Path<(Uuid, Uuid, String)>,
+    Json(body):   Json<MigrateCancelToOverrideBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        return Err(CalendarError::BadRequest(
+            "event has no rrule — overrides only apply to recurring series".into()
+        ));
+    }
+    if body.summary.is_none() && body.description.is_none()
+        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into()
+        ));
+    }
+
+    let target = parse_one_exdate(&instance).ok_or_else(|| CalendarError::BadRequest(
+        format!("instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}")
+    ))?;
+    let target_utc = target.to_offset(time::UtcOffset::UTC);
+    let target_compact = format_compact_utc(target_utc);
+
+    let exists: bool = parse_exdates(&ev.ical_raw)
+        .iter()
+        .any(|t| t.to_offset(time::UtcOffset::UTC) == target_utc);
+    if !exists {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot create override".into()
+    ))?;
+
+    if has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+        return Err(CalendarError::Conflict(
+            format!("override for RECURRENCE-ID:{target_compact} already exists — \
+                     EXDATE and override coexisting is anomalous; \
+                     remove via DELETE /exdates/:instance alone")
+        ));
+    }
+
+    let without_exdate = remove_exdate_value(&ev.ical_raw, target_utc);
+
+    let dtstart = body.dtstart.unwrap_or(target_utc).to_offset(time::UtcOffset::UTC);
+    let mut block = String::new();
+    let eol = if without_exdate.contains("\r\n") { "\r\n" } else { "\n" };
+
+    block.push_str("BEGIN:VEVENT");                block.push_str(eol);
+    block.push_str(&format!("UID:{uid}"));          block.push_str(eol);
+    block.push_str(&format!("RECURRENCE-ID:{target_compact}")); block.push_str(eol);
+    block.push_str(&format!("DTSTAMP:{}", format_compact_utc(OffsetDateTime::now_utc())));
+    block.push_str(eol);
+    block.push_str(&format!("DTSTART:{}", format_compact_utc(dtstart))); block.push_str(eol);
+    if let Some(end) = body.dtend {
+        block.push_str(&format!("DTEND:{}", format_compact_utc(end.to_offset(time::UtcOffset::UTC))));
+        block.push_str(eol);
+    }
+    if let Some(s) = body.summary.as_deref() {
+        block.push_str(&format!("SUMMARY:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    if let Some(s) = body.description.as_deref() {
+        block.push_str(&format!("DESCRIPTION:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    if let Some(s) = body.location.as_deref() {
+        block.push_str(&format!("LOCATION:{}", escape_ics_text(s))); block.push_str(eol);
+    }
+    block.push_str("END:VEVENT"); block.push_str(eol);
+
+    let new_raw = inject_before_end_vcalendar(&without_exdate, &block);
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":       ev.id,
+        "recurrence_id":  target_compact,
+        "removed_exdate": true,
+        "added_override": true,
+        "sequence":       updated.sequence,
     })))
 }
 
