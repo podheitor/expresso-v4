@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete as delete_route, get, post},
+    routing::{delete as delete_route, get, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -141,7 +141,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
-            delete_route(delete_override),
+            delete_route(delete_override).patch(patch_override),
         )
 }
 
@@ -1884,6 +1884,242 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str) -> Vec<serde_json::
         } else if upper6.starts_with("DTEND:") {
             cur_dtend = Some(trimmed["DTEND:".len()..].trim().to_string());
         }
+    }
+    out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PatchOverrideBody {
+    summary:     Option<String>,
+    description: Option<String>,
+    location:    Option<String>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtstart:     Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    dtend:       Option<OffsetDateTime>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
+/// edita campos do VEVENT override existente sem recriar (sprint #498,
+/// complemento de #495 create + #496 list + #497 delete). Body permite
+/// summary/description/location/dtstart/dtend; pelo menos 1 obrigatório.
+/// Campos ausentes preservam valor atual; presentes substituem (ou
+/// inserem se não existiam). DTSTAMP é refrescado pra agora (RFC 5545
+/// recomendado em qualquer mutação). UID/RECURRENCE-ID nunca tocados.
+/// 404 se override não existe (mesma checagem do delete).
+async fn patch_override(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+    Json(body):   Json<PatchOverrideBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    if body.summary.is_none() && body.description.is_none()
+        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into()
+        ));
+    }
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
+        format!("invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ")
+    ))?;
+    let target_compact = format_compact_utc(target);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate override".into()
+    ))?;
+
+    if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let dtstart_str = body.dtstart.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtend_str   = body.dtend.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
+
+    let new_raw = patch_recurrence_id_override_block(
+        &ev.ical_raw, &uid, &target_compact,
+        body.summary.as_deref(),
+        body.description.as_deref(),
+        body.location.as_deref(),
+        dtstart_str.as_deref(),
+        dtend_str.as_deref(),
+        &dtstamp_now,
+    );
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":      ev.id,
+        "recurrence_id": target_compact,
+        "patched":       true,
+        "sequence":      updated.sequence,
+    })))
+}
+
+/// Reescreve o bloco VEVENT cujo UID==`uid_master` e RECURRENCE-ID==
+/// `target_compact`. Pra cada propriedade alvo (SUMMARY/DESCRIPTION/
+/// LOCATION/DTSTART/DTEND): se `Some` substitui linha existente ou
+/// adiciona antes de END:VEVENT; se `None` preserva. DTSTAMP sempre
+/// refrescado pra `dtstamp_now`. Outras linhas (UID, RECURRENCE-ID,
+/// RRULE residual etc.) preservadas. Outros blocos VEVENT inalterados.
+fn patch_recurrence_id_override_block(
+    raw: &str,
+    uid_master:     &str,
+    target_compact: &str,
+    new_summary:     Option<&str>,
+    new_description: Option<&str>,
+    new_location:    Option<&str>,
+    new_dtstart:     Option<&str>,
+    new_dtend:       Option<&str>,
+    dtstamp_now:    &str,
+) -> String {
+    let eol = if raw.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut out = String::with_capacity(raw.len() + 256);
+    let mut buf: Vec<String> = Vec::new();
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut found_recid = false;
+
+    for src_line in raw.split_inclusive('\n') {
+        let trimmed = src_line.trim_start();
+        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+
+        if upper14.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            found_uid = false;
+            found_recid = false;
+            buf.clear();
+            buf.push(src_line.to_string());
+            continue;
+        }
+
+        if !in_event {
+            out.push_str(src_line);
+            continue;
+        }
+
+        if upper14.starts_with("END:VEVENT") {
+            if found_uid && found_recid {
+                let mut had_summary = false;
+                let mut had_description = false;
+                let mut had_location = false;
+                let mut had_dtstart = false;
+                let mut had_dtend   = false;
+                for line in &buf {
+                    let head: String = line.trim_start().chars().take(16)
+                        .collect::<String>().to_ascii_uppercase();
+                    if head.starts_with("DTSTAMP:") {
+                        out.push_str(&format!("DTSTAMP:{dtstamp_now}"));
+                        out.push_str(eol);
+                    } else if head.starts_with("SUMMARY:") {
+                        if let Some(v) = new_summary {
+                            out.push_str(&format!("SUMMARY:{}", escape_ics_text(v)));
+                            out.push_str(eol);
+                        } else {
+                            out.push_str(line);
+                        }
+                        had_summary = true;
+                    } else if head.starts_with("DESCRIPTION:") {
+                        if let Some(v) = new_description {
+                            out.push_str(&format!("DESCRIPTION:{}", escape_ics_text(v)));
+                            out.push_str(eol);
+                        } else {
+                            out.push_str(line);
+                        }
+                        had_description = true;
+                    } else if head.starts_with("LOCATION:") {
+                        if let Some(v) = new_location {
+                            out.push_str(&format!("LOCATION:{}", escape_ics_text(v)));
+                            out.push_str(eol);
+                        } else {
+                            out.push_str(line);
+                        }
+                        had_location = true;
+                    } else if head.starts_with("DTSTART:") {
+                        if let Some(v) = new_dtstart {
+                            out.push_str(&format!("DTSTART:{v}"));
+                            out.push_str(eol);
+                        } else {
+                            out.push_str(line);
+                        }
+                        had_dtstart = true;
+                    } else if head.starts_with("DTEND:") {
+                        if let Some(v) = new_dtend {
+                            out.push_str(&format!("DTEND:{v}"));
+                            out.push_str(eol);
+                        } else {
+                            out.push_str(line);
+                        }
+                        had_dtend = true;
+                    } else {
+                        out.push_str(line);
+                    }
+                }
+                if !had_summary {
+                    if let Some(v) = new_summary {
+                        out.push_str(&format!("SUMMARY:{}", escape_ics_text(v)));
+                        out.push_str(eol);
+                    }
+                }
+                if !had_description {
+                    if let Some(v) = new_description {
+                        out.push_str(&format!("DESCRIPTION:{}", escape_ics_text(v)));
+                        out.push_str(eol);
+                    }
+                }
+                if !had_location {
+                    if let Some(v) = new_location {
+                        out.push_str(&format!("LOCATION:{}", escape_ics_text(v)));
+                        out.push_str(eol);
+                    }
+                }
+                if !had_dtstart {
+                    if let Some(v) = new_dtstart {
+                        out.push_str(&format!("DTSTART:{v}"));
+                        out.push_str(eol);
+                    }
+                }
+                if !had_dtend {
+                    if let Some(v) = new_dtend {
+                        out.push_str(&format!("DTEND:{v}"));
+                        out.push_str(eol);
+                    }
+                }
+                out.push_str(src_line);
+            } else {
+                for line in &buf { out.push_str(line); }
+                out.push_str(src_line);
+            }
+            in_event = false;
+            buf.clear();
+            continue;
+        }
+
+        let upper4: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if upper4.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid_master { found_uid = true; }
+        } else if upper14.starts_with("RECURRENCE-ID:") {
+            let v = trimmed["RECURRENCE-ID:".len()..].trim();
+            if v == target_compact { found_recid = true; }
+        }
+        buf.push(src_line.to_string());
+    }
+
+    if !buf.is_empty() {
+        for line in &buf { out.push_str(line); }
     }
     out
 }

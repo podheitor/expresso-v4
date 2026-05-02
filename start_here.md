@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #497 (2026-05-02)
+**Último sprint commitado:** #498 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -95,6 +95,7 @@ git log --oneline | head -15
 | #495 | calendar | RECURRENCE-ID instance override — `POST /:id/override-instance {instance, summary?,...}` (alternativa não-destrutiva ao EXDATE cancel #488) |
 | #496 | calendar | RECURRENCE-ID override list — `GET /:id/overrides` lista os VEVENT overrides existentes (paralelo ao #491 EXDATE list) |
 | #497 | calendar | RECURRENCE-ID override delete — `DELETE /:id/overrides/:recurrence_id` remove um override (inverso de #495) |
+| #498 | calendar | RECURRENCE-ID override patch — `PATCH /:id/overrides/:recurrence_id` edita summary/description/location/dtstart/dtend in-place (complemento de #495+#496+#497) |
 
 ---
 
@@ -108,7 +109,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#498-#502)
+## Próximos candidatos (#499-#503)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -118,8 +119,8 @@ git log --oneline | head -15
 6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
 7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
-9. **calendar:** RECURRENCE-ID override patch — `PATCH /:id/overrides/:recurrence_id` (edita campos sem recriar; complemento de #495+#496+#497)
-10. **calendar:** EXDATE conflict-aware override — error 409 em `override-instance` se já há EXDATE pra mesma data (consistência cross-#488/#495)
+9. **calendar:** EXDATE conflict-aware override — error 409 em `override-instance` se já há EXDATE pra mesma data (consistência cross-#488/#495)
+10. **calendar:** RECURRENCE-ID override get-one — `GET /:id/overrides/:recurrence_id` (detalhe único com ETag/LM, complemento do list #496)
 
 ---
 
