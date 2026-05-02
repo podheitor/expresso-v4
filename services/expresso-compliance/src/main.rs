@@ -1053,6 +1053,51 @@ async fn archive_entries_intersect(
     Ok(Json(json!({ "tags": tags, "entries": entries })))
 }
 
+/// GET /api/v1/compliance/archive/tags/union?tags=a,b,c — lista archive
+/// entries do user que possuem PELO MENOS UMA das tags listadas (OR semantic,
+/// sprint #471). Paralelo do drive union (#467) e complemento ao intersect
+/// (#466, AND). Reusa `ArchiveIntersectQuery` (mesma normalização). Query
+/// OR-set: `WHERE t.tag = ANY($3::text[]) + GROUP BY a.id` (sem HAVING — basta
+/// match em qualquer tag). Static `/tags/union` precede `/tags/:tag`.
+async fn archive_entries_union(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ArchiveIntersectQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tags: Vec<String> = params
+        .tags
+        .split(',')
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    tags.sort();
+    tags.dedup();
+    if tags.is_empty() || tags.len() > 32 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tags must be 1..32 entries"}))));
+    }
+    if tags.iter().any(|t| t.chars().count() > 64) {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "each tag must be 1-64 characters"}))));
+    }
+
+    let entries: Vec<ArchiveEntry> = sqlx::query_as(
+        "SELECT a.id, a.tenant_id, a.user_id, a.original_id, a.body_path, a.from_addr, \
+                a.to_addrs, a.subject, a.archived_at, a.size_bytes \
+         FROM compliance_archive a \
+         JOIN compliance_archive_tags t ON t.archive_id = a.id AND t.tenant_id = a.tenant_id \
+         WHERE a.tenant_id = $1 AND a.user_id = $2 AND t.tag = ANY($3::text[]) \
+         GROUP BY a.id \
+         ORDER BY a.archived_at DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&tags)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "tags": tags, "entries": entries })))
+}
+
 /// GET /api/v1/compliance/archive/tags/:tag — lista archive entries que
 /// possuem a tag (sprint #462). Tag normalizada lowercase pra match com
 /// add_archive_tag. Retorna `{tag, entries: [...]}` ordenado por archived_at
@@ -1645,6 +1690,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
         .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
         .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
+        .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
         .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
