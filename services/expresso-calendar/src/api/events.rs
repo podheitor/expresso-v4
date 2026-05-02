@@ -3131,11 +3131,23 @@ struct TouchPreviewQuery {
     after:  Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
+    /// `?include_unparseable=false` esconde a lista `unparseable` do payload
+    /// (ainda contabiliza no `total_overrides`). Default true preserva
+    /// shape do #514 (sprint #515).
+    include_unparseable: Option<bool>,
+    /// `?only_parseable=true` filtra TUDO: nem `unparseable` aparece nem
+    /// conta em `total_overrides` — payload reflete só o universo de
+    /// RECURRENCE-IDs que touch-all efetivamente conseguiria mexer.
+    /// Conflita com `include_unparseable=true` explícito → 400.
+    /// Default false preserva shape do #514 (sprint #515).
+    only_parseable: Option<bool>,
 }
 
-/// GET /api/v1/calendars/:cal_id/events/:id/touch-preview?after=&before= —
+/// GET /api/v1/calendars/:cal_id/events/:id/touch-preview?after=&before=
+/// `[&include_unparseable=false][&only_parseable=true]` —
 /// consolida em 1 chamada o que SERIA tocado por `touch-all` (#508) +
-/// `touch-overrides-by-range` (#509) sem nenhum side effect (sprint #514).
+/// `touch-overrides-by-range` (#509) sem nenhum side effect (sprint #514;
+/// flags de filtro adicionadas no #515).
 /// Diferente dos POST `?dry=true` (#510/#511/#512/#513) que precisam de
 /// WRITE+ porque são apenas POST com short-circuit, este é GET puro,
 /// READ-only — útil pra UI que só quer "discovery": "se eu rodar touch-all
@@ -3162,6 +3174,14 @@ async fn touch_preview(
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
+    }
+
+    let only_parseable      = q.only_parseable.unwrap_or(false);
+    let include_unparseable = q.include_unparseable.unwrap_or(true);
+    if only_parseable && q.include_unparseable == Some(true) {
+        return Err(CalendarError::BadRequest(
+            "only_parseable=true conflicts with include_unparseable=true".into()
+        ));
     }
 
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -3196,16 +3216,26 @@ async fn touch_preview(
         in_range.push(compact);
     }
 
-    let total_overrides = in_range.len() + out_of_range.len() + unparseable.len();
+    // `only_parseable` exclui unparseable do count + payload (universo "tocável" puro).
+    // `include_unparseable=false` esconde só do payload mas mantém no count
+    // (UI sabe que existem N items corrompidos sem precisar listá-los).
+    let total_overrides = if only_parseable {
+        in_range.len() + out_of_range.len()
+    } else {
+        in_range.len() + out_of_range.len() + unparseable.len()
+    };
 
-    Ok(Json(serde_json::json!({
+    let mut payload = serde_json::json!({
         "event_id":        ev.id,
         "master":          true,
         "total_overrides": total_overrides,
         "in_range":        in_range,
         "out_of_range":    out_of_range,
-        "unparseable":     unparseable,
-    })))
+    });
+    if include_unparseable && !only_parseable {
+        payload["unparseable"] = serde_json::json!(unparseable);
+    }
+    Ok(Json(payload))
 }
 
 /// Reescreve o bloco VEVENT cujo UID==`uid_master` e RECURRENCE-ID==

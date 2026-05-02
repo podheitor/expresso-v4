@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #514 (2026-05-02)
+**Último sprint commitado:** #515 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -112,6 +112,7 @@ git log --oneline | head -15
 | #512 | calendar | Touch-overrides-by-range dry-run — `?dry=true` no #509 retorna `{dry:true, event_id, touched, skipped}` sem `EventRepo::update`, sem ETag/updated_at/DTSTAMP, sem `EventUpdated`; campo `dry: Option<bool>` adicionado a `TouchOverridesByRangeQuery` (composto com `after`/`before`); ramo dry walka `list_recurrence_id_overrides(&ev.ical_raw, …)` igual ao real, parseia compact via `parse_one_exdate`, aplica filtros `[after, before)` half-open, particiona em `touched`/`skipped` sem patch; mesma validação 400 (`after >= before`, master sem UID) e 404 (touched vazio) que path real — UI não vê dry "ok" mas real "fail"; default `dry=false` preserva semantics #509; trio bulk dry-run da família touch fechado (#510 touch-all + #511 bulk-list + #512 by-range); resta apenas dry-run nos singles #505/#506 — sprint #512 |
 | #513 | calendar | Touch single dry-run — `?dry=true` no #505 (`POST /overrides/:recurrence_id/touch`) e #506 (`POST /:id/touch`) retorna `{dry:true, event_id, [recurrence_id,] touched:true}` sem `EventRepo::update`, sem ETag/sequence/dtstamp, sem `EventUpdated`; nova struct compartilhada `TouchSingleQuery { dry: Option<bool> }` + `Query<TouchSingleQuery>` extractor adicionado a ambos handlers; ramo dry só roda DEPOIS dos checks reais (assert_can_write, EventRepo::get, parse_one_exdate, extract_uid, has_recurrence_id_override) — preserva 100% das validações 400/404 do path real; default `dry=false` preserva semantics original; **família touch dry-run 100% completa:** 5 endpoints × 5 dry-runs (#510 touch-all + #511 bulk-list + #512 by-range + #513 touch-single + override-single) — sprint #513 |
 | #514 | calendar | Touch combined preview — `GET /api/v1/calendars/:cal_id/events/:id/touch-preview?after=&before=` consolida em 1 chamada o que SERIA tocado por `touch-all` (#508) + `touch-overrides-by-range` (#509) sem nenhum side effect; ortogonal aos POST `?dry=true` (#510-#513) que precisam de WRITE+ por serem POST short-circuit; este é GET puro READ-only (não exige `assert_can_write`); retorna `{event_id, master:true, total_overrides, in_range, out_of_range, unparseable}` agregando 3 dimensões num só payload — `master` sempre true (touch-all sempre tocaria), `in_range`/`out_of_range` particiona via filtros half-open `[after, before)` opcionais (mesma semantics #509), `unparseable` lista RECURRENCE-IDs que `parse_one_exdate` rejeita (compact corrompido); sem `after`/`before`, todos vão pra `in_range` (degenera ≡ touch-all sem master); novo `TouchPreviewQuery { after, before }` com `time::serde::rfc3339::option`; reusa `list_recurrence_id_overrides(false)` walker; 400 se `after >= before` ou master sem UID; útil pra UI "discovery" antes de qualquer mutação (audit/dry preview unificado) — sprint #514 |
+| #515 | calendar | Touch-preview parseable filters — `?include_unparseable=false` (default `true`) esconde a lista `unparseable` do payload mas mantém no `total_overrides` (UI sabe que existem N items corrompidos sem precisar listá-los); `?only_parseable=true` (default `false`) exclui de TUDO — payload e count refletem só o universo de RECURRENCE-IDs que `touch-all` efetivamente conseguiria mexer; flags compostas: `only_parseable=true` + `include_unparseable=true` explícito → 400 (conflito); `only_parseable=true` implica `include_unparseable=false` automaticamente; campo opcional do JSON omitido em vez de `[]` quando escondido (consistência com pattern de detail-aware response); zero impacto em request sem flags (shape original do #514 100% preservado); útil pra UI "modo limpo" não mostrar lixo + UI "modo análise" agregando count completo sem detalhes — extensão direta do #514 — sprint #515 |
 
 ---
 
@@ -125,7 +126,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#515-#520)
+## Próximos candidatos (#516-#521)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -135,8 +136,8 @@ git log --oneline | head -15
 6. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 7. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
 8. **calendar:** EXDATE list filter por kind — `GET /:id/exdates?detail=full&kind=utc|tzid|date-only|unknown` filtra a lista (extensão do #504)
-9. **calendar:** touch-preview filter por kind/parseable — extensão do #514 adicionando `?include_unparseable=false` (default true) ou `?only_parseable=true` pra UI esconder lixo
-10. **calendar:** touch-preview com summaries — extensão do #514 com `?detail=full` pra trazer SUMMARY/DTSTART/DTEND de cada in_range item (preview rico pra UI confirmar visualmente quem vai ser afetado)
+9. **calendar:** touch-preview com summaries — extensão do #514/#515 com `?detail=full` pra trazer SUMMARY/DTSTART/DTEND de cada in_range item (preview rico pra UI confirmar visualmente quem vai ser afetado)
+10. **calendar:** EXDATE preview combo — `GET /:id/exdates-preview?after=&before=` aplicando mesmo padrão de #514/#515 mas pra EXDATE (paralelo simétrico ao preview de overrides)
 
 ---
 
