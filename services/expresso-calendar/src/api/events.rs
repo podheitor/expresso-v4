@@ -72,6 +72,10 @@ pub fn routes() -> Router<AppState> {
             get(events_conflicts),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-conflicts-count",
+            get(events_conflicts_count),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-bulk-delete",
             post(events_bulk_delete),
         )
@@ -387,6 +391,60 @@ async fn events_conflicts(
         "from":      from_s,
         "to":        to_s,
         "conflicts": rows,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-conflicts-count?from=&to= — counter
+/// version of `events-conflicts` (sprint #474). Mesma self-join + overlap
+/// classico (`a.dtstart < b.dtend AND b.dtstart < a.dtend` clamped pelo range)
+/// com `a.id < b.id` pra evitar pares duplicados, mas retorna apenas a
+/// contagem de pares conflitantes em vez do payload completo. Útil pra widgets
+/// "X conflitos detectados" antes do user decidir abrir a lista. Hífen no path
+/// segue mesmo padrão de `events-conflicts` evitando colisão com `:event_id`.
+async fn events_conflicts_count(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Path(cal_id):  Path<Uuid>,
+    Query(params): Query<EventsConflictsParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*)
+             FROM calendar_events a
+             JOIN calendar_events b
+               ON b.tenant_id   = a.tenant_id
+              AND b.calendar_id = a.calendar_id
+              AND b.id          > a.id
+            WHERE a.tenant_id   = $1
+              AND a.calendar_id = $2
+              AND a.dtstart IS NOT NULL AND a.dtend IS NOT NULL
+              AND b.dtstart IS NOT NULL AND b.dtend IS NOT NULL
+              AND a.dtstart < b.dtend
+              AND b.dtstart < a.dtend
+              AND a.dtend   >  $3
+              AND a.dtstart <  $4
+              AND b.dtend   >  $3
+              AND b.dtstart <  $4"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(params.from)
+    .bind(params.to)
+    .fetch_one(pool)
+    .await?;
+
+    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::new());
+    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::new());
+    Ok(Json(serde_json::json!({
+        "from":  from_s,
+        "to":    to_s,
+        "count": count,
     })))
 }
 
