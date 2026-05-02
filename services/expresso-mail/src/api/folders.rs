@@ -24,6 +24,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/special-use/empty",       axum::routing::post(empty_special_use_folders_bulk))
         .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
         .route("/mail/folders/rename-history",     get(list_folder_rename_history))
+        .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
@@ -299,6 +300,111 @@ async fn list_folder_rename_history(
     .await?;
 
     Ok(Json(serde_json::json!({ "limit": limit, "entries": entries })))
+}
+
+/// POST /api/v1/mail/folders/rename-history/:id/undo — reverte um rename
+/// específico (sprint #481). Lê entry da `mail_folder_rename_history` filtrando
+/// por tenant_id+user_id, localiza a mailbox por `mailbox_id` (UUID estável
+/// across renames), valida que `folder_name` atual == `new_name` da entry
+/// (idempotência: 409 se já foi renomeada de novo). Aplica UPDATE inverso pra
+/// `old_name` e grava nova linha de history com old/new invertidos (audit
+/// trail completo do undo). Tudo em `begin_tenant_tx`. 404 se entry não
+/// pertence ao user. System folders nunca aparecem no history (rename bloqueia
+/// special_use IS NOT NULL), então não há check redundante.
+async fn undo_folder_rename(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let entry: Option<(Uuid, String, String)> = sqlx::query_as(
+        "SELECT mailbox_id, old_name, new_name \
+           FROM mail_folder_rename_history \
+          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (mailbox_id, old_name, new_name) = entry.ok_or_else(|| MailError::FolderNotFound {
+        folder: format!("rename-history:{id}"),
+    })?;
+
+    let current: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT folder_name, special_use FROM mailboxes \
+          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(mailbox_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let current_name = match current {
+        None => return Err(MailError::FolderNotFound { folder: format!("mailbox:{mailbox_id}") }),
+        Some((_, Some(_))) => return Err(MailError::BadRequest("cannot undo rename of system folder".into())),
+        Some((name, None)) => name,
+    };
+
+    if current_name != new_name {
+        return Err(MailError::Conflict(format!(
+            "folder current name '{current_name}' differs from history new_name '{new_name}'"
+        )));
+    }
+
+    let conflict: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM mailboxes \
+          WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3 AND id <> $4",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&old_name)
+    .bind(mailbox_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if conflict.is_some() {
+        return Err(MailError::Conflict(format!(
+            "folder '{old_name}' already exists; cannot undo rename"
+        )));
+    }
+
+    sqlx::query(
+        "UPDATE mailboxes SET folder_name = $1, updated_at = now() \
+          WHERE id = $2 AND tenant_id = $3 AND user_id = $4",
+    )
+    .bind(&old_name)
+    .bind(mailbox_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let new_history_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO mail_folder_rename_history \
+            (tenant_id, user_id, mailbox_id, old_name, new_name, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(mailbox_id)
+    .bind(&new_name)
+    .bind(&old_name)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "undone_id":      id,
+        "mailbox_id":     mailbox_id,
+        "reverted_from":  new_name,
+        "reverted_to":    old_name,
+        "history_id":     new_history_id,
+    })))
 }
 
 /// DELETE /api/v1/mail/folders/:name — delete folder and all its messages
