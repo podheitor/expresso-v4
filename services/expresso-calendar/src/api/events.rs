@@ -1911,6 +1911,15 @@ struct ListOverridesQuery {
     /// rejeitado com 400.
     #[serde(default)]
     detail: Option<String>,
+    /// `?after=&before=` (sprint #517) filtra a lista por RECURRENCE-ID
+    /// no intervalo half-open `[after, before)` — paralelo do range filter
+    /// do touch-overrides-by-range (#509). Ambos opcionais; sem nenhum
+    /// = sem filtro. RECURRENCE-IDs não-parseáveis (não-UTC) são pulados
+    /// silenciosamente quando algum bound é dado. 400 se `after >= before`.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides — lista os
@@ -1920,8 +1929,19 @@ struct ListOverridesQuery {
 /// (sprint #503) adiciona `description?` + `location?` em cada item pra
 /// paridade com get-one (#500) — útil pra UI que precisa exibir lista
 /// completa sem N+1 GETs por override. Reusa `extract_uid` do master e
-/// walk por blocos VEVENT pareando UID + RECURRENCE-ID. Read-only,
-/// não exige WRITE+. 404 se evento não existe. 400 se detail desconhecido.
+/// walk por blocos VEVENT pareando UID + RECURRENCE-ID.
+///
+/// `?after=&before=` (sprint #517, paralelo do touch-overrides-by-range
+/// #509) filtra a lista por RECURRENCE-ID no intervalo half-open
+/// `[after, before)` — útil pra UI que só quer overrides de uma janela
+/// (ex: "esta semana", "próximo mês"). Ambos opcionais; ausência total
+/// preserva 100% shape do #496. RECURRENCE-IDs não-parseáveis como UTC
+/// (ex: TZID-based) são pulados silenciosamente quando algum bound é
+/// dado — sem range, todos os overrides aparecem (mesmo formato exótico).
+/// 400 se `after >= before`.
+///
+/// Read-only, não exige WRITE+. 404 se evento não existe. 400 se detail
+/// desconhecido ou `after >= before`.
 async fn list_overrides(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -1935,10 +1955,30 @@ async fn list_overrides(
             format!("detail must be 'summary' or 'full', got '{other}'")
         )),
     };
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
-    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid, full);
+    let mut items = list_recurrence_id_overrides(&ev.ical_raw, &uid, full);
+    if q.after.is_some() || q.before.is_some() {
+        items.retain(|item| {
+            let compact = match item.get("compact").and_then(|v| v.as_str()) {
+                Some(s) => s,
+                None    => return false,
+            };
+            let parsed = match parse_one_exdate(compact) {
+                Some(t) => t,
+                None    => return false,
+            };
+            if let Some(a) = q.after  { if parsed <  a { return false; } }
+            if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
     Ok(Json(serde_json::json!({
         "event_id":  ev.id,
         "count":     items.len(),
