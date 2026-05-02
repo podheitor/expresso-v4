@@ -167,6 +167,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/touch-all",
             post(touch_all),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range",
+            post(touch_overrides_by_range),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -2866,6 +2870,103 @@ async fn touch_all(
         "dtstamp":           dtstamp_now,
         "etag":              updated.etag,
         "sequence":          updated.sequence,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TouchOverridesByRangeQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range
+/// ?after=&before= — variante range do #507 sem listar instances
+/// (sprint #509). Descobre overrides via `list_recurrence_id_overrides`
+/// (mesmo walker do #503/#508), parseia cada `compact` via
+/// `parse_one_exdate`, filtra os que caem em `[after, before)`
+/// (intervalo half-open: `after` inclusive, `before` exclusive — semantics
+/// padrão de range queries; ambos opcionais — sem `after` = sem lower
+/// bound, sem `before` = sem upper bound, sem nenhum = todos overrides
+/// ≡ #508 sem master). Toca cada match via
+/// `patch_recurrence_id_override_block(raw, uid, compact, None×5,
+/// &dtstamp_now)` in-memory; 1 único `EventRepo::update`. Use case:
+/// "ressuscitar" só os overrides futuros (ex: `?after=2026-05-01T00Z`)
+/// sem afetar histórico, ou só janela de migração específica. Mesma
+/// semantics do #505/#506/#507/#508: sequence NÃO bumpa, ETag/`updated_at`
+/// refrescam. 400 se `after >= before`. Requer WRITE+. Retorna
+/// `{event_id, touched:[…compacts…], skipped:[…compacts fora do range…],
+/// dtstamp, etag, sequence}` ou 404 se nenhum bate (compatible com
+/// EventNotFound mas semantica é "no overrides in range").
+async fn touch_overrides_by_range(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<TouchOverridesByRangeQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate overrides".into()
+    ))?;
+
+    let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
+    let mut raw = ev.ical_raw.clone();
+    let mut touched: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    let listed = list_recurrence_id_overrides(&raw, &uid, false);
+    for item in &listed {
+        let compact = match item.get("compact").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None    => continue,
+        };
+        if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
+            continue;
+        }
+        let parsed = match parse_one_exdate(&compact) {
+            Some(t) => t,
+            None    => { skipped.push(compact); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
+        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+
+        raw = patch_recurrence_id_override_block(
+            &raw, &uid, &compact,
+            None, None, None, None, None,
+            &dtstamp_now,
+        );
+        touched.push(compact);
+    }
+
+    if touched.is_empty() {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "touched":  touched,
+        "skipped":  skipped,
+        "dtstamp":  dtstamp_now,
+        "etag":     updated.etag,
+        "sequence": updated.sequence,
     })))
 }
 
