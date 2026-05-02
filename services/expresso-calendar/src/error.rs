@@ -28,8 +28,8 @@ pub enum CalendarError {
     #[error("invalid iCal data: {0}")]
     InvalidICal(String),
 
-    #[error("scheduling conflict")]
-    Conflict,
+    #[error("conflict: {0}")]
+    Conflict(String),
 
     #[error("forbidden")]
     Forbidden,
@@ -51,7 +51,7 @@ impl IntoResponse for CalendarError {
             Self::CalendarNotFound(_)  => (StatusCode::NOT_FOUND,             "calendar_not_found",  self.to_string()),
             Self::InvalidICal(_)       => (StatusCode::BAD_REQUEST,           "invalid_ical",        self.to_string()),
             Self::BadRequest(_)        => (StatusCode::BAD_REQUEST,           "bad_request",         self.to_string()),
-            Self::Conflict             => (StatusCode::CONFLICT,              "scheduling_conflict", self.to_string()),
+            Self::Conflict(_)          => (StatusCode::CONFLICT,              "conflict",            self.to_string()),
             Self::Forbidden            => (StatusCode::FORBIDDEN,             "forbidden",           self.to_string()),
             Self::DatabaseUnavailable  => (StatusCode::SERVICE_UNAVAILABLE,   "db_unavailable",      self.to_string()),
             Self::NotSupported(_)      => (StatusCode::NOT_IMPLEMENTED,       "not_supported",       self.to_string()),

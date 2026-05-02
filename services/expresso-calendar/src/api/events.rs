@@ -1237,6 +1237,15 @@ async fn cancel_event_instance(
         })));
     }
 
+    if let Some(uid) = extract_uid(&ev.ical_raw) {
+        if has_recurrence_id_override(&ev.ical_raw, &uid, &inst_str) {
+            return Err(CalendarError::Conflict(
+                format!("instance {inst_str} has a RECURRENCE-ID override — \
+                         remove via DELETE /overrides/:recurrence_id before cancelling")
+            ));
+        }
+    }
+
     let new_line = format!("EXDATE:{inst_str}");
     let new_raw = inject_exdate_line(&ev.ical_raw, &new_line);
 
@@ -1546,8 +1555,18 @@ async fn override_event_instance(
         "master event has no UID — cannot create override".into()
     ))?;
 
+    let exdated: bool = parse_exdates(&ev.ical_raw)
+        .iter()
+        .any(|t| t.to_offset(time::UtcOffset::UTC) == inst_utc);
+    if exdated {
+        return Err(CalendarError::Conflict(
+            format!("instance {recurrence_id} is cancelled via EXDATE — \
+                     remove via DELETE /exdates/:instance before overriding")
+        ));
+    }
+
     if has_recurrence_id_override(&ev.ical_raw, &uid, &recurrence_id) {
-        return Err(CalendarError::BadRequest(
+        return Err(CalendarError::Conflict(
             format!("override for RECURRENCE-ID:{recurrence_id} already exists")
         ));
     }
