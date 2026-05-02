@@ -171,6 +171,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range",
             post(touch_overrides_by_range),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/touch-preview",
+            get(touch_preview),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -3118,6 +3122,89 @@ async fn touch_overrides_by_range(
         "dtstamp":  dtstamp_now,
         "etag":     updated.etag,
         "sequence": updated.sequence,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TouchPreviewQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/touch-preview?after=&before= —
+/// consolida em 1 chamada o que SERIA tocado por `touch-all` (#508) +
+/// `touch-overrides-by-range` (#509) sem nenhum side effect (sprint #514).
+/// Diferente dos POST `?dry=true` (#510/#511/#512/#513) que precisam de
+/// WRITE+ porque são apenas POST com short-circuit, este é GET puro,
+/// READ-only — útil pra UI que só quer "discovery": "se eu rodar touch-all
+/// agora, quem é afetado?". Retorna sempre `{event_id, master, total_overrides,
+/// in_range, out_of_range, unparseable}` cobrindo TODAS dimensões num só
+/// payload: `master` sempre true (o master sempre seria tocado num touch-all),
+/// `in_range` lista compacts que cairiam dentro de [after, before) (filtros
+/// half-open opcionais — mesma semantics do #509), `out_of_range` lista os
+/// fora, `unparseable` lista RECURRENCE-IDs que `parse_one_exdate` rejeita
+/// (compact corrompido). Sem `after`/`before`, todos vão pra `in_range`
+/// (caso degenerado ≡ touch-all sem master). 400 se `after >= before` ou
+/// master sem UID. Read-only, NÃO requer WRITE+ (paralelo aos GETs do #496
+/// e #503/#504). Ortogonal aos POST `?dry=true` que retornam shape específico
+/// por endpoint — preview agrega.
+async fn touch_preview(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<TouchPreviewQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate overrides".into()
+    ))?;
+
+    let mut in_range:     Vec<String> = Vec::new();
+    let mut out_of_range: Vec<String> = Vec::new();
+    let mut unparseable:  Vec<String> = Vec::new();
+
+    let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    for item in &listed {
+        let compact = match item.get("compact").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None    => continue,
+        };
+        if in_range.iter().any(|c| c == &compact)
+            || out_of_range.iter().any(|c| c == &compact)
+            || unparseable.iter().any(|c| c == &compact)
+        {
+            continue;
+        }
+        let parsed = match parse_one_exdate(&compact) {
+            Some(t) => t,
+            None    => { unparseable.push(compact); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(compact); continue; } }
+        if let Some(b) = q.before { if parsed >= b { out_of_range.push(compact); continue; } }
+        in_range.push(compact);
+    }
+
+    let total_overrides = in_range.len() + out_of_range.len() + unparseable.len();
+
+    Ok(Json(serde_json::json!({
+        "event_id":        ev.id,
+        "master":          true,
+        "total_overrides": total_overrides,
+        "in_range":        in_range,
+        "out_of_range":    out_of_range,
+        "unparseable":     unparseable,
     })))
 }
 
