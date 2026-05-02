@@ -11,6 +11,7 @@
 //!   POST   /api/v1/drive/tags/:tag/merge          — funde 2 tags numa só (sprint #433)
 //!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
 //!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
+//!   GET    /api/v1/drive/tags/stats-by-user         — contagem por (created_by, tag) (sprint #479)
 //!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
 //!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
 //!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
@@ -93,6 +94,10 @@ pub fn routes() -> Router<AppState> {
             get(tag_stats),
         )
         .route(
+            "/api/v1/drive/tags/stats-by-user",
+            get(tag_stats_by_user),
+        )
+        .route(
             "/api/v1/drive/tags/intersect",
             get(intersect_files_by_tags),
         )
@@ -140,6 +145,39 @@ async fn tag_stats(
          WHERE t.tenant_id = $1 AND f.deleted_at IS NULL \
          GROUP BY t.tag \
          ORDER BY file_count DESC, t.tag ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(Json(stats))
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagStatByUser {
+    created_by: Uuid,
+    tag:        String,
+    file_count: i64,
+}
+
+/// GET /api/v1/drive/tags/stats-by-user — contagem de files distintos por
+/// `(created_by, tag)` no tenant (sprint #479). Variante do tag_stats (#448)
+/// particionada pelo autor da tag (campo `drive_file_tags.created_by`). Útil
+/// pra dashboards "quem está taggeando quem", auditoria de uso, ou pra UI
+/// "tags que EU criei". Conta apenas files ativos (deleted_at IS NULL).
+/// Ordena por `created_by`, depois count DESC, depois alfabético da tag.
+/// Path com hífen evita colisão com `/:tag` (lição #443).
+async fn tag_stats_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let stats: Vec<TagStatByUser> = sqlx::query_as(
+        "SELECT t.created_by, t.tag, COUNT(DISTINCT t.file_id) AS file_count \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 AND f.deleted_at IS NULL \
+         GROUP BY t.created_by, t.tag \
+         ORDER BY t.created_by, file_count DESC, t.tag ASC",
     )
     .bind(ctx.tenant_id)
     .fetch_all(pool)
