@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #504 (2026-05-02)
+**Último sprint commitado:** #505 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -102,6 +102,7 @@ git log --oneline | head -15
 | #502 | calendar | Cancel→override migration — `POST /:id/exdates/:instance/override {summary?,description?,location?,dtstart?,dtend?}` inverso simétrico do #501; `remove_exdate_value` + `inject_before_end_vcalendar` compostos antes do único `update`; 1 DB write, sequence bumpa 1 vez; 404 se EXDATE não existe; 409 se override já existe; 400 se sem rrule ou sem campos override |
 | #503 | calendar | Override list rica — `GET /:id/overrides?detail=full` adiciona description+location em cada item pra paridade com get-one (#500); default `summary` mantém shape original do #496; helper `list_recurrence_id_overrides` ganha bool `full`; refator pra `upper16` uniforme (universal prefix matcher); 400 em detail desconhecido |
 | #504 | calendar | EXDATE list rica — `GET /:id/exdates?detail=full` (paralelo simétrico do #503); novo helper `parse_exdates_rich` cobre TZID/parametros/date-only/unknown que `parse_exdates` plain ignora; cada item ganha `tzid?`, `params?`, `kind`(`"utc"\|"tzid"\|"date-only"\|"unknown"`), `raw_value`; default `summary` preserva shape `{compact,rfc3339}` do #491; 400 em detail desconhecido |
+| #505 | calendar | Override DTSTAMP-only touch — `POST /:id/overrides/:recurrence_id/touch` refresca SÓ o DTSTAMP do VEVENT override sem mutação de campos; reusa `patch_recurrence_id_override_block` com TODOS os campos None; sequence NÃO bumpa (DTSTAMP fora das colunas DISTINCT FROM) mas ETag/updated_at do master refrescam — bastante pra invalidar HTTP/CalDAV cache; sem body; retorna `{event_id, recurrence_id, touched:true, dtstamp, etag, sequence}`; 404 se override não existe |
 
 ---
 
@@ -115,18 +116,18 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#505-#510)
+## Próximos candidatos (#506-#511)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
 3. **mail:** sieve filter test endpoint — `POST /api/v1/mail/sieve/test`
 4. **drive:** trash auto-purge schedule — config tenant pra auto-rodar #453 periodicamente
 5. **calendar:** events bulk-update por range — PATCH em massa (mover, mudar calendar, set RRULE)
-6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
-7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
-8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
-9. **calendar:** override DTSTAMP-only touch — `POST /:id/overrides/:recurrence_id/touch` só atualiza DTSTAMP (sem mudar campos) pra force re-sync de clients caching
-10. **calendar:** EXDATE list filter por kind — `GET /:id/exdates?detail=full&kind=utc|tzid|date-only|unknown` filtra a lista (extensão do #504)
+6. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
+7. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
+8. **calendar:** master event DTSTAMP-only touch — `POST /:id/touch` refresca DTSTAMP do master sem mudar campos (paralelo do #505 mas no master VEVENT)
+9. **calendar:** EXDATE list filter por kind — `GET /:id/exdates?detail=full&kind=utc|tzid|date-only|unknown` filtra a lista (extensão do #504)
+10. **calendar:** override touch bulk — `POST /:id/overrides/touch` refresca DTSTAMP de TODOS os overrides (variante bulk do #505)
 
 ---
 

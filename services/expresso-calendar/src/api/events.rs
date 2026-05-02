@@ -151,6 +151,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/cancel",
             post(migrate_override_to_cancel),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/touch",
+            post(touch_override),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -2514,6 +2518,68 @@ async fn patch_override(
         "event_id":      ev.id,
         "recurrence_id": target_compact,
         "patched":       true,
+        "sequence":      updated.sequence,
+    })))
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/touch —
+/// refresca SÓ o DTSTAMP do VEVENT override sem alterar nenhum campo
+/// (sprint #505, complemento do quinteto CRUD #495/#496/#497/#498/#500).
+/// Use case: forçar re-sync em clients iCal que cacheiam por DTSTAMP
+/// (CalDAV/Apple Calendar/Outlook) sem mexer em payload visível pro usuário.
+/// Implementado como `patch_recurrence_id_override_block` com TODOS os
+/// campos None — só o DTSTAMP é reescrito pra agora. Como o DTSTAMP do
+/// override não está nas colunas comparadas pelo `EventRepo::update`
+/// (summary/location/dtstart/dtend/rrule/status/organizer do MASTER), o
+/// `sequence` permanece igual — mas o ETag do master é recomputado e o
+/// `updated_at` é refrescado, o que basta pra invalidar caches HTTP +
+/// CalDAV (ETag-based). Sem body. 404 se override não existe; 400 se
+/// recurrence_id mal-formado. Requer WRITE+. Retorna `{event_id,
+/// recurrence_id, touched:true, dtstamp, etag, sequence}`.
+async fn touch_override(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
+        format!("invalid recurrence_id `{recurrence_id}` — expected RFC3339 or YYYYMMDDTHHMMSSZ")
+    ))?;
+    let target_compact = format_compact_utc(target);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate override".into()
+    ))?;
+
+    if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
+
+    let new_raw = patch_recurrence_id_override_block(
+        &ev.ical_raw, &uid, &target_compact,
+        None, None, None, None, None,
+        &dtstamp_now,
+    );
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":      ev.id,
+        "recurrence_id": target_compact,
+        "touched":       true,
+        "dtstamp":       dtstamp_now,
+        "etag":          updated.etag,
         "sequence":      updated.sequence,
     })))
 }
