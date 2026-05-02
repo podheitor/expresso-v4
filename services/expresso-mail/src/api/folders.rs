@@ -5,7 +5,7 @@
 //! explícitos, e RLS de `mailboxes` filtra junto. Sem essa combinação o
 //! endpoint vazava mailboxes de todos os tenants (RLS no schema é NULL-bypass).
 
-use axum::{Router, routing::get, extract::{State, Path}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, Json};
+use axum::{Router, routing::get, extract::{State, Path, Query}, http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}, Json};
 use time::OffsetDateTime;
 use expresso_core::begin_tenant_tx;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/unread-summary",     get(unread_summary))
         .route("/mail/folders/stats",              get(folders_stats))
         .route("/mail/folders/size-summary",       get(folders_size_summary))
+        .route("/mail/folders/special-use/empty",       axum::routing::post(empty_special_use_folders_bulk))
         .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
@@ -514,6 +515,91 @@ async fn empty_special_use_folder(
         "folder":      folder_name,
         "deleted":     res.rows_affected(),
     })))
+}
+
+#[derive(Debug, Deserialize)]
+struct EmptyBulkQuery {
+    slots: String,
+}
+
+/// POST /api/v1/mail/folders/special-use/empty?slots=trash,junk — bulk variant
+/// of `empty_special_use_folder` (sprint #473). Esvazia múltiplas mailboxes
+/// identificadas pelo papel RFC 6154 numa única transação atômica via
+/// `begin_tenant_tx` (RLS). Slots aceitos: `trash`, `junk`, `drafts`, `sent`
+/// (case-insensitive, deduplicated, 1..4 entries). 400 se slot desconhecido.
+/// Slots sem mailbox correspondente são silenciosamente ignorados (idempotente
+/// — útil pra UI tipo "Limpar Lixeira+Spam" que não precisa saber se o user já
+/// tem cada pasta criada). Retorna `[{slot, special_use, folder, deleted}]` só
+/// para os slots que de fato mapearam pra mailboxes existentes.
+async fn empty_special_use_folders_bulk(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<EmptyBulkQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use std::collections::BTreeSet;
+
+    let slots: BTreeSet<String> = q
+        .slots
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if slots.is_empty() || slots.len() > 4 {
+        return Err(MailError::BadRequest(
+            "slots must be 1..4 entries".into(),
+        ));
+    }
+
+    let mut mapped: Vec<(String, &'static str)> = Vec::with_capacity(slots.len());
+    for s in &slots {
+        let su = match s.as_str() {
+            "trash"  => "\\Trash",
+            "junk"   => "\\Junk",
+            "drafts" => "\\Drafts",
+            "sent"   => "\\Sent",
+            _ => return Err(MailError::BadRequest(format!(
+                "unknown slot '{s}': must be one of trash, junk, drafts, sent"
+            ))),
+        };
+        mapped.push((s.clone(), su));
+    }
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let mut results: Vec<serde_json::Value> = Vec::with_capacity(mapped.len());
+
+    for (slot, special_use) in mapped {
+        let mbox: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT id, folder_name FROM mailboxes \
+             WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3",
+        )
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(special_use)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some((mbox_id, folder_name)) = mbox else { continue };
+
+        let res = sqlx::query(
+            r#"DELETE FROM messages
+               WHERE mailbox_id = $1
+                 AND tenant_id  = $2"#,
+        )
+        .bind(mbox_id)
+        .bind(ctx.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+
+        results.push(serde_json::json!({
+            "slot":        slot,
+            "special_use": special_use,
+            "folder":      folder_name,
+            "deleted":     res.rows_affected(),
+        }));
+    }
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "results": results })))
 }
 
 /// GET /api/v1/mail/folders/unread-summary — live unread count per folder (not cached).
