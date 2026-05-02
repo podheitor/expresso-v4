@@ -21,6 +21,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/unread-summary",     get(unread_summary))
         .route("/mail/folders/stats",              get(folders_stats))
         .route("/mail/folders/size-summary",       get(folders_size_summary))
+        .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
@@ -455,6 +456,64 @@ async fn empty_folder(
 
     tx.commit().await?;
     Ok(Json(serde_json::json!({ "deleted": res.rows_affected() })))
+}
+
+/// POST /api/v1/mail/folders/special-use/:slot/empty — esvazia a pasta cujo
+/// `special_use` corresponde ao slot RFC 6154, sem hardcode do nome local
+/// (sprint #468). Slots aceitos: `trash` → `\Trash`, `junk` → `\Junk`,
+/// `drafts` → `\Drafts`, `sent` → `\Sent`. Útil pra UI tipo "Esvaziar Lixeira"
+/// que funciona independente do label local da pasta. Variante de #459 mas
+/// localizada pelo papel (`special_use`) em vez de pelo nome. 400 se slot
+/// desconhecido, 404 se o user não tem mailbox marcada com aquele
+/// special_use. Idempotente: pasta já vazia retorna `{deleted: 0}`.
+async fn empty_special_use_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(slot):   Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let special_use = match slot.to_lowercase().as_str() {
+        "trash"  => "\\Trash",
+        "junk"   => "\\Junk",
+        "drafts" => "\\Drafts",
+        "sent"   => "\\Sent",
+        _ => return Err(MailError::BadRequest(
+            "slot must be one of: trash, junk, drafts, sent".into()
+        )),
+    };
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let mbox: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, folder_name FROM mailboxes \
+         WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(special_use)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (mbox_id, folder_name) = mbox.ok_or_else(|| MailError::FolderNotFound {
+        folder: format!("special-use:{slot}"),
+    })?;
+
+    let res = sqlx::query(
+        r#"DELETE FROM messages
+           WHERE mailbox_id = $1
+             AND tenant_id  = $2"#,
+    )
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({
+        "slot":        slot,
+        "special_use": special_use,
+        "folder":      folder_name,
+        "deleted":     res.rows_affected(),
+    })))
 }
 
 /// GET /api/v1/mail/folders/unread-summary — live unread count per folder (not cached).
