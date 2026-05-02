@@ -20,6 +20,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/all",                get(list_all_folders))
         .route("/mail/folders/unread-summary",     get(unread_summary))
         .route("/mail/folders/stats",              get(folders_stats))
+        .route("/mail/folders/size-summary",       get(folders_size_summary))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
@@ -531,6 +532,53 @@ async fn folders_stats(
         }))
         .collect();
     Ok(Json(result))
+}
+
+/// GET /mail/folders/size-summary — agregado de tamanho por folder do user
+/// (sprint #463). Foca SÓ em bytes (vs `folders/stats` #454 que mistura
+/// total/unread/size). Retorna `{total_bytes, folders: [{folder, special_use,
+/// size_bytes, message_count}]}` ordenado por size_bytes DESC pra UI tipo
+/// "quem ocupa mais quota". Útil pra usuário identificar pastas pesadas antes
+/// de cleanup. Path estático precede `/folders/:name` (lição #443/#448).
+async fn folders_size_summary(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT mb.folder_name,
+               mb.special_use,
+               COALESCE(SUM(m.size_bytes)::bigint, 0) AS size_bytes,
+               COUNT(m.id)                            AS message_count
+        FROM mailboxes mb
+        LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1
+        WHERE mb.tenant_id = $1
+          AND mb.user_id   = $2
+        GROUP BY mb.folder_name, mb.special_use
+        ORDER BY size_bytes DESC, mb.folder_name ASC
+        "#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let total_bytes: i64 = rows.iter().map(|(_, _, sz, _)| sz).sum();
+    let folders: Vec<_> = rows.into_iter()
+        .map(|(folder, special_use, size_bytes, message_count)| serde_json::json!({
+            "folder":        folder,
+            "special_use":   special_use,
+            "size_bytes":    size_bytes,
+            "message_count": message_count,
+        }))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "total_bytes": total_bytes,
+        "folders":     folders,
+    })))
 }
 
 /// Reject names that would confuse IMAP hierarchy or SQL injection via folder_name
