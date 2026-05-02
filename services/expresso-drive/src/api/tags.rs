@@ -15,6 +15,7 @@
 //!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
 //!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
 //!   GET    /api/v1/drive/tags/rename-history       — audit trail de renames passados (sprint #470)
+//!   POST   /api/v1/drive/tags/rename-history/:id/undo — reverte um rename anterior (sprint #472)
 
 use axum::{
     extract::{Path, Query, State},
@@ -100,6 +101,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/rename-history",
             get(list_tag_rename_history),
+        )
+        .route(
+            "/api/v1/drive/tags/rename-history/:id/undo",
+            post(undo_tag_rename),
         )
 }
 
@@ -366,6 +371,98 @@ async fn list_tag_rename_history(
         "limit":   limit,
         "entries": entries,
     })))
+}
+
+#[derive(Debug, Serialize)]
+struct UndoTagRenameResult {
+    undone_id:    Uuid,
+    reverted:     u64,
+    old_tag:      String,
+    new_tag:      String,
+    history_id:   Uuid,
+}
+
+/// POST /api/v1/drive/tags/rename-history/:id/undo — reverte um rename anterior
+/// (sprint #472). Lê a entry `:id` em drive_tag_rename_history e aplica rename
+/// reverso (`new_tag` → `old_tag`) em todos os files que ainda estão com
+/// `new_tag`. Tudo numa única transação via `begin_tenant_tx` (RLS) — pré-DELETE
+/// de conflitos + UPDATE + INSERT de novo registro de history (com `old_tag` e
+/// `new_tag` invertidos) são atômicos. O novo registro permite "undo do undo".
+/// 404 se a entry não existir no tenant. Idempotente em files: se nenhum file
+/// estiver mais com `new_tag` (porque foi renomeado de novo), `reverted: 0` mas
+/// a entry de undo é gravada mesmo assim para audit trail.
+async fn undo_tag_rename(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let entry: Option<(String, String)> = sqlx::query_as(
+        "SELECT old_tag, new_tag FROM drive_tag_rename_history \
+         WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (orig_old, orig_new) = entry.ok_or(DriveError::NotFound(id))?;
+
+    // Reverso: queremos voltar new_tag para old_tag.
+    let from = orig_new;
+    let to   = orig_old;
+
+    let _ = sqlx::query(
+        "DELETE FROM drive_file_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND file_id IN ( \
+               SELECT file_id FROM drive_file_tags \
+               WHERE tenant_id = $1 AND tag = $3 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&to)
+    .bind(&from)
+    .execute(&mut *tx)
+    .await?;
+
+    let r = sqlx::query(
+        "UPDATE drive_file_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&to)
+    .bind(&from)
+    .execute(&mut *tx)
+    .await?;
+
+    let reverted = r.rows_affected();
+
+    let new_history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO drive_tag_rename_history \
+            (tenant_id, old_tag, new_tag, renamed_count, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&from)
+    .bind(&to)
+    .bind(reverted as i64)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(UndoTagRenameResult {
+        undone_id:  id,
+        reverted,
+        old_tag:    from,
+        new_tag:    to,
+        history_id: new_history_id.0,
+    }))
 }
 
 /// POST /api/v1/drive/files/:id/tags/bulk — add multiple tags atomically (sprint #421).
