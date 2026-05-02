@@ -107,6 +107,10 @@ pub fn routes() -> Router<AppState> {
             get(intersect_files_by_tags),
         )
         .route(
+            "/api/v1/drive/tags/intersect-exclude",
+            get(intersect_exclude_files_by_tags),
+        )
+        .route(
             "/api/v1/drive/tags/union",
             get(union_files_by_tags),
         )
@@ -1107,6 +1111,93 @@ async fn intersect_files_by_tags(
     let file_count = file_ids.len() as i64;
 
     Ok(Json(IntersectResult { tags, file_ids, file_count }))
+}
+
+#[derive(Debug, Deserialize)]
+struct IntersectExcludeQuery {
+    tags:    String,
+    exclude: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct IntersectExcludeResult {
+    tags:       Vec<String>,
+    exclude:    Vec<String>,
+    file_ids:   Vec<Uuid>,
+    file_count: i64,
+}
+
+/// GET /api/v1/drive/tags/intersect-exclude?tags=a,b&exclude=x,y — files
+/// que possuem **TODAS** as tags em `tags` E **NENHUMA** das tags em
+/// `exclude` (sprint #489). Combina AND-set (#465) com NOT-EXISTS subquery
+/// pra excluir matches indesejados — útil pra "todos docs com cliente=acme
+/// E status=open mas sem confidential". Mesma normalização (lowercase,
+/// trim, dedup, 1-32 chars 1-64 cada) pra ambas listas; `exclude` opcional
+/// e pode ser vazio (nesse caso == intersect simples). Tags em ambas as
+/// listas geram set vazio (intersection é sub-conjunto do exclude).
+/// Filtra files ativos (deleted_at IS NULL). Path com hífen
+/// `/intersect-exclude` evita colisão com `/:tag` (lição #443/#448).
+async fn intersect_exclude_files_by_tags(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<IntersectExcludeQuery>,
+) -> Result<impl IntoResponse> {
+    fn norm(raw: &str) -> Vec<String> {
+        let mut out: Vec<String> = raw
+            .split(',')
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+    let tags = norm(&q.tags);
+    let exclude = norm(q.exclude.as_deref().unwrap_or(""));
+
+    if tags.is_empty() {
+        return Err(DriveError::BadRequest("at least one tag required".into()));
+    }
+    if tags.len() > 32 || exclude.len() > 32 {
+        return Err(DriveError::BadRequest("max 32 tags per list".into()));
+    }
+    for t in tags.iter().chain(exclude.iter()) {
+        if t.chars().count() > 64 {
+            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let n = tags.len() as i64;
+
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT t.file_id \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 \
+           AND t.tag = ANY($2::text[]) \
+           AND f.deleted_at IS NULL \
+           AND NOT EXISTS ( \
+                 SELECT 1 FROM drive_file_tags x \
+                  WHERE x.tenant_id = t.tenant_id \
+                    AND x.file_id   = t.file_id \
+                    AND x.tag = ANY($4::text[]) \
+           ) \
+         GROUP BY t.file_id \
+         HAVING COUNT(DISTINCT t.tag) = $3 \
+         ORDER BY t.file_id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&tags)
+    .bind(n)
+    .bind(&exclude)
+    .fetch_all(pool)
+    .await?;
+
+    let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    let file_count = file_ids.len() as i64;
+
+    Ok(Json(IntersectExcludeResult { tags, exclude, file_ids, file_count }))
 }
 
 #[derive(Debug, Serialize)]
