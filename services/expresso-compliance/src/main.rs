@@ -1053,6 +1053,80 @@ async fn archive_entries_intersect(
     Ok(Json(json!({ "tags": tags, "entries": entries })))
 }
 
+/// GET /api/v1/compliance/archive/tags/intersect-exclude?tags=a,b&exclude=x,y
+/// — lista archive entries do user que possuem TODAS as tags em `tags` E
+/// NENHUMA das tags em `exclude` (sprint #492, paralelo do drive #489
+/// USER-scoped). Combina AND-set (#466) com NOT EXISTS subquery (excluir
+/// matches indesejados). Mesma normalização (lowercase, trim, dedup, 1..32
+/// entries por lista, 1..64 chars cada). `exclude` opcional — vazio
+/// degenera pra plain intersect porque `ANY('{}')` é FALSE → NOT EXISTS
+/// sempre TRUE. Útil pra queries e-discovery: "tag=case-x AND tag=urgent
+/// MAS sem privileged". Path com hífen `/intersect-exclude` precede `/:tag`.
+#[derive(Debug, Deserialize)]
+struct ArchiveIntersectExcludeQuery {
+    tags:    String,
+    exclude: Option<String>,
+}
+
+async fn archive_entries_intersect_exclude(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<ArchiveIntersectExcludeQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    fn norm(raw: &str) -> Vec<String> {
+        let mut out: Vec<String> = raw
+            .split(',')
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+    let tags = norm(&params.tags);
+    let exclude = norm(params.exclude.as_deref().unwrap_or(""));
+
+    if tags.is_empty() || tags.len() > 32 || exclude.len() > 32 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tags must be 1..32, exclude must be 0..32"}))));
+    }
+    if tags.iter().chain(exclude.iter()).any(|t| t.chars().count() > 64) {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "each tag must be 1-64 characters"}))));
+    }
+    let n = tags.len() as i64;
+
+    let entries: Vec<ArchiveEntry> = sqlx::query_as(
+        "SELECT a.id, a.tenant_id, a.user_id, a.original_id, a.body_path, a.from_addr, \
+                a.to_addrs, a.subject, a.archived_at, a.size_bytes \
+         FROM compliance_archive a \
+         JOIN compliance_archive_tags t ON t.archive_id = a.id AND t.tenant_id = a.tenant_id \
+         WHERE a.tenant_id = $1 AND a.user_id = $2 \
+           AND t.tag = ANY($3::text[]) \
+           AND NOT EXISTS ( \
+                 SELECT 1 FROM compliance_archive_tags x \
+                  WHERE x.tenant_id = t.tenant_id \
+                    AND x.archive_id = t.archive_id \
+                    AND x.tag = ANY($5::text[]) \
+           ) \
+         GROUP BY a.id \
+         HAVING COUNT(DISTINCT t.tag) = $4 \
+         ORDER BY a.archived_at DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&tags)
+    .bind(n)
+    .bind(&exclude)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "tags":    tags,
+        "exclude": exclude,
+        "entries": entries,
+    })))
+}
+
 /// GET /api/v1/compliance/archive/tags/union?tags=a,b,c — lista archive
 /// entries do user que possuem PELO MENOS UMA das tags listadas (OR semantic,
 /// sprint #471). Paralelo do drive union (#467) e complemento ao intersect
@@ -2307,6 +2381,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
         .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
         .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
+        .route("/api/v1/compliance/archive/tags/intersect-exclude", get(archive_entries_intersect_exclude))
         .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
         .route("/api/v1/compliance/archive/tags/co-occurrence", get(archive_tag_co_occurrence))
         .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
