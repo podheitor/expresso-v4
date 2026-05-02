@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete as delete_route, get, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -122,6 +122,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events/:id/cancel-instance",
             post(cancel_event_instance),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates",
+            get(list_exdates).delete(clear_exdates),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates/:instance",
+            delete_route(delete_exdate),
         )
 }
 
@@ -1252,6 +1260,212 @@ fn inject_exdate_line(raw: &str, line: &str) -> String {
     }
     if !injected {
         out.push_str(line);
+        out.push_str(eol);
+    }
+    out
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/exdates — lista EXDATEs do
+/// VEVENT no formato compacto UTC (`YYYYMMDDTHHMMSSZ`) e RFC3339 paralelo
+/// pra UI (sprint #491, inverso de #488). Reusa `parse_exdates`. Retorna
+/// `{event_id, count, exdates:[{compact, rfc3339}]}`. Não requer WRITE
+/// (read-only). 404 se evento não existe.
+async fn list_exdates(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let dates = parse_exdates(&ev.ical_raw);
+    let items: Vec<serde_json::Value> = dates.iter().map(|t| {
+        let utc = t.to_offset(time::UtcOffset::UTC);
+        let compact = format!(
+            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+            utc.year(), u8::from(utc.month()), utc.day(),
+            utc.hour(), utc.minute(), utc.second(),
+        );
+        let rfc = utc.format(&time::format_description::well_known::Rfc3339)
+            .unwrap_or_default();
+        serde_json::json!({ "compact": compact, "rfc3339": rfc })
+    }).collect();
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "count":    items.len(),
+        "exdates":  items,
+    })))
+}
+
+/// DELETE /api/v1/calendars/:cal_id/events/:id/exdates — remove TODAS as
+/// linhas EXDATE do VEVENT, restaurando todas as ocorrências canceladas
+/// (sprint #491, bulk inverso de #488). Idempotente: `{removed: 0}` se
+/// não houver EXDATE. Requer WRITE+. 400 se evento não tem rrule (não há
+/// instâncias pra restaurar). Re-salva via `EventRepo::update`.
+async fn clear_exdates(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let before = parse_exdates(&ev.ical_raw).len();
+    if before == 0 {
+        return Ok(Json(serde_json::json!({
+            "event_id": ev.id, "removed": 0,
+        })));
+    }
+
+    let new_raw = strip_exdate_lines(&ev.ical_raw);
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "removed":  before,
+    })))
+}
+
+/// DELETE /api/v1/calendars/:cal_id/events/:id/exdates/:instance — remove
+/// UMA EXDATE específica (sprint #491, inverso pontual de #488).
+/// `:instance` aceita formato compacto `YYYYMMDDTHHMMSSZ` ou RFC3339; é
+/// canonicalizado pra UTC compact antes de match. Idempotente: `{removed:
+/// false}` se não existir. Requer WRITE+. Reescreve linhas EXDATE
+/// preservando outros valores na mesma linha (split por vírgula).
+async fn delete_exdate(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, instance)): Path<(Uuid, Uuid, String)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let target = parse_one_exdate(&instance).ok_or_else(|| CalendarError::BadRequest(
+        format!("instance must be RFC3339 or YYYYMMDDTHHMMSSZ, got {instance}")
+    ))?;
+    let target_utc = target.to_offset(time::UtcOffset::UTC);
+
+    let exists: bool = parse_exdates(&ev.ical_raw)
+        .iter()
+        .any(|t| t.to_offset(time::UtcOffset::UTC) == target_utc);
+    if !exists {
+        let compact = format!(
+            "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+            target_utc.year(), u8::from(target_utc.month()), target_utc.day(),
+            target_utc.hour(), target_utc.minute(), target_utc.second(),
+        );
+        return Ok(Json(serde_json::json!({
+            "event_id": ev.id, "instance": compact, "removed": false,
+        })));
+    }
+
+    let new_raw = remove_exdate_value(&ev.ical_raw, target_utc);
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    let compact = format!(
+        "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+        target_utc.year(), u8::from(target_utc.month()), target_utc.day(),
+        target_utc.hour(), target_utc.minute(), target_utc.second(),
+    );
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id, "instance": compact, "removed": true,
+    })))
+}
+
+/// Aceita "YYYYMMDDTHHMMSSZ" compact ou RFC3339 e devolve OffsetDateTime.
+fn parse_one_exdate(raw: &str) -> Option<OffsetDateTime> {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    let trimmed = raw.trim();
+    if let Ok(t) = OffsetDateTime::parse(trimmed, &FMT) {
+        return Some(t);
+    }
+    OffsetDateTime::parse(trimmed, &time::format_description::well_known::Rfc3339).ok()
+}
+
+/// Remove TODAS as linhas começando com `EXDATE:` (case-insensitive). Mantém
+/// EOL original. Não toca em linhas com TZID/parametros (`EXDATE;TZID=...`)
+/// porque o subset MVP só lê UTC sem parametros (parse_exdates ignora).
+fn strip_exdate_lines(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for src_line in raw.split_inclusive('\n') {
+        let probe: String = src_line.trim_start().chars().take(7).collect::<String>().to_ascii_uppercase();
+        if probe.starts_with("EXDATE:") {
+            continue;
+        }
+        out.push_str(src_line);
+    }
+    out
+}
+
+/// Remove um valor EXDATE específico mantendo outros valores na mesma linha
+/// (EXDATE permite vírgula-separados). Se a linha ficar vazia após remoção,
+/// remove a linha inteira. Match por equivalência UTC (re-parsing pra
+/// normalizar). EOL preservado.
+fn remove_exdate_value(raw: &str, target_utc: OffsetDateTime) -> String {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    let mut out = String::with_capacity(raw.len());
+    for src_line in raw.split_inclusive('\n') {
+        let trimmed_start = src_line.trim_start();
+        let probe: String = trimmed_start.chars().take(7).collect::<String>().to_ascii_uppercase();
+        if !probe.starts_with("EXDATE:") {
+            out.push_str(src_line);
+            continue;
+        }
+        // Detect EOL of this line
+        let (body, eol) = if let Some(stripped) = src_line.strip_suffix("\r\n") {
+            (stripped, "\r\n")
+        } else if let Some(stripped) = src_line.strip_suffix('\n') {
+            (stripped, "\n")
+        } else {
+            (src_line, "")
+        };
+        // body still has indent + "EXDATE:" prefix
+        let lead_len = body.len() - trimmed_start.len();
+        let lead = &body[..lead_len];
+        let value = &trimmed_start["EXDATE:".len()..];
+        let kept: Vec<&str> = value.split(',')
+            .filter(|tok| {
+                let t = tok.trim();
+                if t.is_empty() { return false; }
+                match OffsetDateTime::parse(t, &FMT) {
+                    Ok(parsed) => parsed.to_offset(time::UtcOffset::UTC) != target_utc,
+                    Err(_) => true,
+                }
+            })
+            .collect();
+        if kept.is_empty() {
+            // dropping the whole line
+            continue;
+        }
+        out.push_str(lead);
+        out.push_str("EXDATE:");
+        out.push_str(&kept.join(","));
         out.push_str(eol);
     }
     out
