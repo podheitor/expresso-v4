@@ -12,6 +12,7 @@
 //!   DELETE /api/v1/drive/tags/orphans             — apaga tags ligadas a files inexistentes ou soft-deleted (sprint #443)
 //!   GET    /api/v1/drive/tags/stats                — contagem de files por tag no tenant (sprint #448)
 //!   GET    /api/v1/drive/tags/stats-by-user         — contagem por (created_by, tag) (sprint #479)
+//!   GET    /api/v1/drive/tags/co-occurrence         — top-N pares de tags juntas em mais files (sprint #484)
 //!   GET    /api/v1/drive/tags/:tag/count           — contagem de files com uma tag específica (sprint #455)
 //!   GET    /api/v1/drive/tags/intersect?tags=a,b,c — files que possuem TODAS as tags listadas (AND, sprint #465)
 //!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
@@ -96,6 +97,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/drive/tags/stats-by-user",
             get(tag_stats_by_user),
+        )
+        .route(
+            "/api/v1/drive/tags/co-occurrence",
+            get(tag_co_occurrence),
         )
         .route(
             "/api/v1/drive/tags/intersect",
@@ -183,6 +188,77 @@ async fn tag_stats_by_user(
     .fetch_all(pool)
     .await?;
     Ok(Json(stats))
+}
+
+#[derive(Debug, Deserialize)]
+struct CoOccurrenceQuery {
+    /// Top-N pares retornados, default 50, cap 1..500.
+    limit:    Option<i64>,
+    /// Filtra pares onde uma das tags == this (matching tag_a OR tag_b),
+    /// lowercase. Útil pra "qual tag co-ocorre com X".
+    tag:      Option<String>,
+    /// Threshold mínimo de co-occurrence_count, default 1 (tudo).
+    min_count: Option<i64>,
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagCoOccurrence {
+    tag_a:  String,
+    tag_b:  String,
+    /// Files distintos que carregam ambas tags.
+    co_count: i64,
+}
+
+/// GET /api/v1/drive/tags/co-occurrence?limit=&tag=&min_count= — top-N pares
+/// de tags que aparecem juntos em mais files (sprint #484). Self-join
+/// `drive_file_tags` por file_id com `t1.tag < t2.tag` (lex order) pra evitar
+/// pares duplicados (a,b)/(b,a) e auto-pares (a,a). Conta `COUNT(DISTINCT
+/// t1.file_id)`. Filtra files ativos (deleted_at IS NULL). Filtros opcionais:
+/// `tag` matching tag_a OR tag_b (lowercase), `min_count` threshold (default 1).
+/// Útil pra "tag suggestions", grafo de relacionamento, ou descobrir clusters
+/// orgânicos no taxonomy. Path estático precede `/:tag` (lição #443/#448);
+/// hífen evita ambiguidade adicional. Default limit 50, cap 1..500.
+async fn tag_co_occurrence(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<CoOccurrenceQuery>,
+) -> Result<impl IntoResponse> {
+    let limit     = q.limit.unwrap_or(50).clamp(1, 500);
+    let min_count = q.min_count.unwrap_or(1).max(1);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<TagCoOccurrence> = sqlx::query_as(
+        "SELECT t1.tag AS tag_a, t2.tag AS tag_b, \
+                COUNT(DISTINCT t1.file_id) AS co_count \
+           FROM drive_file_tags t1 \
+           JOIN drive_file_tags t2 \
+             ON t2.file_id = t1.file_id \
+            AND t2.tenant_id = t1.tenant_id \
+            AND t1.tag < t2.tag \
+           JOIN drive_files f \
+             ON f.id = t1.file_id AND f.tenant_id = t1.tenant_id \
+          WHERE t1.tenant_id = $1 \
+            AND f.deleted_at IS NULL \
+            AND ($2::text IS NULL OR t1.tag = $2 OR t2.tag = $2) \
+          GROUP BY t1.tag, t2.tag \
+         HAVING COUNT(DISTINCT t1.file_id) >= $3 \
+          ORDER BY co_count DESC, t1.tag ASC, t2.tag ASC \
+          LIMIT $4",
+    )
+    .bind(ctx.tenant_id)
+    .bind(tag_filter)
+    .bind(min_count)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "limit":     limit,
+        "min_count": min_count,
+        "pairs":     rows,
+    })))
 }
 
 #[derive(Debug, Serialize)]
