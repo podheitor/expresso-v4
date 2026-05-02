@@ -999,6 +999,40 @@ async fn top_tags_archive(
     Ok(Json(json!({ "limit": limit, "tags": tags })))
 }
 
+/// GET /api/v1/compliance/archive/tags/:tag — lista archive entries que
+/// possuem a tag (sprint #462). Tag normalizada lowercase pra match com
+/// add_archive_tag. Retorna `{tag, entries: [...]}` ordenado por archived_at
+/// DESC. Static `/tags` precede `/:id` em axum (lição #443/#448) e `:tag` final
+/// é distinto de `:id` (UUID) — sem colisão. Complementa top-tags (#461)
+/// permitindo drill-down por rótulo.
+async fn archive_entries_by_tag(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(tag):    Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let tag = tag.trim().to_lowercase();
+    if tag.is_empty() || tag.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+    }
+
+    let entries: Vec<ArchiveEntry> = sqlx::query_as(
+        "SELECT a.id, a.tenant_id, a.user_id, a.original_id, a.body_path, a.from_addr, \
+                a.to_addrs, a.subject, a.archived_at, a.size_bytes \
+         FROM compliance_archive a \
+         JOIN compliance_archive_tags t ON t.archive_id = a.id AND t.tenant_id = a.tenant_id \
+         WHERE a.tenant_id = $1 AND a.user_id = $2 AND t.tag = $3 \
+         ORDER BY a.archived_at DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&tag)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "tag": tag, "entries": entries })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1556,6 +1590,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-domains", get(top_domains_archive))
         .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
         .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
+        .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/archive/:id/tags",  get(list_archive_tags).post(add_archive_tag))
