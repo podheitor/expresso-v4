@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #507 (2026-05-02)
+**Último sprint commitado:** #508 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -105,6 +105,7 @@ git log --oneline | head -15
 | #505 | calendar | Override DTSTAMP-only touch — `POST /:id/overrides/:recurrence_id/touch` refresca SÓ o DTSTAMP do VEVENT override sem mutação de campos; reusa `patch_recurrence_id_override_block` com TODOS os campos None; sequence NÃO bumpa (DTSTAMP fora das colunas DISTINCT FROM) mas ETag/updated_at do master refrescam — bastante pra invalidar HTTP/CalDAV cache; sem body; retorna `{event_id, recurrence_id, touched:true, dtstamp, etag, sequence}`; 404 se override não existe |
 | #506 | calendar | Master event DTSTAMP-only touch — `POST /:id/touch` paralelo do #505 mas no master VEVENT; novo helper `patch_master_dtstamp` matcha bloco com `UID==master AND !has_recurrence_id` (overrides com mesmo UID preservados); se DTSTAMP ausente no master, adiciona; mesma semantics do #505 (sequence NÃO bumpa, ETag/updated_at refrescam); use case: forçar re-sync em clients iCal cacheando por DTSTAMP, "ressuscitar" eventos pós-restore; sem body; retorna `{event_id, touched:true, dtstamp, etag, sequence}`; 400 se master sem UID; requer WRITE+ |
 | #507 | calendar | Override DTSTAMP-only touch BULK — `POST /:id/touch-overrides {"instances":[…]}` variante batch do #505; valida cada instance via `has_recurrence_id_override` separando `touched` vs `not_found` (best-effort, não 404 individualmente); aplica `patch_recurrence_id_override_block(..., None×5)` sequencialmente in-memory; 1 único `EventRepo::update` no fim (vs N round-trips); dedup por `target_compact`; limite 1..256 instances; 404 só se NENHUMA bate; mesma semantics do #505 (sequence NÃO bumpa, ETag/updated_at refrescam); use case: ressuscitar série inteira após bug de sync sem N requests; retorna `{event_id, touched, not_found, dtstamp, etag, sequence}`; requer WRITE+ |
+| #508 | calendar | Master+overrides touch-all — `POST /:id/touch-all` combina #506 + #507; descobre overrides via `list_recurrence_id_overrides(raw, uid, false)` (mesmo walker do #503), itera extraindo `compact` e aplica `patch_recurrence_id_override_block(..., None×5, &dtstamp_now)` in-memory; depois `patch_master_dtstamp(raw, uid, &dtstamp_now)` no fim; 1 único `EventRepo::update`; cache-nuke total do VCALENDAR sem cliente listar nada; mesma semantics #505/#506/#507 (sequence NÃO bumpa, ETag/updated_at refrescam); sem body; 400 se master sem UID; retorna `{event_id, master_touched:true, overrides_touched:[…compact…], dtstamp, etag, sequence}`; requer WRITE+ |
 
 ---
 
@@ -118,7 +119,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#508-#513)
+## Próximos candidatos (#509-#514)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -128,8 +129,8 @@ git log --oneline | head -15
 6. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 7. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
 8. **calendar:** EXDATE list filter por kind — `GET /:id/exdates?detail=full&kind=utc|tzid|date-only|unknown` filtra a lista (extensão do #504)
-9. **calendar:** master+overrides touch all — `POST /:id/touch-all` combina #506 + #507 (descobre overrides via `list_recurrence_id_overrides` e toca master + todos num só write — cache nuke total)
-10. **calendar:** override touch by range — variante de #507 sem listar instances; refresca DTSTAMP de TODOS os overrides cujo RECURRENCE-ID cai em `[after,before)`
+9. **calendar:** override touch by range — variante de #507 sem listar instances; refresca DTSTAMP de TODOS os overrides cujo RECURRENCE-ID cai em `[after,before)`
+10. **calendar:** touch-all dry-run — `?dry=true` no #508 retorna plano (master + overrides_planned) sem aplicar UPDATE; útil pra UI confirmar escopo antes de cache-nuke
 
 ---
 
