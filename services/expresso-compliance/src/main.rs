@@ -1132,6 +1132,159 @@ async fn archive_entries_by_tag(
     Ok(Json(json!({ "tag": tag, "entries": entries })))
 }
 
+#[derive(Debug, Deserialize)]
+struct RenameArchiveTagBody {
+    new_tag: String,
+}
+
+/// PATCH /api/v1/compliance/archive/tags/:tag — renomeia uma tag em todos os
+/// archive entries do user no tenant (sprint #475). Paralelo ao drive rename
+/// (#430+#470). Body: `{new_tag: "..."}`. Pré-DELETE de conflitos + UPDATE +
+/// INSERT em compliance_archive_tag_rename_history numa única transação via
+/// `begin_tenant_tx` (RLS) — atomicidade garantida. History grava `{tenant_id,
+/// user_id, old_tag, new_tag, renamed_count, renamed_by, renamed_at}` para
+/// audit trail e undo manual. Rename é escopado a `user_id` (archive tags são
+/// user-scoped por design — cada user gerencia seus próprios rótulos).
+async fn rename_archive_tag(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(tag):    Path<String>,
+    Json(body):   Json<RenameArchiveTagBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let old = tag.trim().to_lowercase();
+    let new = body.new_tag.trim().to_lowercase();
+    if old.is_empty() || old.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "tag must be 1-64 characters"}))));
+    }
+    if new.is_empty() || new.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "new_tag must be 1-64 characters"}))));
+    }
+    if new == old {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "new_tag must differ from old tag"}))));
+    }
+
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // Apaga registros que já tinham new_tag nos archives que também têm old_tag.
+    let _ = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND archive_id IN ( \
+               SELECT t.archive_id FROM compliance_archive_tags t \
+               JOIN compliance_archive a ON a.id = t.archive_id AND a.tenant_id = t.tenant_id \
+               WHERE t.tenant_id = $1 AND t.tag = $3 AND a.user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&new)
+    .bind(&old)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let r = sqlx::query(
+        "UPDATE compliance_archive_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3 \
+           AND archive_id IN ( \
+               SELECT id FROM compliance_archive \
+               WHERE tenant_id = $1 AND user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&new)
+    .bind(&old)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let renamed = r.rows_affected();
+
+    let history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO compliance_archive_tag_rename_history \
+            (tenant_id, user_id, old_tag, new_tag, renamed_count, renamed_by) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&old)
+    .bind(&new)
+    .bind(renamed as i64)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "renamed":    renamed,
+        "old_tag":    old,
+        "new_tag":    new,
+        "history_id": history_id.0,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchiveTagRenameHistoryQuery {
+    limit:  Option<i64>,
+    since:  Option<time::OffsetDateTime>,
+    before: Option<time::OffsetDateTime>,
+    tag:    Option<String>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct ArchiveTagRenameHistoryEntry {
+    id:            Uuid,
+    old_tag:       String,
+    new_tag:       String,
+    renamed_count: i64,
+    renamed_by:    Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    renamed_at:    time::OffsetDateTime,
+}
+
+/// GET /api/v1/compliance/archive/tags/rename-history?limit=&since=&before=&tag=
+/// — audit trail dos renames de tag passados pelo user (sprint #475). Filtros
+/// opcionais: range temporal e `tag` matching old_tag OR new_tag (lowercase).
+/// Limit padrão 50, cap 1..500. Escopado por `user_id` igual ao rename.
+async fn list_archive_tag_rename_history(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Query(q):     Query<ArchiveTagRenameHistoryQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let entries: Vec<ArchiveTagRenameHistoryEntry> = sqlx::query_as(
+        "SELECT id, old_tag, new_tag, renamed_count, renamed_by, renamed_at \
+           FROM compliance_archive_tag_rename_history \
+          WHERE tenant_id = $1 AND user_id = $2 \
+            AND ($3::timestamptz IS NULL OR renamed_at >= $3) \
+            AND ($4::timestamptz IS NULL OR renamed_at <  $4) \
+            AND ($5::text IS NULL OR old_tag = $5 OR new_tag = $5) \
+          ORDER BY renamed_at DESC \
+          LIMIT $6",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(q.since)
+    .bind(q.before)
+    .bind(tag_filter)
+    .bind(limit)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "limit": limit, "entries": entries })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1691,7 +1844,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
         .route("/api/v1/compliance/archive/tags/intersect", get(archive_entries_intersect))
         .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
-        .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag))
+        .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
+        .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag).patch(rename_archive_tag))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/archive/:id/tags",  get(list_archive_tags).post(add_archive_tag))
