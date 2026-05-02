@@ -16,6 +16,8 @@
 //!   GET    /api/v1/drive/tags/union?tags=a,b,c     — files que possuem PELO MENOS UMA das tags (OR, sprint #467)
 //!   GET    /api/v1/drive/tags/rename-history       — audit trail de renames passados (sprint #470)
 //!   POST   /api/v1/drive/tags/rename-history/:id/undo — reverte um rename anterior (sprint #472)
+//!   GET    /api/v1/drive/tags/merge-history         — audit trail de merges (sprint #477)
+//!   POST   /api/v1/drive/tags/merge-history/:id/undo — reverte um merge anterior (sprint #477)
 
 use axum::{
     extract::{Path, Query, State},
@@ -106,6 +108,14 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/drive/tags/rename-history/:id/undo",
             post(undo_tag_rename),
         )
+        .route(
+            "/api/v1/drive/tags/merge-history",
+            get(list_tag_merge_history),
+        )
+        .route(
+            "/api/v1/drive/tags/merge-history/:id/undo",
+            post(undo_tag_merge),
+        )
 }
 
 #[derive(Debug, Serialize, FromRow)]
@@ -172,18 +182,18 @@ struct MergeTagBody {
     into: String,
 }
 
-#[derive(Debug, Serialize)]
-struct MergeTagResult {
-    merged: u64,
-    into:   String,
-}
-
 /// POST /api/v1/drive/tags/:tag/merge — funde `:tag` em `into` (sprint #433),
 /// consolidando todos os files do tag-fonte no tag-destino. Body: `{into: "..."}`.
 /// Diferente de rename: ambas as tags podem existir; arquivos que já tinham `into`
 /// têm o registro de `:tag` apagado (pré-DELETE evita unique conflict), e os
-/// demais têm o tag UPDATEado para `into`. Idempotente. Retorna `{merged: N, into}`
-/// com a contagem de UPDATEs efetuados.
+/// demais têm o tag UPDATEado para `into`. Idempotente. Retorna `{merged, into,
+/// history_id}`.
+///
+/// Sprint #477: pré-DELETE + UPDATE + INSERT em drive_tag_merge_history são
+/// agora atômicos via begin_tenant_tx (RLS); history grava `merged_file_ids`
+/// (files que tinham só src — undo precisa reverter dst→src) e
+/// `dropped_file_ids` (files que tinham ambos — undo precisa re-adicionar src),
+/// habilitando undo preciso.
 async fn merge_tag(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -200,9 +210,24 @@ async fn merge_tag(
     }
 
     let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    // Mesma técnica do rename (#430): pré-DELETE dos files que já tinham `dst`
-    // pra liberar a chave única (file_id, tenant_id, tag) antes do UPDATE.
+    // Captura files que tinham AMBAS (src + dst) ANTES do pré-DELETE — esses
+    // terão src dropado mas dst preservado; undo precisa re-adicionar src.
+    let dropped_rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT DISTINCT t1.file_id FROM drive_file_tags t1 \
+          JOIN drive_file_tags t2 \
+            ON t2.file_id = t1.file_id AND t2.tenant_id = t1.tenant_id \
+          WHERE t1.tenant_id = $1 AND t1.tag = $2 AND t2.tag = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .fetch_all(&mut *tx)
+    .await?;
+    let dropped_file_ids: Vec<Uuid> = dropped_rows.into_iter().map(|(id,)| id).collect();
+
+    // Pré-DELETE dos files que já tinham `dst` pra liberar a chave única.
     let _ = sqlx::query(
         "DELETE FROM drive_file_tags \
          WHERE tenant_id = $1 AND tag = $2 \
@@ -214,8 +239,19 @@ async fn merge_tag(
     .bind(ctx.tenant_id)
     .bind(&src)
     .bind(&dst)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+
+    // Captura os files restantes com src (esses serão UPDATEados src→dst);
+    // undo precisa reverter dst→src + re-add não, dst sai por update.
+    let merged_rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT file_id FROM drive_file_tags WHERE tenant_id = $1 AND tag = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .fetch_all(&mut *tx)
+    .await?;
+    let merged_file_ids: Vec<Uuid> = merged_rows.into_iter().map(|(id,)| id).collect();
 
     let r = sqlx::query(
         "UPDATE drive_file_tags SET tag = $2 \
@@ -224,10 +260,177 @@ async fn merge_tag(
     .bind(ctx.tenant_id)
     .bind(&dst)
     .bind(&src)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(Json(MergeTagResult { merged: r.rows_affected(), into: dst }))
+    let merged = r.rows_affected();
+
+    let history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO drive_tag_merge_history \
+            (tenant_id, src_tag, dst_tag, merged_count, merged_file_ids, dropped_file_ids, merged_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .bind(merged as i64)
+    .bind(&merged_file_ids)
+    .bind(&dropped_file_ids)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "merged":     merged,
+        "into":       dst,
+        "history_id": history_id.0,
+    })))
+}
+
+#[derive(Debug, Serialize, FromRow)]
+struct TagMergeHistoryEntry {
+    id:                Uuid,
+    src_tag:           String,
+    dst_tag:           String,
+    merged_count:      i64,
+    merged_by:         Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    merged_at:         OffsetDateTime,
+}
+
+#[derive(Debug, Deserialize)]
+struct TagMergeHistoryQuery {
+    limit:  Option<i64>,
+    since:  Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
+    tag:    Option<String>,
+}
+
+/// GET /api/v1/drive/tags/merge-history?limit=&since=&before=&tag= — audit
+/// trail dos merges passados no tenant (sprint #477). Filtros opcionais: range
+/// temporal e `tag` matching src OR dst (lowercase). Limit padrão 50, cap
+/// 1..500. Path estático precede `/:tag` (lição #443/#448).
+async fn list_tag_merge_history(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<TagMergeHistoryQuery>,
+) -> Result<impl IntoResponse> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let pool = state.db_or_unavailable()?;
+
+    let entries: Vec<TagMergeHistoryEntry> = sqlx::query_as(
+        "SELECT id, src_tag, dst_tag, merged_count, merged_by, merged_at \
+           FROM drive_tag_merge_history \
+          WHERE tenant_id = $1 \
+            AND ($2::timestamptz IS NULL OR merged_at >= $2) \
+            AND ($3::timestamptz IS NULL OR merged_at <  $3) \
+            AND ($4::text IS NULL OR src_tag = $4 OR dst_tag = $4) \
+          ORDER BY merged_at DESC \
+          LIMIT $5",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.since)
+    .bind(q.before)
+    .bind(tag_filter)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "limit":   limit,
+        "entries": entries,
+    })))
+}
+
+/// POST /api/v1/drive/tags/merge-history/:id/undo — desfaz merge pelo id da
+/// history (sprint #477). Lê `merged_file_ids` (UPDATEados src→dst — undo
+/// reverte dst→src) e `dropped_file_ids` (tinham ambos, src foi DELETEado —
+/// undo re-adiciona src). Tudo em tx via `begin_tenant_tx`. 404 se id não
+/// existir. Idempotente: se files mudaram tags depois, partes podem virar
+/// no-op mas history grava entrada do undo de qualquer jeito. Retorna
+/// `{undone_id, src_tag, dst_tag, restored_merged, restored_dropped}`.
+async fn undo_tag_merge(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<impl IntoResponse> {
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let entry: Option<(String, String, Vec<Uuid>, Vec<Uuid>)> = sqlx::query_as(
+        "SELECT src_tag, dst_tag, merged_file_ids, dropped_file_ids \
+           FROM drive_tag_merge_history \
+          WHERE id = $1 AND tenant_id = $2",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let (src, dst, merged_ids, dropped_ids) = entry.ok_or(DriveError::NotFound(id))?;
+
+    // 1) Reverter merged_file_ids: esses só tinham src antes; merge fez
+    //    src→dst. Undo: INSERT src + DELETE dst (os files não devem ter dst).
+    //    Usar INSERT ... ON CONFLICT DO NOTHING pra idempotência.
+    let restored_merged = if !merged_ids.is_empty() {
+        sqlx::query(
+            "INSERT INTO drive_file_tags (tenant_id, file_id, tag, created_by) \
+             SELECT $1, file_id, $2, $3 FROM UNNEST($4::uuid[]) AS t(file_id) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(ctx.tenant_id)
+        .bind(&src)
+        .bind(ctx.user_id)
+        .bind(&merged_ids)
+        .execute(&mut *tx)
+        .await?;
+        let r = sqlx::query(
+            "DELETE FROM drive_file_tags \
+              WHERE tenant_id = $1 AND tag = $2 AND file_id = ANY($3)",
+        )
+        .bind(ctx.tenant_id)
+        .bind(&dst)
+        .bind(&merged_ids)
+        .execute(&mut *tx)
+        .await?;
+        r.rows_affected()
+    } else {
+        0
+    };
+
+    // 2) Reverter dropped_file_ids: esses tinham AMBOS antes; merge dropou só
+    //    src. Undo: re-INSERT src; dst permanece intocado nesses files.
+    let restored_dropped = if !dropped_ids.is_empty() {
+        let r = sqlx::query(
+            "INSERT INTO drive_file_tags (tenant_id, file_id, tag, created_by) \
+             SELECT $1, file_id, $2, $3 FROM UNNEST($4::uuid[]) AS t(file_id) \
+             ON CONFLICT DO NOTHING",
+        )
+        .bind(ctx.tenant_id)
+        .bind(&src)
+        .bind(ctx.user_id)
+        .bind(&dropped_ids)
+        .execute(&mut *tx)
+        .await?;
+        r.rows_affected()
+    } else {
+        0
+    };
+
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "undone_id":        id,
+        "src_tag":          src,
+        "dst_tag":          dst,
+        "restored_merged":  restored_merged,
+        "restored_dropped": restored_dropped,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
