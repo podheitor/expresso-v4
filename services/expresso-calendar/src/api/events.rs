@@ -80,6 +80,10 @@ pub fn routes() -> Router<AppState> {
             get(events_recurrence_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-recurrence-monthly",
+            get(events_recurrence_monthly),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -473,6 +477,64 @@ async fn events_recurrence_stats(
         "recurring": recurring,
         "by_freq":   by_freq,
     })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RecurrenceMonthlyQuery {
+    since:  Option<OffsetDateTime>,
+    before: Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-recurrence-monthly?since=&before=
+/// Histogram temporal: para cada mês de `created_at` retorna `{single, recurring}`
+/// (sprint #469, extensão temporal do #464). COUNT FILTER particiona single vs
+/// recurring por mês numa única query. Buckets agrupados via
+/// `date_trunc('month', created_at)`. Útil pra dashboard "como muda a taxa de
+/// eventos repetitivos ao longo do tempo" — ex: detectar se a equipe começou a
+/// criar mais reuniões recorrentes. Path com hífen evita colisão com
+/// `events/:id` (lição #427). Range opcional via `since`/`before`.
+async fn events_recurrence_monthly(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<RecurrenceMonthlyQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(OffsetDateTime, i64, i64)> = sqlx::query_as(
+        r#"SELECT date_trunc('month', created_at) AS bucket,
+                  COUNT(*) FILTER (WHERE rrule IS NULL OR rrule = '') AS single,
+                  COUNT(*) FILTER (WHERE rrule IS NOT NULL AND rrule <> '') AS recurring
+             FROM calendar_events
+            WHERE tenant_id   = $1
+              AND calendar_id = $2
+              AND ($3::timestamptz IS NULL OR created_at >= $3)
+              AND ($4::timestamptz IS NULL OR created_at <  $4)
+            GROUP BY bucket
+            ORDER BY bucket ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.since)
+    .bind(q.before)
+    .fetch_all(pool)
+    .await?;
+
+    let buckets: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(bucket, single, recurring)| {
+            let total = single + recurring;
+            let rate = if total > 0 { recurring as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({
+                "month":     bucket,
+                "single":    single,
+                "recurring": recurring,
+                "total":     total,
+                "rate":      rate,
+            })
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({ "buckets": buckets })))
 }
 
 async fn list(
