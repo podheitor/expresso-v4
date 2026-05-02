@@ -143,6 +143,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
             get(get_one_override).delete(delete_override).patch(patch_override),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/cancel",
+            post(migrate_override_to_cancel),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -1876,6 +1880,85 @@ fn pick_recurrence_id_override(raw: &str, uid_master: &str, target_compact: &str
         }
     }
     None
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/cancel —
+/// migra um RECURRENCE-ID override pra EXDATE cancellation num único call
+/// (sprint #501, substitui workflow 2-passos do #499). Equivale a:
+/// (1) DELETE /overrides/:recurrence_id seguido de
+/// (2) POST /cancel-instance {instance: <recurrence_id>}.
+/// Vantagem: 1 só DB write + sequence bumpa 1 vez (em vez de 2) + atômico
+/// no nível ICS (se algo falha entre os 2 passos, ficaria estado
+/// transitório). Útil pra UI "mudei de ideia, na verdade cancela essa
+/// occurrence em vez de overridar". `:recurrence_id` aceita compact
+/// `YYYYMMDDTHHMMSSZ` ou RFC3339; canonicalizado pra UTC compact antes do
+/// match. Requer WRITE+. 404 se override não existe (fail-loud, paralelo
+/// ao #500 GET). 400 se evento não tem rrule (sem rrule não há série pra
+/// cancelar instance via EXDATE — paralelo ao #488). 409 se EXDATE
+/// pra mesma instance já existe — situação anômala (deveria ter sido
+/// bloqueada pelos pre-checks #499) mas validação defensiva.
+/// Retorna `{event_id, recurrence_id, removed_override:true,
+/// added_exdate:true, sequence}`.
+async fn migrate_override_to_cancel(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+    if ev.rrule.as_deref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        return Err(CalendarError::BadRequest(
+            "event has no rrule — overrides only apply to recurring series".into()
+        ));
+    }
+
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
+        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
+    ))?;
+    let target_compact = format_compact_utc(target);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate override".into()
+    ))?;
+
+    if !has_recurrence_id_override(&ev.ical_raw, &uid, &target_compact) {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let target_utc = target.to_offset(time::UtcOffset::UTC);
+    let already_exdated: bool = parse_exdates(&ev.ical_raw)
+        .iter()
+        .any(|t| t.to_offset(time::UtcOffset::UTC) == target_utc);
+    if already_exdated {
+        return Err(CalendarError::Conflict(
+            format!("instance {target_compact} already has EXDATE — \
+                     override and EXDATE coexisting is anomalous; \
+                     remove via DELETE /overrides/:recurrence_id alone")
+        ));
+    }
+
+    let without_override = remove_recurrence_id_override_block(&ev.ical_raw, &uid, &target_compact);
+    let new_line = format!("EXDATE:{target_compact}");
+    let new_raw = inject_exdate_line(&without_override, &new_line);
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id":         ev.id,
+        "recurrence_id":    target_compact,
+        "removed_override": true,
+        "added_exdate":     true,
+        "sequence":         updated.sequence,
+    })))
 }
 
 /// DELETE /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
