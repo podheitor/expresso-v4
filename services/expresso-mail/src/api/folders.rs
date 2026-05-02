@@ -23,6 +23,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/size-summary",       get(folders_size_summary))
         .route("/mail/folders/special-use/empty",       axum::routing::post(empty_special_use_folders_bulk))
         .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
+        .route("/mail/folders/special-use/mark-unread", axum::routing::post(mark_unread_special_use_folders_bulk))
         .route("/mail/folders/rename-history",     get(list_folder_rename_history))
         .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
@@ -823,6 +824,89 @@ async fn empty_special_use_folders_bulk(
             "special_use": special_use,
             "folder":      folder_name,
             "deleted":     res.rows_affected(),
+        }));
+    }
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "results": results })))
+}
+
+/// POST /api/v1/mail/folders/special-use/mark-unread?slots=trash,junk — bulk
+/// variant de mark-unread (sprint #487) que opera por papel RFC 6154 em vez de
+/// nome local. Combina #485 (mark-unread single) com #473 (special-use empty
+/// bulk): identifica mailboxes pelo `special_use` e roda
+/// `array_remove(flags, '\Seen')` condicionado a `'\Seen' = ANY(flags)` numa
+/// única tx atômica via `begin_tenant_tx` (RLS). Slots aceitos: `trash`,
+/// `junk`, `drafts`, `sent` (case-insensitive, deduped, 1..4 entries). 400 se
+/// slot desconhecido. Slots sem mailbox correspondente são silenciosamente
+/// ignorados (idempotente). Retorna `[{slot, special_use, folder, unmarked}]`
+/// só para os slots que mapearam pra mailboxes existentes. Útil pra UX
+/// "marcar Trash+Junk como não lidos" sem precisar saber labels locais.
+async fn mark_unread_special_use_folders_bulk(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<EmptyBulkQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use std::collections::BTreeSet;
+
+    let slots: BTreeSet<String> = q
+        .slots
+        .split(',')
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if slots.is_empty() || slots.len() > 4 {
+        return Err(MailError::BadRequest("slots must be 1..4 entries".into()));
+    }
+
+    let mut mapped: Vec<(String, &'static str)> = Vec::with_capacity(slots.len());
+    for s in &slots {
+        let su = match s.as_str() {
+            "trash"  => "\\Trash",
+            "junk"   => "\\Junk",
+            "drafts" => "\\Drafts",
+            "sent"   => "\\Sent",
+            _ => return Err(MailError::BadRequest(format!(
+                "unknown slot '{s}': must be one of trash, junk, drafts, sent"
+            ))),
+        };
+        mapped.push((s.clone(), su));
+    }
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let mut results: Vec<serde_json::Value> = Vec::with_capacity(mapped.len());
+
+    for (slot, special_use) in mapped {
+        let mbox: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT id, folder_name FROM mailboxes \
+             WHERE user_id = $1 AND tenant_id = $2 AND special_use = $3",
+        )
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(special_use)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some((mbox_id, folder_name)) = mbox else { continue };
+
+        let res = sqlx::query(
+            r#"UPDATE messages
+               SET flags = array_remove(flags, $1)
+               WHERE mailbox_id = $2
+                 AND tenant_id  = $3
+                 AND $1 = ANY(flags)"#,
+        )
+        .bind(r"\Seen")
+        .bind(mbox_id)
+        .bind(ctx.tenant_id)
+        .execute(&mut *tx)
+        .await?;
+
+        results.push(serde_json::json!({
+            "slot":        slot,
+            "special_use": special_use,
+            "folder":      folder_name,
+            "unmarked":    res.rows_affected(),
         }));
     }
 
