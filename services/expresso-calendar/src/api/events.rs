@@ -88,6 +88,10 @@ pub fn routes() -> Router<AppState> {
             get(events_recurrence_monthly),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-instances",
+            get(events_instances_bulk),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1005,6 +1009,115 @@ async fn events_instances(
         "rrule":     ev.rrule,
         "count":     instances.len(),
         "instances": instances,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct InstancesBulkParams {
+    #[serde(with = "time::serde::rfc3339")]
+    from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339")]
+    to:   OffsetDateTime,
+    /// Cap por evento expandido (proteção: rrule sem UNTIL+COUNT pode estourar).
+    /// Default 500, max 5000 — gates abaixo do array do `Rrule::expand`.
+    per_event_cap: Option<usize>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct EventInstancesGroup {
+    event_id: Uuid,
+    summary:  Option<String>,
+    rrule:    Option<String>,
+    count:    usize,
+    instances: Vec<EventInstance>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-instances?from=&to=&per_event_cap=
+/// Bulk variant de `/events/:id/instances` (sprint #482, paralelo de #478):
+/// expande recorrências de TODOS os eventos do calendário cujo dtstart esteja
+/// antes de `to` E (dtend OR dtstart) >= `from` (mesmo filtro temporal de
+/// `list`). Retorna `{from, to, total_events, total_instances, events:
+/// [{event_id, summary, rrule, count, instances:[{dtstart,dtend}]}]}`. Útil
+/// pra timeline/agenda mensal renderizar todas as ocorrências num único call
+/// sem N+1. `per_event_cap` (default 500, max 5000) limita explosão por evento
+/// caso rrule infinita escape do UNTIL/COUNT — `Rrule::expand` ignora além do
+/// range, mas cap defensivo evita memory blow se `to-from` for absurdo. Path
+/// com hífen evita colisão com `events/:id` (lição #427/#443/#448).
+async fn events_instances_bulk(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(params): Query<InstancesBulkParams>,
+) -> Result<Json<serde_json::Value>> {
+    if params.from >= params.to {
+        return Err(CalendarError::BadRequest("from must be < to".into()));
+    }
+    let per_cap = params.per_event_cap.unwrap_or(500).min(5000).max(1);
+
+    let pool = state.db_or_unavailable()?;
+    let q = crate::domain::EventQuery {
+        from: Some(params.from),
+        to:   Some(params.to),
+        limit: None,
+    };
+    let events = EventRepo::new(pool).list(ctx.tenant_id, cal_id, &q).await?;
+
+    let mut groups: Vec<EventInstancesGroup> = Vec::with_capacity(events.len());
+    let mut total_instances: usize = 0;
+
+    for ev in events {
+        let dtstart = match ev.dtstart {
+            Some(s) => s,
+            None    => continue,
+        };
+        let duration = match ev.dtend {
+            Some(e) if e > dtstart => e - dtstart,
+            _ => time::Duration::ZERO,
+        };
+
+        let pairs: Vec<(OffsetDateTime, OffsetDateTime)> = match ev.rrule.as_deref() {
+            Some(raw) if !raw.trim().is_empty() => match crate::domain::rrule::Rrule::parse(raw) {
+                Some(rule) => rule.expand(dtstart, duration, params.from, params.to),
+                None       => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                                  .into_iter().collect(),
+            },
+            _ => crate::domain::rrule::single_instance(dtstart, ev.dtend, params.from, params.to)
+                     .into_iter().collect(),
+        };
+
+        let mut instances: Vec<EventInstance> = pairs.into_iter()
+            .take(per_cap)
+            .map(|(s, e)| EventInstance { dtstart: s, dtend: e })
+            .collect();
+
+        if instances.is_empty() {
+            continue;
+        }
+        total_instances += instances.len();
+
+        // shrink_to_fit pra liberar capacidade extra reservada por take()
+        instances.shrink_to_fit();
+
+        groups.push(EventInstancesGroup {
+            event_id:  ev.id,
+            summary:   ev.summary,
+            rrule:     ev.rrule,
+            count:     instances.len(),
+            instances,
+        });
+    }
+
+    let from_s = params.from.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    let to_s   = params.to.format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_default();
+    Ok(Json(serde_json::json!({
+        "from":            from_s,
+        "to":              to_s,
+        "per_event_cap":   per_cap,
+        "total_events":    groups.len(),
+        "total_instances": total_instances,
+        "events":          groups,
     })))
 }
 
