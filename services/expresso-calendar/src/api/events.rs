@@ -1322,6 +1322,12 @@ fn inject_exdate_line(raw: &str, line: &str) -> String {
 struct ListExdatesQuery {
     #[serde(default)]
     detail: Option<String>,
+    /// `?kind=utc|tzid|date-only|unknown` filtra a lista por classificação
+    /// (sprint #516, extensão do #504). Só faz sentido com `detail=full`
+    /// porque o modo `summary` já degenera pra UTC-only — `kind=utc` é
+    /// no-op aceito; qualquer outro `kind` com `summary` → 400.
+    #[serde(default)]
+    kind: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates — lista EXDATEs do
@@ -1335,9 +1341,17 @@ struct ListExdatesQuery {
 /// formatos não-UTC que `parse_exdates` ignora silenciosamente; cada item
 /// ganha `tzid?`, `params?`, `kind` (`"utc"|"tzid"|"date-only"|"unknown"`)
 /// e `raw_value` (token original). Útil pra debug/inspeção quando ICS
-/// importado tem EXDATEs em formato não-MVP. Não requer WRITE
-/// (read-only). 400 em valor de detail desconhecido. 404 se evento não
-/// existe.
+/// importado tem EXDATEs em formato não-MVP.
+///
+/// `?kind=utc|tzid|date-only|unknown` (sprint #516) filtra a lista pelo
+/// `kind` parseado — útil pra audit "quais EXDATEs estão em formato não
+/// suportado pelo expander MVP" (`?detail=full&kind=unknown`) ou "quais
+/// estão com TZID que precisa migrar pra UTC" (`?detail=full&kind=tzid`).
+/// Só faz sentido com `detail=full`; em `summary`, único valor aceito é
+/// `kind=utc` (no-op) — qualquer outro vira 400.
+///
+/// Não requer WRITE (read-only). 400 em valor de detail/kind desconhecido.
+/// 404 se evento não existe.
 async fn list_exdates(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -1351,11 +1365,25 @@ async fn list_exdates(
             format!("detail must be 'summary' or 'full', got '{other}'")
         )),
     };
+    let kind_filter: Option<&str> = match q.kind.as_deref() {
+        None | Some("") => None,
+        Some(k @ ("utc" | "tzid" | "date-only" | "unknown")) => Some(k),
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'")
+        )),
+    };
+    if !full && matches!(kind_filter, Some(k) if k != "utc") {
+        return Err(CalendarError::BadRequest(
+            "kind filter other than 'utc' requires detail=full".into()
+        ));
+    }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let items: Vec<serde_json::Value> = if full {
-        parse_exdates_rich(&ev.ical_raw).into_iter().map(|info| {
+        parse_exdates_rich(&ev.ical_raw).into_iter().filter(|info| {
+            match kind_filter { None => true, Some(k) => info.kind == k }
+        }).map(|info| {
             let (compact, rfc) = match info.parsed_utc {
                 Some(t) => {
                     let utc = t.to_offset(time::UtcOffset::UTC);
