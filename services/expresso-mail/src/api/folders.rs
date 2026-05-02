@@ -25,6 +25,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/special-use/:slot/empty", axum::routing::post(empty_special_use_folder))
         .route("/mail/folders/special-use/mark-unread", axum::routing::post(mark_unread_special_use_folders_bulk))
         .route("/mail/folders/rename-history",     get(list_folder_rename_history))
+        .route("/mail/folders/rename-history/revert-all", axum::routing::post(revert_all_folder_renames))
         .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
@@ -406,6 +407,146 @@ async fn undo_folder_rename(
         "reverted_from":  new_name,
         "reverted_to":    old_name,
         "history_id":     new_history_id,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct RevertAllQuery {
+    n: Option<i64>,
+}
+
+/// POST /api/v1/mail/folders/rename-history/revert-all?n=N — UX simplificada
+/// por cima do undo single (#481): pega o rename mais recente de cada uma das
+/// últimas N mailboxes (default 1, cap 1..50) e aplica undo em todas numa
+/// única transação atômica via begin_tenant_tx (sprint #490). Atomicidade
+/// total: se uma reversion falhar (conflict de nome no destino, mailbox
+/// removida, etc), TODA a operação roda rollback — cliente vê resultado
+/// "tudo ou nada". Pula silenciosamente entries cujo `current_name` já
+/// difere de `new_name` (renomeada de novo após a entry de history) — não é
+/// erro porque o estado mudou desde então; reportado como skipped no
+/// response. Retorna `{requested:N, reverted:[{history_id, mailbox_id,
+/// from, to, new_history_id}], skipped:[{history_id, mailbox_id, reason}]}`.
+/// Útil pra "desfazer rename em massa" depois de uma operação bulk
+/// experimental. DISTINCT ON garante 1 entry por mailbox (mais recente).
+async fn revert_all_folder_renames(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<RevertAllQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let n = q.n.unwrap_or(1).clamp(1, 50);
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let entries: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (mailbox_id) id, mailbox_id, old_name, new_name \
+           FROM mail_folder_rename_history \
+          WHERE tenant_id = $1 AND user_id = $2 \
+          ORDER BY mailbox_id, renamed_at DESC \
+          LIMIT $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(n)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let mut reverted: Vec<serde_json::Value> = Vec::new();
+    let mut skipped:  Vec<serde_json::Value> = Vec::new();
+
+    for (entry_id, mailbox_id, old_name, new_name) in entries {
+        let current: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT folder_name, special_use FROM mailboxes \
+              WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+        )
+        .bind(mailbox_id)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let current_name = match current {
+            None => {
+                skipped.push(serde_json::json!({
+                    "history_id": entry_id, "mailbox_id": mailbox_id,
+                    "reason":     "mailbox no longer exists",
+                }));
+                continue;
+            }
+            Some((_, Some(_))) => {
+                skipped.push(serde_json::json!({
+                    "history_id": entry_id, "mailbox_id": mailbox_id,
+                    "reason":     "mailbox is now system folder",
+                }));
+                continue;
+            }
+            Some((name, None)) => name,
+        };
+
+        if current_name != new_name {
+            skipped.push(serde_json::json!({
+                "history_id":   entry_id,
+                "mailbox_id":   mailbox_id,
+                "current_name": current_name,
+                "expected":     new_name,
+                "reason":       "current name differs from history new_name",
+            }));
+            continue;
+        }
+
+        let conflict: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM mailboxes \
+              WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3 AND id <> $4",
+        )
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(&old_name)
+        .bind(mailbox_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if conflict.is_some() {
+            return Err(MailError::Conflict(format!(
+                "folder '{old_name}' already exists; cannot revert mailbox {mailbox_id}"
+            )));
+        }
+
+        sqlx::query(
+            "UPDATE mailboxes SET folder_name = $1, updated_at = now() \
+              WHERE id = $2 AND tenant_id = $3 AND user_id = $4",
+        )
+        .bind(&old_name)
+        .bind(mailbox_id)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let new_history_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO mail_folder_rename_history \
+                (tenant_id, user_id, mailbox_id, old_name, new_name, renamed_by) \
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(mailbox_id)
+        .bind(&new_name)
+        .bind(&old_name)
+        .bind(ctx.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        reverted.push(serde_json::json!({
+            "history_id":     entry_id,
+            "mailbox_id":     mailbox_id,
+            "from":           new_name,
+            "to":             old_name,
+            "new_history_id": new_history_id,
+        }));
+    }
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({
+        "requested": n,
+        "reverted":  reverted,
+        "skipped":   skipped,
     })))
 }
 
