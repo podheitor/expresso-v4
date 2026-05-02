@@ -76,6 +76,10 @@ pub fn routes() -> Router<AppState> {
             post(events_bulk_delete),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-recurrence-stats",
+            get(events_recurrence_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -413,6 +417,62 @@ async fn events_bulk_delete(
         .await?;
 
     Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-recurrence-stats — particiona eventos
+/// do calendário em single (sem rrule) vs recorrente (com rrule), e breakdown
+/// dos recorrentes por FREQ (DAILY/WEEKLY/MONTHLY/YEARLY/OTHER) (sprint #464).
+/// Útil pra dashboard "quantos eventos da agenda são repetitivos". Usa COUNT
+/// FILTER pra particionar numa única query. FREQ extraído via regex via
+/// `substring(rrule from 'FREQ=([A-Z]+)')` — RRULE sempre tem FREQ obrigatório
+/// per RFC 5545. Retorna `{single, recurring, by_freq: {DAILY, WEEKLY, ...}}`.
+/// Path com hífen evita colisão com `events/:id` (lição #427).
+async fn events_recurrence_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (single, recurring): (i64, i64) = sqlx::query_as(
+        r#"SELECT
+              COUNT(*) FILTER (WHERE rrule IS NULL OR rrule = '') AS single,
+              COUNT(*) FILTER (WHERE rrule IS NOT NULL AND rrule <> '') AS recurring
+            FROM calendar_events
+            WHERE tenant_id = $1 AND calendar_id = $2"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .fetch_one(pool)
+    .await?;
+
+    let freq_rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        r#"SELECT UPPER(COALESCE(substring(rrule from 'FREQ=([A-Za-z]+)'), 'OTHER')) AS freq,
+                  COUNT(*) AS c
+             FROM calendar_events
+            WHERE tenant_id   = $1
+              AND calendar_id = $2
+              AND rrule IS NOT NULL
+              AND rrule <> ''
+            GROUP BY freq
+            ORDER BY c DESC, freq ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut by_freq = serde_json::Map::new();
+    for (freq, c) in freq_rows {
+        let key = freq.unwrap_or_else(|| "OTHER".into());
+        by_freq.insert(key, serde_json::json!(c));
+    }
+
+    Ok(Json(serde_json::json!({
+        "single":    single,
+        "recurring": recurring,
+        "by_freq":   by_freq,
+    })))
 }
 
 async fn list(
