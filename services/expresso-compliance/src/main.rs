@@ -957,6 +957,48 @@ async fn size_histogram_archive(
     Ok(Json(json!({ "buckets": buckets })))
 }
 
+/// GET /api/v1/compliance/archive/top-tags?limit=10&since=&before= — top tags
+/// usadas em archive entries do user (sprint #461). Conta por tag via JOIN
+/// compliance_archive_tags + compliance_archive (filtra por tenant + user_id +
+/// archived_at range). Retorna `{limit, tags: [{tag, count}]}`. Útil pra
+/// dashboard de e-discovery — quais case-IDs/hold-tags concentram volume.
+async fn top_tags_archive(
+    State(st):     State<AppState>,
+    AuthCtx(ctx):  AuthCtx,
+    Query(params): Query<TopSendersParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = params.limit.unwrap_or(10).clamp(1, 100);
+
+    let since_filter = params.since
+        .map(|d| format!("AND a.archived_at >= '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+    let before_filter = params.before
+        .map(|d| format!("AND a.archived_at < '{}'::timestamptz", d.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT t.tag, COUNT(*) AS c \
+         FROM compliance_archive_tags t \
+         JOIN compliance_archive a ON a.id = t.archive_id AND a.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 AND a.user_id = $2 \
+         {since_filter} {before_filter} \
+         GROUP BY t.tag ORDER BY c DESC, t.tag ASC LIMIT {limit}"
+    );
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&st.db)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let tags: Vec<_> = rows.into_iter()
+        .map(|(tag, count)| json!({ "tag": tag, "count": count }))
+        .collect();
+
+    Ok(Json(json!({ "limit": limit, "tags": tags })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1513,6 +1555,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/top-subjects", get(top_subjects_archive))
         .route("/api/v1/compliance/archive/top-domains", get(top_domains_archive))
         .route("/api/v1/compliance/archive/size-histogram", get(size_histogram_archive))
+        .route("/api/v1/compliance/archive/top-tags",  get(top_tags_archive))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
         .route("/api/v1/compliance/archive/:id/tags",  get(list_archive_tags).post(add_archive_tag))
