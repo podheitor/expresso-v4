@@ -1920,6 +1920,18 @@ struct ListOverridesQuery {
     after:  Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
+    /// `?has_summary=&has_dtstart=&has_dtend=` (sprint #518) filtros
+    /// qualitativos de presença — true exige campo presente, false exige
+    /// ausência. Combinados em AND. Útil pra UI segmentar overrides "só
+    /// rename de título" (has_summary=true&has_dtstart=false&has_dtend=false)
+    /// vs. "só reschedule" (has_summary=false&has_dtstart=true). Aplicado
+    /// após range filter. Sem nenhum dos 3 = sem filtro de presença.
+    #[serde(default)]
+    has_summary: Option<bool>,
+    #[serde(default)]
+    has_dtstart: Option<bool>,
+    #[serde(default)]
+    has_dtend:   Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides — lista os
@@ -1939,6 +1951,16 @@ struct ListOverridesQuery {
 /// (ex: TZID-based) são pulados silenciosamente quando algum bound é
 /// dado — sem range, todos os overrides aparecem (mesmo formato exótico).
 /// 400 se `after >= before`.
+///
+/// `?has_summary=&has_dtstart=&has_dtend=` (sprint #518, variant
+/// qualitativa do #517) filtros booleanos de presença em AND — true
+/// exige o campo presente no override, false exige ausência. Combinados
+/// segmentam categorias semânticas: "só rename de título"
+/// (has_summary=true&has_dtstart=false&has_dtend=false) vs. "só
+/// reschedule" (has_summary=false&has_dtstart=true). Aplicados após o
+/// range filter — `count` final reflete intersecção dos dois passes.
+/// Cada flag é independentemente opcional. `description`/`location` ficam
+/// de fora porque só estão presentes em `?detail=full` (assimétrico).
 ///
 /// Read-only, não exige WRITE+. 404 se evento não existe. 400 se detail
 /// desconhecido ou `after >= before`.
@@ -1976,6 +1998,15 @@ async fn list_overrides(
             };
             if let Some(a) = q.after  { if parsed <  a { return false; } }
             if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
+    if q.has_summary.is_some() || q.has_dtstart.is_some() || q.has_dtend.is_some() {
+        items.retain(|item| {
+            let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
+            if let Some(want) = q.has_summary { if present("summary") != want { return false; } }
+            if let Some(want) = q.has_dtstart { if present("dtstart") != want { return false; } }
+            if let Some(want) = q.has_dtend   { if present("dtend")   != want { return false; } }
             true
         });
     }
