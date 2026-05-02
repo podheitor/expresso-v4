@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #502 (2026-05-02)
+**Último sprint commitado:** #503 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -100,6 +100,7 @@ git log --oneline | head -15
 | #500 | calendar | RECURRENCE-ID override get-one — `GET /:id/overrides/:recurrence_id` snapshot completo (summary/description/location/dtstart/dtend/dtstamp) com ETag/LM herdados do master, 304 em INM/IMS, 404 se não existe |
 | #501 | calendar | Override→cancel migration — `POST /:id/overrides/:recurrence_id/cancel` substitui workflow 2-passos (DELETE override + POST cancel-instance) por 1 chamada atômica; 1 só DB write, sequence bumpa 1 vez |
 | #502 | calendar | Cancel→override migration — `POST /:id/exdates/:instance/override {summary?,description?,location?,dtstart?,dtend?}` inverso simétrico do #501; `remove_exdate_value` + `inject_before_end_vcalendar` compostos antes do único `update`; 1 DB write, sequence bumpa 1 vez; 404 se EXDATE não existe; 409 se override já existe; 400 se sem rrule ou sem campos override |
+| #503 | calendar | Override list rica — `GET /:id/overrides?detail=full` adiciona description+location em cada item pra paridade com get-one (#500); default `summary` mantém shape original do #496; helper `list_recurrence_id_overrides` ganha bool `full`; refator pra `upper16` uniforme (universal prefix matcher); 400 em detail desconhecido |
 
 ---
 
@@ -113,7 +114,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#503-#507)
+## Próximos candidatos (#504-#508)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -123,8 +124,8 @@ git log --oneline | head -15
 6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
 7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
-9. **calendar:** override list rica — incluir `description` + `location` em `list_recurrence_id_overrides` (#496) pra paridade com get-one (#500), ou flag `?detail=full`
-10. **calendar:** override patch DTSTAMP-only refresh — `POST /:id/overrides/:recurrence_id/touch` que só atualiza DTSTAMP (sem mudar campos) pra force re-sync de clients caching
+9. **calendar:** override DTSTAMP-only touch — `POST /:id/overrides/:recurrence_id/touch` só atualiza DTSTAMP (sem mudar campos) pra force re-sync de clients caching
+10. **calendar:** EXDATE list rica — `GET /:id/exdates?detail=full` adiciona timezone-info ou origin context (paralelo simétrico do #503)
 
 ---
 

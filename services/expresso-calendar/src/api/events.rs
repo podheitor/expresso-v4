@@ -1716,21 +1716,42 @@ fn escape_ics_text(s: &str) -> String {
     out
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct ListOverridesQuery {
+    /// `?detail=full` inclui description+location em cada override (paridade
+    /// com get-one #500). Default `summary` mantém shape original do #496
+    /// (summary/dtstart/dtend só) — payload leve. Qualquer outro valor é
+    /// rejeitado com 400.
+    #[serde(default)]
+    detail: Option<String>,
+}
+
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides — lista os
 /// RECURRENCE-ID overrides existentes no VCALENDAR (sprint #496, paralelo
 /// ao EXDATE list #491). Retorna `{event_id, count, overrides:[{compact,
-/// rfc3339, summary?, dtstart?, dtend?}]}`. Reusa `extract_uid` do master
-/// e walk por blocos VEVENT pareando UID + RECURRENCE-ID. Read-only,
-/// não exige WRITE+. 404 se evento não existe.
+/// rfc3339, summary?, dtstart?, dtend?}]}` por default. Com `?detail=full`
+/// (sprint #503) adiciona `description?` + `location?` em cada item pra
+/// paridade com get-one (#500) — útil pra UI que precisa exibir lista
+/// completa sem N+1 GETs por override. Reusa `extract_uid` do master e
+/// walk por blocos VEVENT pareando UID + RECURRENCE-ID. Read-only,
+/// não exige WRITE+. 404 se evento não existe. 400 se detail desconhecido.
 async fn list_overrides(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<ListOverridesQuery>,
 ) -> Result<Json<serde_json::Value>> {
+    let full = match q.detail.as_deref() {
+        None | Some("") | Some("summary") => false,
+        Some("full") => true,
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("detail must be 'summary' or 'full', got '{other}'")
+        )),
+    };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
-    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid);
+    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid, full);
     Ok(Json(serde_json::json!({
         "event_id":  ev.id,
         "count":     items.len(),
@@ -2200,11 +2221,12 @@ fn remove_recurrence_id_override_block(raw: &str, uid_master: &str, target_compa
 }
 
 /// Walk pelos blocos VEVENT do raw retornando os RECURRENCE-IDs cujo UID
-/// confere com `uid_master`. Para cada match coleta também SUMMARY/
-/// DTSTART/DTEND opcionais pra UI exibir. compact = valor original do
-/// RECURRENCE-ID (preservado); rfc3339 = canonicalizado se parseável como
-/// UTC compact, senão null.
-fn list_recurrence_id_overrides(raw: &str, uid_master: &str) -> Vec<serde_json::Value> {
+/// confere com `uid_master`. Para cada match coleta SUMMARY/DTSTART/DTEND
+/// opcionais pra UI exibir; com `full=true` (sprint #503) adiciona também
+/// DESCRIPTION/LOCATION pra paridade com get-one (#500). compact = valor
+/// original do RECURRENCE-ID (preservado); rfc3339 = canonicalizado se
+/// parseável como UTC compact, senão null.
+fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<serde_json::Value> {
     use time::format_description::FormatItem;
     use time::macros::format_description;
     static FMT: &[FormatItem<'static>] = format_description!(
@@ -2214,33 +2236,46 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str) -> Vec<serde_json::
     let mut out = Vec::new();
     let mut in_event = false;
     let mut found_uid = false;
-    let mut cur_recid:   Option<String> = None;
-    let mut cur_summary: Option<String> = None;
-    let mut cur_dtstart: Option<String> = None;
-    let mut cur_dtend:   Option<String> = None;
+    let mut cur_recid:       Option<String> = None;
+    let mut cur_summary:     Option<String> = None;
+    let mut cur_dtstart:     Option<String> = None;
+    let mut cur_dtend:       Option<String> = None;
+    let mut cur_description: Option<String> = None;
+    let mut cur_location:    Option<String> = None;
 
     for line in raw.lines() {
         let trimmed = line.trim_start();
-        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
-        if upper14.starts_with("BEGIN:VEVENT") {
+        let upper16: String = trimmed.chars().take(16).collect::<String>().to_ascii_uppercase();
+        if upper16.starts_with("BEGIN:VEVENT") {
             in_event = true;
             found_uid = false;
             cur_recid = None; cur_summary = None; cur_dtstart = None; cur_dtend = None;
+            cur_description = None; cur_location = None;
             continue;
         }
-        if upper14.starts_with("END:VEVENT") {
+        if upper16.starts_with("END:VEVENT") {
             if in_event && found_uid {
                 if let Some(rec) = cur_recid.take() {
                     let rfc = OffsetDateTime::parse(rec.trim(), &FMT).ok().and_then(|t| {
                         t.format(&time::format_description::well_known::Rfc3339).ok()
                     });
-                    out.push(serde_json::json!({
+                    let mut item = serde_json::json!({
                         "compact":  rec,
                         "rfc3339":  rfc,
                         "summary":  cur_summary.take(),
                         "dtstart":  cur_dtstart.take(),
                         "dtend":    cur_dtend.take(),
-                    }));
+                    });
+                    if full {
+                        let obj = item.as_object_mut().expect("json object");
+                        obj.insert("description".into(),
+                            cur_description.take().map(serde_json::Value::String)
+                                .unwrap_or(serde_json::Value::Null));
+                        obj.insert("location".into(),
+                            cur_location.take().map(serde_json::Value::String)
+                                .unwrap_or(serde_json::Value::Null));
+                    }
+                    out.push(item);
                 }
             }
             in_event = false;
@@ -2248,20 +2283,21 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str) -> Vec<serde_json::
         }
         if !in_event { continue; }
 
-        let upper4:  String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
-        let upper6:  String = trimmed.chars().take(6).collect::<String>().to_ascii_uppercase();
-        let upper8:  String = trimmed.chars().take(8).collect::<String>().to_ascii_uppercase();
-        if upper4.starts_with("UID:") {
+        if upper16.starts_with("UID:") {
             let v = trimmed["UID:".len()..].trim();
             if v == uid_master { found_uid = true; }
-        } else if upper14.starts_with("RECURRENCE-ID:") {
+        } else if upper16.starts_with("RECURRENCE-ID:") {
             cur_recid = Some(trimmed["RECURRENCE-ID:".len()..].trim().to_string());
-        } else if upper8.starts_with("SUMMARY:") {
+        } else if upper16.starts_with("SUMMARY:") {
             cur_summary = Some(trimmed["SUMMARY:".len()..].trim().to_string());
-        } else if upper8.starts_with("DTSTART:") {
+        } else if upper16.starts_with("DTSTART:") {
             cur_dtstart = Some(trimmed["DTSTART:".len()..].trim().to_string());
-        } else if upper6.starts_with("DTEND:") {
+        } else if upper16.starts_with("DTEND:") {
             cur_dtend = Some(trimmed["DTEND:".len()..].trim().to_string());
+        } else if full && upper16.starts_with("DESCRIPTION:") {
+            cur_description = Some(trimmed["DESCRIPTION:".len()..].trim().to_string());
+        } else if full && upper16.starts_with("LOCATION:") {
+            cur_location = Some(trimmed["LOCATION:".len()..].trim().to_string());
         }
     }
     out
