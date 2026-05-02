@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete as delete_route, get, patch, post},
+    routing::{delete as delete_route, get, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -141,7 +141,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
-            delete_route(delete_override).patch(patch_override),
+            get(get_one_override).delete(delete_override).patch(patch_override),
         )
 }
 
@@ -1728,6 +1728,154 @@ async fn list_overrides(
         "count":     items.len(),
         "overrides": items,
     })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
+/// snapshot completo de UM override (sprint #500, complemento de #495
+/// create + #496 list + #497 delete + #498 patch). `:recurrence_id`
+/// aceita compact `YYYYMMDDTHHMMSSZ` ou RFC3339; canonicalizado pra UTC
+/// compact antes do match. Retorna `{event_id, recurrence_id, rfc3339,
+/// summary, description, location, dtstart, dtend, dtstamp, sequence}`.
+/// Diferente do list (#496) que omite description, esta GET é o snapshot
+/// completo pra editor pré-popular form. ETag/Last-Modified herdados do
+/// master event (mesma origem do #get_one principal: qualquer mutação no
+/// VCALENDAR refresh do master); 304 em If-None-Match/If-Modified-Since.
+/// Read-only, não exige WRITE+. 404 se override não existe.
+async fn get_one_override(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id, recurrence_id)): Path<(Uuid, Uuid, String)>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let etag = format!("\"{}\"", ev.etag);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+    let lm = ev.updated_at.format(&time::format_description::well_known::Rfc2822).unwrap_or_default();
+    if let Some(ims_val) = req_headers.get(header::IF_MODIFIED_SINCE) {
+        if let Ok(ims_str) = ims_val.to_str() {
+            if let Ok(ims_dt) = OffsetDateTime::parse(ims_str, &time::format_description::well_known::Rfc2822) {
+                if ev.updated_at <= ims_dt {
+                    return Ok(StatusCode::NOT_MODIFIED.into_response());
+                }
+            }
+        }
+    }
+
+    let target = parse_one_exdate(&recurrence_id).ok_or_else(|| CalendarError::BadRequest(
+        format!("recurrence_id must be RFC3339 or YYYYMMDDTHHMMSSZ, got {recurrence_id}")
+    ))?;
+    let target_compact = format_compact_utc(target);
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate override".into()
+    ))?;
+
+    let snap = pick_recurrence_id_override(&ev.ical_raw, &uid, &target_compact)
+        .ok_or(CalendarError::EventNotFound(id))?;
+
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]Z"
+    );
+    let rfc = OffsetDateTime::parse(&target_compact, &FMT).ok().and_then(|t| {
+        t.format(&time::format_description::well_known::Rfc3339).ok()
+    });
+
+    let body = serde_json::json!({
+        "event_id":      ev.id,
+        "recurrence_id": target_compact,
+        "rfc3339":       rfc,
+        "summary":       snap.summary,
+        "description":   snap.description,
+        "location":      snap.location,
+        "dtstart":       snap.dtstart,
+        "dtend":         snap.dtend,
+        "dtstamp":       snap.dtstamp,
+        "sequence":      ev.sequence,
+    });
+
+    let mut resp = Json(body).into_response();
+    resp.headers_mut().insert(header::ETAG,          HeaderValue::from_str(&etag).unwrap());
+    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(resp)
+}
+
+/// Snapshot dos campos do VEVENT override pareando UID + RECURRENCE-ID.
+/// Strings raw direto do ical (não unescaped) — cliente decide; usado
+/// pelo GET single (#500) que precisa de description também (list #496
+/// só traz summary/dtstart/dtend).
+struct OverrideSnapshot {
+    summary:     Option<String>,
+    description: Option<String>,
+    location:    Option<String>,
+    dtstart:     Option<String>,
+    dtend:       Option<String>,
+    dtstamp:     Option<String>,
+}
+
+fn pick_recurrence_id_override(raw: &str, uid_master: &str, target_compact: &str) -> Option<OverrideSnapshot> {
+    let mut in_event   = false;
+    let mut found_uid  = false;
+    let mut found_rec  = false;
+    let mut snap = OverrideSnapshot {
+        summary: None, description: None, location: None,
+        dtstart: None, dtend: None, dtstamp: None,
+    };
+
+    for line in raw.lines() {
+        let trimmed = line.trim_start();
+        let head: String = trimmed.chars().take(16).collect::<String>().to_ascii_uppercase();
+
+        if head.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            found_uid = false;
+            found_rec = false;
+            snap = OverrideSnapshot {
+                summary: None, description: None, location: None,
+                dtstart: None, dtend: None, dtstamp: None,
+            };
+            continue;
+        }
+        if head.starts_with("END:VEVENT") {
+            if in_event && found_uid && found_rec {
+                return Some(snap);
+            }
+            in_event = false;
+            continue;
+        }
+        if !in_event { continue; }
+
+        if head.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid_master { found_uid = true; }
+        } else if head.starts_with("RECURRENCE-ID:") {
+            let v = trimmed["RECURRENCE-ID:".len()..].trim();
+            if v == target_compact { found_rec = true; }
+        } else if head.starts_with("SUMMARY:") {
+            snap.summary = Some(trimmed["SUMMARY:".len()..].trim().to_string());
+        } else if head.starts_with("DESCRIPTION:") {
+            snap.description = Some(trimmed["DESCRIPTION:".len()..].trim().to_string());
+        } else if head.starts_with("LOCATION:") {
+            snap.location = Some(trimmed["LOCATION:".len()..].trim().to_string());
+        } else if head.starts_with("DTSTART:") {
+            snap.dtstart = Some(trimmed["DTSTART:".len()..].trim().to_string());
+        } else if head.starts_with("DTEND:") {
+            snap.dtend = Some(trimmed["DTEND:".len()..].trim().to_string());
+        } else if head.starts_with("DTSTAMP:") {
+            snap.dtstamp = Some(trimmed["DTSTAMP:".len()..].trim().to_string());
+        }
+    }
+    None
 }
 
 /// DELETE /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —

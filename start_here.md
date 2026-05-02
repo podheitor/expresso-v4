@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #499 (2026-05-02)
+**Último sprint commitado:** #500 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -97,6 +97,7 @@ git log --oneline | head -15
 | #497 | calendar | RECURRENCE-ID override delete — `DELETE /:id/overrides/:recurrence_id` remove um override (inverso de #495) |
 | #498 | calendar | RECURRENCE-ID override patch — `PATCH /:id/overrides/:recurrence_id` edita summary/description/location/dtstart/dtend in-place (complemento de #495+#496+#497) |
 | #499 | calendar | EXDATE/RECURRENCE-ID conflict-aware — 409 em `override-instance` se EXDATE pra mesma instance e em `cancel-instance` se override existe; `Conflict` enum agora carrega `String` |
+| #500 | calendar | RECURRENCE-ID override get-one — `GET /:id/overrides/:recurrence_id` snapshot completo (summary/description/location/dtstart/dtend/dtstamp) com ETag/LM herdados do master, 304 em INM/IMS, 404 se não existe |
 
 ---
 
@@ -110,7 +111,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#500-#504)
+## Próximos candidatos (#501-#505)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -120,8 +121,8 @@ git log --oneline | head -15
 6. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
 7. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
 8. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
-9. **calendar:** RECURRENCE-ID override get-one — `GET /:id/overrides/:recurrence_id` (detalhe único com ETag/LM, complemento do list #496)
-10. **calendar:** override migration — `POST /:id/overrides/:recurrence_id/cancel` que num único call remove override e injeta EXDATE (substitui workflow 2-passos)
+9. **calendar:** override migration — `POST /:id/overrides/:recurrence_id/cancel` que num único call remove override e injeta EXDATE (substitui workflow 2-passos do #499)
+10. **calendar:** override list — incluir `description` e `location` no `list_recurrence_id_overrides` (#496) pra paridade com get-one (#500); ou flag `?detail=full`
 
 ---
 
