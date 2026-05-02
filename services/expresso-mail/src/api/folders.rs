@@ -27,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
+        .route("/mail/folders/:name/mark-unread",  axum::routing::post(mark_folder_unread))
         .route("/mail/folders/:name/empty",        axum::routing::post(empty_folder))
         .route("/mail/folders/:name/subscribe",    axum::routing::post(subscribe_folder))
         .route("/mail/folders/:name/unsubscribe",  axum::routing::post(unsubscribe_folder))
@@ -602,6 +603,48 @@ async fn mark_folder_read(
 
     tx.commit().await?;
     Ok(Json(serde_json::json!({ "marked": res.rows_affected() })))
+}
+
+/// POST /api/v1/mail/folders/:name/mark-unread — inverso do mark-read (sprint
+/// #485). Remove `\Seen` de todas as messages na folder via
+/// `array_remove(flags, '\Seen')`, condicionando ao predicate `'\Seen' =
+/// ANY(flags)` pra contabilizar só as que de fato perdem o flag (idempotente:
+/// já-não-lidas retornam `unmarked: 0`). Útil pra "marcar pasta inteira como
+/// nova" (escape de notification fadigue ou pra forçar re-triagem). 404 se a
+/// pasta não pertence ao user.
+async fn mark_folder_unread(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(name):   Path<String>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let mbox_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM mailboxes WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3",
+    )
+    .bind(ctx.user_id)
+    .bind(ctx.tenant_id)
+    .bind(&name)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let mbox_id = mbox_id.ok_or(MailError::FolderNotFound { folder: name })?;
+
+    let res = sqlx::query(
+        r#"UPDATE messages
+           SET flags = array_remove(flags, $1)
+           WHERE mailbox_id = $2
+             AND tenant_id  = $3
+             AND $1 = ANY(flags)"#,
+    )
+    .bind(r"\Seen")
+    .bind(mbox_id)
+    .bind(ctx.tenant_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    Ok(Json(serde_json::json!({ "unmarked": res.rows_affected() })))
 }
 
 /// POST /api/v1/mail/folders/:name/empty — delete ALL messages in a folder, but
