@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #415 (2026-04-28)
+**Último sprint commitado:** #495 (2026-05-02)
 
 ```
 git log --oneline | head -15
@@ -82,6 +82,17 @@ git log --oneline | head -15
 | #403 | notifications | Push subscription — `POST/DELETE /api/v1/notifications/push`; tabela `notification_push_subscriptions(endpoint, p256dh, auth)`; UPSERT por endpoint |
 | #404 | meet | Transcript metadata — `GET/POST /api/v1/meetings/:id/transcript`; tabela `meeting_transcripts(url, language, starts_at, ends_at, created_by)`; GET para participantes; POST moderator-only |
 | #405 | drive | Comments — `GET/POST /api/v1/drive/files/:id/comments` + `DELETE /:comment_id`; tabela `drive_file_comments(user_id, body)`; DELETE restrito ao autor |
+| #406-#485 | vários | Roadmap continuado (search/calendar/mail/meet/drive/contacts/compliance/notifications) — ver `git log --oneline` ou `memory/project_status.md` para detalhes |
+| #486 | compliance | Archive tag co-occurrence — `GET /api/v1/compliance/archive/tags/co-occurrence` (paralelo drive #484, USER-scoped) |
+| #487 | mail | Mark-unread bulk per special-use — `POST /api/v1/mail/folders/special-use/mark-unread?slots=trash,junk` (combo #485 + #473) |
+| #488 | calendar | Event instance EXDATE cancel — `POST /:cal_id/events/:id/cancel-instance {instance}` injeta EXDATE; expander filtra via `parse_exdates` |
+| #489 | drive | Tag intersect-exclude — `GET /api/v1/drive/tags/intersect-exclude?tags=&exclude=` (AND-set + NOT EXISTS) |
+| #490 | mail | Folder rename revert-all batch — `POST /folders/rename-history/revert-all?n=N` (DISTINCT ON + atômico) |
+| #491 | calendar | EXDATE list/clear/delete — `GET /:id/exdates` + `DELETE /:id/exdates` + `DELETE /:id/exdates/:instance` (inverso completo de #488) |
+| #492 | compliance | Archive tag intersect-exclude — `GET /archive/tags/intersect-exclude?tags=&exclude=` (paralelo USER-scoped de #489) |
+| #493 | drive | Tag co-occurrence by user — `GET /tags/co-occurrence-by-user?user_id=&tag=&min_count=` (extensão #484 + #479) |
+| #494 | mail | Folder rename revert-all dry-run — `?dry=true` em `revert-all` (preview SELECT-only) |
+| #495 | calendar | RECURRENCE-ID instance override — `POST /:id/override-instance {instance, summary?,...}` (alternativa não-destrutiva ao EXDATE cancel #488) |
 
 ---
 
@@ -95,16 +106,18 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos
+## Próximos candidatos (#496-#500)
 
-1. **IMAP: LIST-EXTENDED RETURN STATUS (RFC 5258)** — aguardar imap_types suportar `return_options` em `CommandBody::List` (bloqueado)
-2. **IMAP: OBJECTID (RFC 8474)** — bloqueado: imap-types alpha.6 sem `ext_objectid`; `MessageDataItem` sem variante `Other` para extensões raw
-3. **IMAP: QUOTA (RFC 2087)** — `GETQUOTA`/`QUOTAROOT`/`SETQUOTA` — requer feature `ext_quota` em imap-codec/imap-types (não habilitada)
-4. **drive: comment reactions** — `POST/DELETE /api/v1/drive/files/:id/comments/:comment_id/reactions` — emoji reactions em comentários
-5. **calendar: alarm delivery** — worker que varre `calendar_event_alarms` com `trigger_abs <= now()` e publica via notifications
-6. **meet: transcript search** — `GET /api/v1/meetings/:id/transcript?q=` — fulltext search nos metadados de transcrição
-7. **mail: snooze** — `POST /api/v1/mail/messages/:id/snooze` com `snooze_until TIMESTAMPTZ`; worker que reativa mensagem no folder
-8. **drive: file activity log** — `GET /api/v1/drive/files/:id/activity` — audit trail de ações (upload, rename, lock, star, comment)
+1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
+2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
+3. **mail:** sieve filter test endpoint — `POST /api/v1/mail/sieve/test`
+4. **drive:** trash auto-purge schedule — config tenant pra auto-rodar #453 periodicamente
+5. **calendar:** events bulk-update por range — PATCH em massa (mover, mudar calendar, set RRULE)
+6. **calendar:** RECURRENCE-ID override list — `GET /:id/overrides` (paralelo ao #491 EXDATE list)
+7. **calendar:** RECURRENCE-ID override delete — `DELETE /:id/overrides/:recurrence_id` (inverso de #495)
+8. **compliance:** archive tag co-occurrence by user — variante de #486 com `created_by` (paralelo a #493)
+9. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
+10. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
 
 ---
 
