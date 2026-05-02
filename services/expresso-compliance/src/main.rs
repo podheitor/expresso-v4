@@ -1387,6 +1387,301 @@ async fn undo_archive_tag_rename(
     })))
 }
 
+#[derive(Debug, Deserialize)]
+struct MergeArchiveTagBody {
+    src: String,
+    dst: String,
+}
+
+/// POST /api/v1/compliance/archive/tags/merge — funde duas archive tags do user
+/// (sprint #483, paralelo de drive merge #433/#477). Body `{src, dst}`. Para
+/// archives que têm AMBAS as tags, apaga `src` (preserva `dst`); para archives
+/// que têm SÓ `src`, atualiza pra `dst`. Captura dois arrays de archive_ids
+/// pra habilitar undo assimétrico (mesmo modelo do drive #477):
+///   - `merged_archive_ids`: tinham só src → UPDATE pra dst → undo precisa
+///     INSERT src + DELETE dst
+///   - `dropped_archive_ids`: tinham ambas → DELETE src → undo precisa só
+///     INSERT src de volta (dst preservada)
+/// Atomicidade via begin_tenant_tx; INSERT em compliance_archive_tag_merge_history
+/// com merged_count = renamed.rows_affected() (só os UPDATEs, não os DELETEs).
+/// Escopado por user_id. Retorna `{src, dst, merged, dropped, history_id}`.
+async fn merge_archive_tags(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Json(body):   Json<MergeArchiveTagBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let src = body.src.trim().to_lowercase();
+    let dst = body.dst.trim().to_lowercase();
+    if src.is_empty() || src.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "src must be 1-64 characters"}))));
+    }
+    if dst.is_empty() || dst.chars().count() > 64 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "dst must be 1-64 characters"}))));
+    }
+    if src == dst {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "src and dst must differ"}))));
+    }
+
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // archives que têm AMBAS as tags (src e dst) — vão sofrer DELETE de src
+    let dropped_rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT DISTINCT t1.archive_id \
+           FROM compliance_archive_tags t1 \
+           JOIN compliance_archive_tags t2 \
+             ON t2.archive_id = t1.archive_id AND t2.tenant_id = t1.tenant_id \
+           JOIN compliance_archive a \
+             ON a.id = t1.archive_id AND a.tenant_id = t1.tenant_id \
+          WHERE t1.tenant_id = $1 AND t1.tag = $2 AND t2.tag = $3 AND a.user_id = $4",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let dropped_ids: Vec<Uuid> = dropped_rows.into_iter().map(|(id,)| id).collect();
+
+    // Pré-DELETE de src nos archives que já tinham dst
+    let _ = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+         WHERE tenant_id = $1 AND tag = $2 \
+           AND archive_id IN ( \
+               SELECT t.archive_id FROM compliance_archive_tags t \
+               JOIN compliance_archive a ON a.id = t.archive_id AND a.tenant_id = t.tenant_id \
+               WHERE t.tenant_id = $1 AND t.tag = $3 AND a.user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(&dst)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // archives que ainda têm src (só src; já apagamos os que tinham ambos) — vão sofrer UPDATE
+    let merged_rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT t.archive_id FROM compliance_archive_tags t \
+           JOIN compliance_archive a ON a.id = t.archive_id AND a.tenant_id = t.tenant_id \
+          WHERE t.tenant_id = $1 AND t.tag = $2 AND a.user_id = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let merged_ids: Vec<Uuid> = merged_rows.into_iter().map(|(id,)| id).collect();
+
+    let r = sqlx::query(
+        "UPDATE compliance_archive_tags SET tag = $2 \
+         WHERE tenant_id = $1 AND tag = $3 \
+           AND archive_id IN ( \
+               SELECT id FROM compliance_archive \
+               WHERE tenant_id = $1 AND user_id = $4 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&dst)
+    .bind(&src)
+    .bind(ctx.user_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let merged = r.rows_affected();
+
+    let history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO compliance_archive_tag_merge_history \
+            (tenant_id, user_id, src_tag, dst_tag, merged_count, merged_archive_ids, dropped_archive_ids, merged_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&src)
+    .bind(&dst)
+    .bind(merged as i64)
+    .bind(&merged_ids)
+    .bind(&dropped_ids)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "src":        src,
+        "dst":        dst,
+        "merged":     merged,
+        "dropped":    dropped_ids.len(),
+        "history_id": history_id.0,
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchiveTagMergeHistoryQuery {
+    limit:  Option<i64>,
+    since:  Option<time::OffsetDateTime>,
+    before: Option<time::OffsetDateTime>,
+    tag:    Option<String>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+struct ArchiveTagMergeHistoryEntry {
+    id:                   Uuid,
+    src_tag:              String,
+    dst_tag:              String,
+    merged_count:         i64,
+    merged_archive_ids:   Vec<Uuid>,
+    dropped_archive_ids:  Vec<Uuid>,
+    merged_by:            Uuid,
+    #[serde(with = "time::serde::rfc3339")]
+    merged_at:            time::OffsetDateTime,
+}
+
+/// GET /api/v1/compliance/archive/tags/merge-history?limit=&since=&before=&tag=
+/// Audit trail de merges de tag passados pelo user (sprint #483). `tag` filtra
+/// matching src_tag OR dst_tag (lowercase). Limit padrão 50, cap 1..500.
+/// Escopado por user_id.
+async fn list_archive_tag_merge_history(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Query(q):     Query<ArchiveTagMergeHistoryQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let tag_filter = q.tag.map(|t| t.trim().to_lowercase());
+
+    let entries: Vec<ArchiveTagMergeHistoryEntry> = sqlx::query_as(
+        "SELECT id, src_tag, dst_tag, merged_count, merged_archive_ids, dropped_archive_ids, merged_by, merged_at \
+           FROM compliance_archive_tag_merge_history \
+          WHERE tenant_id = $1 AND user_id = $2 \
+            AND ($3::timestamptz IS NULL OR merged_at >= $3) \
+            AND ($4::timestamptz IS NULL OR merged_at <  $4) \
+            AND ($5::text IS NULL OR src_tag = $5 OR dst_tag = $5) \
+          ORDER BY merged_at DESC \
+          LIMIT $6",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(q.since)
+    .bind(q.before)
+    .bind(tag_filter)
+    .bind(limit)
+    .fetch_all(&st.db)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({ "limit": limit, "entries": entries })))
+}
+
+/// POST /api/v1/compliance/archive/tags/merge-history/:id/undo — reverte um merge
+/// específico (sprint #483, paralelo do drive #477). Lê arrays do history,
+/// re-INSERE src nos `merged_archive_ids` (que tinham só src e foram UPDATEd)
+/// e nos `dropped_archive_ids` (que tinham ambas e perderam src) — todos com
+/// ON CONFLICT DO NOTHING (idempotente). DELETE dst dos `merged_archive_ids`
+/// (que NÃO tinham dst originalmente). Atomicidade via begin_tenant_tx.
+/// Grava nova history row com src/dst invertidos pra completar audit.
+async fn undo_archive_tag_merge(
+    State(st):    State<AppState>,
+    AuthCtx(ctx): AuthCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(&st.db, ctx.tenant_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let entry: Option<(String, String, Vec<Uuid>, Vec<Uuid>)> = sqlx::query_as(
+        "SELECT src_tag, dst_tag, merged_archive_ids, dropped_archive_ids \
+           FROM compliance_archive_tag_merge_history \
+          WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let (src, dst, merged_ids, dropped_ids) = match entry {
+        Some(t) => t,
+        None => return Err((StatusCode::NOT_FOUND, Json(json!({"error": "merge-history entry not found"})))),
+    };
+
+    let mut all_targets: Vec<Uuid> = Vec::with_capacity(merged_ids.len() + dropped_ids.len());
+    all_targets.extend_from_slice(&merged_ids);
+    all_targets.extend_from_slice(&dropped_ids);
+    all_targets.sort();
+    all_targets.dedup();
+
+    // Re-insert src em todos os archives afetados (idempotente via ON CONFLICT)
+    let inserted = sqlx::query(
+        "INSERT INTO compliance_archive_tags (tenant_id, archive_id, tag, created_by) \
+         SELECT $1, archive_id, $2, $3 FROM UNNEST($4::uuid[]) AS t(archive_id) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&src)
+    .bind(ctx.user_id)
+    .bind(&all_targets)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .rows_affected();
+
+    // DELETE dst dos archives que ANTES não tinham dst (merged_ids only) —
+    // dropped_ids tinham dst desde sempre, preservar
+    let deleted = sqlx::query(
+        "DELETE FROM compliance_archive_tags \
+          WHERE tenant_id = $1 AND tag = $2 \
+            AND archive_id = ANY($3::uuid[])",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&dst)
+    .bind(&merged_ids)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .rows_affected();
+
+    let new_history_id: (Uuid,) = sqlx::query_as(
+        "INSERT INTO compliance_archive_tag_merge_history \
+            (tenant_id, user_id, src_tag, dst_tag, merged_count, merged_archive_ids, dropped_archive_ids, merged_by) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+         RETURNING id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(&dst)
+    .bind(&src)
+    .bind(deleted as i64)
+    .bind(&merged_ids)
+    .bind(&dropped_ids)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    tx.commit()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "undone_id":      id,
+        "src":            src,
+        "dst":            dst,
+        "src_reinserted": inserted,
+        "dst_deleted":    deleted,
+        "history_id":     new_history_id.0,
+    })))
+}
+
 /// GET /api/v1/compliance/archive/export — download all matching archive entries as a ZIP.
 ///
 /// Accepts the same `since`, `before`, `subject`, `from_addr`, `to_addr`, `size_min`, `size_max`
@@ -1948,6 +2243,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/compliance/archive/tags/union", get(archive_entries_union))
         .route("/api/v1/compliance/archive/tags/rename-history", get(list_archive_tag_rename_history))
         .route("/api/v1/compliance/archive/tags/rename-history/:id/undo", post(undo_archive_tag_rename))
+        .route("/api/v1/compliance/archive/tags/merge", post(merge_archive_tags))
+        .route("/api/v1/compliance/archive/tags/merge-history", get(list_archive_tag_merge_history))
+        .route("/api/v1/compliance/archive/tags/merge-history/:id/undo", post(undo_archive_tag_merge))
         .route("/api/v1/compliance/archive/tags/:tag", get(archive_entries_by_tag).patch(rename_archive_tag))
         .route("/api/v1/compliance/archive/export",    get(export_archive))
         .route("/api/v1/compliance/archive/:id",       get(get_archive_entry).delete(delete_archive_entry))
