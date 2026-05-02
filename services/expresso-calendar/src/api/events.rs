@@ -2806,6 +2806,12 @@ async fn touch_overrides_bulk(
     })))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct TouchAllQuery {
+    /// `?dry=true` retorna o plano sem aplicar (sprint #510). Default false.
+    dry: Option<bool>,
+}
+
 /// POST /api/v1/calendars/:cal_id/events/:id/touch-all — refresca o
 /// DTSTAMP do MASTER + de TODOS os overrides (RECURRENCE-ID) num único
 /// write (sprint #508, combinação do #506 + #507). Descobre overrides
@@ -2821,10 +2827,19 @@ async fn touch_overrides_bulk(
 /// inteiro. Sem body. 400 se master sem UID. Requer WRITE+. Retorna
 /// `{event_id, master_touched:true, overrides_touched:[…compact…],
 /// dtstamp, etag, sequence}`.
+///
+/// `?dry=true` (sprint #510): só retorna o plano (lista de compacts
+/// que SERIAM tocados + master:true) sem chamar `EventRepo::update`,
+/// sem alterar ETag/`updated_at`/DTSTAMP, sem publicar `EventUpdated`.
+/// Útil pra UI confirmar "vai mexer em N overrides + master, ok?"
+/// antes de rodar de verdade. 400 ainda fired se master sem UID.
+/// Retorna `{dry:true, event_id, master_touched:true,
+/// overrides_touched:[…compact…]}` (sem etag/sequence/dtstamp).
 async fn touch_all(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<TouchAllQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let pool = state.db_or_unavailable()?;
     assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
@@ -2835,6 +2850,27 @@ async fn touch_all(
     let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
         "master event has no UID — cannot locate overrides".into()
     ))?;
+
+    let dry = q.dry.unwrap_or(false);
+
+    if dry {
+        let mut overrides_touched: Vec<String> = Vec::new();
+        let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+        for item in &listed {
+            let compact = match item.get("compact").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None    => continue,
+            };
+            if overrides_touched.iter().any(|c| c == &compact) { continue; }
+            overrides_touched.push(compact);
+        }
+        return Ok(Json(serde_json::json!({
+            "dry":               true,
+            "event_id":          ev.id,
+            "master_touched":    true,
+            "overrides_touched": overrides_touched,
+        })));
+    }
 
     let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
     let mut raw = ev.ical_raw.clone();
