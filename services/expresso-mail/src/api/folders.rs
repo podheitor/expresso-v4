@@ -412,7 +412,9 @@ async fn undo_folder_rename(
 
 #[derive(Debug, Deserialize)]
 struct RevertAllQuery {
-    n: Option<i64>,
+    n:   Option<i64>,
+    /// `?dry=true` retorna o plano sem aplicar (sprint #494). Default false.
+    dry: Option<bool>,
 }
 
 /// POST /api/v1/mail/folders/rename-history/revert-all?n=N — UX simplificada
@@ -434,6 +436,12 @@ async fn revert_all_folder_renames(
     Query(q):     Query<RevertAllQuery>,
 ) -> Result<Json<serde_json::Value>> {
     let n = q.n.unwrap_or(1).clamp(1, 50);
+    let dry = q.dry.unwrap_or(false);
+
+    if dry {
+        return revert_all_dry_run(&state, &ctx, n).await;
+    }
+
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let entries: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
@@ -547,6 +555,115 @@ async fn revert_all_folder_renames(
         "requested": n,
         "reverted":  reverted,
         "skipped":   skipped,
+    })))
+}
+
+/// Dry-run de `revert_all_folder_renames` (sprint #494). Mesmos checks
+/// (mailbox exists, special_use, current_name match, conflict pre-check)
+/// mas só com SELECT — nenhum UPDATE/INSERT, nenhuma transação. Retorna
+/// `{dry:true, requested, planned:[...], skipped:[...], conflicts:[...]}`
+/// onde `planned` lista revertions que SERIAM aplicadas, `skipped` os
+/// pulados pelo mesmo critério do real, `conflicts` os que abortariam o tx
+/// real (no real é um erro 409; no dry é um item informativo). Útil pra
+/// preview antes de "Confirm" no UI bulk.
+async fn revert_all_dry_run(
+    state: &AppState,
+    ctx:   &RequestCtx,
+    n:     i64,
+) -> Result<Json<serde_json::Value>> {
+    let entries: Vec<(Uuid, Uuid, String, String)> = sqlx::query_as(
+        "SELECT DISTINCT ON (mailbox_id) id, mailbox_id, old_name, new_name \
+           FROM mail_folder_rename_history \
+          WHERE tenant_id = $1 AND user_id = $2 \
+          ORDER BY mailbox_id, renamed_at DESC \
+          LIMIT $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(n)
+    .fetch_all(state.db())
+    .await?;
+
+    let mut planned:   Vec<serde_json::Value> = Vec::new();
+    let mut skipped:   Vec<serde_json::Value> = Vec::new();
+    let mut conflicts: Vec<serde_json::Value> = Vec::new();
+
+    for (entry_id, mailbox_id, old_name, new_name) in entries {
+        let current: Option<(String, Option<String>)> = sqlx::query_as(
+            "SELECT folder_name, special_use FROM mailboxes \
+              WHERE id = $1 AND tenant_id = $2 AND user_id = $3",
+        )
+        .bind(mailbox_id)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_optional(state.db())
+        .await?;
+
+        let current_name = match current {
+            None => {
+                skipped.push(serde_json::json!({
+                    "history_id": entry_id, "mailbox_id": mailbox_id,
+                    "reason":     "mailbox no longer exists",
+                }));
+                continue;
+            }
+            Some((_, Some(_))) => {
+                skipped.push(serde_json::json!({
+                    "history_id": entry_id, "mailbox_id": mailbox_id,
+                    "reason":     "mailbox is now system folder",
+                }));
+                continue;
+            }
+            Some((name, None)) => name,
+        };
+
+        if current_name != new_name {
+            skipped.push(serde_json::json!({
+                "history_id":   entry_id,
+                "mailbox_id":   mailbox_id,
+                "current_name": current_name,
+                "expected":     new_name,
+                "reason":       "current name differs from history new_name",
+            }));
+            continue;
+        }
+
+        let conflict: Option<Uuid> = sqlx::query_scalar(
+            "SELECT id FROM mailboxes \
+              WHERE user_id = $1 AND tenant_id = $2 AND folder_name = $3 AND id <> $4",
+        )
+        .bind(ctx.user_id)
+        .bind(ctx.tenant_id)
+        .bind(&old_name)
+        .bind(mailbox_id)
+        .fetch_optional(state.db())
+        .await?;
+        if let Some(other_id) = conflict {
+            conflicts.push(serde_json::json!({
+                "history_id":   entry_id,
+                "mailbox_id":   mailbox_id,
+                "from":         new_name,
+                "to":           old_name,
+                "conflict_with": other_id,
+                "reason":       "destination folder name already exists",
+            }));
+            continue;
+        }
+
+        planned.push(serde_json::json!({
+            "history_id": entry_id,
+            "mailbox_id": mailbox_id,
+            "from":       new_name,
+            "to":         old_name,
+        }));
+    }
+
+    Ok(Json(serde_json::json!({
+        "dry":       true,
+        "requested": n,
+        "planned":   planned,
+        "skipped":   skipped,
+        "conflicts": conflicts,
     })))
 }
 
