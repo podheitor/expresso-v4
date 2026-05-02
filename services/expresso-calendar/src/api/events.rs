@@ -155,6 +155,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id/touch",
             post(touch_override),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/touch",
+            post(touch_master),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -2582,6 +2586,128 @@ async fn touch_override(
         "etag":          updated.etag,
         "sequence":      updated.sequence,
     })))
+}
+
+/// POST /api/v1/calendars/:cal_id/events/:id/touch — refresca SÓ o DTSTAMP
+/// do VEVENT MASTER sem alterar nenhum campo (sprint #506, paralelo do
+/// `/overrides/:recurrence_id/touch` do #505 mas no master ao invés de
+/// override). Use case: forçar re-sync em clients iCal que cacheiam por
+/// DTSTAMP do master (CalDAV/Apple Calendar/Outlook) sem mexer em payload
+/// visível pro usuário — útil pra "ressuscitar" eventos cujos clients
+/// pararam de sincronizar por bug ou após restore de backup.
+/// Master = bloco VEVENT que tem UID==master mas SEM RECURRENCE-ID
+/// (overrides têm RECURRENCE-ID:<dtstamp>). Como o DTSTAMP não está nas
+/// colunas comparadas pelo `EventRepo::update`, o `sequence` permanece
+/// igual — mas o ETag é recomputado e o `updated_at` é refrescado, o que
+/// basta pra invalidar caches HTTP + CalDAV (ETag-based). Sem body. 400 se
+/// master sem UID. Requer WRITE+. Retorna `{event_id, touched:true,
+/// dtstamp, etag, sequence}`.
+async fn touch_master(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate master block".into()
+    ))?;
+
+    let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
+    let new_raw = patch_master_dtstamp(&ev.ical_raw, &uid, &dtstamp_now);
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &new_raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "touched":  true,
+        "dtstamp":  dtstamp_now,
+        "etag":     updated.etag,
+        "sequence": updated.sequence,
+    })))
+}
+
+/// Reescreve apenas o DTSTAMP do bloco VEVENT MASTER (UID==`uid_master` E
+/// SEM linha RECURRENCE-ID). Outros blocos VEVENT (overrides com mesmo UID
+/// + RECURRENCE-ID) preservados intactos. Se DTSTAMP não existe no master,
+/// adiciona antes de END:VEVENT.
+fn patch_master_dtstamp(raw: &str, uid_master: &str, dtstamp_now: &str) -> String {
+    let eol = if raw.contains("\r\n") { "\r\n" } else { "\n" };
+    let mut out = String::with_capacity(raw.len() + 64);
+    let mut buf: Vec<String> = Vec::new();
+    let mut in_event = false;
+    let mut found_uid = false;
+    let mut has_recid = false;
+
+    for src_line in raw.split_inclusive('\n') {
+        let trimmed = src_line.trim_start();
+        let upper14: String = trimmed.chars().take(14).collect::<String>().to_ascii_uppercase();
+
+        if upper14.starts_with("BEGIN:VEVENT") {
+            in_event = true;
+            found_uid = false;
+            has_recid = false;
+            buf.clear();
+            buf.push(src_line.to_string());
+            continue;
+        }
+
+        if !in_event {
+            out.push_str(src_line);
+            continue;
+        }
+
+        if upper14.starts_with("END:VEVENT") {
+            if found_uid && !has_recid {
+                let mut had_dtstamp = false;
+                for line in &buf {
+                    let head: String = line.trim_start().chars().take(8)
+                        .collect::<String>().to_ascii_uppercase();
+                    if head.starts_with("DTSTAMP:") {
+                        out.push_str(&format!("DTSTAMP:{dtstamp_now}"));
+                        out.push_str(eol);
+                        had_dtstamp = true;
+                    } else {
+                        out.push_str(line);
+                    }
+                }
+                if !had_dtstamp {
+                    out.push_str(&format!("DTSTAMP:{dtstamp_now}"));
+                    out.push_str(eol);
+                }
+                out.push_str(src_line);
+            } else {
+                for line in &buf { out.push_str(line); }
+                out.push_str(src_line);
+            }
+            in_event = false;
+            buf.clear();
+            continue;
+        }
+
+        let upper4: String = trimmed.chars().take(4).collect::<String>().to_ascii_uppercase();
+        if upper4.starts_with("UID:") {
+            let v = trimmed["UID:".len()..].trim();
+            if v == uid_master { found_uid = true; }
+        } else if upper14.starts_with("RECURRENCE-ID") {
+            // RECURRENCE-ID: ou RECURRENCE-ID;TZID=…: — ambos marcam override
+            has_recid = true;
+        }
+        buf.push(src_line.to_string());
+    }
+
+    if !buf.is_empty() {
+        for line in &buf { out.push_str(line); }
+    }
+    out
 }
 
 /// Reescreve o bloco VEVENT cujo UID==`uid_master` e RECURRENCE-ID==
