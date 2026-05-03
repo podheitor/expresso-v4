@@ -3583,13 +3583,27 @@ struct TouchPreviewQuery {
     /// Conflita com `include_unparseable=true` explícito → 400.
     /// Default false preserva shape do #514 (sprint #515).
     only_parseable: Option<bool>,
+    /// `?detail=full` engrandece `in_range`/`out_of_range` de `Vec<String>`
+    /// (só compacts, default do #514) pra `Vec<{compact,summary,dtstart,
+    /// dtend,description,location}>` — pra UI confirmar visualmente quem vai
+    /// ser afetado antes de touch-all (sprint #527, paralelo direto do
+    /// `?detail=full` do #503 mas em preview agregado). `unparseable` continua
+    /// `Vec<String>` mesmo em full porque por definição não tem campos
+    /// parseáveis (RECURRENCE-ID corrompido). Valores válidos: `summary`
+    /// (default, preserva shape #514) e `full`. Outro → 400.
+    detail: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/touch-preview?after=&before=
-/// `[&include_unparseable=false][&only_parseable=true]` —
+/// `[&include_unparseable=false][&only_parseable=true][&detail=full]` —
 /// consolida em 1 chamada o que SERIA tocado por `touch-all` (#508) +
 /// `touch-overrides-by-range` (#509) sem nenhum side effect (sprint #514;
-/// flags de filtro adicionadas no #515).
+/// flags de filtro adicionadas no #515; `?detail=full` adicionado no #527
+/// pra UI confirmar visualmente quem vai ser afetado — `in_range`/
+/// `out_of_range` viram `[{compact,summary,dtstart,dtend,description,
+/// location}]` em vez de `[String]`; `unparseable` continua `[String]` por
+/// definição — RECURRENCE-ID corrompido não tem campos parseáveis;
+/// `?detail=summary` ou ausente preserva 100% shape do #514).
 /// Diferente dos POST `?dry=true` (#510/#511/#512/#513) que precisam de
 /// WRITE+ porque são apenas POST com short-circuit, este é GET puro,
 /// READ-only — útil pra UI que só quer "discovery": "se eu rodar touch-all
@@ -3626,6 +3640,14 @@ async fn touch_preview(
         ));
     }
 
+    let full = match q.detail.as_deref() {
+        None | Some("") | Some("summary") => false,
+        Some("full")                      => true,
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("invalid detail `{other}` — expected `summary` or `full`")
+        )),
+    };
+
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
 
@@ -3633,29 +3655,28 @@ async fn touch_preview(
         "master event has no UID — cannot locate overrides".into()
     ))?;
 
-    let mut in_range:     Vec<String> = Vec::new();
-    let mut out_of_range: Vec<String> = Vec::new();
-    let mut unparseable:  Vec<String> = Vec::new();
+    let mut in_range:     Vec<serde_json::Value> = Vec::new();
+    let mut out_of_range: Vec<serde_json::Value> = Vec::new();
+    let mut unparseable:  Vec<String>            = Vec::new();
+    let mut seen:         Vec<String>            = Vec::new();
 
-    let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, full);
     for item in &listed {
         let compact = match item.get("compact").and_then(|v| v.as_str()) {
             Some(s) => s.to_string(),
             None    => continue,
         };
-        if in_range.iter().any(|c| c == &compact)
-            || out_of_range.iter().any(|c| c == &compact)
-            || unparseable.iter().any(|c| c == &compact)
-        {
-            continue;
-        }
+        if seen.iter().any(|c| c == &compact) { continue; }
+        seen.push(compact.clone());
+
         let parsed = match parse_one_exdate(&compact) {
             Some(t) => t,
             None    => { unparseable.push(compact); continue; }
         };
-        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(compact); continue; } }
-        if let Some(b) = q.before { if parsed >= b { out_of_range.push(compact); continue; } }
-        in_range.push(compact);
+        let bucket_item = if full { item.clone() } else { serde_json::Value::String(compact.clone()) };
+        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(bucket_item); continue; } }
+        if let Some(b) = q.before { if parsed >= b { out_of_range.push(bucket_item); continue; } }
+        in_range.push(bucket_item);
     }
 
     // `only_parseable` exclui unparseable do count + payload (universo "tocável" puro).
