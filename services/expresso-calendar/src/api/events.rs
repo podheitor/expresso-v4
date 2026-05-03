@@ -1336,6 +1336,23 @@ struct ListExdatesQuery {
     /// no-op aceito; qualquer outro `kind` com `summary` → 400.
     #[serde(default)]
     kind: Option<String>,
+    /// `?with_tzid=true|false` (sprint #523, paralelo simétrico do #518 mas
+    /// pra EXDATE) filtra por presença de TZID em AND com os outros flags
+    /// — `true` exige `info.tzid=Some`, `false` exige `info.tzid=None`.
+    /// Independente do `kind` (#516): `kind=tzid` ⊂ `with_tzid=true` (todo
+    /// `kind=tzid` tem TZID, mas `with_tzid=true` cobre TZID em formato
+    /// `unknown` também — útil pra audit qualitativo). Só faz sentido com
+    /// `detail=full`; em `summary` → 400.
+    #[serde(default)]
+    with_tzid: Option<bool>,
+    /// `?with_params=true|false` (sprint #523) filtra por presença de
+    /// parâmetros não-TZID na linha EXDATE (ex: `EXDATE;VALUE=DATE:...`).
+    /// Mesma semântica de `with_tzid` — `true` exige `info.params=Some`,
+    /// `false` exige `info.params=None`. Útil pra audit "quais EXDATEs têm
+    /// parametrização não-padrão" (`?with_params=true`). Só faz sentido com
+    /// `detail=full`; em `summary` → 400.
+    #[serde(default)]
+    with_params: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates — lista EXDATEs do
@@ -1357,6 +1374,17 @@ struct ListExdatesQuery {
 /// estão com TZID que precisa migrar pra UTC" (`?detail=full&kind=tzid`).
 /// Só faz sentido com `detail=full`; em `summary`, único valor aceito é
 /// `kind=utc` (no-op) — qualquer outro vira 400.
+///
+/// `?with_tzid=&with_params=` (sprint #523, paralelo simétrico do #518 mas
+/// pra EXDATE) filtros booleanos qualitativos em AND com `kind`, aplicados
+/// dentro do mesmo closure de filter no full branch. `true` exige campo
+/// presente (`Some`), `false` exige ausência (`None`); independentes entre
+/// si e do `kind`. Importante: `with_tzid` é ortogonal mas NÃO disjunto de
+/// `kind=tzid` — todo `kind=tzid` tem `tzid=Some`, mas `with_tzid=true`
+/// também captura items com TZID em formato malformado (`kind=unknown`)
+/// que `kind=tzid` exige formato canônico. Útil pra audit qualitativo
+/// genérico ("tem TZID em qualquer formato"). Só fazem sentido com
+/// `detail=full` — em `summary` → 400.
 ///
 /// Não requer WRITE (read-only). 400 em valor de detail/kind desconhecido.
 /// 404 se evento não existe.
@@ -1385,12 +1413,20 @@ async fn list_exdates(
             "kind filter other than 'utc' requires detail=full".into()
         ));
     }
+    if !full && (q.with_tzid.is_some() || q.with_params.is_some()) {
+        return Err(CalendarError::BadRequest(
+            "with_tzid/with_params filters require detail=full".into()
+        ));
+    }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let items: Vec<serde_json::Value> = if full {
         parse_exdates_rich(&ev.ical_raw).into_iter().filter(|info| {
-            match kind_filter { None => true, Some(k) => info.kind == k }
+            if let Some(k) = kind_filter { if info.kind != k { return false; } }
+            if let Some(want) = q.with_tzid   { if info.tzid.is_some()   != want { return false; } }
+            if let Some(want) = q.with_params { if info.params.is_some() != want { return false; } }
+            true
         }).map(|info| {
             let (compact, rfc) = match info.parsed_utc {
                 Some(t) => {
