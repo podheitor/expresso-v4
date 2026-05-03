@@ -152,6 +152,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_reindex_fts),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/resend-itip",
+            patch(events_by_range_resend_itip),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -6069,6 +6073,105 @@ fn patch_recurrence_id_override_block(
         for line in &buf { out.push_str(line); }
     }
     out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeResendItipQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    /// `?kind=request|cancel` — método iMIP a disparar. `request` (default)
+    /// envia REQUEST a todos os attendees (re-convite). `cancel` envia CANCEL
+    /// (útil após set-status CANCELLED em massa via #547).
+    #[serde(default)]
+    kind: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/resend-itip?after=&before=&kind=request|cancel
+/// Re-envia iMIP envelope (via NATS JetStream → expresso-imip-dispatch) para
+/// todos os eventos cujo `dtstart` ∈ `[after, before)` no calendário (sprint
+/// #562, itip-resend hook da família events-by-range/* — complemento dos
+/// bulk-set #547 set-status/CANCEL, #552 set-organizer-email, #554
+/// set-text-fields que mudam campos observáveis no invite mas NÃO disparam
+/// iTIP automaticamente). Útil pra "re-enviar convites em massa" após bulk-set
+/// sem editar os raws individualmente.
+///
+/// `?kind=request` (default): publica METHOD=REQUEST — re-convite a todos os
+/// attendees (attendees já confirmados recebem o convite atualizado;
+/// semantics de SEQUENCE: cada `EventRepo::update` já incrementa SEQUENCE,
+/// então um request pós bulk-set carrega o sequence correto do DB).
+/// `?kind=cancel`: publica METHOD=CANCEL — útil após set-status=CANCELLED
+/// em massa (RFC 5546 §3.2.5: organizer envia CANCEL pra todos os attendees
+/// quando evento é cancelado). Qualquer outro valor → 400.
+///
+/// Eventos sem attendees, sem dtstart/dtend ou sem organizer_email são
+/// silenciosamente pulados por `publish_imip` (comportamento existente).
+/// Retorna `{calendar_id, kind, dispatched, skipped}` — `dispatched` conta
+/// eventos pra os quais o envelope foi enfileirado no JetStream; `skipped`
+/// conta eventos sem dtstart no range OU sem JetStream configurado. Se NATS
+/// não está conectado → todos viram skipped, campo `note` explica. WRITE+
+/// via `assert_can_write`. `after >= before` → 400.
+async fn events_by_range_resend_itip(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeResendItipQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let method: &'static str = match q.kind.as_deref() {
+        None | Some("") | Some("request") => "REQUEST",
+        Some("cancel")                    => "CANCEL",
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("kind must be 'request' or 'cancel', got '{other}'")
+        )),
+    };
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let events = EventRepo::new(pool)
+        .list(
+            ctx.tenant_id,
+            cal_id,
+            &EventQuery { from: q.after, to: q.before, limit: None },
+        )
+        .await?;
+
+    let mut dispatched: u64 = 0;
+    let mut skipped:    u64 = 0;
+
+    for ev in events {
+        let dtstart = match ev.dtstart {
+            Some(ds) => ds,
+            None => { skipped += 1; continue; }
+        };
+        if let Some(a) = q.after  { if dtstart <  a { skipped += 1; continue; } }
+        if let Some(b) = q.before { if dtstart >= b { skipped += 1; continue; } }
+
+        if state.events().publish_imip(ev, method) {
+            dispatched += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+
+    let mut resp = serde_json::json!({
+        "calendar_id": cal_id,
+        "kind":        method.to_ascii_lowercase(),
+        "dispatched":  dispatched,
+        "skipped":     skipped,
+    });
+    if dispatched == 0 && skipped > 0 {
+        resp["note"] = serde_json::json!(
+            "all events skipped — NATS JetStream may not be configured or events lack required fields"
+        );
+    }
+    Ok(Json(resp))
 }
 
 #[derive(Debug, serde::Deserialize)]
