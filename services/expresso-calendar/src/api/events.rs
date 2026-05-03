@@ -124,6 +124,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_description),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-organizer-email",
+            patch(events_by_range_set_organizer_email),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1157,6 +1161,74 @@ async fn events_by_range_set_description(
         "calendar_id": cal_id,
         "description": description,
         "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetOrganizerEmailQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    organizer_email: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-organizer-email?after=&before=&organizer_email=
+/// — bulk-set do campo `organizer_email` em todos os eventos cujo `dtstart`
+/// ∈ `[after, before)` no calendar `cal_id` (sprint #552, sétima mutação da
+/// família `events-by-range/*` depois de bulk-move #546, set-status #547,
+/// clear-rrule #548, set-summary #549, set-location #550 e set-description
+/// #551). Paralelo DIRETO do #550 set-location / #551 set-description (não
+/// do #549 set-summary) — DDL `organizer_email TEXT` é nullable e RFC 5545
+/// §3.8.4.3 ORGANIZER é opcional em VEVENT, portanto empty/whitespace OU
+/// `?organizer_email` ausente é tratado como CLEAR (NULL na coluna), mesma
+/// política do #550/#551. Strings não-vazias preservadas como-é (sem trim
+/// destrutivo, paralelo do #549/#550/#551). Validação de formato de email
+/// NÃO imposta neste endpoint (consistência com `update` que aceita o que
+/// o iCal traz, e com o trade-off do #547-#551 "coluna fresh, raw stale" —
+/// validação seria meia-medida porque o ORGANIZER no ical_raw permanece
+/// stale). DIFERENÇA SEMÂNTICA vs #549/#550/#551 (documentada no método
+/// repo): organizer é metadata de PROPRIEDADE/REMETENTE iTIP (#491), não
+/// TEXT-livre descritivo — mudar em massa pode reescrever "quem convidou"
+/// pra eventos já comunicados externamente, mas iTIP outbound NÃO é
+/// re-disparado automaticamente (paralelo do trade-off `ical_raw stale`
+/// no eixo de protocolo externo). UI/admin é responsável por entender que
+/// não há re-envio de REQUEST/CANCEL pós bulk-set. Mesmo trade-off interno
+/// do #547-#551: coluna `organizer_email` fresh, `ORGANIZER:mailto:...`
+/// no `ical_raw` stale até próximo PUT — UI confia na API estruturada.
+/// Search FTS #461 NÃO afetada (organizer_email NÃO é indexado no
+/// tantivy — diferente do #549/#551). Single calendar (1
+/// `assert_can_write`). `after >= before` → 400. Retorna `{calendar_id,
+/// organizer_email, updated}` com `organizer_email: Option<String>` (null
+/// no JSON quando clear) — count INCLUI eventos que já tinham o mesmo
+/// organizer (paralelo do #547-#551).
+async fn events_by_range_set_organizer_email(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetOrganizerEmailQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let organizer: Option<&str> = q.organizer_email
+        .as_deref()
+        .filter(|s| !s.trim().is_empty());
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_organizer_email_range(ctx.tenant_id, cal_id, organizer, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":     cal_id,
+        "organizer_email": organizer,
+        "updated":         updated,
     })))
 }
 

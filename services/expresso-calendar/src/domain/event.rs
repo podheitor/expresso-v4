@@ -544,6 +544,63 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `organizer_email` em todos os eventos cujo `dtstart` ∈
+    /// `[from, to)` no `calendar_id` (single-tenant). Retorna a contagem de
+    /// linhas afetadas. Eventos sem `dtstart` ficam de fora (mesmo critério
+    /// do `delete_range` #457 / `move_range` #546 / `set_status_range` #547 /
+    /// `clear_rrule_range` #548 / `set_summary_range` #549 /
+    /// `set_location_range` #550 / `set_description_range` #551). Single
+    /// UPDATE muda só a coluna `organizer_email`. Paralelo DIRETO do
+    /// `set_location_range` #550 / `set_description_range` #551 — assinatura
+    /// `organizer: Option<&str>` em vez de `&str` porque DDL
+    /// `organizer_email TEXT` é nullable (sem NOT NULL) e RFC 5545 §3.8.4.3
+    /// ORGANIZER é opcional em VEVENT (`None` ⇒ `SET organizer_email = NULL`
+    /// clear, `Some(s)` ⇒ set não-null). DIFERENÇA SEMÂNTICA vs #549/#550/
+    /// #551: organizer é metadata de ATRIBUIÇÃO/PROPRIEDADE (não TEXT-livre
+    /// descritivo) — em fluxos iTIP (#491) o `organizer_email` é o remetente
+    /// das mensagens REQUEST/CANCEL/REPLY, e mudar em massa pode reescrever
+    /// "quem convidou" pra eventos já comunicados externamente. AINDA ASSIM
+    /// ACEITO como simples bulk-set sem disparar iTIP outbound — UI/admin
+    /// é responsável por entender que NÃO há re-envio automático de REQUEST
+    /// (paralelo do trade-off `ical_raw stale` mas no eixo de protocolo
+    /// externo em vez de armazenamento interno). Mesmo trade-off filosófico
+    /// do #547/#548/#549/#550/#551: `ical_raw` NÃO é re-parseado, então a
+    /// coluna `organizer_email` (autoritativa pro GET estruturado da API e
+    /// pro pipeline iMIP outbound subsequente do #491) fica fresh, mas o
+    /// `ORGANIZER:mailto:...` dentro do `ical_raw` permanece STALE até
+    /// próximo PUT/UPDATE. `etag`/`sequence`/`updated_at` PRESERVADOS pelo
+    /// mesmo motivo do #546/#547/#548/#549/#550/#551 — clientes CalDAV não
+    /// veem mudança via If-Match/sync-token, evita storm de re-syncs. Sprint
+    /// #552.
+    pub async fn set_organizer_email_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        organizer: Option<&str>,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET organizer_email = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(organizer)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,
