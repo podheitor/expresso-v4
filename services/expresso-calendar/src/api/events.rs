@@ -1539,6 +1539,26 @@ struct ExdatesStatsQuery {
     /// = {}` sem omitir o campo). Sem flag (None) preserva 100% shape #531.
     #[serde(default)]
     top_tzid: Option<usize>,
+    /// `?sort_tzid=count_desc|count_asc|name_asc|name_desc` (sprint #534,
+    /// presentation flag complementar ao `top_tzid` #533) emite o array
+    /// adjacente `tzid_breakdown_order: [tzid1, tzid2, ...]` listando as
+    /// chaves do `tzid_breakdown` na ordem solicitada. NÃO altera o objeto
+    /// `tzid_breakdown` em si — `serde_json::Map` sem feature
+    /// `preserve_order` serializa em ordem alfabética determinística, então
+    /// a única forma de transmitir ordem custom em JSON Object é via array
+    /// adjacente que a UI itera buscando counts por chave. Aplicado em DUAS
+    /// fases compostas com `top_tzid`: (1) selecionar top-N por count desc
+    /// (semantics original do #532+#533); (2) ordenar o set retido pelos N
+    /// elementos via `sort_tzid`. Variantes: `count_desc`/`count_asc`
+    /// ordenam por count com ties broken por insertion order do walker;
+    /// `name_asc`/`name_desc` ordenam alfabeticamente pelo TZID (resolve
+    /// gap "UI quer ordem alfabética" documentado em #530/#531 — embora
+    /// JSON object já entregue isso de graça, `name_asc` torna explícito
+    /// e composto com top_tzid produz "top-N alfabeticamente"). Outros
+    /// valores → 400. Sem flag (None) omite `tzid_breakdown_order` e
+    /// preserva 100% shape do #533.
+    #[serde(default)]
+    sort_tzid: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
@@ -1589,6 +1609,13 @@ async fn exdates_stats(
             "top_tzid must be >= 1 (use kind=utc to force tzid_breakdown empty)".into()
         ));
     }
+    let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
+        None | Some("") => None,
+        Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'")
+        )),
+    };
     let kind_filter: Option<&str> = match q.kind.as_deref() {
         None | Some("") => None,
         Some(k @ ("utc" | "tzid" | "date-only" | "unknown")) => Some(k),
@@ -1642,7 +1669,7 @@ async fn exdates_stats(
             _           => k_unknown   += 1,
         }
     }
-    let (kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
+    let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
         Some(n) if tzid_breakdown.len() > n => {
             let mut sorted = tzid_breakdown.clone();
             sorted.sort_by(|a, b| b.1.cmp(&a.1));
@@ -1652,6 +1679,13 @@ async fn exdates_stats(
         }
         _ => (tzid_breakdown.clone(), 0),
     };
+    match sort_mode {
+        Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+        Some("count_asc")  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+        Some("name_asc")   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+        Some("name_desc")  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+        _ => {}
+    }
     let mut breakdown_obj = serde_json::Map::new();
     for (tz, n) in &kept {
         breakdown_obj.insert(tz.clone(), serde_json::json!(n));
@@ -1669,6 +1703,12 @@ async fn exdates_stats(
     });
     if q.top_tzid.is_some() {
         payload["tzid_other_count"] = serde_json::json!(other_count);
+    }
+    if sort_mode.is_some() {
+        let order: Vec<serde_json::Value> = kept.iter()
+            .map(|(tz, _)| serde_json::Value::String(tz.clone()))
+            .collect();
+        payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
     }
     Ok(Json(payload))
 }
@@ -3796,14 +3836,31 @@ struct ExdatesPreviewQuery {
     /// + cauda de TZIDs únicos). `top_tzid=0` → 400 (não faz sentido —
     /// `include_non_utc=false` ou `only_utc=true` já omitem o breakdown
     /// inteiro). Sem flag (None) preserva 100% shape do #530 (breakdown
-    /// completo, sem `tzid_other_count`). Só faz sentido em
-    /// `/exdates-preview/stats` (não em `/exdates/stats` do #531) porque
-    /// `ExdatesStatsQuery` é distinto do `ExdatesPreviewQuery` — a
-    /// dualidade de stats endpoints não implica dualidade de TODOS os
-    /// flags, e top_tzid é cosmético/UI-side independente dos filtros do
-    /// list-stats. Aplicado APÓS o full breakdown ser construído (re-sort
+    /// completo, sem `tzid_other_count`). Portado pra `/exdates/stats` do
+    /// #531 via sprint #533 fechando dualidade `top_tzid` cross-stats —
+    /// pattern "stats endpoints evoluem EM PAR" aplica também a flags de
+    /// presentation. Aplicado APÓS o full breakdown ser construído (re-sort
     /// + split é O(N log N) numa lista pequena, irrelevante).
     top_tzid: Option<usize>,
+    /// `?sort_tzid=count_desc|count_asc|name_asc|name_desc` (sprint #534,
+    /// presentation flag complementar ao `top_tzid` #532, paralelo simétrico
+    /// do mesmo flag em `ExdatesStatsQuery` do #533). Emite o array
+    /// adjacente `tzid_breakdown_order: [tzid1, tzid2, ...]` listando as
+    /// chaves do `tzid_breakdown` na ordem solicitada — necessário porque
+    /// `serde_json::Map` sem feature `preserve_order` serializa Object em
+    /// ordem alfabética determinística, então a única forma de transmitir
+    /// ordem custom em JSON Object é via array adjacente que a UI itera
+    /// buscando counts por chave. Aplicado em DUAS fases compostas com
+    /// `top_tzid`: (1) selecionar top-N por count desc; (2) ordenar o set
+    /// retido. Variantes: `count_desc`/`count_asc` por count com ties
+    /// broken por insertion order do walker; `name_asc`/`name_desc`
+    /// alfabeticamente pelo TZID. Outros valores → 400. Sem flag (None)
+    /// omite `tzid_breakdown_order` e preserva 100% shape do #532. Só faz
+    /// sentido quando `tzid_breakdown` é incluído no payload (i.e.
+    /// `include_non_utc=true` e `only_utc=false`) — caso contrário o array
+    /// também não é emitido.
+    #[serde(default)]
+    sort_tzid: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
@@ -4003,6 +4060,13 @@ async fn exdates_preview_stats(
             "top_tzid must be >= 1 (use include_non_utc=false to omit breakdown entirely)".into()
         ));
     }
+    let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
+        None | Some("") => None,
+        Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("sort_tzid must be 'count_desc', 'count_asc', 'name_asc' or 'name_desc', got '{other}'")
+        )),
+    };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
@@ -4064,7 +4128,7 @@ async fn exdates_preview_stats(
             "date_only": k_date_only,
             "unknown":   k_unknown,
         });
-        let (kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
+        let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
             Some(n) if tzid_breakdown.len() > n => {
                 let mut sorted = tzid_breakdown.clone();
                 sorted.sort_by(|a, b| b.1.cmp(&a.1));
@@ -4074,6 +4138,13 @@ async fn exdates_preview_stats(
             }
             _ => (tzid_breakdown.clone(), 0),
         };
+        match sort_mode {
+            Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+            Some("count_asc")  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            Some("name_asc")   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+            Some("name_desc")  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+            _ => {}
+        }
         let mut breakdown_obj = serde_json::Map::new();
         for (tz, n) in &kept {
             breakdown_obj.insert(tz.clone(), serde_json::json!(n));
@@ -4081,6 +4152,12 @@ async fn exdates_preview_stats(
         payload["tzid_breakdown"] = serde_json::Value::Object(breakdown_obj);
         if q.top_tzid.is_some() {
             payload["tzid_other_count"] = serde_json::json!(other_count);
+        }
+        if sort_mode.is_some() {
+            let order: Vec<serde_json::Value> = kept.iter()
+                .map(|(tz, _)| serde_json::Value::String(tz.clone()))
+                .collect();
+            payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
         }
     }
     Ok(Json(payload))
