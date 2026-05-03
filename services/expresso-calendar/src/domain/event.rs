@@ -32,6 +32,8 @@ pub struct Event {
     pub dtend:           Option<OffsetDateTime>,
     pub rrule:           Option<String>,
     pub status:          Option<String>,
+    pub class:           Option<String>,
+    pub transp:          Option<String>,
     pub sequence:        i32,
     pub organizer_email: Option<String>,
     #[serde(with = "time::serde::rfc3339")]
@@ -79,11 +81,12 @@ impl<'a> EventRepo<'a> {
             r#"
             INSERT INTO calendar_events
                 (tenant_id, calendar_id, uid, etag, ical_raw, summary, description,
-                 location, dtstart, dtend, rrule, status, sequence, organizer_email)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                 location, dtstart, dtend, rrule, status, class, transp,
+                 sequence, organizer_email)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                       description, location, dtstart, dtend, rrule, status,
-                      sequence, organizer_email, created_at, updated_at
+                      class, transp, sequence, organizer_email, created_at, updated_at
             "#,
         )
         .bind(tenant_id)
@@ -98,6 +101,8 @@ impl<'a> EventRepo<'a> {
         .bind(parsed.dtend)
         .bind(&parsed.rrule)
         .bind(&parsed.status)
+        .bind(&parsed.class)
+        .bind(&parsed.transp)
         .bind(parsed.sequence)
         .bind(&parsed.organizer_email)
         .fetch_one(&mut *tx)
@@ -114,7 +119,7 @@ impl<'a> EventRepo<'a> {
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
-                   sequence, organizer_email, created_at, updated_at
+                   class, transp, sequence, organizer_email, created_at, updated_at
               FROM calendar_events
              WHERE tenant_id = $1 AND id = $2
             "#,
@@ -142,7 +147,7 @@ impl<'a> EventRepo<'a> {
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
-                   sequence, organizer_email, created_at, updated_at
+                   class, transp, sequence, organizer_email, created_at, updated_at
               FROM calendar_events
              WHERE tenant_id = $1
                AND calendar_id = $2
@@ -187,7 +192,9 @@ impl<'a> EventRepo<'a> {
                 dtend           = $10,
                 rrule           = $11,
                 status          = $12,
-                organizer_email = $13,
+                class           = $13,
+                transp          = $14,
+                organizer_email = $15,
                 sequence        = CASE
                     WHEN summary         IS DISTINCT FROM $6
                       OR location        IS DISTINCT FROM $8
@@ -195,14 +202,16 @@ impl<'a> EventRepo<'a> {
                       OR dtend           IS DISTINCT FROM $10
                       OR rrule           IS DISTINCT FROM $11
                       OR status          IS DISTINCT FROM $12
-                      OR organizer_email IS DISTINCT FROM $13
+                      OR class           IS DISTINCT FROM $13
+                      OR transp          IS DISTINCT FROM $14
+                      OR organizer_email IS DISTINCT FROM $15
                     THEN sequence + 1
                     ELSE sequence
                 END
              WHERE tenant_id = $1 AND id = $2
              RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                        description, location, dtstart, dtend, rrule, status,
-                       sequence, organizer_email, created_at, updated_at
+                       class, transp, sequence, organizer_email, created_at, updated_at
             "#,
         )
         .bind(tenant_id)
@@ -217,6 +226,8 @@ impl<'a> EventRepo<'a> {
         .bind(parsed.dtend)
         .bind(&parsed.rrule)
         .bind(&parsed.status)
+        .bind(&parsed.class)
+        .bind(&parsed.transp)
         .bind(&parsed.organizer_email)
         .fetch_optional(&mut *tx)
         .await?
@@ -820,8 +831,9 @@ impl<'a> EventRepo<'a> {
             r#"
             INSERT INTO calendar_events
                 (tenant_id, calendar_id, uid, etag, ical_raw, summary, description,
-                 location, dtstart, dtend, rrule, status, sequence, organizer_email)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                 location, dtstart, dtend, rrule, status, class, transp,
+                 sequence, organizer_email)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             ON CONFLICT (calendar_id, uid) DO UPDATE SET
                 etag            = EXCLUDED.etag,
                 ical_raw        = EXCLUDED.ical_raw,
@@ -832,6 +844,8 @@ impl<'a> EventRepo<'a> {
                 dtend           = EXCLUDED.dtend,
                 rrule           = EXCLUDED.rrule,
                 status          = EXCLUDED.status,
+                class           = EXCLUDED.class,
+                transp          = EXCLUDED.transp,
                 organizer_email = EXCLUDED.organizer_email,
                 sequence        = CASE
                     WHEN calendar_events.summary         IS DISTINCT FROM EXCLUDED.summary
@@ -840,13 +854,15 @@ impl<'a> EventRepo<'a> {
                       OR calendar_events.dtend           IS DISTINCT FROM EXCLUDED.dtend
                       OR calendar_events.rrule           IS DISTINCT FROM EXCLUDED.rrule
                       OR calendar_events.status          IS DISTINCT FROM EXCLUDED.status
+                      OR calendar_events.class           IS DISTINCT FROM EXCLUDED.class
+                      OR calendar_events.transp          IS DISTINCT FROM EXCLUDED.transp
                       OR calendar_events.organizer_email IS DISTINCT FROM EXCLUDED.organizer_email
                     THEN calendar_events.sequence + 1
                     ELSE calendar_events.sequence
                 END
             RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                       description, location, dtstart, dtend, rrule, status,
-                      sequence, organizer_email, created_at, updated_at
+                      class, transp, sequence, organizer_email, created_at, updated_at
             "#,
         )
         .bind(tenant_id)
@@ -861,6 +877,8 @@ impl<'a> EventRepo<'a> {
         .bind(parsed.dtend)
         .bind(&parsed.rrule)
         .bind(&parsed.status)
+        .bind(&parsed.class)
+        .bind(&parsed.transp)
         .bind(parsed.sequence)
         .bind(&parsed.organizer_email)
         .fetch_one(&mut *tx)
@@ -881,7 +899,7 @@ impl<'a> EventRepo<'a> {
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
-                   sequence, organizer_email, created_at, updated_at
+                   class, transp, sequence, organizer_email, created_at, updated_at
               FROM calendar_events
              WHERE tenant_id = $1 AND calendar_id = $2 AND uid = $3
             "#,
@@ -909,7 +927,7 @@ impl<'a> EventRepo<'a> {
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
-                   sequence, organizer_email, created_at, updated_at
+                   class, transp, sequence, organizer_email, created_at, updated_at
               FROM calendar_events
              WHERE tenant_id = $1 AND uid = $2
              LIMIT 1
@@ -938,7 +956,7 @@ impl<'a> EventRepo<'a> {
             r#"
             SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
                    description, location, dtstart, dtend, rrule, status,
-                   sequence, organizer_email, created_at, updated_at
+                   class, transp, sequence, organizer_email, created_at, updated_at
               FROM calendar_events
              WHERE tenant_id = $1 AND calendar_id = $2 AND uid = ANY($3)
             "#,

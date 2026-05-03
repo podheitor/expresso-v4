@@ -23,6 +23,8 @@ pub struct ParsedEvent {
     pub dtstamp:         Option<OffsetDateTime>,
     pub rrule:           Option<String>,
     pub status:          Option<String>,
+    pub class:           Option<String>,
+    pub transp:          Option<String>,
     pub organizer_email: Option<String>,
     pub sequence:        i32,
 }
@@ -70,6 +72,8 @@ pub fn parse_vevent(raw: &str) -> Result<ParsedEvent> {
             "LOCATION"    => ev.location = Some(unescape_text(value)),
             "RRULE"       => ev.rrule = Some(value.to_owned()),
             "STATUS"      => ev.status = Some(value.to_ascii_uppercase()),
+            "CLASS"       => ev.class  = Some(value.to_ascii_uppercase()),
+            "TRANSP"      => ev.transp = Some(value.to_ascii_uppercase()),
             "ORGANIZER"   => ev.organizer_email = extract_mailto(value),
             "SEQUENCE"    => ev.sequence = value.parse().unwrap_or(0),
             "DTSTART"     => ev.dtstart = parse_dt(params, value),
