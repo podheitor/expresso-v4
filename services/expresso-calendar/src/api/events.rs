@@ -120,6 +120,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_location),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-description",
+            patch(events_by_range_set_description),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1093,6 +1097,65 @@ async fn events_by_range_set_location(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "location":    location,
+        "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetDescriptionQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    description: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-description?after=&before=&description=
+/// — bulk-set do campo `description` em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #551, sexta mutação da
+/// família `events-by-range/*` depois de bulk-move #546, set-status #547,
+/// clear-rrule #548, set-summary #549 e set-location #550). Paralelo
+/// DIRETO do #550 set-location (não do #549 set-summary) — DDL
+/// `description` é nullable e RFC 5545 §3.8.1.5 DESCRIPTION é opcional
+/// em VEVENT, portanto empty/whitespace OU `?description` ausente é
+/// tratado como CLEAR (NULL na coluna), mesma política do #550. Strings
+/// não-vazias preservadas como-é (sem trim destrutivo, paralelo do
+/// #549/#550). Limite de tamanho NÃO imposto (DDL TEXT sem CHECK,
+/// consistência com `update`). Mesmo trade-off do #547/#548/#549/#550:
+/// coluna `description` fresh, `DESCRIPTION:` no `ical_raw` stale até
+/// próximo PUT — UI confia na API estruturada. Search FTS #461 fica
+/// stale (paralelo do #549/#550 — description costuma ter peso médio
+/// no scoring tantivy). Single calendar (1 `assert_can_write`).
+/// `after >= before` → 400. Retorna `{calendar_id, description, updated}`
+/// com `description: Option<String>` (null no JSON quando clear) — count
+/// INCLUI eventos que já tinham a mesma description (paralelo do
+/// #547/#548/#549/#550).
+async fn events_by_range_set_description(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetDescriptionQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let description: Option<&str> = q.description
+        .as_deref()
+        .filter(|s| !s.trim().is_empty());
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_description_range(ctx.tenant_id, cal_id, description, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "description": description,
         "updated":     updated,
     })))
 }
