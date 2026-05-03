@@ -96,6 +96,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_preview),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/stats",
+            get(events_by_range_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -645,6 +649,121 @@ async fn events_by_range_preview(
         "calendar_id": cal_id,
         "count":       events.len(),
         "events":      events,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeStatsQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/stats?after=&before= —
+/// agregados puros do universo `dtstart ∈ [after, before)` no calendário
+/// (sprint #545, dual stats do `events-by-range` #544 — paralelo
+/// filosófico do `events-recurrence-stats` #464 mas escopado ao mesmo
+/// critério temporal half-open do #544/#457). Mesmo critério
+/// (`dtstart >= after AND dtstart < before`, eventos sem `dtstart`
+/// EXCLUÍDOS) — ambos os bounds opcionais (sem after = sem lower; sem
+/// before = sem upper; sem nenhum = stats sobre todo o calendário com
+/// `dtstart` definido). Single COUNT FILTER query agrega
+/// `total/with_rrule/without_rrule/with_dtend/without_dtend` + breakdown
+/// `by_status` em `{CONFIRMED, TENTATIVE, CANCELLED, OTHER}` —
+/// status `NULL` ou string vazia agrupada como `OTHER` (fallback,
+/// RFC 5545 não exige STATUS); `total` exclui eventos sem `dtstart`
+/// (mesmo universo do #544 list, NÃO universo do `events-recurrence-stats`
+/// #464 que agrega TUDO incluindo sem-dtstart). Diferença chave vs
+/// `events-by-range` #544: aqui não há `limit` nem retorno de lista —
+/// agrega no SQL via `COUNT FILTER` numa única round-trip, escalável
+/// pra calendários gigantes onde listar 10k eventos seria caro mas
+/// stats agregadas custam ~ms. UI dashboard usa pra responder "quantos
+/// eventos nesta janela são confirmed vs cancelled?", "quantos têm
+/// rrule?" sem precisar paginar a lista do #544. Read-only, NÃO requer
+/// WRITE+. `after >= before` → 400 (mesma validação do #544/#457).
+/// Path com `/stats` em sub-route do `events-by-range` consolida o
+/// pattern "family path com sub-stats" (cf. `events/:id/exdates/stats`,
+/// `events/:id/overrides/stats`). Hierárquico ao mesmo nível do
+/// `events-by-range` #544 (master events), distinto da família
+/// `overrides-by-range/*` (RECURRENCE-ID overrides) — preserva
+/// dualidade master vs override consolidada em #543/#544.
+async fn events_by_range_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+
+    let row: (i64, i64, i64, i64, i64) = sqlx::query_as(
+        r#"SELECT
+              COUNT(*) FILTER (WHERE dtstart IS NOT NULL)                                AS total,
+              COUNT(*) FILTER (WHERE dtstart IS NOT NULL
+                                AND rrule IS NOT NULL AND rrule <> '')                   AS with_rrule,
+              COUNT(*) FILTER (WHERE dtstart IS NOT NULL
+                                AND (rrule IS NULL OR rrule = ''))                       AS without_rrule,
+              COUNT(*) FILTER (WHERE dtstart IS NOT NULL AND dtend IS NOT NULL)          AS with_dtend,
+              COUNT(*) FILTER (WHERE dtstart IS NOT NULL AND dtend IS NULL)              AS without_dtend
+            FROM calendar_events
+           WHERE tenant_id   = $1
+             AND calendar_id = $2
+             AND ($3::timestamptz IS NULL OR dtstart >= $3)
+             AND ($4::timestamptz IS NULL OR dtstart <  $4)"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(pool)
+    .await?;
+    let (total, with_rrule, without_rrule, with_dtend, without_dtend) = row;
+
+    let status_rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        r#"SELECT
+              UPPER(COALESCE(NULLIF(status, ''), 'OTHER')) AS s,
+              COUNT(*) AS c
+            FROM calendar_events
+           WHERE tenant_id   = $1
+             AND calendar_id = $2
+             AND dtstart IS NOT NULL
+             AND ($3::timestamptz IS NULL OR dtstart >= $3)
+             AND ($4::timestamptz IS NULL OR dtstart <  $4)
+           GROUP BY s
+           ORDER BY c DESC, s ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(pool)
+    .await?;
+
+    let mut by_status = serde_json::Map::new();
+    for (s, c) in status_rows {
+        let key = s.unwrap_or_else(|| "OTHER".into());
+        let bucket = match key.as_str() {
+            "CONFIRMED" | "TENTATIVE" | "CANCELLED" => key,
+            _ => "OTHER".into(),
+        };
+        let entry = by_status.entry(bucket).or_insert(serde_json::json!(0));
+        let prev = entry.as_i64().unwrap_or(0);
+        *entry = serde_json::json!(prev + c);
+    }
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "total":          total,
+        "with_rrule":     with_rrule,
+        "without_rrule":  without_rrule,
+        "with_dtend":     with_dtend,
+        "without_dtend":  without_dtend,
+        "by_status":      by_status,
     })))
 }
 
