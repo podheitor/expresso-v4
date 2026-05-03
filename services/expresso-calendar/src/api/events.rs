@@ -144,6 +144,10 @@ pub fn routes() -> Router<AppState> {
             get(list_overrides),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides/stats",
+            get(overrides_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id",
             get(get_one_override).delete(delete_override).patch(patch_override),
         )
@@ -2014,6 +2018,81 @@ async fn list_overrides(
         "event_id":  ev.id,
         "count":     items.len(),
         "overrides": items,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
+/// counts de presença dos campos `summary`/`dtstart`/`dtend` em todos os
+/// overrides do evento (sprint #519, agregado do filter qualitativo do
+/// #518). Retorna `{event_id, total, by_field:{summary:{present,absent},
+/// dtstart:{...}, dtend:{...}}, by_category:{none, only_summary,
+/// only_dtstart, only_dtend, summary_dtstart, summary_dtend,
+/// dtstart_dtend, all_three}}`. Útil pra dashboards exibirem distribuição
+/// de tipos de override sem precisar puxar a lista inteira (#496/#503/
+/// #517/#518) e contar client-side. `by_field` é cardinality marginal
+/// (cada flag conta independentemente, soma de present+absent = total).
+/// `by_category` particiona overrides em 8 buckets disjuntos por
+/// combinação de presença — soma das 8 categorias = total. Description/
+/// location ficam de fora (mesma assimetria do #518: só existem em
+/// `?detail=full`). Read-only, não exige WRITE+. 404 se evento não existe.
+async fn overrides_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
+    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    let total = items.len();
+    let mut sum_p = 0usize; let mut sum_a = 0usize;
+    let mut ds_p  = 0usize; let mut ds_a  = 0usize;
+    let mut de_p  = 0usize; let mut de_a  = 0usize;
+    let mut c_none = 0usize;
+    let mut c_s    = 0usize;
+    let mut c_ds   = 0usize;
+    let mut c_de   = 0usize;
+    let mut c_s_ds = 0usize;
+    let mut c_s_de = 0usize;
+    let mut c_ds_de = 0usize;
+    let mut c_all  = 0usize;
+    for item in &items {
+        let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
+        let s  = present("summary");
+        let ds = present("dtstart");
+        let de = present("dtend");
+        if s  { sum_p += 1; } else { sum_a += 1; }
+        if ds { ds_p  += 1; } else { ds_a  += 1; }
+        if de { de_p  += 1; } else { de_a  += 1; }
+        match (s, ds, de) {
+            (false, false, false) => c_none   += 1,
+            (true,  false, false) => c_s      += 1,
+            (false, true,  false) => c_ds     += 1,
+            (false, false, true ) => c_de     += 1,
+            (true,  true,  false) => c_s_ds   += 1,
+            (true,  false, true ) => c_s_de   += 1,
+            (false, true,  true ) => c_ds_de  += 1,
+            (true,  true,  true ) => c_all    += 1,
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "total":    total,
+        "by_field": {
+            "summary": { "present": sum_p, "absent": sum_a },
+            "dtstart": { "present": ds_p,  "absent": ds_a  },
+            "dtend":   { "present": de_p,  "absent": de_a  },
+        },
+        "by_category": {
+            "none":           c_none,
+            "only_summary":   c_s,
+            "only_dtstart":   c_ds,
+            "only_dtend":     c_de,
+            "summary_dtstart": c_s_ds,
+            "summary_dtend":   c_s_de,
+            "dtstart_dtend":   c_ds_de,
+            "all_three":       c_all,
+        },
     })))
 }
 
