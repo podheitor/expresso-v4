@@ -272,6 +272,49 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-move events whose `dtstart` cai em `[from, to)` no calendar `src`
+    /// para o calendar `dst` (mesmo tenant). Retorna a contagem de linhas
+    /// movidas. Eventos sem `dtstart` ficam de fora (mesmo critério do
+    /// `delete_range` #457). Single UPDATE muda só `calendar_id` — `ical_raw`
+    /// não é re-parseado porque `calendar_id` é metadata externa ao VCALENDAR
+    /// (RFC 5545 não tem propriedade calendar-id; CalDAV usa o path do
+    /// collection pra associar). `etag` e `sequence` PRESERVADOS — semantically
+    /// não houve mudança no conteúdo iCalendar (UID/SUMMARY/DTSTART/RRULE
+    /// idênticos), só de "onde" o evento mora; UI/clients que cacheiam por
+    /// ETag não precisam invalidar. `updated_at` preservado pelo mesmo motivo
+    /// (timestamp de "última edição do conteúdo", não de "última edição da
+    /// localização"). `(calendar_id, uid)` é UNIQUE — se UID colidir no `dst`,
+    /// UPDATE falha com `unique_violation` que é convertido pra `Conflict` no
+    /// handler. Sprint #546.
+    pub async fn move_range(
+        &self,
+        tenant_id: Uuid,
+        src: Uuid,
+        dst: Uuid,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET calendar_id = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(src)
+        .bind(dst)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

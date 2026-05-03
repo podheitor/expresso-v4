@@ -100,6 +100,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/move",
+            patch(events_by_range_move),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -764,6 +768,75 @@ async fn events_by_range_stats(
         "with_dtend":     with_dtend,
         "without_dtend":  without_dtend,
         "by_status":      by_status,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeMoveQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    dst:    Uuid,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/move?after=&before=&dst=
+/// — bulk-move dos eventos cujo `dtstart` ∈ `[after, before)` no calendar
+/// `cal_id` (origem) para o calendar `dst` (destino, mesmo tenant) (sprint
+/// #546, primeira mutação real da família `events-by-range/*` depois das
+/// foundations read-only #544 e #545; complementa o trio com o
+/// `events-bulk-delete` #457 que opera no MESMO universo half-open mas
+/// destrutivo). Reusa exatamente o critério temporal `dtstart ∈ [after,
+/// before)` strict half-open do #544 (eventos sem `dtstart` EXCLUÍDOS —
+/// preserva consistência de universo dentro da família). `dst` é
+/// obrigatório como query param (não no body porque PATCH single-field
+/// + nenhum outro payload — body-less é mais ergonômico via curl/UI).
+/// Mover pra `dst == cal_id` é no-op silencioso (não 400) — UPDATE
+/// match'a 0 linhas porque `WHERE calendar_id = $src` exclui o destino
+/// quando coincidem; semantics "mover pro mesmo lugar não fez nada"
+/// é honesta e evita validação extra. Requer WRITE+ em AMBOS calendars
+/// (origem `cal_id` E destino `dst`) — assert duplo `assert_can_write`
+/// pra cada lado, gate idêntico ao usado em outros endpoints WRITE+
+/// dual-calendar (futuro: copy entre calendars vai usar mesma chain).
+/// Single UPDATE no SQL: `etag`/`sequence`/`updated_at` PRESERVADOS no
+/// nível de cada evento — semantically não houve mudança no conteúdo
+/// iCalendar (calendar_id é metadata CalDAV externa ao VCALENDAR per
+/// RFC 5545); UI/clients que cacheiam por ETag NÃO precisam invalidar.
+/// Sem publicação de `EventUpdated` por evento — operação em massa
+/// não cabe no shape per-event do channel events; consumers que querem
+/// detectar movimentação devem assistir métrica/log do endpoint ou
+/// re-listar o calendar. Conflito de UID no destino (`(calendar_id,
+/// uid)` UNIQUE) → 409 via mapeamento existente do `unique_violation`
+/// no error layer — UI pode escolher "merge" ou "skip" se conflitar.
+/// `?dry=true` NÃO suportado neste sprint inicial — usuário usa
+/// `events-by-range` #544 (lista) ou `/stats` #545 (agregados) pra
+/// dry-discovery antes de rodar; flag dry adicionada num sprint futuro
+/// se demanda surgir. `after >= before` → 400 (paralelo universal
+/// #509/#517/#522/#537/#543/#544/#545). Retorna `{src, dst, moved}`
+/// com `moved: u64` count das linhas afetadas.
+async fn events_by_range_move(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeMoveQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+    assert_can_write(pool, ctx.tenant_id, q.dst, ctx.user_id).await?;
+
+    let moved = EventRepo::new(pool)
+        .move_range(ctx.tenant_id, cal_id, q.dst, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "src":   cal_id,
+        "dst":   q.dst,
+        "moved": moved,
     })))
 }
 
