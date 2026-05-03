@@ -1602,23 +1602,37 @@ async fn exdates_stats(
     let mut k_tzid      = 0usize;
     let mut k_date_only = 0usize;
     let mut k_unknown   = 0usize;
+    let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
     for info in &items {
-        match info.kind.as_str() {
+        match info.kind {
             "utc"       => k_utc       += 1,
-            "tzid"      => k_tzid      += 1,
+            "tzid"      => {
+                k_tzid += 1;
+                if let Some(tz) = info.tzid.as_deref() {
+                    match tzid_breakdown.iter().position(|(k, _)| k == tz) {
+                        Some(i) => tzid_breakdown[i].1 += 1,
+                        None    => tzid_breakdown.push((tz.to_string(), 1)),
+                    }
+                }
+            }
             "date-only" => k_date_only += 1,
             _           => k_unknown   += 1,
         }
     }
+    let mut breakdown_obj = serde_json::Map::new();
+    for (tz, n) in &tzid_breakdown {
+        breakdown_obj.insert(tz.clone(), serde_json::json!(n));
+    }
     Ok(Json(serde_json::json!({
-        "event_id": ev.id,
-        "total":    total,
+        "event_id":       ev.id,
+        "total":          total,
         "by_kind": {
             "utc":       k_utc,
             "tzid":      k_tzid,
             "date_only": k_date_only,
             "unknown":   k_unknown,
         },
+        "tzid_breakdown": serde_json::Value::Object(breakdown_obj),
     })))
 }
 
