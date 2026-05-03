@@ -112,6 +112,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_clear_rrule),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-summary",
+            patch(events_by_range_set_summary),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -970,6 +974,63 @@ async fn events_by_range_clear_rrule(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "cleared":     cleared,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetSummaryQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    summary: String,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-summary?after=&before=&summary=
+/// — bulk-set do campo `summary` em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #549, quarta mutação
+/// da família `events-by-range/*` depois de bulk-move #546, set-status
+/// #547 e clear-rrule #548). Validação trivial: `summary.trim()` não vazio
+/// → 400 ("summary must not be empty (use update endpoint to clear)").
+/// String preservada como-é (sem trim destrutivo, paralelo do `update`
+/// regular em event.rs que também passa o valor cru — UI controla
+/// whitespace conforme intenção; usuário que quer `"  Reunião  "` literal
+/// não é castigado). Limite de tamanho NÃO imposto aqui (DDL `summary`
+/// é TEXT sem CHECK; consistência com `update` regular). Mesmo trade-off
+/// do #547/#548: coluna `summary` fresh, `SUMMARY:` no `ical_raw` stale
+/// até próximo PUT — UI confia na API estruturada, fallback no raw só
+/// em export. Single calendar (1 `assert_can_write`). Sem `?dry=true`
+/// (foundations #544/#545 cobrem discovery). `after >= before` → 400.
+/// Retorna `{calendar_id, summary, updated}` com `updated: u64` count
+/// das linhas afetadas — count INCLUI eventos que já tinham o mesmo
+/// summary (paralelo do #547/#548, simetria com a família).
+async fn events_by_range_set_summary(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetSummaryQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    if q.summary.trim().is_empty() {
+        return Err(CalendarError::BadRequest(
+            "summary must not be empty".into(),
+        ));
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_summary_range(ctx.tenant_id, cal_id, &q.summary, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "summary":     q.summary,
+        "updated":     updated,
     })))
 }
 
