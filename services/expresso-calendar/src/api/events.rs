@@ -104,6 +104,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_move),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-status",
+            patch(events_by_range_set_status),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -837,6 +841,74 @@ async fn events_by_range_move(
         "src":   cal_id,
         "dst":   q.dst,
         "moved": moved,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetStatusQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    status: String,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-status?after=&before=&status=
+/// — bulk-set do campo `status` em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #547, segunda mutação
+/// da família `events-by-range/*` depois do bulk-move #546; paralelo
+/// direto do #546 mas single-tenant single-calendar — mexe em coluna
+/// `status` em vez de `calendar_id`). Aceita os 3 valores canônicos
+/// CalDAV per RFC 5545 §3.8.1.11: `CONFIRMED`, `TENTATIVE`, `CANCELLED`
+/// — qualquer outro → 400 com lista enumerada. Validação case-sensitive
+/// upper (paralelo do bucket de status do #545 que UPPER-normaliza no
+/// SQL — aqui exigimos input já normalizado pra evitar surpresa de
+/// "tentative" virar "TENTATIVE" silenciosamente). Trade-off explícito
+/// documentado no `set_status_range`: `ical_raw` NÃO é re-parseado/
+/// reserializado, então a coluna `status` (autoritativa pra GET
+/// estruturado da API) fica fresh, mas o `STATUS:` dentro do `ical_raw`
+/// (visto via export ICS/download VCAL) fica stale até próximo PUT do
+/// cliente — clientes CalDAV que leem o raw verão valor antigo até
+/// que o evento seja reescrito; UI/clients que leem via API JSON verão
+/// valor novo imediatamente. Single calendar (não dual como #546) →
+/// 1 `assert_can_write` apenas. Sem publicação per-event de
+/// `EventUpdated` (mesma justificativa do #546: massa). Sem `?dry=true`
+/// (foundations #544/#545 cobrem discovery). `after >= before` → 400
+/// (paralelo universal). Retorna `{calendar_id, status, updated}` com
+/// `updated: u64` count das linhas afetadas. Próximo: bulk-set-rrule
+/// (mais complexo, exige re-parsear `ical_raw` no loop) ou cancelar
+/// família `events-by-range/*` aqui — set-rrule é o fechamento natural
+/// das mutações single-field, mas custa N parses dos raws.
+async fn events_by_range_set_status(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetStatusQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    match q.status.as_str() {
+        "CONFIRMED" | "TENTATIVE" | "CANCELLED" => {}
+        _ => {
+            return Err(CalendarError::BadRequest(
+                "status must be one of CONFIRMED, TENTATIVE, CANCELLED".into(),
+            ));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_status_range(ctx.tenant_id, cal_id, &q.status, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "status":      q.status,
+        "updated":     updated,
     })))
 }
 

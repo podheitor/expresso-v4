@@ -315,6 +315,51 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `status` em todos os eventos cujo `dtstart` ∈ `[from, to)`
+    /// no `calendar_id` (single-tenant). Retorna a contagem de linhas
+    /// afetadas. Eventos sem `dtstart` ficam de fora (mesmo critério do
+    /// `delete_range` #457 / `move_range` #546). Single UPDATE muda só a
+    /// coluna `status` — `ical_raw` NÃO é re-parseado mesmo o `STATUS`
+    /// sendo propriedade VCALENDAR válida (RFC 5545 §3.8.1.11), porque
+    /// re-parsear N raws + reserializar seria O(N) string work no loop
+    /// equivalente a N `EventRepo::update`; trade-off explícito: a
+    /// coluna `status` fica autoritativa (consultas SQL veem o valor
+    /// novo), o `ical_raw` mantém o STATUS antigo até próximo PUT/UPDATE
+    /// do cliente. CalDAV clients que leem via `ical_raw` (export ICS,
+    /// download VCAL) verão valor stale; clientes que leem via API
+    /// estruturada (GET /events) verão valor fresh. Documentação do
+    /// endpoint deixa explícito. `etag`/`sequence`/`updated_at`
+    /// preservados — mesma justificativa do #546 (mudança no metadata
+    /// indexado, não no conteúdo iCalendar bruto). Sprint #547.
+    pub async fn set_status_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        status: &str,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET status = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(status)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,
