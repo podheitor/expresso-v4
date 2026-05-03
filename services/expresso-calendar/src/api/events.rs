@@ -1498,6 +1498,21 @@ struct ExdatesStatsQuery {
     /// #517/#520) — `kind=tzid|date-only|unknown` + range = sempre 0.
     #[serde(default)]
     kind: Option<String>,
+    /// `?with_tzid=true|false` (sprint #524, paralelo simétrico do #523 mas
+    /// em stats — fechando o trio EXDATE como já fechamos overrides com
+    /// #519/#520/#521). Filtra por presença/ausência de TZID. Composto AND
+    /// com kind/range: aplicado como retain adicional após os existentes.
+    /// Ortogonalidade: `kind=tzid` ⊂ `with_tzid=true` — kind=tzid implica
+    /// TZID, mas `with_tzid=true` também captura `kind=unknown` com TZID
+    /// malformado. Combinações impossíveis (e.g. `kind=utc&with_tzid=true`)
+    /// são aceitas e simplesmente retornam `total=0`.
+    #[serde(default)]
+    with_tzid: Option<bool>,
+    /// `?with_params=true|false` (sprint #524). Filtra por presença/ausência
+    /// de outros parâmetros iCal (RANGE, VALUE, etc.) na linha EXDATE.
+    /// Composto AND com kind/range/with_tzid no mesmo retain pass.
+    #[serde(default)]
+    with_params: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
@@ -1525,6 +1540,13 @@ struct ExdatesStatsQuery {
 /// `kind=tzid|date-only|unknown` + range sempre retorna `total=0` por
 /// design (TZID/date-only/unknown não têm `parsed_utc` pra comparar
 /// com bounds).
+///
+/// `?with_tzid=true|false&with_params=true|false` (sprint #524, paralelo
+/// simétrico do #523 mas em stats) filtra qualitativamente por presença
+/// dos campos TZID/parâmetros. Aplicado AND-composto como retain adicional
+/// após kind+range. Ortogonalidade `kind=tzid` ⊂ `with_tzid=true` documentada
+/// no #523. Combinações impossíveis (e.g. `kind=utc&with_tzid=true`) são
+/// aceitas e retornam `total=0` consistente com #522 (`kind=tzid` + range).
 async fn exdates_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -1557,6 +1579,13 @@ async fn exdates_stats(
             };
             if let Some(a) = q.after  { if parsed <  a { return false; } }
             if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
+    if q.with_tzid.is_some() || q.with_params.is_some() {
+        items.retain(|info| {
+            if let Some(want) = q.with_tzid   { if info.tzid.is_some()   != want { return false; } }
+            if let Some(want) = q.with_params { if info.params.is_some() != want { return false; } }
             true
         });
     }
