@@ -156,6 +156,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_resend_itip),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-attendees",
+            patch(events_by_range_set_attendees),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -6071,6 +6075,151 @@ fn patch_recurrence_id_override_block(
 
     if !buf.is_empty() {
         for line in &buf { out.push_str(line); }
+    }
+    out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetAttendeesQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    /// `?op=add|remove` — operação a aplicar por evento. Obrigatório.
+    op:     Option<String>,
+    /// `?email=` — endereço do attendee a adicionar ou remover. Obrigatório.
+    email:  Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-attendees?after=&before=&op=add|remove&email=
+/// Adiciona ou remove um attendee em massa nos eventos cujo `dtstart` ∈
+/// `[after, before)` (sprint #563, variante multi-valued da família
+/// events-by-range/* — primeiro endpoint que manipula uma propriedade 1:N
+/// do ical_raw em vez de uma coluna SQL simples). Attendees ficam no
+/// `ical_raw` como linhas `ATTENDEE[;params]:mailto:{email}` dentro do
+/// VEVENT — não há tabela `event_attendees` separada neste serviço.
+///
+/// `?op=add`: insere `ATTENDEE;RSVP=TRUE:mailto:{email}` antes de
+/// END:VEVENT via `inject_exdate_line` adaptado. Idempotente: se o email
+/// já está presente como ATTENDEE no evento → pula (não adiciona duplicata).
+/// `?op=remove`: remove a linha ATTENDEE cujo mailto: valor confere com
+/// o email (case-insensitive). Idempotente: se o email não está presente
+/// → pula.
+///
+/// Em ambos os casos, eventos afetados são salvos via `EventRepo::update`
+/// (incrementa SEQUENCE, regenera ETag — sinal de mudança pra clientes
+/// CalDAV). Trade-off cross-channel: `ical_raw` é a fonte de attendees
+/// (coluna `attendees` não existe no schema); `EventRepo::update` re-parseia
+/// e salva o raw inteiro — coluna autoritativa pra futura API GET /attendees.
+/// iTIP outbound NÃO disparado (explicitamente, paralelo do #552/#554) —
+/// UI que quiser notificar attendees adicionados usa `resend-itip` (#562)
+/// após este endpoint. Retorna `{calendar_id, op, email, events_scanned,
+/// events_updated}`. WRITE+ via `assert_can_write`. `after >= before` → 400.
+/// `email` e `op` obrigatórios → 400 se ausentes. Email vazio → 400.
+async fn events_by_range_set_attendees(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetAttendeesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let op = match q.op.as_deref() {
+        Some("add")    => "add",
+        Some("remove") => "remove",
+        Some(other)    => return Err(CalendarError::BadRequest(
+            format!("op must be 'add' or 'remove', got '{other}'")
+        )),
+        None => return Err(CalendarError::BadRequest("op is required".into())),
+    };
+    let email = match q.email.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(e) => e.trim().to_ascii_lowercase(),
+        None    => return Err(CalendarError::BadRequest("email is required".into())),
+    };
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let events = EventRepo::new(pool)
+        .list(
+            ctx.tenant_id,
+            cal_id,
+            &EventQuery { from: q.after, to: q.before, limit: None },
+        )
+        .await?;
+
+    let mut events_scanned: u64 = 0;
+    let mut events_updated: u64 = 0;
+
+    for ev in events {
+        let dtstart = match ev.dtstart {
+            Some(ds) => ds,
+            None => continue,
+        };
+        if let Some(a) = q.after  { if dtstart <  a { continue; } }
+        if let Some(b) = q.before { if dtstart >= b { continue; } }
+
+        events_scanned += 1;
+
+        // Check current attendees from ical_raw.
+        let attendees = crate::domain::itip::parse_attendees(&ev.ical_raw);
+        let already_present = attendees.iter().any(|a| a.email.to_ascii_lowercase() == email);
+
+        let new_raw = if op == "add" {
+            if already_present { continue; } // idempotent skip
+            let line = format!("ATTENDEE;RSVP=TRUE:mailto:{email}");
+            inject_exdate_line(&ev.ical_raw, &line) // same injection point: before END:VEVENT
+        } else {
+            // op == "remove"
+            if !already_present { continue; } // idempotent skip
+            remove_attendee_line(&ev.ical_raw, &email)
+        };
+
+        EventRepo::new(pool)
+            .update(ctx.tenant_id, ev.id, &new_raw)
+            .await?;
+        events_updated += 1;
+    }
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "op":             op,
+        "email":          email,
+        "events_scanned": events_scanned,
+        "events_updated": events_updated,
+    })))
+}
+
+/// Remove a linha `ATTENDEE[;params]:mailto:{target_email}` do primeiro VEVENT.
+/// Case-insensitive no email. Mantém EOL original. Remove APENAS a primeira
+/// linha matching — em teoria cada email aparece uma vez por VEVENT (RFC 5545
+/// não proíbe duplicatas mas `add` é idempotente, então duplicatas não surgem
+/// pelo nosso stack).
+fn remove_attendee_line(raw: &str, target_email: &str) -> String {
+    let target_lower = target_email.to_ascii_lowercase();
+    let mut out = String::with_capacity(raw.len());
+    let mut removed = false;
+    for src_line in raw.split_inclusive('\n') {
+        let trimmed = src_line.trim_start();
+        let upper9: String = trimmed.chars().take(9).collect::<String>().to_ascii_uppercase();
+        if !removed && upper9.starts_with("ATTENDEE") {
+            // Line is "ATTENDEE[;params]:mailto:email" or "ATTENDEE:mailto:email"
+            if let Some(colon_pos) = trimmed.find(':') {
+                let rest = &trimmed[colon_pos + 1..];
+                let mailto_lower = rest.trim_end_matches('\r').trim().to_ascii_lowercase();
+                let email_part = mailto_lower
+                    .strip_prefix("mailto:")
+                    .unwrap_or(&mailto_lower);
+                if email_part == target_lower {
+                    removed = true;
+                    continue; // drop this line
+                }
+            }
+        }
+        out.push_str(src_line);
     }
     out
 }
