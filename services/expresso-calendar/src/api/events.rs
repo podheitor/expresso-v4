@@ -3720,11 +3720,24 @@ struct ExdatesPreviewQuery {
     /// com `include_non_utc=true` explícito → 400. Default false preserva
     /// shape baseline.
     only_utc: Option<bool>,
+    /// `?detail=full` (sprint #528, paralelo simétrico do #527 mas pra EXDATE)
+    /// engrandece `in_range`/`out_of_range`/`non_utc` de `Vec<String>` (só
+    /// `raw_value`s, default do #525) pra `Vec<{compact, rfc3339, kind,
+    /// raw_value, tzid, params}>` reusando `parse_exdates_rich` que já
+    /// produz exatamente essa shape — zero extensão de helper. Mesma shape
+    /// do `/exdates?detail=full` do #511/#516 (consistência cross-endpoint:
+    /// preview e list mostram items idênticos quando enriquecidos). Em
+    /// `non_utc`, `compact`/`rfc3339` ficam `null` (não há timestamp UTC).
+    /// Diferença vs touch-preview #527 cujo `unparseable` permanece String:
+    /// aqui `non_utc` enrichece porque `parse_exdates_rich` extrai metadata
+    /// rica mesmo sem `parsed_utc` (kind/tzid/params). Default
+    /// `summary` (mesmo que ausente) preserva 100% shape do #525.
+    detail: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
-/// `[&include_non_utc=false][&only_utc=true]` — paralelo simétrico do
-/// touch-preview (#514/#515) mas pra EXDATE list (sprint #525). Read-only,
+/// `[&include_non_utc=false][&only_utc=true][&detail=full]` — paralelo simétrico
+/// do touch-preview (#514/#515/#527) mas pra EXDATE list (sprint #525/#528). Read-only,
 /// NÃO requer WRITE+. Útil pra UI fazer "discovery" de quais EXDATEs cairiam
 /// numa janela temporal antes de qualquer ação (e.g. preview antes de bulk
 /// delete por range, audit "quais cancelamentos estão programados pra esta
@@ -3767,27 +3780,62 @@ async fn exdates_preview(
             "only_utc=true conflicts with include_non_utc=true".into()
         ));
     }
+    let full = match q.detail.as_deref() {
+        None | Some("") | Some("summary") => false,
+        Some("full")                      => true,
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("invalid detail `{other}` — expected `summary` or `full`")
+        )),
+    };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
 
-    let mut in_range:     Vec<String> = Vec::new();
-    let mut out_of_range: Vec<String> = Vec::new();
-    let mut non_utc:      Vec<String> = Vec::new();
+    let mut in_range:     Vec<serde_json::Value> = Vec::new();
+    let mut out_of_range: Vec<serde_json::Value> = Vec::new();
+    let mut non_utc:      Vec<serde_json::Value> = Vec::new();
+    let mut seen:         Vec<String>            = Vec::new();
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
-        if in_range.iter().any(|c| c == &key)
-            || out_of_range.iter().any(|c| c == &key)
-            || non_utc.iter().any(|c| c == &key)
-        { continue; }
-        let parsed = match info.parsed_utc {
-            Some(t) => t,
-            None    => { non_utc.push(key); continue; }
+        if seen.iter().any(|c| c == &key) { continue; }
+        seen.push(key.clone());
+
+        let (compact_v, rfc_v, parsed_opt) = match info.parsed_utc {
+            Some(t) => {
+                let utc = t.to_offset(time::UtcOffset::UTC);
+                let c = format!(
+                    "{:04}{:02}{:02}T{:02}{:02}{:02}Z",
+                    utc.year(), u8::from(utc.month()), utc.day(),
+                    utc.hour(), utc.minute(), utc.second(),
+                );
+                let r = utc.format(&time::format_description::well_known::Rfc3339)
+                    .unwrap_or_default();
+                (serde_json::Value::String(c), serde_json::Value::String(r), Some(t))
+            }
+            None => (serde_json::Value::Null, serde_json::Value::Null, None),
         };
-        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(key); continue; } }
-        if let Some(b) = q.before { if parsed >= b { out_of_range.push(key); continue; } }
-        in_range.push(key);
+
+        let bucket_item: serde_json::Value = if full {
+            serde_json::json!({
+                "compact":   compact_v,
+                "rfc3339":   rfc_v,
+                "kind":      info.kind,
+                "raw_value": info.raw_value,
+                "tzid":      info.tzid,
+                "params":    info.params,
+            })
+        } else {
+            serde_json::Value::String(key.clone())
+        };
+
+        let parsed = match parsed_opt {
+            Some(t) => t,
+            None    => { non_utc.push(bucket_item); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(bucket_item); continue; } }
+        if let Some(b) = q.before { if parsed >= b { out_of_range.push(bucket_item); continue; } }
+        in_range.push(bucket_item);
     }
 
     let total_exdates = if only_utc {
