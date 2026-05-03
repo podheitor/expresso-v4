@@ -184,6 +184,10 @@ pub fn routes() -> Router<AppState> {
             patch(patch_overrides_by_range),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides-by-range/preview",
+            get(patch_overrides_by_range_preview),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/touch-preview",
             get(touch_preview),
         )
@@ -4258,6 +4262,82 @@ async fn patch_overrides_by_range(
         "dtstamp":  dtstamp_now,
         "etag":     updated.etag,
         "sequence": updated.sequence,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PatchOverridesByRangePreviewQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/overrides-by-range/preview
+/// ?after=&before= — read-only dry-preview do plano de patch-by-range
+/// (sprint #543, complementa o `?dry=true` do #537 que ainda exige body
+/// válido de `PatchOverrideBody`). Mesmo walker e mesma classificação
+/// touched/skipped do path PATCH dry: itera `list_recurrence_id_overrides`
+/// → `parse_one_exdate` → bucket por `[after, before)` half-open. Diferença
+/// chave vs `?dry=true` do PATCH: este endpoint NÃO requer body algum (sem
+/// validação `at_least_one_field` do #537, sem mesmo Content-Type), porque
+/// o universo de overrides afetados é independente dos campos a patchar
+/// (afetar = match no range; o body só decide *o que* mudar, não *quem*).
+/// UI usa pra "discovery" puro: "se eu rodar patch-by-range nesta janela
+/// agora, quem é afetado?" sem precisar montar body fictício antes de
+/// confirmar com o usuário. Read-only, NÃO requer WRITE+ (paralelo aos
+/// touch-preview #514, exdates-preview #525, exdates-preview/stats #530).
+/// Retorna sempre `{event_id, touched, skipped}` (mesmo shape do dry do
+/// #537 mas sem `dry:true` flag — endpoint é GET, "dry" é implícito);
+/// vazio em `touched` retorna 200 com lista vazia (paralelo do
+/// touch-preview que não 404, contraste com PATCH `?dry=true` que 404 em
+/// touched vazio porque é alternative path do PATCH real). 400 em
+/// `after >= before` ou master sem UID.
+async fn patch_overrides_by_range_preview(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<PatchOverridesByRangePreviewQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate overrides".into()
+    ))?;
+
+    let mut touched: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    for item in &listed {
+        let compact = match item.get("compact").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None    => continue,
+        };
+        if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
+            continue;
+        }
+        let parsed = match parse_one_exdate(&compact) {
+            Some(t) => t,
+            None    => { skipped.push(compact); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
+        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+        touched.push(compact);
+    }
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "touched":  touched,
+        "skipped":  skipped,
     })))
 }
 
