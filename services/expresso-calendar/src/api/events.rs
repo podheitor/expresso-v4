@@ -1559,6 +1559,26 @@ struct ExdatesStatsQuery {
     /// preserva 100% shape do #533.
     #[serde(default)]
     sort_tzid: Option<String>,
+    /// `?min_count=N` (sprint #535, dual filosófico ao `top_tzid` #533)
+    /// filtra do `tzid_breakdown` qualquer TZID com count < N — `top_tzid`
+    /// trunca CARDINALIDADE da CABEÇA (top-N por count desc), `min_count`
+    /// filtra LONG-TAIL da CAUDA (TZIDs raros). Combinados oferecem janela
+    /// arbitrária no histograma: `min_count=2&top_tzid=10` = "top-10 entre
+    /// TZIDs com pelo menos 2 ocorrências cada". Composição em 3 fases
+    /// (ordem fixa, escolhida pra preservar semantics intuitiva): (1)
+    /// `min_count` filtra long-tail; (2) `top_tzid` seleciona top-N do
+    /// universo filtrado; (3) `sort_tzid` ordena o set retido. Emite
+    /// `tzid_filtered_count` (paralelo do `tzid_other_count` do #532+#533
+    /// mas reportando o que foi excluído pela cauda em vez da cabeça
+    /// truncada) somente quando `min_count.is_some()`. `min_count=0` →
+    /// 400 (no-op, todo TZID sobrevive — usar ausência do flag pra esse
+    /// efeito); `min_count=1` é aceito mesmo sendo igualmente no-op (por
+    /// definição todo TZID no breakdown apareceu pelo menos 1 vez), porque
+    /// é a primeira fronteira "real" e UI pode querer emitir
+    /// `tzid_filtered_count=0` explícito como confirmação. Sem flag (None)
+    /// preserva 100% shape do #534.
+    #[serde(default)]
+    min_count: Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
@@ -1607,6 +1627,11 @@ async fn exdates_stats(
     if q.top_tzid == Some(0) {
         return Err(CalendarError::BadRequest(
             "top_tzid must be >= 1 (use kind=utc to force tzid_breakdown empty)".into()
+        ));
+    }
+    if q.min_count == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "min_count must be >= 1 (omit flag for full breakdown)".into()
         ));
     }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
@@ -1669,15 +1694,26 @@ async fn exdates_stats(
             _           => k_unknown   += 1,
         }
     }
+    let (filtered, filtered_count): (Vec<(String, usize)>, usize) = match q.min_count {
+        Some(m) => {
+            let mut keep = Vec::with_capacity(tzid_breakdown.len());
+            let mut excluded = 0usize;
+            for (tz, c) in &tzid_breakdown {
+                if *c >= m { keep.push((tz.clone(), *c)); } else { excluded += 1; }
+            }
+            (keep, excluded)
+        }
+        None => (tzid_breakdown.clone(), 0),
+    };
     let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
-        Some(n) if tzid_breakdown.len() > n => {
-            let mut sorted = tzid_breakdown.clone();
+        Some(n) if filtered.len() > n => {
+            let mut sorted = filtered.clone();
             sorted.sort_by(|a, b| b.1.cmp(&a.1));
             let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
             sorted.truncate(n);
             (sorted, other)
         }
-        _ => (tzid_breakdown.clone(), 0),
+        _ => (filtered, 0),
     };
     match sort_mode {
         Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
@@ -1703,6 +1739,9 @@ async fn exdates_stats(
     });
     if q.top_tzid.is_some() {
         payload["tzid_other_count"] = serde_json::json!(other_count);
+    }
+    if q.min_count.is_some() {
+        payload["tzid_filtered_count"] = serde_json::json!(filtered_count);
     }
     if sort_mode.is_some() {
         let order: Vec<serde_json::Value> = kept.iter()
@@ -3861,6 +3900,20 @@ struct ExdatesPreviewQuery {
     /// também não é emitido.
     #[serde(default)]
     sort_tzid: Option<String>,
+    /// `?min_count=N` (sprint #535, dual filosófico ao `top_tzid` #532,
+    /// paralelo simétrico do mesmo flag em `ExdatesStatsQuery` do #533+#535
+    /// — pattern "stats endpoints evoluem EM PAR" agora cobre 4 dimensões:
+    /// agregado, range, top_tzid (cardinalidade da cabeça), sort_tzid
+    /// (apresentação), min_count (cardinalidade da cauda)). Filtra
+    /// `tzid_breakdown` removendo TZIDs com count < N. Composição em 3
+    /// fases (mesma ordem do #535 em ExdatesStatsQuery): (1) min_count
+    /// filtra long-tail; (2) top_tzid trunca cabeça do universo filtrado;
+    /// (3) sort_tzid ordena. Emite `tzid_filtered_count` somente quando
+    /// `min_count.is_some()`. `min_count=0` → 400. Sem flag (None) preserva
+    /// 100% shape do #534. Só faz sentido quando `tzid_breakdown` é
+    /// incluído (mesma condição do `top_tzid`/`sort_tzid`).
+    #[serde(default)]
+    min_count: Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
@@ -4060,6 +4113,11 @@ async fn exdates_preview_stats(
             "top_tzid must be >= 1 (use include_non_utc=false to omit breakdown entirely)".into()
         ));
     }
+    if q.min_count == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "min_count must be >= 1 (omit flag for full breakdown)".into()
+        ));
+    }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
         None | Some("") => None,
         Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
@@ -4128,15 +4186,26 @@ async fn exdates_preview_stats(
             "date_only": k_date_only,
             "unknown":   k_unknown,
         });
+        let (filtered, filtered_count): (Vec<(String, usize)>, usize) = match q.min_count {
+            Some(m) => {
+                let mut keep = Vec::with_capacity(tzid_breakdown.len());
+                let mut excluded = 0usize;
+                for (tz, c) in &tzid_breakdown {
+                    if *c >= m { keep.push((tz.clone(), *c)); } else { excluded += 1; }
+                }
+                (keep, excluded)
+            }
+            None => (tzid_breakdown.clone(), 0),
+        };
         let (mut kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
-            Some(n) if tzid_breakdown.len() > n => {
-                let mut sorted = tzid_breakdown.clone();
+            Some(n) if filtered.len() > n => {
+                let mut sorted = filtered.clone();
                 sorted.sort_by(|a, b| b.1.cmp(&a.1));
                 let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
                 sorted.truncate(n);
                 (sorted, other)
             }
-            _ => (tzid_breakdown.clone(), 0),
+            _ => (filtered, 0),
         };
         match sort_mode {
             Some("count_desc") => kept.sort_by(|a, b| b.1.cmp(&a.1)),
@@ -4152,6 +4221,9 @@ async fn exdates_preview_stats(
         payload["tzid_breakdown"] = serde_json::Value::Object(breakdown_obj);
         if q.top_tzid.is_some() {
             payload["tzid_other_count"] = serde_json::json!(other_count);
+        }
+        if q.min_count.is_some() {
+            payload["tzid_filtered_count"] = serde_json::json!(filtered_count);
         }
         if sort_mode.is_some() {
             let order: Vec<serde_json::Value> = kept.iter()
