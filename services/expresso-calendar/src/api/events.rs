@@ -1521,6 +1521,24 @@ struct ExdatesStatsQuery {
     /// Composto AND com kind/range/with_tzid no mesmo retain pass.
     #[serde(default)]
     with_params: Option<bool>,
+    /// `?top_tzid=N` (sprint #533, paralelo simétrico do #532 mas no list-stats
+    /// endpoint do #531) trunca o `tzid_breakdown` pra apenas as N TZIDs mais
+    /// frequentes (sort by count desc, ties broken por insertion order do `Vec`
+    /// association list — i.e. ordem de aparição no walker pós-retains do
+    /// #522/#524) + adiciona `tzid_other_count: usize` agregando soma das counts
+    /// das TZIDs descartadas. Fecha dualidade `top_tzid` cross-stats em ambos
+    /// stats endpoints da família EXDATE: preview-stats #532 + list-stats #533.
+    /// Diferença vs preview-stats #532: aqui o cardinality já está naturalmente
+    /// reduzida pelo filter chain server-side (`kind=tzid&after=&before=&
+    /// with_tzid=true`), portanto top_tzid é menos crítico — mas oferecido
+    /// pra consistência cross-endpoint e UI dashboard que pode usar list-stats
+    /// sem filters quando quer overview agregado total. `top_tzid=0` → 400
+    /// (sem alternativa equivalente do `include_non_utc=false` aqui — em
+    /// list-stats `tzid_breakdown` é sempre presente; pra agregado sem
+    /// breakdown, `?kind=utc` reduz `by_kind.tzid=0` que produz `tzid_breakdown
+    /// = {}` sem omitir o campo). Sem flag (None) preserva 100% shape #531.
+    #[serde(default)]
+    top_tzid: Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
@@ -1565,6 +1583,11 @@ async fn exdates_stats(
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
+    }
+    if q.top_tzid == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "top_tzid must be >= 1 (use kind=utc to force tzid_breakdown empty)".into()
+        ));
     }
     let kind_filter: Option<&str> = match q.kind.as_deref() {
         None | Some("") => None,
@@ -1619,11 +1642,21 @@ async fn exdates_stats(
             _           => k_unknown   += 1,
         }
     }
+    let (kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
+        Some(n) if tzid_breakdown.len() > n => {
+            let mut sorted = tzid_breakdown.clone();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
+            sorted.truncate(n);
+            (sorted, other)
+        }
+        _ => (tzid_breakdown.clone(), 0),
+    };
     let mut breakdown_obj = serde_json::Map::new();
-    for (tz, n) in &tzid_breakdown {
+    for (tz, n) in &kept {
         breakdown_obj.insert(tz.clone(), serde_json::json!(n));
     }
-    Ok(Json(serde_json::json!({
+    let mut payload = serde_json::json!({
         "event_id":       ev.id,
         "total":          total,
         "by_kind": {
@@ -1633,7 +1666,11 @@ async fn exdates_stats(
             "unknown":   k_unknown,
         },
         "tzid_breakdown": serde_json::Value::Object(breakdown_obj),
-    })))
+    });
+    if q.top_tzid.is_some() {
+        payload["tzid_other_count"] = serde_json::json!(other_count);
+    }
+    Ok(Json(payload))
 }
 
 /// Variante "rica" do `parse_exdates` que captura TAMBÉM linhas com TZID,
