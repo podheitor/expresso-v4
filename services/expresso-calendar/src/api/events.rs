@@ -1579,6 +1579,32 @@ struct ExdatesStatsQuery {
     /// preserva 100% shape do #534.
     #[serde(default)]
     min_count: Option<usize>,
+    /// `?include_kind_breakdown=true` (sprint #536, expansão dimensional do
+    /// `tzid_breakdown` do #531) emite o objeto adjacente
+    /// `tzid_breakdown_by_kind: {tz: {tzid: N, unknown: M}}` particionando o
+    /// count de cada TZID retido em duas sub-categorias: tokens cujo
+    /// raw_value parseia como `YYYYMMDDTHHMMSS` local (canônico, contado
+    /// como `tzid`) vs tokens com TZID presente mas formato local inválido
+    /// (malformado, contado como `unknown`). Diferente do `by_kind` do #522
+    /// (que classifica TUDO em utc/tzid/date-only/unknown e onde
+    /// `kind="unknown"` implica TZID ausente), aqui `unknown` é uma
+    /// sub-categoria DENTRO de `kind="tzid"`: o item já passou pela
+    /// validação de TZID-presente em `parse_exdates_rich` mas o token
+    /// (e.g. `20991301T256000`) não é um datetime local válido. Útil pra
+    /// audit "qual fração das EXDATEs com TZID está em formato canônico
+    /// vs corrompida no campo local". Invariant: `sum(canonical +
+    /// malformed) == tzid_breakdown[tz]` para cada `tz` retido. Aplicado
+    /// APÓS toda a chain de presentation (`min_count` → `top_tzid` →
+    /// `sort_tzid`) — só os TZIDs retidos no `kept` final aparecem no
+    /// objeto adjacente, na MESMA ordem alfabética do JSON Object (a
+    /// ordem custom continua só no `tzid_breakdown_order` do #534). Sem
+    /// flag (None ou false) omite o objeto e preserva 100% shape do #535.
+    /// `include_kind_breakdown=true` mas `tzid_breakdown` vazio (e.g.
+    /// `kind=utc` ou todos filtraram-out) emite `tzid_breakdown_by_kind:
+    /// {}` (mesma semantics "flag aceita, sem dados" do `tzid_other_count`
+    /// quando `breakdown.len() <= n` no #533).
+    #[serde(default)]
+    include_kind_breakdown: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
@@ -1677,7 +1703,13 @@ async fn exdates_stats(
     let mut k_tzid      = 0usize;
     let mut k_date_only = 0usize;
     let mut k_unknown   = 0usize;
+    let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
+    // (tzid, canonical_count, malformed_count) — populado só quando
+    // include_kind_breakdown=true; mantido em paralelo a tzid_breakdown
+    // pra que a invariant `canonical + malformed == tzid_breakdown[tz]`
+    // seja preservada por construção (mesmo loop, mesma chave).
+    let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
     for info in &items {
         match info.kind {
             "utc"       => k_utc       += 1,
@@ -1687,6 +1719,19 @@ async fn exdates_stats(
                     match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                         Some(i) => tzid_breakdown[i].1 += 1,
                         None    => tzid_breakdown.push((tz.to_string(), 1)),
+                    }
+                    if include_kind_breakdown {
+                        let canonical = is_canonical_local_datetime(&info.raw_value);
+                        match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
+                            Some(i) => {
+                                if canonical { tzid_by_kind[i].1 += 1; }
+                                else         { tzid_by_kind[i].2 += 1; }
+                            }
+                            None => {
+                                let (c, u) = if canonical { (1, 0) } else { (0, 1) };
+                                tzid_by_kind.push((tz.to_string(), c, u));
+                            }
+                        }
                     }
                 }
             }
@@ -1748,6 +1793,20 @@ async fn exdates_stats(
             .map(|(tz, _)| serde_json::Value::String(tz.clone()))
             .collect();
         payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
+    }
+    if include_kind_breakdown {
+        let mut by_kind_obj = serde_json::Map::new();
+        for (tz, _) in &kept {
+            let (c, u) = tzid_by_kind.iter()
+                .find(|(k, _, _)| k == tz)
+                .map(|(_, c, u)| (*c, *u))
+                .unwrap_or((0, 0));
+            by_kind_obj.insert(tz.clone(), serde_json::json!({
+                "tzid":    c,
+                "unknown": u,
+            }));
+        }
+        payload["tzid_breakdown_by_kind"] = serde_json::Value::Object(by_kind_obj);
     }
     Ok(Json(payload))
 }
@@ -1828,6 +1887,21 @@ struct ExdateInfo {
     params:      Option<String>,
     parsed_utc:  Option<OffsetDateTime>,
     kind:        &'static str,
+}
+
+/// Sprint #536 — classifica raw_value de EXDATE com `kind="tzid"` em
+/// canônico (`YYYYMMDDTHHMMSS` local datetime válido) vs malformado.
+/// `parse_exdates_rich` rotula como `kind="tzid"` qualquer linha com TZID
+/// presente, independente da validade do token; aqui validamos o formato
+/// local pra suportar o drill-down `tzid_breakdown_by_kind` do #536 sem
+/// alterar a taxonomia central de kinds (que tem ripple em #516/#522/#529).
+fn is_canonical_local_datetime(s: &str) -> bool {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    static FMT_LOCAL: &[FormatItem<'static>] = format_description!(
+        "[year][month][day]T[hour][minute][second]"
+    );
+    time::PrimitiveDateTime::parse(s.trim(), &FMT_LOCAL).is_ok()
 }
 
 /// DELETE /api/v1/calendars/:cal_id/events/:id/exdates — remove TODAS as
@@ -3914,6 +3988,20 @@ struct ExdatesPreviewQuery {
     /// incluído (mesma condição do `top_tzid`/`sort_tzid`).
     #[serde(default)]
     min_count: Option<usize>,
+    /// `?include_kind_breakdown=true` (sprint #536, paralelo simétrico do
+    /// mesmo flag em `ExdatesStatsQuery` — fechando dualidade
+    /// cross-stats já estabelecida em #530+#531, #532+#533, #534, #535).
+    /// Emite `tzid_breakdown_by_kind: {tz: {tzid: N, unknown: M}}`
+    /// particionando o count de cada TZID retido em canônico vs
+    /// malformado (mesma definição do #536 em `ExdatesStatsQuery`).
+    /// Aplicado APÓS `min_count` → `top_tzid` → `sort_tzid` — só TZIDs
+    /// retidos no `kept` final aparecem. Sem flag (None ou false) omite
+    /// o objeto e preserva 100% shape do #535. Só faz sentido quando
+    /// `tzid_breakdown` é incluído (mesma condição do `top_tzid`/
+    /// `sort_tzid`/`min_count` — i.e. `include_non_utc=true` e
+    /// `only_utc=false`).
+    #[serde(default)]
+    include_kind_breakdown: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
@@ -4136,7 +4224,9 @@ async fn exdates_preview_stats(
     let mut k_tzid:         usize = 0;
     let mut k_date_only:    usize = 0;
     let mut k_unknown:      usize = 0;
+    let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
+    let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
@@ -4153,6 +4243,19 @@ async fn exdates_preview_stats(
                             match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                                 Some(i) => tzid_breakdown[i].1 += 1,
                                 None    => tzid_breakdown.push((tz.to_string(), 1)),
+                            }
+                            if include_kind_breakdown {
+                                let canonical = is_canonical_local_datetime(&info.raw_value);
+                                match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
+                                    Some(i) => {
+                                        if canonical { tzid_by_kind[i].1 += 1; }
+                                        else         { tzid_by_kind[i].2 += 1; }
+                                    }
+                                    None => {
+                                        let (c, u) = if canonical { (1, 0) } else { (0, 1) };
+                                        tzid_by_kind.push((tz.to_string(), c, u));
+                                    }
+                                }
                             }
                         }
                     }
@@ -4230,6 +4333,20 @@ async fn exdates_preview_stats(
                 .map(|(tz, _)| serde_json::Value::String(tz.clone()))
                 .collect();
             payload["tzid_breakdown_order"] = serde_json::Value::Array(order);
+        }
+        if include_kind_breakdown {
+            let mut by_kind_obj = serde_json::Map::new();
+            for (tz, _) in &kept {
+                let (c, u) = tzid_by_kind.iter()
+                    .find(|(k, _, _)| k == tz)
+                    .map(|(_, c, u)| (*c, *u))
+                    .unwrap_or((0, 0));
+                by_kind_obj.insert(tz.clone(), serde_json::json!({
+                    "tzid":    c,
+                    "unknown": u,
+                }));
+            }
+            payload["tzid_breakdown_by_kind"] = serde_json::Value::Object(by_kind_obj);
         }
     }
     Ok(Json(payload))
