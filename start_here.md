@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #519 (2026-05-03)
+**Último sprint commitado:** #520 (2026-05-03)
 
 ```
 git log --oneline | head -15
@@ -117,6 +117,7 @@ git log --oneline | head -15
 | #517 | calendar | Overrides list range filter — `GET /api/v1/calendars/:cal_id/events/:id/overrides?after=&before=` filtra a lista de RECURRENCE-ID overrides por intervalo half-open `[after, before)` parseando o `compact` de cada item via `parse_one_exdate` (paralelo simétrico do `touch-overrides-by-range` #509 e do EXDATE list filter #516); ambos opcionais (RFC3339), ausência total preserva 100% shape do #496/#503; quando algum bound é dado, RECURRENCE-IDs não-parseáveis (TZID-based, etc.) são pulados silenciosamente — sem range, todos aparecem (mesmo formato exótico); composto com `?detail=full` do #503 (filtra primeiro pelo walker, range depois via `retain`); 400 se `after >= before`; read-only, não requer WRITE; `count` reflete só items pós-filtro; útil pra UI "esta semana"/"próximo mês" sem N+1 GETs e sem listar tudo + filtrar client-side — sprint #517 |
 | #518 | calendar | Overrides list filter por presença — `GET /api/v1/calendars/:cal_id/events/:id/overrides?has_summary=&has_dtstart=&has_dtend=` filtros booleanos qualitativos em AND aplicados após o range filter do #517; cada flag opcional independente — `true` exige campo presente no override, `false` exige ausência (campo nulo no JSON); combinados segmentam categorias semânticas: "só rename de título" (`has_summary=true&has_dtstart=false&has_dtend=false`) vs. "só reschedule" (`has_summary=false&has_dtstart=true`); aplicados via segundo `Vec::retain` condicional (skip total quando todas 3 são `None`) que checa `item.get(key).map(|v| !v.is_null())` por campo; `description`/`location` ficam de fora porque só estão presentes em `?detail=full` — assimétrico, não vale flag dedicada; ausência total dos 3 flags preserva 100% shape do #517 (e por extensão #496/#503); read-only, não requer WRITE; `count` reflete intersecção range+presença pós-filtro; padrão: filter chains ortogonais (range temporal + presença qualitativa) compostos via `Vec::retain` sequenciais condicionais — variant qualitativa do #517 — sprint #518 |
 | #519 | calendar | Overrides count-by-detail stats — `GET /api/v1/calendars/:cal_id/events/:id/overrides/stats` agrega counts de presença dos campos `summary`/`dtstart`/`dtend` em todos os overrides do evento (agregado do filter qualitativo do #518); retorna `{event_id, total, by_field:{summary:{present,absent}, dtstart:{...}, dtend:{...}}, by_category:{none, only_summary, only_dtstart, only_dtend, summary_dtstart, summary_dtend, dtstart_dtend, all_three}}`; `by_field` é cardinality marginal (`present + absent = total` por campo, somas independentes), `by_category` particiona em 8 buckets disjuntos por combinação de presença (soma das 8 categorias = total); útil pra dashboards exibirem distribuição "só rename" vs "só reschedule" vs "rename + reschedule" sem puxar lista inteira do #518 e contar client-side; rota literal `/overrides/stats` precede `/overrides/:recurrence_id` (axum matcha literal antes de param wildcard); description/location ficam de fora pela mesma assimetria do #518 (só existem em `?detail=full`); reusa `list_recurrence_id_overrides(raw, uid, false)` do #503/#517/#518; read-only, não requer WRITE; 404 se evento não existe; complementa o filter do #518 (sample) com agregado completo (population) — sprint #519 |
+| #520 | calendar | Overrides stats com filtros range — `?after=&before=` em `GET /api/v1/calendars/:cal_id/events/:id/overrides/stats` (composição de #517 + #519) restringe o agregado a janela temporal half-open `[after, before)`; nova `OverridesStatsQuery { after, before }` com `time::serde::rfc3339::option`, `Query<OverridesStatsQuery>` extractor adicionado ao handler; reusa o `Vec::retain` do #517 (parse `compact` via `parse_one_exdate`, filtros de bounds opcionais, RECURRENCE-IDs não-parseáveis pulados silenciosamente quando algum bound é dado) aplicado ANTES do loop de contagem; `total`/`by_field`/`by_category` agregam só sobre items pós-filtro — invariants preservadas (`present + absent = total` por campo, soma das 8 categorias = total); ambos opcionais — ausência total preserva 100% shape do #519; 400 se `after >= before`; útil pra dashboards "distribuição de overrides nesta semana" sem listar tudo (#518 + range) e agregar client-side — variant range-aware do #519, complementa o trio overrides {list filtered #517+#518, agg #519, agg filtered #520} — sprint #520 |
 
 ---
 
@@ -130,7 +131,7 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#520-#525)
+## Próximos candidatos (#521-#525)
 
 1. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
 2. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
@@ -143,7 +144,10 @@ git log --oneline | head -15
 9. **calendar:** EXDATE preview combo — `GET /:id/exdates-preview?after=&before=` aplicando mesmo padrão de #514/#515 mas pra EXDATE (paralelo simétrico ao preview de overrides)
 10. **calendar:** EXDATE list count-by-kind — `GET /:id/exdates/stats` agrega counts `{utc, tzid, date_only, unknown, total}` num só payload (paralelo agregado ao #516 pra dashboard)
 11. **calendar:** EXDATE list filter por presença — paralelo simétrico do #518 mas no EXDATE list, ex: `?with_tzid=true|false` (em vez de `kind=tzid` exclusivo do #516, permite filtro qualitativo "tem TZID ou não")
-12. **calendar:** overrides stats com filtros — `?after=&before=` em `/overrides/stats` (#519) restringindo agregado a uma janela temporal (composição #517 + #519)
+12. **calendar:** overrides stats com filtros presença — `?has_summary=&has_dtstart=&has_dtend=` em `/overrides/stats` (#519/#520) restringindo agregado por presença qualitativa (composição #518 + #519, paralelo ao #520 mas qualitativo)
+13. **calendar:** EXDATE stats `/exdates/stats` — paralelo simétrico do #519/#520 mas no EXDATE (count-by-kind: utc/tzid/date-only/unknown — agregado do filter #516)
+14. **calendar:** overrides patch by-range — `PATCH /:id/overrides-by-range?after=&before=` (paralelo do touch-by-range #509 mas com payload de mutação real, não só DTSTAMP)
+15. **calendar:** events bulk-update por range — PATCH em massa de eventos do calendar (mover, mudar calendar, set RRULE)
 
 ---
 

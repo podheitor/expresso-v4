@@ -2021,6 +2021,20 @@ async fn list_overrides(
     })))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct OverridesStatsQuery {
+    /// `?after=&before=` (sprint #520, composição de #517 + #519) restringe
+    /// o agregado a uma janela temporal half-open `[after, before)`.
+    /// RECURRENCE-IDs não-parseáveis como UTC (TZID-based, date-only,
+    /// malformados) são pulados silenciosamente quando algum bound é dado
+    /// — sem range, todos os overrides entram no agregado (shape original
+    /// do #519 preservado). 400 se `after >= before`.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
 /// counts de presença dos campos `summary`/`dtstart`/`dtend` em todos os
 /// overrides do evento (sprint #519, agregado do filter qualitativo do
@@ -2035,15 +2049,48 @@ async fn list_overrides(
 /// combinação de presença — soma das 8 categorias = total. Description/
 /// location ficam de fora (mesma assimetria do #518: só existem em
 /// `?detail=full`). Read-only, não exige WRITE+. 404 se evento não existe.
+///
+/// `?after=&before=` (sprint #520, composição de #517 + #519) restringe
+/// o agregado a uma janela temporal half-open `[after, before)` —
+/// reusa o filtro range do #517 ANTES do loop de contagem. Útil pra
+/// dashboards "distribuição de overrides nesta semana" sem listar tudo
+/// e agregar client-side. Ambos opcionais; sem nenhum ≡ shape original
+/// do #519 (todos overrides entram). RECURRENCE-IDs não-parseáveis são
+/// pulados silenciosamente quando algum bound é dado (consistente com
+/// #517/#509). `total` reflete só items pós-filtro; `by_field` e
+/// `by_category` agregam só sobre os filtrados (invariants preservadas:
+/// `present + absent = total` por campo, soma das 8 categorias = total).
+/// 400 se `after >= before`.
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<OverridesStatsQuery>,
 ) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
-    let items = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    let mut items = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+    if q.after.is_some() || q.before.is_some() {
+        items.retain(|item| {
+            let compact = match item.get("compact").and_then(|v| v.as_str()) {
+                Some(s) => s,
+                None    => return false,
+            };
+            let parsed = match parse_one_exdate(compact) {
+                Some(t) => t,
+                None    => return false,
+            };
+            if let Some(a) = q.after  { if parsed <  a { return false; } }
+            if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
     let total = items.len();
     let mut sum_p = 0usize; let mut sum_a = 0usize;
     let mut ds_p  = 0usize; let mut ds_a  = 0usize;
