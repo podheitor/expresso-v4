@@ -3875,8 +3875,22 @@ async fn exdates_preview(
 /// - conflito `only_utc=true && include_non_utc=true` explícito → 400.
 ///
 /// Retorna `{event_id, total_exdates, in_range_count, out_of_range_count
-/// [, non_utc_count]}`. Read-only, NÃO requer WRITE+, 404 se evento não
-/// existe. Validações idênticas ao #525 (`after >= before` → 400).
+/// [, non_utc_count, non_utc_by_kind]}`. Read-only, NÃO requer WRITE+,
+/// 404 se evento não existe. Validações idênticas ao #525
+/// (`after >= before` → 400).
+///
+/// `non_utc_by_kind: {tzid, date_only, unknown}` (sprint #529, paralelo
+/// do `by_kind` do #522 mas particionando o bucket "non-UTC" do preview)
+/// agrega contagens dos 3 únicos `kind`s que produzem `parsed_utc=None`
+/// — `tzid` (TZID-based), `date-only` (date sem time), `unknown`
+/// (malformado). Soma `tzid + date_only + unknown == non_utc_count`
+/// (invariant testável). Útil pra dashboard "quais EXDATEs preciso
+/// migrar pra UTC vs quais estão corrompidas" sem puxar lista do #528 e
+/// agrupar client-side. Omitido junto com `non_utc_count` quando
+/// `include_non_utc=false` ou `only_utc=true` (paralelo do #526). Nome
+/// do campo `date_only` (snake_case) em vez do `kind` literal
+/// `"date-only"` (com hífen) pra ficar JSON-key-friendly em consumidores
+/// (JS `obj.date_only` vs `obj["date-only"]`).
 async fn exdates_preview_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -3903,6 +3917,9 @@ async fn exdates_preview_stats(
     let mut in_range_n:     usize = 0;
     let mut out_of_range_n: usize = 0;
     let mut non_utc_n:      usize = 0;
+    let mut k_tzid:         usize = 0;
+    let mut k_date_only:    usize = 0;
+    let mut k_unknown:      usize = 0;
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
@@ -3910,7 +3927,15 @@ async fn exdates_preview_stats(
         seen.push(key);
         let parsed = match info.parsed_utc {
             Some(t) => t,
-            None    => { non_utc_n += 1; continue; }
+            None    => {
+                non_utc_n += 1;
+                match info.kind {
+                    "tzid"      => k_tzid      += 1,
+                    "date-only" => k_date_only += 1,
+                    _           => k_unknown   += 1,
+                }
+                continue;
+            }
         };
         if let Some(a) = q.after  { if parsed <  a { out_of_range_n += 1; continue; } }
         if let Some(b) = q.before { if parsed >= b { out_of_range_n += 1; continue; } }
@@ -3930,7 +3955,12 @@ async fn exdates_preview_stats(
         "out_of_range_count": out_of_range_n,
     });
     if include_non_utc && !only_utc {
-        payload["non_utc_count"] = serde_json::json!(non_utc_n);
+        payload["non_utc_count"]   = serde_json::json!(non_utc_n);
+        payload["non_utc_by_kind"] = serde_json::json!({
+            "tzid":      k_tzid,
+            "date_only": k_date_only,
+            "unknown":   k_unknown,
+        });
     }
     Ok(Json(payload))
 }
