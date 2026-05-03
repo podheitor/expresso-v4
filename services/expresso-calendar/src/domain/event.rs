@@ -451,6 +451,52 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `location` em todos os eventos cujo `dtstart` ∈ `[from, to)`
+    /// no `calendar_id` (single-tenant). Retorna a contagem de linhas
+    /// afetadas. Eventos sem `dtstart` ficam de fora (mesmo critério do
+    /// `delete_range` #457 / `move_range` #546 / `set_status_range` #547 /
+    /// `clear_rrule_range` #548 / `set_summary_range` #549). Single UPDATE
+    /// muda só a coluna `location`. Diferente do `set_summary_range` #549,
+    /// `location` é `Option<&str>` — `None` ⇒ `SET location = NULL` (clear
+    /// semantics), `Some(s)` ⇒ `SET location = $3`. Decisão de política:
+    /// DDL `location` é nullable (RFC 5545 §3.8.1.7 LOCATION é opcional em
+    /// VEVENT), portanto empty/whitespace via API é tratado como "clear"
+    /// (handler converte `?location=` ou whitespace-only pra `None`) em
+    /// vez de rejeitar com 400 como #549 fez pro summary. Mesmo trade-off
+    /// dos #547/#548/#549: `ical_raw` NÃO é re-parseado, então a coluna
+    /// `location` (autoritativa pra GET estruturado da API) fica fresh, mas
+    /// o `LOCATION:` dentro do `ical_raw` permanece STALE até próximo
+    /// PUT/UPDATE. `etag`/`sequence`/`updated_at` PRESERVADOS pelo mesmo
+    /// motivo do #546/#547/#548/#549. Sprint #550.
+    pub async fn set_location_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        location: Option<&str>,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET location = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(location)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

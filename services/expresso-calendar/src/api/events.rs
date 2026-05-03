@@ -116,6 +116,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_summary),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-location",
+            patch(events_by_range_set_location),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1030,6 +1034,65 @@ async fn events_by_range_set_summary(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "summary":     q.summary,
+        "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetLocationQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    location: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-location?after=&before=&location=
+/// — bulk-set do campo `location` em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #550, quinta mutação
+/// da família `events-by-range/*` depois de bulk-move #546, set-status
+/// #547, clear-rrule #548 e set-summary #549). Diferente do #549 que
+/// rejeitou empty/whitespace summary com 400, aqui empty/whitespace OU
+/// `?location` ausente é tratado como CLEAR (NULL na coluna) — RFC 5545
+/// §3.8.1.7 LOCATION é opcional em VEVENT e DDL `location` é nullable,
+/// portanto "sem local" é estado semanticamente válido (vs summary que
+/// é hint visual primário e empty é provavelmente bug de UI). Política
+/// fundida em vez de flag `?clear=true` separada porque a única semantics
+/// adicional necessária é "limpar", coberta naturalmente pelo valor
+/// vazio. Strings não-vazias preservadas como-é (sem trim destrutivo,
+/// paralelo do #549). Limite de tamanho NÃO imposto (DDL TEXT sem CHECK,
+/// consistência com `update`). Mesmo trade-off do #547/#548/#549: coluna
+/// `location` fresh, `LOCATION:` no `ical_raw` stale até próximo PUT.
+/// Single calendar (1 `assert_can_write`). `after >= before` → 400.
+/// Retorna `{calendar_id, location, updated}` com `location: Option<String>`
+/// (null no JSON quando clear) — count INCLUI eventos que já tinham o
+/// mesmo location (paralelo do #547/#548/#549).
+async fn events_by_range_set_location(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetLocationQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let location: Option<&str> = q.location
+        .as_deref()
+        .filter(|s| !s.trim().is_empty());
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_location_range(ctx.tenant_id, cal_id, location, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "location":    location,
         "updated":     updated,
     })))
 }
