@@ -360,6 +360,43 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `class` (RFC 5545 §3.8.1.3) em todos os eventos cujo
+    /// `dtstart` ∈ `[from, to)` no `calendar_id`. Sprint #555: paralelo
+    /// direto do `set_status_range` #547 mas na coluna `class` adicionada
+    /// na migração `20260805000000_calendar_event_class.sql` com CHECK
+    /// enum `(PUBLIC, PRIVATE, CONFIDENTIAL)`. Mesmo trade-off do #547:
+    /// `ical_raw` NÃO é re-parseado — coluna `class` fica autoritativa,
+    /// `CLASS:` dentro do raw fica STALE até próximo PUT. `etag`/
+    /// `sequence`/`updated_at` preservados.
+    pub async fn set_class_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        class: &str,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET class = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(class)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// Bulk-clear `rrule` (set NULL) em todos os eventos cujo `dtstart` ∈
     /// `[from, to)` no `calendar_id` (single-tenant). Retorna a contagem de
     /// linhas afetadas (incluindo eventos que já tinham `rrule = NULL` por

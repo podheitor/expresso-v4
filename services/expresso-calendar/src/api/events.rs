@@ -136,6 +136,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_text_fields),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-class",
+            patch(events_by_range_set_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1433,6 +1437,61 @@ async fn events_by_range_set_text_fields(
         "fields_set":      fields_set,
         "fields_cleared":  fields_cleared,
         "updated":         updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetClassQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    class:  String,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-class?after=&before=&class=
+/// — bulk-set do campo `class` (RFC 5545 §3.8.1.3) em todos os eventos cujo
+/// `dtstart` ∈ `[after, before)` (sprint #555, paralelo direto do #547
+/// set-status mas em coluna nova `class` adicionada na migração
+/// 20260805000000_calendar_event_class.sql). Aceita os 3 valores canônicos:
+/// `PUBLIC`, `PRIVATE`, `CONFIDENTIAL` — qualquer outro → 400 com lista
+/// enumerada. Mesmo trade-off documentado em `set_class_range`: `ical_raw`
+/// NÃO é re-parseado, então a coluna `class` (autoritativa pra GET
+/// estruturado) fica fresh, mas o `CLASS:` dentro do `ical_raw` (visto via
+/// export ICS / download VCAL) fica STALE até próximo PUT do cliente —
+/// mesma divergência cross-channel já documentada nos 7 set-* anteriores
+/// (#547/#549/#550/#551/#552/#553/#554). Single calendar → 1 `assert_can_write`.
+/// `after >= before` → 400. Retorna `{calendar_id, class, updated}`.
+async fn events_by_range_set_class(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetClassQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    match q.class.as_str() {
+        "PUBLIC" | "PRIVATE" | "CONFIDENTIAL" => {}
+        _ => {
+            return Err(CalendarError::BadRequest(
+                "class must be one of PUBLIC, PRIVATE, CONFIDENTIAL".into(),
+            ));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_class_range(ctx.tenant_id, cal_id, &q.class, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "class":       q.class,
+        "updated":     updated,
     })))
 }
 
