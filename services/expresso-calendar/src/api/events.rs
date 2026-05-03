@@ -2033,6 +2033,20 @@ struct OverridesStatsQuery {
     after:  Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
     before: Option<OffsetDateTime>,
+    /// `?has_summary=&has_dtstart=&has_dtend=` (sprint #521, composição de
+    /// #518 + #519) restringe o agregado por presença qualitativa em AND
+    /// — true exige campo presente, false exige ausência. Cada flag opcional
+    /// independente; aplicados após o range filter do #520, preservando
+    /// composição. Útil pra agregar "qual a distribuição entre overrides
+    /// que SÓ renomeiam título" (`has_summary=true&has_dtstart=false&
+    /// has_dtend=false`) — `total`/`by_field`/`by_category` agregam só
+    /// sobre o subset, mantendo invariants. Sem nenhum dos 3 ≡ shape #520.
+    #[serde(default)]
+    has_summary: Option<bool>,
+    #[serde(default)]
+    has_dtstart: Option<bool>,
+    #[serde(default)]
+    has_dtend:   Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
@@ -2061,6 +2075,17 @@ struct OverridesStatsQuery {
 /// `by_category` agregam só sobre os filtrados (invariants preservadas:
 /// `present + absent = total` por campo, soma das 8 categorias = total).
 /// 400 se `after >= before`.
+///
+/// `?has_summary=&has_dtstart=&has_dtend=` (sprint #521, composição de
+/// #518 + #519) restringe o agregado por presença qualitativa em AND —
+/// reusa o filtro qualitativo do #518 logo APÓS o range retain do #520
+/// (sequencial, não inline). Cada flag opcional independente; combinados
+/// segmentam categorias semânticas. Útil pra agregar dentro de um subset
+/// qualitativo (ex: "entre os que SÓ renomeiam, quantos por janela
+/// temporal" via composição com `?after=&before=`). `description`/
+/// `location` ficam de fora (mesma assimetria #518: só existem em
+/// `?detail=full`). Invariants preservadas pós-filtro qualitativo igual
+/// ao range. Sem nenhum dos 3 ≡ shape #520.
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2088,6 +2113,15 @@ async fn overrides_stats(
             };
             if let Some(a) = q.after  { if parsed <  a { return false; } }
             if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
+    if q.has_summary.is_some() || q.has_dtstart.is_some() || q.has_dtend.is_some() {
+        items.retain(|item| {
+            let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
+            if let Some(want) = q.has_summary { if present("summary") != want { return false; } }
+            if let Some(want) = q.has_dtstart { if present("dtstart") != want { return false; } }
+            if let Some(want) = q.has_dtend   { if present("dtend")   != want { return false; } }
             true
         });
     }
