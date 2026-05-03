@@ -144,6 +144,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_transparency),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/cleanup-orphans",
+            patch(events_by_range_cleanup_orphans),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -6061,6 +6065,160 @@ fn patch_recurrence_id_override_block(
         for line in &buf { out.push_str(line); }
     }
     out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeCleanupOrphansQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    dry: Option<bool>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/cleanup-orphans?after=&before=&dry=
+/// Remove EXDATEs e RECURRENCE-ID overrides órfãos de eventos recorrentes cujo
+/// `dtstart` ∈ `[after, before)` (sprint #560). Após um `set-rrule` (#553) em
+/// massa, EXDATEs e overrides que apontavam pra ocorrências que não existem mais
+/// na nova RRULE ficam dormentes no `ical_raw` — nunca são expandidos nem
+/// exibidos, mas infla o raw e pode confundir clientes CalDAV. Este endpoint
+/// detecta e remove esses dangling anchors.
+///
+/// Lógica por evento:
+/// 1. Se evento não tem RRULE → pula (sem recorrência = não há órfãos).
+/// 2. Expande a RRULE atual numa janela de 2 anos a partir do `dtstart` do
+///    master (cap 1000 ocorrências via `Rrule::expand`).
+/// 3. Coleta EXDATEs via `parse_exdates` (UTC-only — formato MVP).
+/// 4. Coleta RECURRENCE-IDs via `list_recurrence_id_overrides`.
+/// 5. EXDATE é órfão se não coincide com nenhuma ocorrência expandida
+///    (timestamp equality com tolerância zero — mesma semântica do expander).
+/// 6. Override é órfão se RECURRENCE-ID não coincide com nenhuma ocorrência.
+/// 7. Se `?dry=true` (default false): contabiliza sem persistir — útil pra
+///    UI mostrar preview antes do commit.
+/// 8. Se `?dry=false`: salva raw limpo via `EventRepo::update` por evento
+///    afetado (cada update incrementa SEQUENCE e regenera ETag).
+///
+/// Retorna `{calendar_id, dry, events_scanned, events_cleaned,
+/// orphan_exdates_removed, orphan_overrides_removed}`.
+/// WRITE+ via `assert_can_write`. `after >= before` → 400. Eventos sem
+/// `dtstart` ou sem RRULE parseável são contados em `events_scanned` mas
+/// não em `events_cleaned`.
+async fn events_by_range_cleanup_orphans(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeCleanupOrphansQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let dry = q.dry.unwrap_or(false);
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let events = EventRepo::new(pool)
+        .list(
+            ctx.tenant_id,
+            cal_id,
+            &EventQuery { from: q.after, to: q.before, limit: None },
+        )
+        .await?;
+
+    // Window for RRULE expansion: 2 years from now, capped by Rrule::expand's 1000-iter guard.
+    let win_from = time::OffsetDateTime::UNIX_EPOCH;
+    let win_to   = time::OffsetDateTime::now_utc() + time::Duration::days(365 * 2);
+
+    let mut events_scanned:          u64 = 0;
+    let mut events_cleaned:          u64 = 0;
+    let mut orphan_exdates_removed:  u64 = 0;
+    let mut orphan_overrides_removed: u64 = 0;
+
+    for ev in events {
+        // Only master events with dtstart in the requested range.
+        let dtstart = match ev.dtstart {
+            Some(ds) => ds,
+            None     => continue,
+        };
+        if let Some(a) = q.after  { if dtstart <  a { continue; } }
+        if let Some(b) = q.before { if dtstart >= b { continue; } }
+
+        events_scanned += 1;
+
+        let rrule_str = match ev.rrule.as_deref().filter(|s| !s.trim().is_empty()) {
+            Some(s) => s,
+            None    => continue, // no recurrence → no orphans possible
+        };
+        let rrule = match crate::domain::rrule::Rrule::parse(rrule_str) {
+            Some(r) => r,
+            None    => continue, // unsupported FREQ — can't expand; skip safely
+        };
+
+        let duration = ev.dtend
+            .map(|e| e - dtstart)
+            .unwrap_or(time::Duration::ZERO);
+        let occurrences = rrule.expand(dtstart, duration, win_from, win_to);
+
+        // Set of occurrence starts for O(1) lookup.
+        let occ_set: std::collections::HashSet<i128> = occurrences
+            .iter()
+            .map(|(s, _)| s.unix_timestamp_nanos())
+            .collect();
+
+        // ── EXDATE orphans ─────────────────────────────────────────────────
+        let exdates = parse_exdates(&ev.ical_raw);
+        let orphan_exdates: Vec<OffsetDateTime> = exdates
+            .into_iter()
+            .filter(|t| !occ_set.contains(&t.unix_timestamp_nanos()))
+            .collect();
+
+        // ── Override orphans ───────────────────────────────────────────────
+        let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
+        let overrides = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+        let orphan_overrides: Vec<String> = overrides
+            .iter()
+            .filter_map(|item| item.get("compact").and_then(|v| v.as_str()).map(|s| s.to_owned()))
+            .filter(|compact| {
+                match parse_one_exdate(compact) {
+                    Some(t) => !occ_set.contains(&t.unix_timestamp_nanos()),
+                    None    => false, // non-UTC recurrence-id: can't compare → keep
+                }
+            })
+            .collect();
+
+        if orphan_exdates.is_empty() && orphan_overrides.is_empty() {
+            continue;
+        }
+
+        orphan_exdates_removed  += orphan_exdates.len() as u64;
+        orphan_overrides_removed += orphan_overrides.len() as u64;
+        events_cleaned           += 1;
+
+        if !dry {
+            // Apply removals in-memory then persist once per event.
+            let mut new_raw = ev.ical_raw.clone();
+            for t in &orphan_exdates {
+                new_raw = remove_exdate_value(&new_raw, *t);
+            }
+            for compact in &orphan_overrides {
+                new_raw = remove_recurrence_id_override_block(&new_raw, &uid, compact);
+            }
+            EventRepo::new(pool)
+                .update(ctx.tenant_id, ev.id, &new_raw)
+                .await?;
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":             cal_id,
+        "dry":                     dry,
+        "events_scanned":          events_scanned,
+        "events_cleaned":          events_cleaned,
+        "orphan_exdates_removed":  orphan_exdates_removed,
+        "orphan_overrides_removed": orphan_overrides_removed,
+    })))
 }
 
 #[cfg(test)]
