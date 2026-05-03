@@ -92,6 +92,10 @@ pub fn routes() -> Router<AppState> {
             get(events_instances_bulk),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range",
+            get(events_by_range_preview),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -567,6 +571,81 @@ async fn events_bulk_delete(
         .await?;
 
     Ok(Json(serde_json::json!({ "deleted": deleted })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangePreviewQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    limit:  Option<i64>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range?after=&before=&limit= —
+/// read-only listagem dos eventos cujo `dtstart` ∈ `[after, before)` no
+/// calendário (sprint #544, foundation pra futuros bulk-update / bulk-set-rrule
+/// / bulk-move-calendar e paralelo direto do `events-bulk-delete` #457 mas em
+/// modo discovery sem side effect). Mesmo critério temporal half-open do #457
+/// (eventos sem `dtstart` são EXCLUÍDOS — não há critério pra incluí-los).
+/// Útil pra UI fazer "discovery" antes de qualquer bulk mutation: "quais
+/// eventos seriam afetados se eu rodar bulk-update nesta janela?". Dual
+/// filosófico do `overrides-by-range/preview` #543 mas a nível de master events
+/// em vez de RECURRENCE-ID overrides; pattern "preview-first, mutate-after"
+/// consolidado em #543 agora aplicado proativamente ANTES do PATCH em massa
+/// existir — abre caminho pro bulk-update (mover/mudar calendar/set RRULE) num
+/// sprint posterior, mantendo cadência narrow. Sem WRITE+ (read-only). Retorna
+/// `{calendar_id, count, events: [{id, uid, summary, dtstart, dtend, rrule}]}`
+/// — projeção mínima identificadora (sem ical_raw nem description; UI faz
+/// follow-up GET /:id pra detalhe completo). `count` reflete o tamanho do
+/// vetor retornado (após `limit` clamp), NÃO o total não-paginado — UI percebe
+/// truncamento se `count == limit`. `limit` opcional default 1000, clamp
+/// 1..=10_000 (mesmo contrato do `EventRepo::list` #133 reusado direto).
+async fn events_by_range_preview(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangePreviewQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+
+    let listed = EventRepo::new(pool)
+        .list(
+            ctx.tenant_id,
+            cal_id,
+            &EventQuery { from: q.after, to: q.before, limit: q.limit },
+        )
+        .await?;
+
+    let mut events: Vec<serde_json::Value> = Vec::with_capacity(listed.len());
+    for ev in &listed {
+        if let Some(ds) = ev.dtstart {
+            if let Some(a) = q.after  { if ds <  a { continue; } }
+            if let Some(b) = q.before { if ds >= b { continue; } }
+        } else {
+            continue;
+        }
+        events.push(serde_json::json!({
+            "id":      ev.id,
+            "uid":     ev.uid,
+            "summary": ev.summary,
+            "dtstart": ev.dtstart,
+            "dtend":   ev.dtend,
+            "rrule":   ev.rrule,
+        }));
+    }
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "count":       events.len(),
+        "events":      events,
+    })))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-recurrence-stats — particiona eventos
