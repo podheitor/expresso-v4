@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete as delete_route, get, post},
+    routing::{delete as delete_route, get, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -178,6 +178,10 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events/:id/touch-overrides-by-range",
             post(touch_overrides_by_range),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/overrides-by-range",
+            patch(patch_overrides_by_range),
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/touch-preview",
@@ -3746,6 +3750,159 @@ async fn touch_overrides_by_range(
         raw = patch_recurrence_id_override_block(
             &raw, &uid, &compact,
             None, None, None, None, None,
+            &dtstamp_now,
+        );
+        touched.push(compact);
+    }
+
+    if touched.is_empty() {
+        return Err(CalendarError::EventNotFound(id));
+    }
+
+    let updated = EventRepo::new(pool).update(ctx.tenant_id, id, &raw).await?;
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: updated.id,
+        summary: updated.summary.clone(), sequence: updated.sequence,
+    });
+
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "touched":  touched,
+        "skipped":  skipped,
+        "dtstamp":  dtstamp_now,
+        "etag":     updated.etag,
+        "sequence": updated.sequence,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PatchOverridesByRangeQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    dry:    Option<bool>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events/:id/overrides-by-range
+/// ?after=&before=&dry= — bulk-patch range-filtered (sprint #537,
+/// paralelo do touch-by-range #509 mas com payload de mutação real
+/// em vez de só DTSTAMP). Body é `PatchOverrideBody` reusado do #498
+/// (summary/description/location/dtstart/dtend; pelo menos 1
+/// obrigatório). Aplica `patch_recurrence_id_override_block(raw, uid,
+/// compact, Some(...), &dtstamp_now)` com os mesmos campos pra TODOS
+/// os overrides cujo RECURRENCE-ID cai em `[after, before)`. Use case:
+/// "todos os overrides futuros precisam de novo título" / "set location
+/// pra todos os overrides desta janela de migração". Mesmo half-open
+/// range do #509/#517/#520; `after >= before` → 400. Sem `after`/sem
+/// `before` = sem bound (≡ patch em massa de TODOS overrides), mas
+/// payload obrigatório (sem campos = 400, mesma validação do #498
+/// single-patch). 1 único `EventRepo::update` no fim — ETag/`updated_at`
+/// refrescam, `sequence` bumpa SE algum campo do master comparado mudou
+/// (mas patches só mexem em overrides, então sequence não bumpa —
+/// mesma semantics do touch-by-range #509). Requer WRITE+. 404 se
+/// `touched` vazio (nenhum override match'a o range).
+///
+/// `?dry=true` (paralelo do #512): só retorna `{dry:true, event_id,
+/// touched, skipped}` sem `EventRepo::update`, sem alterar
+/// ETag/`updated_at`/DTSTAMP, sem publicar `EventUpdated`. Mesmas
+/// validações 400 (`after >= before`, body vazio, master sem UID) e
+/// 404 (touched vazio) que path real — UI pode confirmar "patch vai
+/// afetar N overrides em [after,before), N' fora, ok?" antes de rodar.
+async fn patch_overrides_by_range(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<PatchOverridesByRangeQuery>,
+    Json(body):   Json<PatchOverrideBody>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    if body.summary.is_none() && body.description.is_none()
+        && body.location.is_none() && body.dtstart.is_none() && body.dtend.is_none()
+    {
+        return Err(CalendarError::BadRequest(
+            "at least one of summary/description/location/dtstart/dtend required".into()
+        ));
+    }
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let uid = extract_uid(&ev.ical_raw).ok_or_else(|| CalendarError::BadRequest(
+        "master event has no UID — cannot locate overrides".into()
+    ))?;
+
+    let dtstart_str = body.dtstart.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dtend_str   = body.dtend.map(|d| format_compact_utc(d.to_offset(time::UtcOffset::UTC)));
+    let dry = q.dry.unwrap_or(false);
+
+    if dry {
+        let mut touched: Vec<String> = Vec::new();
+        let mut skipped: Vec<String> = Vec::new();
+        let listed = list_recurrence_id_overrides(&ev.ical_raw, &uid, false);
+        for item in &listed {
+            let compact = match item.get("compact").and_then(|v| v.as_str()) {
+                Some(s) => s.to_string(),
+                None    => continue,
+            };
+            if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
+                continue;
+            }
+            let parsed = match parse_one_exdate(&compact) {
+                Some(t) => t,
+                None    => { skipped.push(compact); continue; }
+            };
+            if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
+            if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+            touched.push(compact);
+        }
+        if touched.is_empty() {
+            return Err(CalendarError::EventNotFound(id));
+        }
+        return Ok(Json(serde_json::json!({
+            "dry":      true,
+            "event_id": ev.id,
+            "touched":  touched,
+            "skipped":  skipped,
+        })));
+    }
+
+    let dtstamp_now = format_compact_utc(OffsetDateTime::now_utc());
+    let mut raw = ev.ical_raw.clone();
+    let mut touched: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    let listed = list_recurrence_id_overrides(&raw, &uid, false);
+    for item in &listed {
+        let compact = match item.get("compact").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None    => continue,
+        };
+        if touched.iter().any(|c| c == &compact) || skipped.iter().any(|c| c == &compact) {
+            continue;
+        }
+        let parsed = match parse_one_exdate(&compact) {
+            Some(t) => t,
+            None    => { skipped.push(compact); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { skipped.push(compact); continue; } }
+        if let Some(b) = q.before { if parsed >= b { skipped.push(compact); continue; } }
+
+        raw = patch_recurrence_id_override_block(
+            &raw, &uid, &compact,
+            body.summary.as_deref(),
+            body.description.as_deref(),
+            body.location.as_deref(),
+            dtstart_str.as_deref(),
+            dtend_str.as_deref(),
             &dtstamp_now,
         );
         touched.push(compact);
