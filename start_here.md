@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint commitado:** #521 (2026-05-03)
+**Último sprint commitado:** #522 (2026-05-03)
 
 ```
 git log --oneline | head -15
@@ -119,6 +119,7 @@ git log --oneline | head -15
 | #519 | calendar | Overrides count-by-detail stats — `GET /api/v1/calendars/:cal_id/events/:id/overrides/stats` agrega counts de presença dos campos `summary`/`dtstart`/`dtend` em todos os overrides do evento (agregado do filter qualitativo do #518); retorna `{event_id, total, by_field:{summary:{present,absent}, dtstart:{...}, dtend:{...}}, by_category:{none, only_summary, only_dtstart, only_dtend, summary_dtstart, summary_dtend, dtstart_dtend, all_three}}`; `by_field` é cardinality marginal (`present + absent = total` por campo, somas independentes), `by_category` particiona em 8 buckets disjuntos por combinação de presença (soma das 8 categorias = total); útil pra dashboards exibirem distribuição "só rename" vs "só reschedule" vs "rename + reschedule" sem puxar lista inteira do #518 e contar client-side; rota literal `/overrides/stats` precede `/overrides/:recurrence_id` (axum matcha literal antes de param wildcard); description/location ficam de fora pela mesma assimetria do #518 (só existem em `?detail=full`); reusa `list_recurrence_id_overrides(raw, uid, false)` do #503/#517/#518; read-only, não requer WRITE; 404 se evento não existe; complementa o filter do #518 (sample) com agregado completo (population) — sprint #519 |
 | #520 | calendar | Overrides stats com filtros range — `?after=&before=` em `GET /api/v1/calendars/:cal_id/events/:id/overrides/stats` (composição de #517 + #519) restringe o agregado a janela temporal half-open `[after, before)`; nova `OverridesStatsQuery { after, before }` com `time::serde::rfc3339::option`, `Query<OverridesStatsQuery>` extractor adicionado ao handler; reusa o `Vec::retain` do #517 (parse `compact` via `parse_one_exdate`, filtros de bounds opcionais, RECURRENCE-IDs não-parseáveis pulados silenciosamente quando algum bound é dado) aplicado ANTES do loop de contagem; `total`/`by_field`/`by_category` agregam só sobre items pós-filtro — invariants preservadas (`present + absent = total` por campo, soma das 8 categorias = total); ambos opcionais — ausência total preserva 100% shape do #519; 400 se `after >= before`; útil pra dashboards "distribuição de overrides nesta semana" sem listar tudo (#518 + range) e agregar client-side — variant range-aware do #519, complementa o trio overrides {list filtered #517+#518, agg #519, agg filtered #520} — sprint #520 |
 | #521 | calendar | Overrides stats com filtros presença — `?has_summary=&has_dtstart=&has_dtend=` em `GET /api/v1/calendars/:cal_id/events/:id/overrides/stats` (composição de #518 + #519, paralelo qualitativo do #520); 3 novos campos `has_summary/has_dtstart/has_dtend: Option<bool>` em `OverridesStatsQuery` com `#[serde(default)]` (Option<bool> tem Deserialize natural, sem `with`); novo `Vec::retain` qualitativo aplicado APÓS o range retain do #520 (sequencial — `Vec::retain` chains ortogonais), só roda se pelo menos um dos 3 flags é `Some`; helper local `present = |key| item.get(key).map(|v| !v.is_null()).unwrap_or(false)` compartilhado entre os 3 checks; combinado com `?after=&before=` do #520 permite agregar "entre os que SÓ renomeiam, quantos por janela temporal" (interseção range + presença); `total`/`by_field`/`by_category` agregam só sobre items pós-filtro qualitativo — invariants preservadas igual ao #520; description/location ficam de fora (mesma assimetria #518: só existem em `?detail=full`); ausência total dos 3 flags ≡ shape #520; read-only, NÃO requer WRITE+; padrão consolidado: stats endpoints replicam TODOS os filtros disponíveis no list endpoint correspondente — `?after/before/has_*` do #517+#518 agora todos disponíveis em `/stats`, mantendo `(filter, agg)` como par dual completo — sprint #521 |
+| #522 | calendar | EXDATE count-by-kind stats — `GET /api/v1/calendars/:cal_id/events/:id/exdates/stats` agrega counts de EXDATEs por classificação de formato (paralelo simétrico do #519/#520/#521 mas pra EXDATE list com count-by-kind ao invés de count-by-presence); retorna `{event_id, total, by_kind:{utc, tzid, date_only, unknown}}` onde os 4 buckets são DISJUNTOS — soma das 4 = total (invariant testável); reusa `parse_exdates_rich` do #511/#516 sem extensão (mesma fonte de classificação) iterando uma vez com `match info.kind.as_str()` 4-arm exaustivo; rota literal `/exdates/stats` precede `/exdates/:instance` no router (axum matcha literal antes de wildcard); útil pra dashboards "distribuição de formatos de EXDATE" + audit "quantos estão em formato não-MVP" via `by_kind.unknown + by_kind.tzid + by_kind.date_only` sem puxar lista inteira do #511 e classificar client-side; `?after=&before=` (paralelo simétrico do #520) restringe janela temporal half-open `[after, before)` aplicada APÓS o kind retain — só EXDATEs com `parsed_utc=Some` sobrevivem; TZID/date-only/unknown silenciosamente excluídos quando algum bound é dado (consistente com #517/#520); `?kind=utc|tzid|date-only|unknown` (paralelo simétrico do #516 mas em stats) restringe a UM kind via primeiro `Vec::retain`; combinação `kind=tzid|date-only|unknown` + range = sempre `total=0` por design (sem `parsed_utc`); 400 em kind inválido ou `after >= before`; sem nenhum dos 3 flags ≡ shape baseline (todos EXDATEs entram no agregado); read-only, NÃO requer WRITE+; padrão `(filter, agg)` dual completo agora replicado também no EXDATE — kind+range filters do #516+#517 todos disponíveis em `/exdates/stats` — sprint #522 |
 
 ---
 
@@ -132,20 +133,19 @@ git log --oneline | head -15
 
 ---
 
-## Próximos candidatos (#522-#530)
+## Próximos candidatos (#523-#530)
 
-1. **calendar:** EXDATE stats `/exdates/stats` — paralelo simétrico do #519/#520/#521 mas no EXDATE (count-by-kind: utc/tzid/date-only/unknown — agregado do filter #516)
-2. **calendar:** EXDATE list filter por presença — paralelo simétrico do #518 mas no EXDATE list, ex: `?with_tzid=true|false` (em vez de `kind=tzid` exclusivo do #516, permite filtro qualitativo "tem TZID ou não")
-3. **calendar:** EXDATE preview combo — `GET /:id/exdates-preview?after=&before=` aplicando mesmo padrão de #514/#515 mas pra EXDATE (paralelo simétrico ao preview de overrides)
-4. **calendar:** touch-preview com summaries — extensão do #514/#515 com `?detail=full` pra trazer SUMMARY/DTSTART/DTEND de cada in_range item (preview rico pra UI confirmar visualmente quem vai ser afetado)
-5. **calendar:** overrides patch by-range — `PATCH /:id/overrides-by-range?after=&before=` (paralelo do touch-by-range #509 mas com payload de mutação real, não só DTSTAMP)
-6. **calendar:** events bulk-update por range — PATCH em massa (mover, mudar calendar, set RRULE)
-7. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
-8. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
-9. **mail:** sieve filter test endpoint — `POST /api/v1/mail/sieve/test`
-10. **drive:** trash auto-purge schedule — config tenant pra auto-rodar #453 periodicamente
-11. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
-12. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
+1. **calendar:** EXDATE list filter por presença — paralelo simétrico do #518 mas no EXDATE list, ex: `?with_tzid=true|false` (em vez de `kind=tzid` exclusivo do #516, permite filtro qualitativo "tem TZID ou não")
+2. **calendar:** EXDATE preview combo — `GET /:id/exdates-preview?after=&before=` aplicando mesmo padrão de #514/#515 mas pra EXDATE (paralelo simétrico ao preview de overrides)
+3. **calendar:** touch-preview com summaries — extensão do #514/#515 com `?detail=full` pra trazer SUMMARY/DTSTART/DTEND de cada in_range item (preview rico pra UI confirmar visualmente quem vai ser afetado)
+4. **calendar:** overrides patch by-range — `PATCH /:id/overrides-by-range?after=&before=` (paralelo do touch-by-range #509 mas com payload de mutação real, não só DTSTAMP)
+5. **calendar:** events bulk-update por range — PATCH em massa (mover, mudar calendar, set RRULE)
+6. **search:** adicionar `received_at` ao tantivy schema + facet temporal (sprint maior, requer reindex)
+7. **meet:** participant invite via mail real — chamada cross-service usando `reqwest`
+8. **mail:** sieve filter test endpoint — `POST /api/v1/mail/sieve/test`
+9. **drive:** trash auto-purge schedule — config tenant pra auto-rodar #453 periodicamente
+10. **mail:** folder rename revert-by-mailbox — `POST /folders/rename-history/by-mailbox/:mailbox_id/undo` (granular variant de #490)
+11. **drive:** tag intersect-exclude por user — variant user-scoped de #489 com filtro `created_by`
 
 ---
 

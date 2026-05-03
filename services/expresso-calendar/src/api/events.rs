@@ -128,6 +128,10 @@ pub fn routes() -> Router<AppState> {
             get(list_exdates).delete(clear_exdates),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates/stats",
+            get(exdates_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/exdates/:instance",
             delete_route(delete_exdate),
         )
@@ -1436,6 +1440,112 @@ async fn list_exdates(
         "event_id": ev.id,
         "count":    items.len(),
         "exdates":  items,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ExdatesStatsQuery {
+    /// `?after=&before=` (sprint #522, paralelo simétrico do #520) restringe
+    /// o agregado a uma janela temporal half-open `[after, before)` aplicada
+    /// só sobre EXDATEs UTC parseáveis (`kind=utc` com `parsed_utc=Some`).
+    /// EXDATEs não-parseáveis (TZID-based, date-only, unknown) são pulados
+    /// silenciosamente do agregado quando algum bound é dado — sem range,
+    /// todos entram (shape original preservado). 400 se `after >= before`.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    /// `?kind=utc|tzid|date-only|unknown` (sprint #522, paralelo simétrico
+    /// do #516 mas em stats) restringe o agregado a um único kind. Composto
+    /// com `?after=&before=`: range é aplicado APÓS kind retain, mas só
+    /// EXDATEs UTC parseáveis sobreviverem ao range filter (consistente com
+    /// #517/#520) — `kind=tzid|date-only|unknown` + range = sempre 0.
+    #[serde(default)]
+    kind: Option<String>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/exdates/stats — agrega counts
+/// de EXDATEs por classificação de formato (sprint #522, paralelo simétrico
+/// do #519 mas pra EXDATE list com count-by-kind ao invés de count-by-
+/// presence-of-fields). Retorna `{event_id, total, by_kind:{utc, tzid,
+/// date_only, unknown}}` onde os 4 buckets são DISJUNTOS — soma das 4 =
+/// total (invariant testável). Útil pra dashboards "qual a distribuição
+/// de formatos de EXDATE no evento" (audit "quantos estão em formato
+/// não-MVP" via `by_kind.unknown + by_kind.tzid + by_kind.date_only`)
+/// sem puxar lista inteira do #511 e classificar client-side. Reusa
+/// `parse_exdates_rich` (mesma fonte do #511/#516) sem nenhuma extensão
+/// — só itera e tally. Read-only, não exige WRITE+. 404 se evento não
+/// existe.
+///
+/// `?after=&before=` (paralelo simétrico do #520) restringe a janela
+/// temporal half-open `[after, before)`. Aplicado APÓS kind retain — só
+/// EXDATEs UTC parseáveis (`parsed_utc=Some`) sobrevivem; TZID-based,
+/// date-only e unknown são silenciosamente excluídos quando algum bound
+/// é dado (consistente com #517/#520). `total`/`by_kind` agregam só
+/// sobre o subset, mantendo invariants. 400 se `after >= before`.
+///
+/// `?kind=utc|tzid|date-only|unknown` (paralelo simétrico do #516 mas
+/// em stats) restringe a UM único kind. Composto com range: combinação
+/// `kind=tzid|date-only|unknown` + range sempre retorna `total=0` por
+/// design (TZID/date-only/unknown não têm `parsed_utc` pra comparar
+/// com bounds).
+async fn exdates_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((_cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<ExdatesStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let kind_filter: Option<&str> = match q.kind.as_deref() {
+        None | Some("") => None,
+        Some(k @ ("utc" | "tzid" | "date-only" | "unknown")) => Some(k),
+        Some(other) => return Err(CalendarError::BadRequest(
+            format!("kind must be 'utc', 'tzid', 'date-only' or 'unknown', got '{other}'")
+        )),
+    };
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let mut items = parse_exdates_rich(&ev.ical_raw);
+    if let Some(k) = kind_filter {
+        items.retain(|info| info.kind == k);
+    }
+    if q.after.is_some() || q.before.is_some() {
+        items.retain(|info| {
+            let parsed = match info.parsed_utc {
+                Some(t) => t,
+                None    => return false,
+            };
+            if let Some(a) = q.after  { if parsed <  a { return false; } }
+            if let Some(b) = q.before { if parsed >= b { return false; } }
+            true
+        });
+    }
+    let total = items.len();
+    let mut k_utc       = 0usize;
+    let mut k_tzid      = 0usize;
+    let mut k_date_only = 0usize;
+    let mut k_unknown   = 0usize;
+    for info in &items {
+        match info.kind.as_str() {
+            "utc"       => k_utc       += 1,
+            "tzid"      => k_tzid      += 1,
+            "date-only" => k_date_only += 1,
+            _           => k_unknown   += 1,
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "event_id": ev.id,
+        "total":    total,
+        "by_kind": {
+            "utc":       k_utc,
+            "tzid":      k_tzid,
+            "date_only": k_date_only,
+            "unknown":   k_unknown,
+        },
     })))
 }
 
