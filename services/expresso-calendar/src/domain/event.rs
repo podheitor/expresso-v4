@@ -664,6 +664,72 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set multi-coluna TEXT em todos eventos cujo `dtstart` ∈ `[from, to)`
+    /// no `calendar_id` (single-tenant). Cada parâmetro é tri-state: `None`
+    /// preserva a coluna; `Some(None)` clear (NULL); `Some(Some(s))` seta. SQL
+    /// usa `CASE WHEN $flag THEN $value ELSE column END` por coluna pra suportar
+    /// os 3 estados num único UPDATE atômico — mais ergonômico pra UI "Edit all
+    /// events in date range" com form multi-field que o cliente sequencial de 4
+    /// chamadas a `set_summary_range` / `set_location_range` /
+    /// `set_description_range` / `set_organizer_email_range`. Sprint #554:
+    /// consolidação dos 4 sprints individuais (#549/#550/#551/#552) num único
+    /// endpoint que retém a flexibilidade single-field via tri-state em cada
+    /// param. Eventos sem `dtstart` ficam de fora (mesmo critério dos outros
+    /// bulk-set). Validação dos valores (não-vazia pra summary, formato
+    /// pra organizer_email se desejado) fica na camada API. Rrule INTENCIONAL-
+    /// MENTE NÃO incluído porque sua mutação tem semantics ativa de recurrence
+    /// (insight #4 do #553) e não passive-display como as 4 colunas TEXT-livre
+    /// aqui — manter set-rrule como endpoint separado preserva a separação de
+    /// classes (active-recurrence vs passive-display). Mesmo trade-off interno
+    /// do #547-#553: `ical_raw` permanece STALE até próximo PUT/UPDATE
+    /// regular — search FTS #461 fica STALE pra os summaries/descriptions/
+    /// locations atualizadas (paralelo do #549-#551). Retorna a contagem de
+    /// linhas afetadas. NO-OP semantic preservada: chamar com TODOS os 4
+    /// params None retorna 0 sem tocar DB (validado upstream — repo não checa
+    /// pra manter atomicidade do UPDATE).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_text_fields_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        summary:        Option<Option<&str>>,
+        location:       Option<Option<&str>>,
+        description:    Option<Option<&str>>,
+        organizer_email: Option<Option<&str>>,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET summary         = CASE WHEN $3  THEN $4  ELSE summary         END,
+                      location        = CASE WHEN $5  THEN $6  ELSE location        END,
+                      description     = CASE WHEN $7  THEN $8  ELSE description     END,
+                      organizer_email = CASE WHEN $9  THEN $10 ELSE organizer_email END
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($11::timestamptz IS NULL OR dtstart >= $11)
+                  AND ($12::timestamptz IS NULL OR dtstart <  $12)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(summary.is_some())
+        .bind(summary.flatten())
+        .bind(location.is_some())
+        .bind(location.flatten())
+        .bind(description.is_some())
+        .bind(description.flatten())
+        .bind(organizer_email.is_some())
+        .bind(organizer_email.flatten())
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

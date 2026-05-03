@@ -132,6 +132,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_rrule),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-text-fields",
+            patch(events_by_range_set_text_fields),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1319,6 +1323,116 @@ async fn events_by_range_set_rrule(
         "calendar_id": cal_id,
         "rrule":       rrule,
         "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetTextFieldsQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    summary:         Option<String>,
+    #[serde(default)]
+    location:        Option<String>,
+    #[serde(default)]
+    description:     Option<String>,
+    #[serde(default)]
+    organizer_email: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-text-fields
+/// Aplica em massa até 4 colunas TEXT-livre num único endpoint:
+/// `?after=&before=&summary=&location=&description=&organizer_email=`
+/// (sprint #554, consolidação dos 4 sprints individuais #549/#550/#551/#552 num
+/// único bulk multi-set). Cada campo é tri-state via convenção query-string:
+/// param ausente ⇒ preserve (None no Option<String>); param presente com valor
+/// não-vazio ⇒ set; param presente com valor vazio (`?summary=`) ⇒ clear (NULL).
+/// Detecção "presente vs ausente" feita no handler via marker — axum's
+/// `serde_qs`/`Query` não distingue por padrão "summary=" de "summary ausente"
+/// (ambos viram `Some("")` ou `None` dependendo da config), por isso aqui
+/// usamos política simplificada: `Option<String>::None` (param ausente) ⇒
+/// preserve; `Some(s)` ⇒ trim+filter, vazio ⇒ clear; não-vazio ⇒ set. Diferença
+/// do #549 que rejeitava summary-vazio com 400: aqui multi-set tem semantics
+/// distinta — se UI manda summary vazio dentro de form multi-field, intenção é
+/// clear (paralelo do #550/#551/#552). Trade-off: NÃO é possível distinguir
+/// "preserve" de "clear" via query string alone — pra "preserve summary E
+/// clear location", UI omite `summary` e envia `location=`. Validação universal
+/// `after >= before` → 400. Single calendar (1 `assert_can_write`). NO-OP
+/// detection: se TODOS os 4 params são None, retorna 0 imediatamente sem
+/// tocar DB (paralelo de "early return" do #517/#522/#537 onde range vazio
+/// short-circuita). Retorna `{calendar_id, fields_set, fields_cleared, updated}`
+/// — `fields_set` lista colunas explicitamente setadas com valor não-vazio,
+/// `fields_cleared` lista colunas explicitamente clearedas (ambas Vec<&str>);
+/// `updated` count das linhas afetadas (inclui eventos que tinham os MESMOS
+/// valores — paralelo da família). Trade-off filosófico do #547-#553:
+/// `ical_raw` permanece STALE até próximo PUT/UPDATE; search FTS #461 fica
+/// STALE pra summaries/descriptions/locations atualizadas. Rrule INTENCIONAL-
+/// MENTE NÃO incluído porque sua mutação é classe active-recurrence (#553) e
+/// não passive-display — manter `set-rrule` separado preserva separação de
+/// classes.
+async fn events_by_range_set_text_fields(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetTextFieldsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    fn split(p: Option<&str>) -> Option<Option<&str>> {
+        p.map(|s| {
+            let t = s.trim();
+            if t.is_empty() { None } else { Some(s) }
+        })
+    }
+    let summary    = split(q.summary.as_deref());
+    let location   = split(q.location.as_deref());
+    let descr      = split(q.description.as_deref());
+    let organizer  = split(q.organizer_email.as_deref());
+
+    let nothing = summary.is_none() && location.is_none()
+               && descr.is_none()   && organizer.is_none();
+
+    let mut fields_set:     Vec<&str> = Vec::new();
+    let mut fields_cleared: Vec<&str> = Vec::new();
+    for (name, p) in [
+        ("summary",         summary),
+        ("location",        location),
+        ("description",     descr),
+        ("organizer_email", organizer),
+    ] {
+        match p {
+            Some(Some(_)) => fields_set.push(name),
+            Some(None)    => fields_cleared.push(name),
+            None          => {}
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated: u64 = if nothing {
+        0
+    } else {
+        EventRepo::new(pool)
+            .set_text_fields_range(
+                ctx.tenant_id, cal_id,
+                summary, location, descr, organizer,
+                q.after, q.before,
+            )
+            .await?
+    };
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":     cal_id,
+        "fields_set":      fields_set,
+        "fields_cleared":  fields_cleared,
+        "updated":         updated,
     })))
 }
 
