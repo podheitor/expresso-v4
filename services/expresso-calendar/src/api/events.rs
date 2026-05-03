@@ -2447,6 +2447,17 @@ struct OverridesStatsQuery {
     /// completo, sem `tzid_other_count`). `top_tzid=0` → 400 ("must be >= 1").
     #[serde(default)]
     top_tzid:    Option<usize>,
+    /// `?sort_tzid=count_desc|count_asc|name_asc|name_desc` (sprint #540,
+    /// paralelo do #534 mas no overrides scope) ordena o `tzid_breakdown`
+    /// via array adjacente `tzid_breakdown_order: [tz...]`. Necessário
+    /// porque `serde_json::Map` sem feature `preserve_order` usa BTreeMap
+    /// interno e serializa Object em ordem alfabética determinística —
+    /// alterar `.insert()` order não afeta JSON. Composto com `top_tzid`:
+    /// (1) top-N selection por count desc, (2) re-ordena o set retido pelo
+    /// sort_mode escolhido. Flag ausente preserva shape #539 (sem array).
+    /// String vazia ou None skip; outros valores -> 400 listando opções.
+    #[serde(default)]
+    sort_tzid:   Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
@@ -2520,6 +2531,21 @@ struct OverridesStatsQuery {
 /// resultando em other=0 — UI sabe que flag foi aceita). Composto com
 /// filtros range/qualitativos do #520/#521 (top_tzid atua APÓS a
 /// agregação, sobre o breakdown já filtrado).
+///
+/// `?sort_tzid=count_desc|count_asc|name_asc|name_desc` (sprint #540,
+/// paralelo do #534 mas no overrides scope) emite array adjacente
+/// `tzid_breakdown_order: ["tz_a", "tz_b", ...]` indicando ordem custom
+/// pro `tzid_breakdown`. Necessário porque `serde_json::Map` sem feature
+/// `preserve_order` usa BTreeMap interno e serializa em ordem alfabética
+/// determinística — único caminho pra transmitir ordem custom em JSON
+/// Object é via array adjacente. Composto com `top_tzid` em duas fases:
+/// (1) top-N selection por count desc preserva semantics do #539; (2)
+/// re-ordena o set retido pelo sort_mode escolhido. `count_desc` →
+/// `b.1.cmp(&a.1)`, `count_asc` → `a.1.cmp(&b.1)`, `name_asc` →
+/// `a.0.cmp(&b.0)`, `name_desc` → `b.0.cmp(&a.0)`. `tzid_breakdown_order`
+/// SOMENTE quando `sort_tzid.is_some()`; ausente preserva shape #539.
+/// `top_tzid=10&sort_tzid=name_asc` = top-10 por count APRESENTADOS
+/// alfabeticamente. Valor desconhecido → 400 listando opções.
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2536,6 +2562,13 @@ async fn overrides_stats(
             "top_tzid must be >= 1 (omit flag for full breakdown)".into()
         ));
     }
+    let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
+        None | Some("") => None,
+        Some(s @ ("count_desc" | "count_asc" | "name_asc" | "name_desc")) => Some(s),
+        Some(other) => return Err(CalendarError::BadRequest(format!(
+            "sort_tzid must be one of count_desc|count_asc|name_asc|name_desc, got '{other}'"
+        ))),
+    };
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     let uid = extract_uid(&ev.ical_raw).unwrap_or_default();
@@ -2610,7 +2643,7 @@ async fn overrides_stats(
     for (_, c) in &tzid_breakdown {
         tzid_token_count += *c;
     }
-    let (kept, tzid_other_count) = if let Some(n) = q.top_tzid {
+    let (mut kept, tzid_other_count) = if let Some(n) = q.top_tzid {
         let mut sorted = tzid_breakdown.clone();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
         let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
@@ -2619,6 +2652,15 @@ async fn overrides_stats(
     } else {
         (tzid_breakdown, None)
     };
+    if let Some(mode) = sort_mode {
+        match mode {
+            "count_desc" => kept.sort_by(|a, b| b.1.cmp(&a.1)),
+            "count_asc"  => kept.sort_by(|a, b| a.1.cmp(&b.1)),
+            "name_asc"   => kept.sort_by(|a, b| a.0.cmp(&b.0)),
+            "name_desc"  => kept.sort_by(|a, b| b.0.cmp(&a.0)),
+            _ => unreachable!(),
+        }
+    }
     let mut breakdown_obj = serde_json::Map::new();
     for (tz, c) in &kept {
         breakdown_obj.insert(tz.clone(), serde_json::json!(c));
@@ -2648,6 +2690,15 @@ async fn overrides_stats(
         payload.as_object_mut().unwrap().insert(
             "tzid_other_count".into(),
             serde_json::json!(other),
+        );
+    }
+    if sort_mode.is_some() {
+        let order: Vec<serde_json::Value> = kept.iter()
+            .map(|(tz, _)| serde_json::Value::String(tz.clone()))
+            .collect();
+        payload.as_object_mut().unwrap().insert(
+            "tzid_breakdown_order".into(),
+            serde_json::Value::Array(order),
         );
     }
     Ok(Json(payload))
