@@ -3891,6 +3891,24 @@ async fn exdates_preview(
 /// do campo `date_only` (snake_case) em vez do `kind` literal
 /// `"date-only"` (com hífen) pra ficar JSON-key-friendly em consumidores
 /// (JS `obj.date_only` vs `obj["date-only"]`).
+///
+/// `tzid_breakdown: {"Europe/Berlin": N, "America/Sao_Paulo": M, ...}`
+/// (sprint #530, drill-down adicional do bucket `tzid` do
+/// `non_utc_by_kind`) agrega ocorrências de cada TZID DISTINTO entre os
+/// EXDATEs com `kind="tzid"` (não inclui `date-only` nem `unknown` —
+/// estes não têm TZID acionável, embora `unknown` ocasionalmente carregue
+/// TZID malformado, mantemos disjunto pra invariant da soma:
+/// `sum(tzid_breakdown.values()) == non_utc_by_kind.tzid`). Particiona o
+/// count opaco do `tzid` em entradas por timezone — útil pra audit "quais
+/// timezones aparecem nas EXDATEs não-UTC do calendário" + migration
+/// planning "Europe/Berlin tem 47 EXDATEs, vai precisar de N
+/// conversions". Implementado via `Vec<(String, usize)>` association
+/// list (não `HashMap` — cardinalidade típica é baixa, N TZIDs distintos
+/// por evento, lookup linear `iter().position()` mais barato que hash em
+/// pequena escala) acumulando só quando `kind="tzid"` e `info.tzid` é
+/// `Some`. Serializado como objeto JSON (chaves dinâmicas TZID, valores
+/// counts). Omitido junto com `non_utc_by_kind` quando
+/// `include_non_utc=false` ou `only_utc=true`.
 async fn exdates_preview_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -3920,6 +3938,7 @@ async fn exdates_preview_stats(
     let mut k_tzid:         usize = 0;
     let mut k_date_only:    usize = 0;
     let mut k_unknown:      usize = 0;
+    let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
 
     for info in parse_exdates_rich(&ev.ical_raw) {
         let key = info.raw_value.clone();
@@ -3930,7 +3949,15 @@ async fn exdates_preview_stats(
             None    => {
                 non_utc_n += 1;
                 match info.kind {
-                    "tzid"      => k_tzid      += 1,
+                    "tzid" => {
+                        k_tzid += 1;
+                        if let Some(tz) = info.tzid.as_deref() {
+                            match tzid_breakdown.iter().position(|(k, _)| k == tz) {
+                                Some(i) => tzid_breakdown[i].1 += 1,
+                                None    => tzid_breakdown.push((tz.to_string(), 1)),
+                            }
+                        }
+                    }
                     "date-only" => k_date_only += 1,
                     _           => k_unknown   += 1,
                 }
@@ -3961,6 +3988,11 @@ async fn exdates_preview_stats(
             "date_only": k_date_only,
             "unknown":   k_unknown,
         });
+        let mut breakdown_obj = serde_json::Map::new();
+        for (tz, n) in &tzid_breakdown {
+            breakdown_obj.insert(tz.clone(), serde_json::json!(n));
+        }
+        payload["tzid_breakdown"] = serde_json::Value::Object(breakdown_obj);
     }
     Ok(Json(payload))
 }
