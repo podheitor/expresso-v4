@@ -397,6 +397,44 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `transp` (RFC 5545 §3.8.2.7 TRANSP) em todos os eventos cujo
+    /// `dtstart` ∈ `[from, to)` no `calendar_id`. Sprint #556: paralelo direto
+    /// do `set_class_range` #555 mas na coluna `transp` adicionada na migração
+    /// `20260806000000_calendar_event_transp.sql` com CHECK enum
+    /// `(OPAQUE, TRANSPARENT)`. Mesmo trade-off cross-channel: `ical_raw` NÃO
+    /// é re-parseado, coluna `transp` fica autoritativa, `TRANSP:` dentro do
+    /// raw fica STALE até próximo PUT. Free/busy #460 ainda NÃO consulta
+    /// `transp` — sprint futuro deve filtrar `WHERE transp IS DISTINCT FROM
+    /// 'TRANSPARENT'` pra excluir eventos transparentes do bloco.
+    pub async fn set_transparency_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        transp: &str,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET transp = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(transp)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// Bulk-clear `rrule` (set NULL) em todos os eventos cujo `dtstart` ∈
     /// `[from, to)` no `calendar_id` (single-tenant). Retorna a contagem de
     /// linhas afetadas (incluindo eventos que já tinham `rrule = NULL` por

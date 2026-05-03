@@ -140,6 +140,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-transparency",
+            patch(events_by_range_set_transparency),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1491,6 +1495,61 @@ async fn events_by_range_set_class(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "class":       q.class,
+        "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetTransparencyQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    transp: String,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-transparency?after=&before=&transp=
+/// — bulk-set do campo `transp` (RFC 5545 §3.8.2.7) em todos os eventos cujo
+/// `dtstart` ∈ `[after, before)` (sprint #556, paralelo direto do #555 set-class
+/// — segunda instância da CLASSE schema-migration; nova migração
+/// `20260806000000_calendar_event_transp.sql` adiciona coluna `transp TEXT
+/// CHECK (transp IN ('OPAQUE','TRANSPARENT') OR transp IS NULL)`. Aceita 2
+/// valores enum: `OPAQUE` (default RFC, evento bloqueia free/busy) ou
+/// `TRANSPARENT` (evento NÃO bloqueia). Mesmo trade-off cross-channel: coluna
+/// fica fresh, `TRANSP:` dentro do `ical_raw` fica STALE até PUT do cliente.
+/// Free/busy lookup #460 NÃO consulta `transp` ainda — sprint futuro deve
+/// adicionar filter `WHERE transp IS DISTINCT FROM 'TRANSPARENT'` pra excluir
+/// transparentes do bloco; até lá `transp=TRANSPARENT` é meta-data informativa
+/// só observável via GET estruturado e export ICS pós próximo PUT.
+async fn events_by_range_set_transparency(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetTransparencyQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    match q.transp.as_str() {
+        "OPAQUE" | "TRANSPARENT" => {}
+        _ => {
+            return Err(CalendarError::BadRequest(
+                "transp must be one of OPAQUE, TRANSPARENT".into(),
+            ));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_transparency_range(ctx.tenant_id, cal_id, &q.transp, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "transp":      q.transp,
         "updated":     updated,
     })))
 }
