@@ -2438,6 +2438,15 @@ struct OverridesStatsQuery {
     has_dtstart: Option<bool>,
     #[serde(default)]
     has_dtend:   Option<bool>,
+    /// `?top_tzid=N` (sprint #539, paralelo do #532+#533 mas no overrides
+    /// scope) trunca o `tzid_breakdown` do #538 pras N TZIDs mais frequentes
+    /// (sort by count desc, ties broken por insertion order do `Vec`
+    /// association list — ordem de aparição nos overrides retidos pós-filtro).
+    /// Adiciona `tzid_other_count: usize` agregando a soma das counts das
+    /// TZIDs descartadas. Flag opcional, ausência ≡ shape #538 (breakdown
+    /// completo, sem `tzid_other_count`). `top_tzid=0` → 400 ("must be >= 1").
+    #[serde(default)]
+    top_tzid:    Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
@@ -2494,6 +2503,23 @@ struct OverridesStatsQuery {
 /// WRITE+. Sempre presente no payload mesmo que vazio (`{}`) — diferente
 /// do exdates-preview-stats #530 que omite junto com `non_utc_by_kind`
 /// porque overrides_stats não tem flag de inclusão equivalente.
+///
+/// `?top_tzid=N` (sprint #539, paralelo do #532+#533 mas no overrides
+/// scope — primeira presentation flag depois da base #538) trunca o
+/// `tzid_breakdown` pras N TZIDs mais frequentes (sort by count desc,
+/// ties por insertion order do `Vec` association list — ordem de
+/// aparição nos overrides retidos pós-filtro range/qualitativo do
+/// #520/#521). Adiciona `tzid_other_count: usize` agregando soma das
+/// counts das TZIDs descartadas. `top_tzid=0` → 400 ("must be >= 1");
+/// ausência ≡ shape do #538 (breakdown completo, sem `tzid_other_count`).
+/// Implementação clona o `Vec<(String, usize)>` (preserva insertion
+/// order pra branch sem flag), `sort_by` desc, soma `iter().skip(n)`
+/// pra `other_count`, `truncate(n)` no clone — O(N log N) com N=tzids
+/// distintos (cardinalidade típica baixa em overrides). `tzid_other_count`
+/// SÓ aparece quando `top_tzid.is_some()` (mesmo que `breakdown.len() <= n`
+/// resultando em other=0 — UI sabe que flag foi aceita). Composto com
+/// filtros range/qualitativos do #520/#521 (top_tzid atua APÓS a
+/// agregação, sobre o breakdown já filtrado).
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2504,6 +2530,11 @@ async fn overrides_stats(
         if a >= b {
             return Err(CalendarError::BadRequest("after must be < before".into()));
         }
+    }
+    if q.top_tzid == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "top_tzid must be >= 1 (omit flag for full breakdown)".into()
+        ));
     }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -2575,13 +2606,24 @@ async fn overrides_stats(
             }
         }
     }
-    let mut breakdown_obj = serde_json::Map::new();
     let mut tzid_token_count = 0usize;
-    for (tz, c) in &tzid_breakdown {
-        breakdown_obj.insert(tz.clone(), serde_json::json!(c));
+    for (_, c) in &tzid_breakdown {
         tzid_token_count += *c;
     }
-    Ok(Json(serde_json::json!({
+    let (kept, tzid_other_count) = if let Some(n) = q.top_tzid {
+        let mut sorted = tzid_breakdown.clone();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
+        sorted.truncate(n);
+        (sorted, Some(other))
+    } else {
+        (tzid_breakdown, None)
+    };
+    let mut breakdown_obj = serde_json::Map::new();
+    for (tz, c) in &kept {
+        breakdown_obj.insert(tz.clone(), serde_json::json!(c));
+    }
+    let mut payload = serde_json::json!({
         "event_id": ev.id,
         "total":    total,
         "by_field": {
@@ -2601,7 +2643,14 @@ async fn overrides_stats(
         },
         "tzid_breakdown":   serde_json::Value::Object(breakdown_obj),
         "tzid_token_count": tzid_token_count,
-    })))
+    });
+    if let Some(other) = tzid_other_count {
+        payload.as_object_mut().unwrap().insert(
+            "tzid_other_count".into(),
+            serde_json::json!(other),
+        );
+    }
+    Ok(Json(payload))
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/:recurrence_id —
