@@ -184,6 +184,11 @@ async fn free_busy(
     ical.push_str(&format!("DTEND:{}\r\n",   fmt_dt(to)));
     for ev in events {
         if ev.status.as_deref() == Some("CANCELLED") { continue; }
+        // RFC 4791 §7.10: TRANSPARENT events are non-blocking for free/busy.
+        // Detected via line scan on `ical_raw` because the `Event` struct
+        // doesn't carry `transp` yet (see #557 insight #2). Match is anchored
+        // at line start + uppercase to avoid false positives in DESCRIPTION.
+        if has_transparent(&ev.ical_raw) { continue; }
         let (Some(ds), Some(de)) = (ev.dtstart, ev.dtend) else { continue; };
         let start = ds.max(from);
         let end   = de.min(to);
@@ -197,6 +202,20 @@ async fn free_busy(
         .header("Content-Type", "text/calendar; charset=utf-8")
         .body(Body::from(ical))
         .unwrap())
+}
+
+/// Detect `TRANSP:TRANSPARENT` in a stored VEVENT raw. Line-anchored to avoid
+/// false positives inside DESCRIPTION/SUMMARY. RFC 5545 §3.8.2.7: default is
+/// OPAQUE when absent — only an explicit TRANSPARENT line excludes from busy.
+fn has_transparent(ical_raw: &str) -> bool {
+    for line in ical_raw.lines() {
+        let trimmed = line.trim_end_matches('\r').trim_start();
+        let upper = trimmed.to_ascii_uppercase();
+        if let Some(rest) = upper.strip_prefix("TRANSP:") {
+            if rest.trim() == "TRANSPARENT" { return true; }
+        }
+    }
+    false
 }
 
 fn fmt_dt(dt: time::OffsetDateTime) -> String {
