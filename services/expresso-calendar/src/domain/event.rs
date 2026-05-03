@@ -360,6 +360,51 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-clear `rrule` (set NULL) em todos os eventos cujo `dtstart` ∈
+    /// `[from, to)` no `calendar_id` (single-tenant). Retorna a contagem de
+    /// linhas afetadas (incluindo eventos que já tinham `rrule = NULL` por
+    /// estarem dentro do range — UPDATE não filtra por valor prévio; UI que
+    /// quer "só os que tinham rrule" pode primeiro chamar `events-by-range`
+    /// #544 com `?with_rrule=true` ou olhar `by_recurrence` em #545).
+    /// Variante simplificada do `set-rrule` futuro: NULL é o valor unário
+    /// trivial, sem validação RRULE. Mesmo trade-off do #547 (`set_status_range`):
+    /// `ical_raw` NÃO é re-parseado, então a coluna `rrule` (autoritativa
+    /// pra GET estruturado e queries SQL como #464/#469) fica fresh, mas
+    /// a propriedade `RRULE:` dentro do `ical_raw` permanece STALE até
+    /// próximo PUT/UPDATE do cliente — clientes CalDAV puros que parseiam
+    /// o raw verão o evento como recorrente até reescrita. Decisão paralela
+    /// ao #547 e justificada pelo mesmo motivo: re-parsear N raws é O(N)
+    /// string work proibitivo em massa. `etag`/`sequence`/`updated_at`
+    /// preservados (paralelo do #546/#547). Diferente do `set-rrule` (futuro)
+    /// que precisaria validar o valor RRULE antes do UPDATE — `clear` é o
+    /// único caso onde nenhuma validação extra cabe. Sprint #548.
+    pub async fn clear_rrule_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET rrule = NULL
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($3::timestamptz IS NULL OR dtstart >= $3)
+                  AND ($4::timestamptz IS NULL OR dtstart <  $4)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

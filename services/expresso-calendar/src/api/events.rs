@@ -108,6 +108,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_status),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/clear-rrule",
+            patch(events_by_range_clear_rrule),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -909,6 +913,63 @@ async fn events_by_range_set_status(
         "calendar_id": cal_id,
         "status":      q.status,
         "updated":     updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeClearRruleQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/clear-rrule?after=&before=
+/// — bulk-clear (`rrule = NULL`) em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #548, terceira mutação
+/// da família `events-by-range/*` depois de bulk-move #546 e set-status
+/// #547; variante mais simples do bulk-set-rrule que viria a seguir —
+/// "limpar" é caso unário sem validação de valor, então cabe primeiro;
+/// `set-rrule` ficaria pra #549+ e teria que validar a string RRULE
+/// antes do UPDATE). Novo método `EventRepo::clear_rrule_range(...)`
+/// paralelo direto do `set_status_range` #547 mas sem parâmetro `value`
+/// (só seta NULL). Mesmo trade-off filosófico do #547 documentado no
+/// método repo: `ical_raw` NÃO é re-parseado, então a coluna `rrule`
+/// (autoritativa pra GET estruturado da API e queries SQL como `#464`
+/// `events-recurrence-stats` que conta `rrule IS NULL`) fica fresh,
+/// mas a propriedade `RRULE:` dentro do `ical_raw` permanece STALE até
+/// próximo PUT do cliente; clientes CalDAV puros parseando o raw verão
+/// o evento como recorrente até reescrita. Single calendar (1
+/// `assert_can_write`). Sem flag `?dry=true` (foundations #544/#545
+/// cobrem discovery — UI usa `?with_rrule=true` em /events-by-range
+/// pra ver qual se aplicaria). `after >= before` → 400 (paralelo
+/// universal). Retorna `{calendar_id, cleared}` com `cleared: u64`
+/// count das linhas afetadas — note: o count INCLUI eventos que já
+/// tinham `rrule = NULL` antes (UPDATE não filtra por valor prévio,
+/// é "afetadas pelo critério de range" não "tiveram mudança real");
+/// UI que quer count precisa pode comparar com `by_recurrence.recurring`
+/// do #545 antes de chamar.
+async fn events_by_range_clear_rrule(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeClearRruleQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let cleared = EventRepo::new(pool)
+        .clear_rrule_range(ctx.tenant_id, cal_id, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "cleared":     cleared,
     })))
 }
 
