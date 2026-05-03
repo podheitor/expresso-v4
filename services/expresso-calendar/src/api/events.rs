@@ -2471,6 +2471,32 @@ struct OverridesStatsQuery {
     /// shape #540.
     #[serde(default)]
     min_count:   Option<usize>,
+    /// `?include_kind_breakdown=true` (sprint #542, paralelo do #536 mas
+    /// no overrides scope — fechando port das 5 famílias EXDATE-stats em
+    /// overrides_stats: inclusão, head truncation, cosmetic ordering, tail
+    /// filtering, kind drill-down) emite o objeto adjacente
+    /// `tzid_breakdown_by_kind: {tz: {tzid: N, unknown: M}}` particionando
+    /// o count de cada TZID retido em duas sub-categorias: tokens cujo
+    /// raw_value parseia como `YYYYMMDDTHHMMSS` local datetime (canônico,
+    /// `tzid`) vs malformados (`unknown`). Diferente do EXDATE drill-down
+    /// (#536) que opera sobre `parse_exdates_rich` com `info.raw_value`,
+    /// aqui validamos `dtstart_value`/`dtend_value` capturados pelo
+    /// `list_recurrence_id_overrides` em paralelo aos `dtstart_tzid`/
+    /// `dtend_tzid` (sprint #542 estendeu o parser pra emitir o token
+    /// pós-colon de linhas `DTSTART;TZID=…:value`/`DTEND;…:value` num
+    /// campo separado, preservando 100% do `present(dtstart)` semantics
+    /// usado por `has_dtstart` filter de #518/#521 — `dtstart`/`dtend`
+    /// continuam null quando há TZID, conforme antes). Invariant:
+    /// `sum(canonical + malformed) == tzid_breakdown[tz]` por TZID retido.
+    /// Aplicado APÓS toda a chain `min_count → top_tzid → sort_tzid` —
+    /// só os retidos no `kept` final aparecem no objeto adjacente, em
+    /// ordem alfabética (BTreeMap default; ordem custom continua em
+    /// `tzid_breakdown_order`). Sem flag (None ou false) omite o objeto;
+    /// `include_kind_breakdown=true` mas `kept` vazio emite `{}` (mesma
+    /// semantics "flag aceita, sem dados" do `tzid_other_count` quando
+    /// `breakdown.len() <= n`).
+    #[serde(default)]
+    include_kind_breakdown: Option<bool>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
@@ -2582,6 +2608,27 @@ struct OverridesStatsQuery {
 /// quando `min_count.is_some()`; ausência preserva shape #540.
 /// Invariant pós-filter: `sum(tzid_breakdown.values()) +
 /// tzid_other_count + tzid_filtered_count == tzid_token_count`.
+///
+/// `?include_kind_breakdown=true` (sprint #542, paralelo do #536 mas no
+/// overrides scope — fechando o port das 5 famílias de flags em
+/// overrides_stats: inclusão #538, head truncation #539, cosmetic
+/// ordering #540, tail filtering #541, kind drill-down #542) emite
+/// `tzid_breakdown_by_kind: {tz: {tzid: N, unknown: M}}` particionando
+/// cada TZID retido em canonical (datetime local válido) vs malformed.
+/// `is_canonical_local_datetime` valida `dtstart_value`/`dtend_value`
+/// (capturados pelo parser estendido em sprint #542 — token pós-colon
+/// de linhas `DTSTART;TZID=…:value`/`DTEND;…:value`, separado dos
+/// campos `dtstart`/`dtend` que continuam refletindo SÓ linhas sem
+/// params). Decoupling dos campos preserva 100% do `present(dtstart)`/
+/// `present(dtend)` semantics usado pelo filtro qualitativo do #518/#521
+/// — adicionar TZID a um override NÃO faz `has_dtstart=true` retornar
+/// (semantics intencional: `has_dtstart` filtra "DTSTART canonical sem
+/// params" do MVP, TZID é separado). Invariant: `canonical + malformed
+/// == tzid_breakdown[tz]`. Aplicado APÓS chain completo de presentation
+/// (`min_count` → `top_tzid` → `sort_tzid`) — só TZIDs em `kept` final
+/// aparecem no objeto adjacente. Sem flag (None ou false) omite objeto.
+/// `include_kind_breakdown=true` mas `kept` vazio (e.g. todos filtraram-
+/// out) emite `{}` (semantics "flag aceita, sem dados").
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2651,6 +2698,14 @@ async fn overrides_stats(
     let mut c_ds_de = 0usize;
     let mut c_all  = 0usize;
     let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
+    let include_kind_breakdown = q.include_kind_breakdown.unwrap_or(false);
+    // (tzid, canonical_count, malformed_count) — populado só quando
+    // include_kind_breakdown=true; mantido em paralelo a tzid_breakdown
+    // pra preservar invariant `canonical + malformed == tzid_breakdown[tz]`
+    // por construção (mesma chave incrementada em lockstep). Paralelo do
+    // tzid_by_kind do #536 mas validando dtstart_value/dtend_value
+    // capturados pelo parser estendido em sprint #542.
+    let mut tzid_by_kind: Vec<(String, usize, usize)> = Vec::new();
     for item in &items {
         let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
         let s  = present("summary");
@@ -2669,12 +2724,31 @@ async fn overrides_stats(
             (false, true,  true ) => c_ds_de  += 1,
             (true,  true,  true ) => c_all    += 1,
         }
-        for key in ["dtstart_tzid", "dtend_tzid"] {
-            if let Some(tz) = item.get(key).and_then(|v| v.as_str()) {
+        for (tzid_key, value_key) in [
+            ("dtstart_tzid", "dtstart_value"),
+            ("dtend_tzid",   "dtend_value"),
+        ] {
+            if let Some(tz) = item.get(tzid_key).and_then(|v| v.as_str()) {
                 if !tz.is_empty() {
                     match tzid_breakdown.iter().position(|(k, _)| k == tz) {
                         Some(i) => tzid_breakdown[i].1 += 1,
                         None    => tzid_breakdown.push((tz.to_string(), 1)),
+                    }
+                    if include_kind_breakdown {
+                        let canonical = item.get(value_key)
+                            .and_then(|v| v.as_str())
+                            .map(is_canonical_local_datetime)
+                            .unwrap_or(false);
+                        match tzid_by_kind.iter().position(|(k, _, _)| k == tz) {
+                            Some(i) => {
+                                if canonical { tzid_by_kind[i].1 += 1; }
+                                else         { tzid_by_kind[i].2 += 1; }
+                            }
+                            None => {
+                                let (c, u) = if canonical { (1, 0) } else { (0, 1) };
+                                tzid_by_kind.push((tz.to_string(), c, u));
+                            }
+                        }
                     }
                 }
             }
@@ -2758,6 +2832,23 @@ async fn overrides_stats(
         payload.as_object_mut().unwrap().insert(
             "tzid_breakdown_order".into(),
             serde_json::Value::Array(order),
+        );
+    }
+    if include_kind_breakdown {
+        let mut by_kind_obj = serde_json::Map::new();
+        for (tz, _) in &kept {
+            let (c, u) = tzid_by_kind.iter()
+                .find(|(k, _, _)| k == tz)
+                .map(|(_, c, u)| (*c, *u))
+                .unwrap_or((0, 0));
+            by_kind_obj.insert(tz.clone(), serde_json::json!({
+                "tzid":    c,
+                "unknown": u,
+            }));
+        }
+        payload.as_object_mut().unwrap().insert(
+            "tzid_breakdown_by_kind".into(),
+            serde_json::Value::Object(by_kind_obj),
         );
     }
     Ok(Json(payload))
@@ -3263,6 +3354,14 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
     let mut cur_dtend:        Option<String> = None;
     let mut cur_dtstart_tzid: Option<String> = None;
     let mut cur_dtend_tzid:   Option<String> = None;
+    // Sprint #542 — `*_value` capturam o token pós-colon de linhas
+    // `DTSTART;TZID=…:value` / `DTEND;TZID=…:value`, separado de
+    // `dtstart`/`dtend` (que continuam refletindo SÓ linhas sem params,
+    // preservando semantics do has_dtstart/has_dtend de #518/#521). Usado
+    // pelo `tzid_breakdown_by_kind` em overrides_stats pra validar
+    // canonicalidade do datetime local sem alterar filtros qualitativos.
+    let mut cur_dtstart_value: Option<String> = None;
+    let mut cur_dtend_value:   Option<String> = None;
     let mut cur_description:  Option<String> = None;
     let mut cur_location:     Option<String> = None;
 
@@ -3274,6 +3373,7 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
             found_uid = false;
             cur_recid = None; cur_summary = None; cur_dtstart = None; cur_dtend = None;
             cur_dtstart_tzid = None; cur_dtend_tzid = None;
+            cur_dtstart_value = None; cur_dtend_value = None;
             cur_description = None; cur_location = None;
             continue;
         }
@@ -3284,13 +3384,15 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
                         t.format(&time::format_description::well_known::Rfc3339).ok()
                     });
                     let mut item = serde_json::json!({
-                        "compact":      rec,
-                        "rfc3339":      rfc,
-                        "summary":      cur_summary.take(),
-                        "dtstart":      cur_dtstart.take(),
-                        "dtend":        cur_dtend.take(),
-                        "dtstart_tzid": cur_dtstart_tzid.take(),
-                        "dtend_tzid":   cur_dtend_tzid.take(),
+                        "compact":       rec,
+                        "rfc3339":       rfc,
+                        "summary":       cur_summary.take(),
+                        "dtstart":       cur_dtstart.take(),
+                        "dtend":         cur_dtend.take(),
+                        "dtstart_tzid":  cur_dtstart_tzid.take(),
+                        "dtend_tzid":    cur_dtend_tzid.take(),
+                        "dtstart_value": cur_dtstart_value.take(),
+                        "dtend_value":   cur_dtend_value.take(),
                     });
                     if full {
                         let obj = item.as_object_mut().expect("json object");
@@ -3325,12 +3427,14 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
                 let params = &trimmed["DTSTART".len()..colon_pos];
                 let params = params.strip_prefix(';').unwrap_or(params);
                 cur_dtstart_tzid = parse_tzid_from_params(params);
+                cur_dtstart_value = Some(trimmed[colon_pos+1..].trim().to_string());
             }
         } else if upper16.starts_with("DTEND;") {
             if let Some(colon_pos) = trimmed.find(':') {
                 let params = &trimmed["DTEND".len()..colon_pos];
                 let params = params.strip_prefix(';').unwrap_or(params);
                 cur_dtend_tzid = parse_tzid_from_params(params);
+                cur_dtend_value = Some(trimmed[colon_pos+1..].trim().to_string());
             }
         } else if full && upper16.starts_with("DESCRIPTION:") {
             cur_description = Some(trimmed["DESCRIPTION:".len()..].trim().to_string());
