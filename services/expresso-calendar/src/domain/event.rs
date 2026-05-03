@@ -601,6 +601,69 @@ impl<'a> EventRepo<'a> {
         Ok(res.rows_affected())
     }
 
+    /// Bulk-set `rrule` em todos os eventos cujo `dtstart` ∈ `[from, to)` no
+    /// `calendar_id` (single-tenant). Retorna a contagem de linhas afetadas.
+    /// Eventos sem `dtstart` ficam de fora (mesmo critério do `delete_range`
+    /// #457 / `move_range` #546 / `set_status_range` #547 / `clear_rrule_range`
+    /// #548 / `set_summary_range` #549 / `set_location_range` #550 /
+    /// `set_description_range` #551 / `set_organizer_email_range` #552).
+    /// Single UPDATE muda só a coluna `rrule`. Paralelo do
+    /// `set_organizer_email_range` #552 na assinatura `Option<&str>` (DDL
+    /// `rrule TEXT` é nullable e RFC 5545 §3.8.5.3 RRULE é opcional em VEVENT
+    /// — `None` ⇒ NULL clear), mas com VALIDAÇÃO server-side da string RRULE
+    /// **NÃO feita aqui** (este método repo é puramente storage; validação
+    /// fica na camada API que chama `crate::domain::rrule::Rrule::parse(s)`
+    /// antes de invocar este método — paralelo do `EventRepo::update` que
+    /// confia no `ical::parse_vevent` upstream). CLASSE active-recurrence
+    /// (insight #3 do sprint #552): mudar RRULE em massa RE-EXPANDE a série
+    /// virtualmente — endpoints `events-recurrence-stats` #464,
+    /// `events-recurrence-monthly` #469, `events/:id/instances` #500 e
+    /// `events-by-range/range-instances` #501 retornam outros conjuntos
+    /// imediatamente sem passar por re-render explícito (computa instances
+    /// on-demand a partir da coluna `rrule`). Mesmo trade-off filosófico do
+    /// #547-#552: `ical_raw` NÃO é re-parseado, então a coluna `rrule`
+    /// (autoritativa pra recurrence-stats #464, recurrence-monthly #469,
+    /// instances #500, range-instances #501 e expansão free/busy) fica
+    /// fresh, mas `RRULE:` dentro do `ical_raw` permanece STALE até próximo
+    /// PUT/UPDATE — clientes CalDAV puros parseando o raw verão FREQ antiga.
+    /// EXDATEs e overrides relacionados à série antiga ficam dangling: um
+    /// EXDATE pra instance-date X que existe na expansion da rrule antiga
+    /// mas NÃO na nova fica armazenado mas sem efeito (se recreado pela nova
+    /// rrule, volta a suprimir; senão, dormente). Mesmo pra overrides com
+    /// RECURRENCE-ID — se o RECURRENCE-ID não for produzido pela nova rrule,
+    /// o override fica órfão (existe no DB mas nunca é apresentado na
+    /// expansion). UI/admin que quer limpeza explícita deve chamar
+    /// `clear_exdates`/listar overrides após o set-rrule. `etag`/`sequence`/
+    /// `updated_at` PRESERVADOS (paralelo do #546-#552). Sprint #553.
+    pub async fn set_rrule_range(
+        &self,
+        tenant_id: Uuid,
+        calendar_id: Uuid,
+        rrule: Option<&str>,
+        from: Option<OffsetDateTime>,
+        to: Option<OffsetDateTime>,
+    ) -> Result<u64> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            r#"UPDATE calendar_events
+                  SET rrule = $3
+                WHERE tenant_id   = $1
+                  AND calendar_id = $2
+                  AND dtstart IS NOT NULL
+                  AND ($4::timestamptz IS NULL OR dtstart >= $4)
+                  AND ($5::timestamptz IS NULL OR dtstart <  $5)"#,
+        )
+        .bind(tenant_id)
+        .bind(calendar_id)
+        .bind(rrule)
+        .bind(from)
+        .bind(to)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(res.rows_affected())
+    }
+
     /// UPSERT event by UID (CalDAV PUT semantics: idempotent per RFC 4791).
     pub async fn replace_by_uid(
         &self,

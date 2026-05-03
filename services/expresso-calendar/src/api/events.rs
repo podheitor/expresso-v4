@@ -128,6 +128,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_organizer_email),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/set-rrule",
+            patch(events_by_range_set_rrule),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -1229,6 +1233,92 @@ async fn events_by_range_set_organizer_email(
         "calendar_id":     cal_id,
         "organizer_email": organizer,
         "updated":         updated,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeSetRruleQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    #[serde(default)]
+    rrule: Option<String>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/set-rrule?after=&before=&rrule=
+/// — bulk-set do campo `rrule` em todos os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendar `cal_id` (sprint #553, oitava mutação da
+/// família `events-by-range/*` depois de bulk-move #546, set-status #547,
+/// clear-rrule #548, set-summary #549, set-location #550, set-description
+/// #551 e set-organizer-email #552). Complemento NATURAL do clear-rrule
+/// #548 — agora a operação dual ("limpar" → "definir/substituir") com
+/// VALIDAÇÃO server-side da string RRULE via `domain::rrule::Rrule::parse`
+/// antes do UPDATE (rejeita FREQ desconhecida, INTERVAL não-numérico,
+/// BYDAY com weekday inválido — paralelo do `EventRepo::update` que confia
+/// no `ical::parse_vevent` upstream porque a string RRULE veio de um VEVENT
+/// já validado; aqui ela vem direto do query string e precisa de gate). DDL
+/// `rrule TEXT` é nullable e RFC 5545 §3.8.5.3 RRULE é opcional em VEVENT,
+/// portanto `?rrule` ausente ou empty/whitespace é tratado como CLEAR (NULL
+/// na coluna) — equivale semanticamente ao clear-rrule #548 mas via mesmo
+/// endpoint (paralelo da política do #550/#551/#552). Strings não-vazias
+/// passam por `Rrule::parse` que retorna `None` em syntax/FREQ unsupported
+/// → 400 ("rrule failed to parse — unsupported FREQ or invalid syntax").
+/// Subset suportado pelo parser interno (FREQ=DAILY|WEEKLY|MONTHLY|YEARLY,
+/// INTERVAL, COUNT, UNTIL, BYDAY) é o que faz parte do gate; tokens não-
+/// suportados como BYMONTHDAY/BYSETPOS são silently-ignored pelo parser
+/// (linha #62-63 do rrule.rs) e portanto ACEITOS pela validação — coluna
+/// armazena a string crua mesmo com tokens não suportados (mesma semantics
+/// do `update` regular que não rejeita rrule com tokens desconhecidos).
+/// CLASSE active-recurrence (insight #3 do sprint #552): mudança em massa
+/// re-expande virtualmente as séries — `events-recurrence-stats` #464,
+/// `events-recurrence-monthly` #469, `events/:id/instances` #500 e
+/// `events-by-range/range-instances` #501 retornam outros conjuntos
+/// imediatamente sem reindex explícito (computam on-demand). EXDATEs e
+/// overrides com RECURRENCE-ID que não existem na nova expansion ficam
+/// órfãos no DB (dormentes mas sem efeito) — UI/admin que quer limpeza
+/// pode chamar `clear_exdates` ou listar overrides após o set-rrule.
+/// Mesmo trade-off interno do #547-#552: coluna `rrule` fresh, `RRULE:`
+/// no `ical_raw` stale até próximo PUT — clientes CalDAV puros parseando
+/// o raw verão FREQ antiga. Search FTS #461 NÃO afetada (rrule não é
+/// indexado no tantivy). Single calendar (1 `assert_can_write`).
+/// `after >= before` → 400. Retorna `{calendar_id, rrule, updated}` com
+/// `rrule: Option<String>` (null no JSON quando clear) — count INCLUI
+/// eventos que já tinham a mesma rrule (paralelo do #547-#552).
+async fn events_by_range_set_rrule(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeSetRruleQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let rrule: Option<&str> = q.rrule
+        .as_deref()
+        .filter(|s| !s.trim().is_empty());
+
+    if let Some(s) = rrule {
+        if crate::domain::rrule::Rrule::parse(s).is_none() {
+            return Err(CalendarError::BadRequest(
+                "rrule failed to parse — unsupported FREQ or invalid syntax".into(),
+            ));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let updated = EventRepo::new(pool)
+        .set_rrule_range(ctx.tenant_id, cal_id, rrule, q.after, q.before)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "rrule":       rrule,
+        "updated":     updated,
     })))
 }
 
