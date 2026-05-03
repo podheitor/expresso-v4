@@ -35,6 +35,10 @@ pub fn routes() -> Router<AppState> {
 }
 
 /// Query shape: comma-separated `attendees`, rfc3339 `from`/`to`.
+/// `include_transparent` (default `false`, sprint #557): quando `true`,
+/// preserva comportamento pré-#557 onde eventos `transp=TRANSPARENT` (RFC
+/// 5545 §3.8.2.7) também contam como busy. Default segue RFC 4791 §7.10:
+/// TRANSPARENT é não-bloqueante.
 #[derive(Debug, Deserialize)]
 struct FreeBusyParams {
     attendees: String,
@@ -42,6 +46,8 @@ struct FreeBusyParams {
     from: OffsetDateTime,
     #[serde(with = "time::serde::rfc3339")]
     to:   OffsetDateTime,
+    #[serde(default)]
+    include_transparent: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,7 +87,7 @@ async fn freebusy(
 
     let pool = state.db_or_unavailable()?;
     let map = FreeBusyRepo::new(pool)
-        .lookup(ctx.tenant_id, &attendees, p.from, p.to)
+        .lookup(ctx.tenant_id, &attendees, p.from, p.to, p.include_transparent)
         .await?;
 
     Ok(Json(FreeBusyResp { from: p.from, to: p.to, attendees: map }))

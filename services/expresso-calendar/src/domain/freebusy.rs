@@ -50,12 +50,20 @@ impl<'a> FreeBusyRepo<'a> {
     /// Returns a map keyed by the input email (lowercased). Attendees with no
     /// account or no events in range appear with an empty vector so callers
     /// can distinguish "not found" from "free".
+    ///
+    /// `include_transparent`: when `false` (default), eventos com
+    /// `transp = 'TRANSPARENT'` (RFC 5545 §3.8.2.7) são excluídos do busy set
+    /// — RFC 4791 §7.10 mandata que TRANSPARENT seja "não-bloqueante" pra
+    /// free/busy lookup. Quando `true`, eventos transparentes contam como
+    /// busy (preserva comportamento pré-#557 pra clientes que dependiam dele).
+    /// `transp = NULL` é tratado como OPAQUE (default RFC: bloqueia).
     pub async fn lookup(
         &self,
         tenant_id: Uuid,
         attendees: &[String],
         from: OffsetDateTime,
         to:   OffsetDateTime,
+        include_transparent: bool,
     ) -> Result<BTreeMap<String, Vec<BusyInterval>>> {
         // Normalize inputs → lowercase, deduplicate, cap to avoid pathological
         // query sizes. Preserve original order for deterministic output when
@@ -76,6 +84,10 @@ impl<'a> FreeBusyRepo<'a> {
 
         // Join users → calendars → events; return per-email rows within range.
         // status filter: exclude CANCELLED; treat NULL status as busy.
+        // transp filter: when include_transparent=false (default), exclude
+        // events explicitly marked TRANSPARENT (#556 column); NULL transp is
+        // treated as OPAQUE (RFC default). Flag $5 short-circuits when caller
+        // explicitly opts in to legacy "all events block" behaviour.
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let rows = sqlx::query_as::<_, BusyRow>(
             r#"
@@ -90,6 +102,7 @@ impl<'a> FreeBusyRepo<'a> {
                AND u.tenant_id  = $1
                AND lower(u.email) = ANY($2)
                AND (e.status IS NULL OR e.status <> 'CANCELLED')
+               AND ($5 OR e.transp IS DISTINCT FROM 'TRANSPARENT')
                AND e.dtstart IS NOT NULL
                AND e.dtstart <  $4
                AND (e.dtend IS NULL OR e.dtend > $3)
@@ -99,6 +112,7 @@ impl<'a> FreeBusyRepo<'a> {
         .bind(&lowered)
         .bind(from)
         .bind(to)
+        .bind(include_transparent)
         .fetch_all(&mut *tx)
         .await?;
         tx.commit().await?;
