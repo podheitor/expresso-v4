@@ -2458,6 +2458,19 @@ struct OverridesStatsQuery {
     /// String vazia ou None skip; outros valores -> 400 listando opções.
     #[serde(default)]
     sort_tzid:   Option<String>,
+    /// `?min_count=N` (sprint #541, paralelo do #535 mas no overrides scope)
+    /// filtra a long-tail removendo do `tzid_breakdown` qualquer TZID com
+    /// count < N + adiciona `tzid_filtered_count: usize` agregando soma das
+    /// counts removidas (paralelo simétrico do `tzid_other_count` do #539
+    /// — mas reportando o que foi excluído pela CAUDA, não pela CABEÇA).
+    /// Composição em 3 fases ordem fixa: (1) min_count filtra long-tail,
+    /// (2) top_tzid trunca cabeça do universo filtrado, (3) sort_tzid
+    /// apresenta. `min_count=0` → 400; `min_count=1` aceito mesmo no-op.
+    /// `tzid_filtered_count` SOMENTE quando `min_count.is_some()` (mesmo
+    /// que filtered=0 — UI sabe que flag foi aceita); ausência preserva
+    /// shape #540.
+    #[serde(default)]
+    min_count:   Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/overrides/stats — agrega
@@ -2540,12 +2553,35 @@ struct OverridesStatsQuery {
 /// determinística — único caminho pra transmitir ordem custom em JSON
 /// Object é via array adjacente. Composto com `top_tzid` em duas fases:
 /// (1) top-N selection por count desc preserva semantics do #539; (2)
-/// re-ordena o set retido pelo sort_mode escolhido. `count_desc` →
-/// `b.1.cmp(&a.1)`, `count_asc` → `a.1.cmp(&b.1)`, `name_asc` →
-/// `a.0.cmp(&b.0)`, `name_desc` → `b.0.cmp(&a.0)`. `tzid_breakdown_order`
+/// re-ordena o set retido pelo sort_mode escolhido. `count_desc` ->
+/// `b.1.cmp(&a.1)`, `count_asc` -> `a.1.cmp(&b.1)`, `name_asc` ->
+/// `a.0.cmp(&b.0)`, `name_desc` -> `b.0.cmp(&a.0)`. `tzid_breakdown_order`
 /// SOMENTE quando `sort_tzid.is_some()`; ausente preserva shape #539.
 /// `top_tzid=10&sort_tzid=name_asc` = top-10 por count APRESENTADOS
-/// alfabeticamente. Valor desconhecido → 400 listando opções.
+/// alfabeticamente. Valor desconhecido -> 400 listando opções.
+///
+/// `?min_count=N` (sprint #541, paralelo do #535 mas no overrides scope)
+/// filtra long-tail removendo do `tzid_breakdown` qualquer TZID com
+/// count < N. Adiciona `tzid_filtered_count: usize` agregando soma das
+/// counts das TZIDs descartadas pela cauda — dual filosófico do
+/// `tzid_other_count` do #539 (top_tzid trunca CABEÇA por count desc;
+/// min_count filtra LONG-TAIL — combinados oferecem janela arbitrária
+/// no histograma como `min_count=2&top_tzid=10` = "top-10 entre TZIDs
+/// com pelo menos 2 ocorrências cada"). `min_count=0` -> 400 ("must be
+/// >= 1 (omit flag for full breakdown)"); `min_count=1` aceito mesmo
+/// sendo no-op (toda TZID no breakdown apareceu pelo menos 1x —
+/// primeira fronteira "real", UI pode emitir `tzid_filtered_count=0`
+/// como confirmação). Composição em 3 fases ordem FIXA preservando
+/// semantics intuitiva: (1) `min_count` filtra long-tail removendo
+/// TZIDs raros do `Vec<(String, usize)>` original ANTES do truncate;
+/// (2) `top_tzid` seleciona top-N por count desc do UNIVERSO FILTRADO
+/// (compostável: `top_tzid=5&min_count=10` = "top-5 entre TZIDs com
+/// count>=10"); (3) `sort_tzid` ordena set retido (presentation, do
+/// #540) — chain `min_count -> top_tzid -> sort_tzid` é "filter
+/// universe -> select head -> present". `tzid_filtered_count` SOMENTE
+/// quando `min_count.is_some()`; ausência preserva shape #540.
+/// Invariant pós-filter: `sum(tzid_breakdown.values()) +
+/// tzid_other_count + tzid_filtered_count == tzid_token_count`.
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2560,6 +2596,11 @@ async fn overrides_stats(
     if q.top_tzid == Some(0) {
         return Err(CalendarError::BadRequest(
             "top_tzid must be >= 1 (omit flag for full breakdown)".into()
+        ));
+    }
+    if q.min_count == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "min_count must be >= 1 (omit flag for full breakdown)".into()
         ));
     }
     let sort_mode: Option<&str> = match q.sort_tzid.as_deref() {
@@ -2643,14 +2684,26 @@ async fn overrides_stats(
     for (_, c) in &tzid_breakdown {
         tzid_token_count += *c;
     }
+    let (filtered_universe, tzid_filtered_count) = if let Some(n) = q.min_count {
+        let removed: usize = tzid_breakdown.iter()
+            .filter(|(_, c)| *c < n)
+            .map(|(_, c)| *c)
+            .sum();
+        let kept: Vec<(String, usize)> = tzid_breakdown.into_iter()
+            .filter(|(_, c)| *c >= n)
+            .collect();
+        (kept, Some(removed))
+    } else {
+        (tzid_breakdown, None)
+    };
     let (mut kept, tzid_other_count) = if let Some(n) = q.top_tzid {
-        let mut sorted = tzid_breakdown.clone();
+        let mut sorted = filtered_universe.clone();
         sorted.sort_by(|a, b| b.1.cmp(&a.1));
         let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
         sorted.truncate(n);
         (sorted, Some(other))
     } else {
-        (tzid_breakdown, None)
+        (filtered_universe, None)
     };
     if let Some(mode) = sort_mode {
         match mode {
@@ -2690,6 +2743,12 @@ async fn overrides_stats(
         payload.as_object_mut().unwrap().insert(
             "tzid_other_count".into(),
             serde_json::json!(other),
+        );
+    }
+    if let Some(filtered) = tzid_filtered_count {
+        payload.as_object_mut().unwrap().insert(
+            "tzid_filtered_count".into(),
+            serde_json::json!(filtered),
         );
     }
     if sort_mode.is_some() {
