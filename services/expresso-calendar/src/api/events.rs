@@ -2477,6 +2477,23 @@ struct OverridesStatsQuery {
 /// `location` ficam de fora (mesma assimetria #518: só existem em
 /// `?detail=full`). Invariants preservadas pós-filtro qualitativo igual
 /// ao range. Sem nenhum dos 3 ≡ shape #520.
+///
+/// `tzid_breakdown: {"Europe/Berlin": N, "America/Sao_Paulo": M, ...}`
+/// (sprint #538, paralelo do #530+#531 mas no overrides scope) agrega
+/// ocorrências de TZID em DTSTART;TZID=… E DTEND;TZID=… dos overrides
+/// retidos (pós-filtros range/qualitativos do #520/#521). Cada override
+/// pode contribuir 0/1/2 TZIDs — DTSTART e DTEND são contados
+/// independentemente; se ambos têm a MESMA TZID, breakdown[tz] += 2.
+/// `tzid_token_count` reporta a soma total das counts (= total de tokens
+/// TZID presentes nos overrides retidos), preservando a invariant
+/// `sum(tzid_breakdown.values()) == tzid_token_count`. Pré-requisito do
+/// futuro port do `tzid_breakdown_by_kind` (#536) — esta sprint introduz
+/// SÓ a base, sem flags top_tzid/sort_tzid/min_count/by_kind. Implementado
+/// via `Vec<(String, usize)>` association list (cardinalidade típica
+/// baixa, lookup linear mais barato que hash). Read-only, NÃO requer
+/// WRITE+. Sempre presente no payload mesmo que vazio (`{}`) — diferente
+/// do exdates-preview-stats #530 que omite junto com `non_utc_by_kind`
+/// porque overrides_stats não tem flag de inclusão equivalente.
 async fn overrides_stats(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -2528,6 +2545,7 @@ async fn overrides_stats(
     let mut c_s_de = 0usize;
     let mut c_ds_de = 0usize;
     let mut c_all  = 0usize;
+    let mut tzid_breakdown: Vec<(String, usize)> = Vec::new();
     for item in &items {
         let present = |key: &str| item.get(key).map(|v| !v.is_null()).unwrap_or(false);
         let s  = present("summary");
@@ -2546,6 +2564,22 @@ async fn overrides_stats(
             (false, true,  true ) => c_ds_de  += 1,
             (true,  true,  true ) => c_all    += 1,
         }
+        for key in ["dtstart_tzid", "dtend_tzid"] {
+            if let Some(tz) = item.get(key).and_then(|v| v.as_str()) {
+                if !tz.is_empty() {
+                    match tzid_breakdown.iter().position(|(k, _)| k == tz) {
+                        Some(i) => tzid_breakdown[i].1 += 1,
+                        None    => tzid_breakdown.push((tz.to_string(), 1)),
+                    }
+                }
+            }
+        }
+    }
+    let mut breakdown_obj = serde_json::Map::new();
+    let mut tzid_token_count = 0usize;
+    for (tz, c) in &tzid_breakdown {
+        breakdown_obj.insert(tz.clone(), serde_json::json!(c));
+        tzid_token_count += *c;
     }
     Ok(Json(serde_json::json!({
         "event_id": ev.id,
@@ -2565,6 +2599,8 @@ async fn overrides_stats(
             "dtstart_dtend":   c_ds_de,
             "all_three":       c_all,
         },
+        "tzid_breakdown":   serde_json::Value::Object(breakdown_obj),
+        "tzid_token_count": tzid_token_count,
     })))
 }
 
@@ -3042,15 +3078,34 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
         "[year][month][day]T[hour][minute][second]Z"
     );
 
+    // Extrai TZID de uma linha tipo `DTSTART;TZID=Europe/Berlin;X=Y:value` —
+    // retorna `Some("Europe/Berlin")` (case-preserved) ou `None` se linha
+    // não tem param TZID. Recebe o trecho ENTRE `DTSTART` e `:` (sem prefixo
+    // do property-name, sem o value pós-colon).
+    fn parse_tzid_from_params(params_segment: &str) -> Option<String> {
+        for kv in params_segment.split(';').filter(|s| !s.is_empty()) {
+            let upper = kv.to_ascii_uppercase();
+            if let Some(rest) = upper.strip_prefix("TZID=") {
+                let take = rest.len();
+                let original = &kv[kv.len()-take..];
+                let v = original.trim().trim_matches('"');
+                if !v.is_empty() { return Some(v.to_string()); }
+            }
+        }
+        None
+    }
+
     let mut out = Vec::new();
     let mut in_event = false;
     let mut found_uid = false;
-    let mut cur_recid:       Option<String> = None;
-    let mut cur_summary:     Option<String> = None;
-    let mut cur_dtstart:     Option<String> = None;
-    let mut cur_dtend:       Option<String> = None;
-    let mut cur_description: Option<String> = None;
-    let mut cur_location:    Option<String> = None;
+    let mut cur_recid:        Option<String> = None;
+    let mut cur_summary:      Option<String> = None;
+    let mut cur_dtstart:      Option<String> = None;
+    let mut cur_dtend:        Option<String> = None;
+    let mut cur_dtstart_tzid: Option<String> = None;
+    let mut cur_dtend_tzid:   Option<String> = None;
+    let mut cur_description:  Option<String> = None;
+    let mut cur_location:     Option<String> = None;
 
     for line in raw.lines() {
         let trimmed = line.trim_start();
@@ -3059,6 +3114,7 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
             in_event = true;
             found_uid = false;
             cur_recid = None; cur_summary = None; cur_dtstart = None; cur_dtend = None;
+            cur_dtstart_tzid = None; cur_dtend_tzid = None;
             cur_description = None; cur_location = None;
             continue;
         }
@@ -3069,11 +3125,13 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
                         t.format(&time::format_description::well_known::Rfc3339).ok()
                     });
                     let mut item = serde_json::json!({
-                        "compact":  rec,
-                        "rfc3339":  rfc,
-                        "summary":  cur_summary.take(),
-                        "dtstart":  cur_dtstart.take(),
-                        "dtend":    cur_dtend.take(),
+                        "compact":      rec,
+                        "rfc3339":      rfc,
+                        "summary":      cur_summary.take(),
+                        "dtstart":      cur_dtstart.take(),
+                        "dtend":        cur_dtend.take(),
+                        "dtstart_tzid": cur_dtstart_tzid.take(),
+                        "dtend_tzid":   cur_dtend_tzid.take(),
                     });
                     if full {
                         let obj = item.as_object_mut().expect("json object");
@@ -3103,6 +3161,18 @@ fn list_recurrence_id_overrides(raw: &str, uid_master: &str, full: bool) -> Vec<
             cur_dtstart = Some(trimmed["DTSTART:".len()..].trim().to_string());
         } else if upper16.starts_with("DTEND:") {
             cur_dtend = Some(trimmed["DTEND:".len()..].trim().to_string());
+        } else if upper16.starts_with("DTSTART;") {
+            if let Some(colon_pos) = trimmed.find(':') {
+                let params = &trimmed["DTSTART".len()..colon_pos];
+                let params = params.strip_prefix(';').unwrap_or(params);
+                cur_dtstart_tzid = parse_tzid_from_params(params);
+            }
+        } else if upper16.starts_with("DTEND;") {
+            if let Some(colon_pos) = trimmed.find(':') {
+                let params = &trimmed["DTEND".len()..colon_pos];
+                let params = params.strip_prefix(';').unwrap_or(params);
+                cur_dtend_tzid = parse_tzid_from_params(params);
+            }
         } else if full && upper16.starts_with("DESCRIPTION:") {
             cur_description = Some(trimmed["DESCRIPTION:".len()..].trim().to_string());
         } else if full && upper16.starts_with("LOCATION:") {
