@@ -148,6 +148,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_cleanup_orphans),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/reindex-fts",
+            patch(events_by_range_reindex_fts),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).delete(delete),
         )
@@ -6065,6 +6069,107 @@ fn patch_recurrence_id_override_block(
         for line in &buf { out.push_str(line); }
     }
     out
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeReindexFtsQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events-by-range/reindex-fts?after=&before=
+/// Re-indexa no Tantivy (via expresso-search) os eventos cujo `dtstart` ∈
+/// `[after, before)` no calendário (sprint #561). Complemento dos bulk-set
+/// endpoints #549/#551/#554 que deixam o índice FTS stale quando mudam
+/// summary/description/location sem chamar search: aqui UI chama
+/// explicitamente pós bulk-set pra sincronizar freshness vs latency de
+/// reindex. Cada evento vira 1 `IndexDoc` (`kind="calendar"`, `document_id=
+/// "calendar/{event_id}"`, `subject=summary`, `from_addr=organizer_email`,
+/// `body=description`). Chama `POST {SEARCH__URL}/api/v1/index/bulk` em
+/// lotes de até 500 docs (cap do bulk endpoint). Retorna `{calendar_id,
+/// indexed, skipped}` — `skipped` conta eventos sem dtstart no range ou
+/// quando SEARCH__URL não está configurado (no-op gracioso). WRITE+ via
+/// `assert_can_write` (reindex muda dados externos ao DB, exige mesma ACL
+/// que mutations). `after >= before` → 400. Eventos sem dtstart → pulados
+/// silenciosamente. Síncrono: responde quando o(s) lote(s) terminam —
+/// latência proporcional ao tamanho do range (trade-off: bulk sync > N
+/// fire-and-forget individuais pra UI que precisa de confirmação de freshness).
+async fn events_by_range_reindex_fts(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeReindexFtsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let search_url = state.search_url().to_owned();
+    if search_url.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "calendar_id": cal_id,
+            "indexed":     0,
+            "skipped":     0,
+            "note":        "SEARCH__URL not configured — no-op",
+        })));
+    }
+
+    let events = EventRepo::new(pool)
+        .list(
+            ctx.tenant_id,
+            cal_id,
+            &EventQuery { from: q.after, to: q.before, limit: None },
+        )
+        .await?;
+
+    let mut docs: Vec<serde_json::Value> = Vec::new();
+    let mut skipped: u64 = 0;
+
+    for ev in &events {
+        let dtstart = match ev.dtstart {
+            Some(ds) => ds,
+            None => { skipped += 1; continue; }
+        };
+        if let Some(a) = q.after  { if dtstart <  a { skipped += 1; continue; } }
+        if let Some(b) = q.before { if dtstart >= b { skipped += 1; continue; } }
+
+        docs.push(serde_json::json!({
+            "document_id": format!("calendar/{}", ev.id),
+            "tenant_id":   ctx.tenant_id.to_string(),
+            "subject":     ev.summary,
+            "from_addr":   ev.organizer_email,
+            "body":        ev.description,
+            "kind":        "calendar",
+        }));
+    }
+
+    let indexed_total = docs.len() as u64;
+    let search_token = state.search_token().to_owned();
+    let client = reqwest::Client::new();
+
+    // Bulk in batches of 500 (search service cap).
+    for chunk in docs.chunks(500) {
+        let payload = serde_json::json!({ "documents": chunk });
+        let mut req = client
+            .post(format!("{search_url}/api/v1/index/bulk"))
+            .json(&payload);
+        if !search_token.is_empty() {
+            req = req.bearer_auth(&search_token);
+        }
+        req.send().await.ok(); // best-effort; search errors don't fail the calendar op
+    }
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "indexed":     indexed_total,
+        "skipped":     skipped,
+    })))
 }
 
 #[derive(Debug, serde::Deserialize)]

@@ -161,7 +161,12 @@ async fn main() -> anyhow::Result<()> {
         },
         None => crate::events::EventBus::new(),
     };
-    let state = AppState::new(db, kc_basic, bus);
+    let search_url   = env_string("SEARCH__URL").unwrap_or_default();
+    let search_token = env_string("SEARCH__TOKEN").unwrap_or_default();
+    if !search_url.is_empty() {
+        info!(url = %search_url, "search FTS integration enabled");
+    }
+    let state = AppState::new(db, kc_basic, bus, search_url, search_token);
     // Per-tenant rate limiter (in-process token bucket; see expresso_core::ratelimit).
     let rate_cfg = expresso_core::ratelimit::RateLimitConfig::from_env();
     info!(rps = rate_cfg.rps, burst = rate_cfg.burst, "rate limiter armed");
