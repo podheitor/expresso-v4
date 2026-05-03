@@ -3747,6 +3747,26 @@ struct ExdatesPreviewQuery {
     /// rica mesmo sem `parsed_utc` (kind/tzid/params). Default
     /// `summary` (mesmo que ausente) preserva 100% shape do #525.
     detail: Option<String>,
+    /// `?top_tzid=N` (sprint #532, follow-on do #530) trunca o
+    /// `tzid_breakdown` em `/exdates-preview/stats` pra apenas as N TZIDs
+    /// mais frequentes (sort by count desc, ties broken por insertion
+    /// order do `Vec` association list — i.e. TZID que apareceu primeiro
+    /// no walker). Adiciona `tzid_other_count: usize` agregando a soma das
+    /// counts das TZIDs descartadas (não inclui no breakdown). Útil pra UI
+    /// dashboard com ranking-truncado quando há cardinalidade alta de
+    /// TZIDs (>20 distintas) — sem flag, payload pode ficar pesado e a
+    /// curva é tipicamente long-tail (poucas TZIDs com muitas ocorrências
+    /// + cauda de TZIDs únicos). `top_tzid=0` → 400 (não faz sentido —
+    /// `include_non_utc=false` ou `only_utc=true` já omitem o breakdown
+    /// inteiro). Sem flag (None) preserva 100% shape do #530 (breakdown
+    /// completo, sem `tzid_other_count`). Só faz sentido em
+    /// `/exdates-preview/stats` (não em `/exdates/stats` do #531) porque
+    /// `ExdatesStatsQuery` é distinto do `ExdatesPreviewQuery` — a
+    /// dualidade de stats endpoints não implica dualidade de TODOS os
+    /// flags, e top_tzid é cosmético/UI-side independente dos filtros do
+    /// list-stats. Aplicado APÓS o full breakdown ser construído (re-sort
+    /// + split é O(N log N) numa lista pequena, irrelevante).
+    top_tzid: Option<usize>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
@@ -3941,6 +3961,11 @@ async fn exdates_preview_stats(
             "only_utc=true conflicts with include_non_utc=true".into()
         ));
     }
+    if q.top_tzid == Some(0) {
+        return Err(CalendarError::BadRequest(
+            "top_tzid must be >= 1 (use include_non_utc=false to omit breakdown entirely)".into()
+        ));
+    }
     let pool = state.db_or_unavailable()?;
     let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
     if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
@@ -4002,11 +4027,24 @@ async fn exdates_preview_stats(
             "date_only": k_date_only,
             "unknown":   k_unknown,
         });
+        let (kept, other_count): (Vec<(String, usize)>, usize) = match q.top_tzid {
+            Some(n) if tzid_breakdown.len() > n => {
+                let mut sorted = tzid_breakdown.clone();
+                sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                let other: usize = sorted.iter().skip(n).map(|(_, c)| *c).sum();
+                sorted.truncate(n);
+                (sorted, other)
+            }
+            _ => (tzid_breakdown.clone(), 0),
+        };
         let mut breakdown_obj = serde_json::Map::new();
-        for (tz, n) in &tzid_breakdown {
+        for (tz, n) in &kept {
             breakdown_obj.insert(tz.clone(), serde_json::json!(n));
         }
         payload["tzid_breakdown"] = serde_json::Value::Object(breakdown_obj);
+        if q.top_tzid.is_some() {
+            payload["tzid_other_count"] = serde_json::json!(other_count);
+        }
     }
     Ok(Json(payload))
 }
