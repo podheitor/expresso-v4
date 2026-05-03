@@ -183,6 +183,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/touch-preview",
             get(touch_preview),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates-preview",
+            get(exdates_preview),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -3668,6 +3672,113 @@ async fn touch_preview(
     });
     if include_unparseable && !only_parseable {
         payload["unparseable"] = serde_json::json!(unparseable);
+    }
+    Ok(Json(payload))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ExdatesPreviewQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    /// `?include_non_utc=false` esconde a lista `non_utc` do payload (ainda
+    /// contabiliza no `total_exdates`). Default true preserva shape baseline.
+    /// Paralelo direto do `include_unparseable` do touch-preview #515 — a
+    /// classe "EXDATE não-UTC" (tzid/date-only/unknown) é o equivalente
+    /// semântico de "RECURRENCE-ID corrompido" do touch-preview, porque
+    /// ambos representam items que NÃO se encaixam no range filter half-open.
+    include_non_utc: Option<bool>,
+    /// `?only_utc=true` filtra TUDO: nem `non_utc` aparece nem conta em
+    /// `total_exdates` — payload reflete só o universo de EXDATEs com
+    /// `parsed_utc=Some` (paralelo do `only_parseable` do #515). Conflita
+    /// com `include_non_utc=true` explícito → 400. Default false preserva
+    /// shape baseline.
+    only_utc: Option<bool>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview?after=&before=
+/// `[&include_non_utc=false][&only_utc=true]` — paralelo simétrico do
+/// touch-preview (#514/#515) mas pra EXDATE list (sprint #525). Read-only,
+/// NÃO requer WRITE+. Útil pra UI fazer "discovery" de quais EXDATEs cairiam
+/// numa janela temporal antes de qualquer ação (e.g. preview antes de bulk
+/// delete por range, audit "quais cancelamentos estão programados pra esta
+/// semana"). Reusa `parse_exdates_rich` (mesma fonte do #511/#516/#522/#523/
+/// #524) sem extensão — itera uma vez particionando em 3 listas:
+/// - `in_range`: EXDATEs UTC parseáveis (`parsed_utc=Some`) cujo timestamp
+///   cai dentro de [after, before) (filtros half-open opcionais — mesma
+///   semantics do #517/#522);
+/// - `out_of_range`: EXDATEs UTC parseáveis fora do intervalo;
+/// - `non_utc`: EXDATEs com `parsed_utc=None` (kind=tzid|date-only|unknown
+///   — não têm timestamp UTC pra comparar com bounds, classe semantic
+///   equivalente ao `unparseable` do touch-preview).
+///
+/// Retorna `{event_id, total_exdates, in_range, out_of_range[, non_utc]}`.
+/// Sem `after`/`before`, todos os UTC vão pra `in_range` (caso degenerado).
+/// 400 se `after >= before` ou `only_utc=true && include_non_utc=true`.
+///
+/// Diferenças do `/exdates?detail=full&kind=...&with_*=...` do #516/#523:
+/// list endpoint retorna items com metadata RICA (raw_value, tzid, params)
+/// e suporta filtro categórico/qualitativo; preview retorna só `compact`s
+/// agrupados em buckets temporais (paralelo direto do touch-preview #514).
+/// Os 2 endpoints são complementares: preview pra dashboard "qual a janela",
+/// list pra drill-down "me dê os detalhes destas EXDATEs". Read-only, sem
+/// WRITE+, 404 se evento não existe.
+async fn exdates_preview(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<ExdatesPreviewQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let only_utc        = q.only_utc.unwrap_or(false);
+    let include_non_utc = q.include_non_utc.unwrap_or(true);
+    if only_utc && q.include_non_utc == Some(true) {
+        return Err(CalendarError::BadRequest(
+            "only_utc=true conflicts with include_non_utc=true".into()
+        ));
+    }
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let mut in_range:     Vec<String> = Vec::new();
+    let mut out_of_range: Vec<String> = Vec::new();
+    let mut non_utc:      Vec<String> = Vec::new();
+
+    for info in parse_exdates_rich(&ev.ical_raw) {
+        let key = info.raw_value.clone();
+        if in_range.iter().any(|c| c == &key)
+            || out_of_range.iter().any(|c| c == &key)
+            || non_utc.iter().any(|c| c == &key)
+        { continue; }
+        let parsed = match info.parsed_utc {
+            Some(t) => t,
+            None    => { non_utc.push(key); continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { out_of_range.push(key); continue; } }
+        if let Some(b) = q.before { if parsed >= b { out_of_range.push(key); continue; } }
+        in_range.push(key);
+    }
+
+    let total_exdates = if only_utc {
+        in_range.len() + out_of_range.len()
+    } else {
+        in_range.len() + out_of_range.len() + non_utc.len()
+    };
+
+    let mut payload = serde_json::json!({
+        "event_id":      ev.id,
+        "total_exdates": total_exdates,
+        "in_range":      in_range,
+        "out_of_range":  out_of_range,
+    });
+    if include_non_utc && !only_utc {
+        payload["non_utc"] = serde_json::json!(non_utc);
     }
     Ok(Json(payload))
 }
