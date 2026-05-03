@@ -187,6 +187,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/exdates-preview",
             get(exdates_preview),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events/:id/exdates-preview/stats",
+            get(exdates_preview_stats),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -3779,6 +3783,85 @@ async fn exdates_preview(
     });
     if include_non_utc && !only_utc {
         payload["non_utc"] = serde_json::json!(non_utc);
+    }
+    Ok(Json(payload))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/exdates-preview/stats?after=&before=
+/// `[&include_non_utc=false][&only_utc=true]` — variant aggregate-only do
+/// `/exdates-preview` do #525, paralelo da dualidade list/stats que cobriu
+/// overrides em #519/#520/#521 e EXDATE list em #522/#523/#524 (sprint #526).
+/// Mesma partição em 3 buckets (`in_range`/`out_of_range`/`non_utc`), mas
+/// retorna só CONTAGENS — útil pra dashboard "quantos cancelamentos caem
+/// nesta janela" sem puxar lista de `raw_value`s (pode ser N grande).
+///
+/// Reusa `parse_exdates_rich` + mesma lógica de partição do #525 (incluindo
+/// dedup por `raw_value` — duas EXDATE lines idênticas contam como 1, mesma
+/// semantics do preview), mas em vez de empurrar pra `Vec<String>` só
+/// incrementa contadores. Mantém os mesmos flags `?include_non_utc=` e
+/// `?only_utc=` com a MESMA semantics do #525:
+/// - `include_non_utc=false`: omite `non_utc_count` do payload mas mantém em
+///   `total_exdates`;
+/// - `only_utc=true`: exclui non_utc de TUDO (payload e `total_exdates`);
+/// - conflito `only_utc=true && include_non_utc=true` explícito → 400.
+///
+/// Retorna `{event_id, total_exdates, in_range_count, out_of_range_count
+/// [, non_utc_count]}`. Read-only, NÃO requer WRITE+, 404 se evento não
+/// existe. Validações idênticas ao #525 (`after >= before` → 400).
+async fn exdates_preview_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Query(q):     Query<ExdatesPreviewQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let only_utc        = q.only_utc.unwrap_or(false);
+    let include_non_utc = q.include_non_utc.unwrap_or(true);
+    if only_utc && q.include_non_utc == Some(true) {
+        return Err(CalendarError::BadRequest(
+            "only_utc=true conflicts with include_non_utc=true".into()
+        ));
+    }
+    let pool = state.db_or_unavailable()?;
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if ev.calendar_id != cal_id { return Err(CalendarError::EventNotFound(id)); }
+
+    let mut seen:         Vec<String> = Vec::new();
+    let mut in_range_n:     usize = 0;
+    let mut out_of_range_n: usize = 0;
+    let mut non_utc_n:      usize = 0;
+
+    for info in parse_exdates_rich(&ev.ical_raw) {
+        let key = info.raw_value.clone();
+        if seen.iter().any(|c| c == &key) { continue; }
+        seen.push(key);
+        let parsed = match info.parsed_utc {
+            Some(t) => t,
+            None    => { non_utc_n += 1; continue; }
+        };
+        if let Some(a) = q.after  { if parsed <  a { out_of_range_n += 1; continue; } }
+        if let Some(b) = q.before { if parsed >= b { out_of_range_n += 1; continue; } }
+        in_range_n += 1;
+    }
+
+    let total_exdates = if only_utc {
+        in_range_n + out_of_range_n
+    } else {
+        in_range_n + out_of_range_n + non_utc_n
+    };
+
+    let mut payload = serde_json::json!({
+        "event_id":           ev.id,
+        "total_exdates":      total_exdates,
+        "in_range_count":     in_range_n,
+        "out_of_range_count": out_of_range_n,
+    });
+    if include_non_utc && !only_utc {
+        payload["non_utc_count"] = serde_json::json!(non_utc_n);
     }
     Ok(Json(payload))
 }
