@@ -805,6 +805,33 @@ pub async fn writer_stats(
     }))
 }
 
+/// GET /api/v1/search/stats/by-tenant?limit=N — doc count por tenant_id.
+///
+/// Varre todos os documentos do índice e agrupa por `tenant_id`. Retorna
+/// `{rows:[{tenant_id,doc_count}]}` ordenado por `doc_count DESC`. Ops endpoint
+/// cross-tenant sem RLS. `limit` default 20 max 200. Sprint #684.
+#[derive(Debug, serde::Deserialize)]
+struct StatsByTenantQuery {
+    limit: Option<usize>,
+}
+
+pub async fn search_stats_by_tenant(
+    State(store): State<IndexStore>,
+    Query(q):     Query<StatsByTenantQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let rows = store
+        .docs_count_by_tenant(limit)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tenant_id, doc_count)| serde_json::json!({
+            "tenant_id": tenant_id,
+            "doc_count": doc_count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

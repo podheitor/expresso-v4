@@ -52,6 +52,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachments-by-folder", get(attachments_by_folder_stats))
         .route("/mail/messages/stats/flags-by-folder",        get(flags_by_folder_stats))
         .route("/mail/messages/stats/received-by-folder",      get(received_by_folder_stats))
+        .route("/mail/messages/stats/threads-by-folder",       get(threads_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2343,6 +2344,46 @@ async fn unread_by_folder_stats(
 
     let folders: Vec<serde_json::Value> = rows.into_iter()
         .map(|(folder, total, unread)| serde_json::json!({"folder": folder, "total": total, "unread": unread}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/threads-by-folder — COUNT DISTINCT thread_id por mailbox.
+///
+/// Retorna `{folders:[{folder,thread_count,unread_thread_count}]}` ordenado por
+/// `thread_count DESC`. Um thread é "unread" se tiver ao menos uma mensagem sem `\Seen`.
+/// Complementa `stats/threads` (#630) com breakdown por pasta. Sprint #683.
+async fn threads_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(DISTINCT m.thread_id)::BIGINT AS thread_count, \
+            COUNT(DISTINCT CASE WHEN NOT ('\\Seen' = ANY(m.flags)) THEN m.thread_id END)::BIGINT \
+                AS unread_thread_count \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+                              AND m.thread_id IS NOT NULL \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY thread_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, thread_count, unread_thread_count)| serde_json::json!({
+            "folder":               folder,
+            "thread_count":         thread_count,
+            "unread_thread_count":  unread_thread_count,
+        }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }

@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
         .route("/api/v1/search/stats", get(api::search_stats))
+        .route("/api/v1/search/stats/by-tenant", get(api::search_stats_by_tenant))
         .route("/api/v1/search/index/segments",           get(api::list_segments))
         .route("/api/v1/search/index/segments/count",    get(api::segment_count))
         .route("/api/v1/search/index/segments/largest",   get(api::largest_segment))

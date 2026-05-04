@@ -217,6 +217,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_status_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/priority-stats",
+            get(events_by_range_priority_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1703,6 +1707,53 @@ async fn events_by_range_status_stats(
         "cancelled":   cancelled,
         "other":       other,
         "unset":       unset,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/priority-stats?after=&before=
+///
+/// Classifica eventos por PRIORITY (RFC 5545): 0=undefined, 1-4=high, 5=medium, 6-9=low.
+/// Retorna `{calendar_id,total,high,medium,low,undefined}`. Sprint #685.
+async fn events_by_range_priority_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, high, medium, low, undefined): (i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT                                                      AS total, \
+                COUNT(*) FILTER (WHERE priority >= 1 AND priority <= 4)::BIGINT      AS high, \
+                COUNT(*) FILTER (WHERE priority = 5)::BIGINT                          AS medium, \
+                COUNT(*) FILTER (WHERE priority >= 6 AND priority <= 9)::BIGINT      AS low, \
+                COUNT(*) FILTER (WHERE priority IS NULL OR priority = 0)::BIGINT     AS undefined \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND dtstart IS NOT NULL \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "total":       total,
+        "high":        high,
+        "medium":      medium,
+        "low":         low,
+        "undefined":   undefined,
     })))
 }
 

@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #682 — (commit pendente)
+**Último sprint:** #686 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -67,15 +67,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #680 | calendar | `GET /calendars/stats/by-tenant` — COUNT DISTINCT calendars + events por tenant_id; ops cross-tenant |
 | #681 | notifications | `GET /dlq/stats/attempts-distribution` — COUNT FILTER buckets 1/2/3/4/5+; identifica retry loops |
 | #682 | drive | `GET /drive/files/stats/created-by-day?since=&until=` — DATE_TRUNC dia via created_at; kind='file' não-deletados |
+| #683 | mail | `GET /mail/messages/stats/threads-by-folder` — COUNT DISTINCT thread_id + unread_thread_count por mailbox; LEFT JOIN pastas vazias |
+| #684 | search | `GET /search/stats/by-tenant?limit=N` — docs_count_by_tenant (AllQuery scan); `{rows:[{tenant_id,doc_count}]}`; ops cross-tenant |
+| #685 | calendar | `GET /calendars/:cal_id/events-by-range/priority-stats?after=&before=` — COUNT FILTER PRIORITY 0=undefined/1-4=high/5=medium/6-9=low |
+| #686 | notifications | `GET /dlq/stats/by-user?limit=N` — COUNT GROUP BY user_id ORDER BY count DESC; análogo a by-tenant (#671) |
 
 ---
 
-## Próximos candidatos (#683+)
+## Próximos candidatos (#687+)
 
-1. **mail** — `GET /mail/messages/stats/threads-by-folder` — COUNT DISTINCT thread_id por mailbox; `{folders:[{folder,thread_count,unread_thread_count}]}`; complementa threads (#630) com breakdown por folder
-2. **search** — `GET /search/stats/by-tenant?limit=N` — COUNT docs por tenant_id (field f_tenant_id); `{rows:[{tenant_id,doc_count}]}`; ops cross-tenant sem RLS
-3. **calendar** — `GET /calendars/:cal_id/events-by-range/priority-stats?after=&before=` — COUNT FILTER por PRIORITY (0-undefined/1-9 buckets high/medium/low); `{calendar_id,total,high,medium,low,undefined}`
-4. **notifications** — `GET /dlq/stats/by-user?limit=N` — COUNT GROUP BY user_id ORDER BY count DESC; `{rows:[{user_id,count}]}`; análogo a by-tenant (#671) escopado por usuário
+1. **drive** — `GET /drive/files/stats/by-size-bucket?folder_id=` — 8-FILTER size buckets: <1KB/1-10KB/10-100KB/100KB-1MB/1-10MB/10-100MB/100MB-1GB/>1GB; `{buckets:[{range,count,total_bytes}]}`
+2. **mail** — `GET /mail/messages/stats/senders-by-folder` — top-20 from_addr por mailbox; GROUP BY (folder, from_addr) ORDER BY count DESC; `{folders:[{folder,top_senders:[{from_addr,count}]}]}`
+3. **search** — `GET /search/index/segments/merge-candidates?min_docs=N&max_docs=N` — filtra segmentos por faixa de num_docs; `{segments:[{id,num_docs,disk_bytes}]}`; útil pra automação de merge seletivo
+4. **calendar** — `GET /calendars/:cal_id/events-by-range/class-distribution` — breakdown PUBLIC/PRIVATE/CONFIDENTIAL + unset; `{calendar_id,total,public,private,confidential,unset}`
 
 ---
 

@@ -892,6 +892,40 @@ async fn dlq_stats_by_kind(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user?limit=N — DLQ por user_id agregado.
+///
+/// Agrupa `notification_dlq` por `user_id` e retorna
+/// `{rows:[{user_id,count}]}` ordenado `count DESC`. Análogo a `by-tenant` (#671)
+/// escopado por usuário. `limit` default 20 max 200. Sprint #686.
+async fn dlq_stats_by_user(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT user_id, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY user_id \
+          ORDER BY count DESC, user_id ASC NULLS LAST \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, count)| json!({"user_id": uid, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-distribution — histograma de attempts.
 ///
 /// Classifica entradas por `attempts`: buckets 1/2/3/4/5+ via COUNT FILTER.
@@ -1882,6 +1916,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
         .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
         .route("/api/v1/notifications/dlq/stats/by-kind",             get(dlq_stats_by_kind))
+        .route("/api/v1/notifications/dlq/stats/by-user",               get(dlq_stats_by_user))
         .route("/api/v1/notifications/dlq/stats/attempts-distribution", get(dlq_stats_attempts_distribution))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))

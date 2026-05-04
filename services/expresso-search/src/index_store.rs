@@ -1019,6 +1019,34 @@ impl IndexStore {
         by_kind.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         Ok((total, by_kind))
     }
+
+    /// Cross-tenant doc count grouped by tenant_id, ordered by count DESC, limited to `limit`.
+    ///
+    /// Scans all docs (MatchAllDocs) and accumulates counts by the `tenant_id` stored field.
+    /// Sprint #684.
+    pub fn docs_count_by_tenant(&self, limit: usize) -> anyhow::Result<Vec<(String, u64)>> {
+        use tantivy::query::AllQuery;
+        use tantivy::collector::DocSetCollector;
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+        let doc_set = searcher.search(&AllQuery, &DocSetCollector)?;
+
+        let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let tid = doc.get_first(i.f_tenant_id)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .unwrap_or("unknown")
+                .to_owned();
+            *counts.entry(tid).or_insert(0) += 1;
+        }
+
+        let mut rows: Vec<(String, u64)> = counts.into_iter().collect();
+        rows.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        rows.truncate(limit);
+        Ok(rows)
+    }
 }
 
 /// Convert unix timestamp (seconds) to a bucket label for temporal facets.
