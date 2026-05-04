@@ -596,10 +596,12 @@ async fn count_dlq(
     Ok(Json(json!({"count": count})))
 }
 
-/// GET /api/v1/notifications/dlq?limit=N&offset=N&kind=K&tenant_id=UUID
+/// GET /api/v1/notifications/dlq?limit=N&offset=N&kind=K&tenant_id=UUID&since=RFC3339&until=RFC3339
 ///
-/// List DLQ entries (newest first). Optional filters: `kind` and/or `tenant_id`.
-/// Limit 1–500, default 50. Ops/admin endpoint — no auth tenant scoping.
+/// List DLQ entries (newest first). Optional filters: `kind`, `tenant_id`,
+/// `since` (failed_at >= since, RFC3339, inclusive), `until` (failed_at < until,
+/// RFC3339, exclusive). Filters compose with AND. Limit 1–500, default 50.
+/// Sprints #600 (kind+tenant_id) + #614 (since+until temporal filter).
 async fn list_dlq(
     State(st):   State<AppState>,
     Query(q):    Query<DlqListQuery>,
@@ -612,14 +614,32 @@ async fn list_dlq(
     let limit  = q.limit.unwrap_or(50).clamp(1, 500) as i64;
     let offset = q.offset.unwrap_or(0).max(0) as i64;
 
-    // Build WHERE clause from optional filters.
-    // $1=limit, $2=offset are always present; filters shift bind positions.
-    let (where_clause, bind_kind, bind_tenant) = match (&q.kind, &q.tenant_id) {
-        (Some(_), Some(_)) => ("WHERE kind = $3 AND tenant_id = $4", true, true),
-        (Some(_), None)    => ("WHERE kind = $3",                    true, false),
-        (None,    Some(_)) => ("WHERE tenant_id = $3",               false, true),
-        (None,    None)    => ("",                                    false, false),
+    // Parse temporal bounds (RFC3339 → OffsetDateTime).
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    // Build WHERE conditions; $1=limit, $2=offset always; filters start at $3.
+    let mut conditions: Vec<String> = Vec::new();
+    let mut next_param = 3usize;
+
+    if q.kind.is_some()      { conditions.push(format!("kind = ${next_param}"));                next_param += 1; }
+    if q.tenant_id.is_some() { conditions.push(format!("tenant_id = ${next_param}"));           next_param += 1; }
+    if since_dt.is_some()    { conditions.push(format!("failed_at >= ${next_param}::timestamptz")); next_param += 1; }
+    if until_dt.is_some()    { conditions.push(format!("failed_at <  ${next_param}::timestamptz")); next_param += 1; }
+    let _ = next_param; // suppress "unused" warning after last use
+
+    let where_clause = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", conditions.join(" AND "))
     };
+
     let sql = format!(
         "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
            FROM notification_dlq \
@@ -628,8 +648,10 @@ async fn list_dlq(
           LIMIT $1 OFFSET $2"
     );
     let mut q_builder = sqlx::query(&sql).bind(limit).bind(offset);
-    if bind_kind    { q_builder = q_builder.bind(q.kind.as_deref().unwrap()); }
-    if bind_tenant  { q_builder = q_builder.bind(q.tenant_id.unwrap()); }
+    if let Some(ref k)  = q.kind      { q_builder = q_builder.bind(k.as_str()); }
+    if let Some(t)      = q.tenant_id { q_builder = q_builder.bind(t); }
+    if let Some(s)      = since_dt    { q_builder = q_builder.bind(s); }
+    if let Some(u)      = until_dt    { q_builder = q_builder.bind(u); }
 
     let rows = q_builder
         .fetch_all(pool.as_ref())
@@ -659,7 +681,8 @@ async fn list_dlq(
         })
     }).collect();
     Ok(Json(json!({"items": items, "limit": limit, "offset": offset,
-        "filter": {"kind": q.kind, "tenant_id": q.tenant_id}})))
+        "filter": {"kind": q.kind, "tenant_id": q.tenant_id,
+                   "since": q.since, "until": q.until}})))
 }
 
 #[derive(Debug, Deserialize)]
@@ -668,6 +691,10 @@ struct DlqListQuery {
     offset:    Option<u32>,
     kind:      Option<String>,
     tenant_id: Option<Uuid>,
+    /// RFC3339 lower bound on failed_at (inclusive). Sprint #614.
+    since:     Option<String>,
+    /// RFC3339 upper bound on failed_at (exclusive). Sprint #614.
+    until:     Option<String>,
 }
 
 /// GET /api/v1/notifications/dlq/:id — inspeciona uma entrada individual da DLQ.
