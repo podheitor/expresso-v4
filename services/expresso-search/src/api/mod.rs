@@ -468,6 +468,25 @@ pub async fn get_segment(
     }
 }
 
+/// POST /api/v1/search/index/segments/reload — force Tantivy reader reload.
+///
+/// The reader auto-reloads after each writer commit via `OnCommitWithDelay`, but
+/// this endpoint triggers an immediate synchronous reload — useful when you want
+/// freshly indexed documents to be visible without waiting for the delay window.
+/// Returns `{status: "reloaded"}`. Idempotent — safe to call repeatedly.
+/// Sprint #623.
+pub async fn reload_index(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    store
+        .reload()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "status": "reloaded",
+    })))
+}
+
 /// GET /api/v1/search/stats?tenant_id= — aggregate doc counts for a tenant.
 ///
 /// Returns `{tenant_id, total, by_kind: [{kind, count}]}` ordered by count DESC.
