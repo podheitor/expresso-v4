@@ -173,7 +173,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/history",
-            get(event_history),
+            get(event_history).delete(delete_event_history),
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
@@ -2040,6 +2040,45 @@ async fn event_history(
 #[derive(Debug, serde::Deserialize)]
 struct HistoryParams {
     limit: Option<u32>,
+}
+
+/// DELETE /api/v1/calendars/:cal_id/events/:id/history — purge do log de histórico.
+///
+/// Remove todas as entradas de `calendar_event_history` para o evento.
+/// Requer OWNER/WRITE/ADMIN no calendar. Retorna `{event_id, calendar_id, deleted}`.
+/// 404 se evento não pertence ao tenant/calendar. Sprint #590.
+async fn delete_event_history(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    let ev = EventRepo::new(pool)
+        .get(ctx.tenant_id, event_id)
+        .await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let result = sqlx::query(
+        "DELETE FROM calendar_event_history \
+          WHERE tenant_id = $1 AND event_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .execute(pool)
+    .await
+    .map_err(CalendarError::Database)?;
+
+    Ok(Json(json!({
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "deleted":     result.rows_affected(),
+    })))
 }
 
 /// GET /api/v1/calendars/:cal_id/events/:id/itip/request.ics — returns the
