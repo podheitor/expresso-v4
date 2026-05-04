@@ -609,6 +609,37 @@ pub async fn smallest_segment(
     Json(serde_json::json!({"segment": segment}))
 }
 
+/// GET /api/v1/search/index/segments/stats — consolidated segment stats.
+///
+/// Combina `count` + `largest` + `smallest` + `total_disk_bytes` numa única chamada,
+/// evitando 4 requests separados no dashboard. Retorna:
+/// `{segment_count, total_disk_bytes, largest_disk_bytes, smallest_disk_bytes}`.
+/// `largest_disk_bytes` e `smallest_disk_bytes` são `null` quando o índice está vazio.
+/// Graceful: retorna zeros/nulls se `list_segments()` falhar. Sprint #659.
+pub async fn segment_stats(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let (segment_count, total_disk_bytes, largest_disk_bytes, smallest_disk_bytes) = store
+        .list_segments()
+        .map(|segs| {
+            if segs.is_empty() {
+                return (0usize, 0u64, None::<u64>, None::<u64>);
+            }
+            let total   = segs.iter().map(|(_, _, db)| db).sum::<u64>();
+            let largest  = segs.iter().map(|(_, _, db)| *db).max();
+            let smallest = segs.iter().map(|(_, _, db)| *db).min();
+            (segs.len(), total, largest, smallest)
+        })
+        .unwrap_or((0, 0, None, None));
+
+    Json(serde_json::json!({
+        "segment_count":       segment_count,
+        "total_disk_bytes":    total_disk_bytes,
+        "largest_disk_bytes":  largest_disk_bytes,
+        "smallest_disk_bytes": smallest_disk_bytes,
+    }))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.
