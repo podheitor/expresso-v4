@@ -156,14 +156,46 @@ async fn internal_notify(
         }
     }
 
-    // Fire external webhook if configured.
+    // Fire external webhook with retry (3 attempts, exponential backoff 1s/2s/4s).
+    // On exhaustion, payload is written to notification_dlq for inspection/replay.
     if let Some((url, client)) = &st.webhook {
         let url    = url.clone();
         let client = client.clone();
         let body   = serde_json::to_value(&notif).unwrap_or_default();
+        let db_dlq = st.db.clone();
+        let notif2 = notif.clone();
         tokio::spawn(async move {
-            if let Err(e) = client.post(url.as_ref()).json(&body).send().await {
-                warn!(error = %e, "notification webhook dispatch failed");
+            const MAX_ATTEMPTS: u32 = 3;
+            let mut last_err = String::new();
+            for attempt in 0..MAX_ATTEMPTS {
+                if attempt > 0 {
+                    tokio::time::sleep(std::time::Duration::from_secs(1u64 << (attempt - 1))).await;
+                }
+                match client.post(url.as_ref()).json(&body).send().await {
+                    Ok(resp) if resp.status().is_success() => return,
+                    Ok(resp) => last_err = format!("HTTP {}", resp.status()),
+                    Err(e)   => last_err = e.to_string(),
+                }
+                warn!(attempt = attempt + 1, error = %last_err, "notification webhook attempt failed");
+            }
+            warn!(error = %last_err, "notification webhook exhausted retries → DLQ");
+            if let Some(pool) = db_dlq {
+                let payload = serde_json::to_value(&notif2).unwrap_or_default();
+                if let Err(e) = sqlx::query(
+                    "INSERT INTO notification_dlq \
+                        (tenant_id, user_id, kind, payload, attempts, last_error) \
+                     VALUES ($1, $2, $3, $4, $5, $6)"
+                )
+                .bind(notif2.tenant_id)
+                .bind(notif2.user_id)
+                .bind(&notif2.kind)
+                .bind(&payload)
+                .bind(MAX_ATTEMPTS as i32)
+                .bind(&last_err)
+                .execute(pool.as_ref())
+                .await {
+                    warn!(error = %e, "failed to write to notification_dlq");
+                }
             }
         });
     }
