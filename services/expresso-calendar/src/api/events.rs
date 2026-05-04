@@ -181,6 +181,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summaries),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-stats",
+            get(events_by_range_duration_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1127,6 +1131,68 @@ async fn events_by_range_summaries(
         "events_scanned": events_scanned,
         "count":          summaries.len(),
         "summaries":      summaries,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-stats?after=&before=
+///
+/// Retorna stats de duração dos eventos com `dtstart` ∈ `[after, before)` que
+/// também têm `dtend` definido. Usa `EXTRACT(EPOCH FROM (dtend - dtstart))/60`
+/// para obter duração em minutos via SQL. Eventos sem `dtstart` ou sem `dtend`
+/// são excluídos do cálculo (eventos sem dtend não têm duração mensurável).
+/// Response: `{calendar_id, events_with_duration, avg_minutes, min_minutes,
+///             max_minutes, total_minutes}`. Sprint #637.
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeDurationStatsQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+async fn events_by_range_duration_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeDurationStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let row: (i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS events_with_duration, \
+            AVG(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS avg_minutes, \
+            MIN(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS min_minutes, \
+            MAX(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS max_minutes, \
+            SUM(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS total_minutes \
+         FROM calendar_events \
+         WHERE tenant_id   = $1 \
+           AND calendar_id = $2 \
+           AND dtstart IS NOT NULL \
+           AND dtend   IS NOT NULL \
+           AND dtend   > dtstart \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let (events_with_duration, avg_minutes, min_minutes, max_minutes, total_minutes) = row;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":          cal_id,
+        "events_with_duration": events_with_duration,
+        "avg_minutes":          avg_minutes,
+        "min_minutes":          min_minutes,
+        "max_minutes":          max_minutes,
+        "total_minutes":        total_minutes,
     })))
 }
 
