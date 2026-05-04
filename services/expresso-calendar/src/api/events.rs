@@ -172,6 +172,10 @@ pub fn routes() -> Router<AppState> {
             post(import_ics),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/history",
+            get(event_history),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
             get(itip_request),
         )
@@ -1971,6 +1975,68 @@ async fn import_ics(
     Ok((StatusCode::OK, Json(body)).into_response())
 }
 
+
+/// GET /api/v1/calendars/:cal_id/events/:id/history — log de mudanças de etag/sequence.
+///
+/// Retorna as últimas N entradas da `calendar_event_history` para o evento,
+/// ordenadas da mais recente para a mais antiga. Parâmetro opcional `limit`
+/// (default 50, máx 200). Cada entry: `{id, etag, sequence, op, changed_at}`.
+/// 404 se o evento não pertence ao tenant/calendar. Sprint #583.
+async fn event_history(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+    Query(params): Query<HistoryParams>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+
+    // Verify event belongs to this tenant (404 guard).
+    let ev = EventRepo::new(pool)
+        .get(ctx.tenant_id, event_id)
+        .await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let limit = params.limit.unwrap_or(50).min(200) as i64;
+
+    let rows: Vec<(Uuid, String, i32, String, OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, etag, sequence, op, changed_at \
+           FROM calendar_event_history \
+          WHERE tenant_id = $1 AND event_id = $2 \
+          ORDER BY changed_at DESC \
+          LIMIT $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+    .map_err(CalendarError::Database)?;
+
+    let entries: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(id, etag, sequence, op, changed_at)| json!({
+            "id":         id,
+            "etag":       etag,
+            "sequence":   sequence,
+            "op":         op,
+            "changed_at": changed_at,
+        }))
+        .collect();
+
+    Ok(Json(json!({
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "history":     entries,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct HistoryParams {
+    limit: Option<u32>,
+}
 
 /// GET /api/v1/calendars/:cal_id/events/:id/itip/request.ics — returns the
 /// event wrapped with METHOD:REQUEST for SMTP invitation attachment.

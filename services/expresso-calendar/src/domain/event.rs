@@ -232,6 +232,20 @@ impl<'a> EventRepo<'a> {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(CalendarError::EventNotFound(id))?;
+
+        sqlx::query(
+            "INSERT INTO calendar_event_history \
+             (tenant_id, calendar_id, event_id, etag, sequence, op) \
+             VALUES ($1, $2, $3, $4, $5, 'PUT')",
+        )
+        .bind(tenant_id)
+        .bind(row.calendar_id)
+        .bind(row.id)
+        .bind(&row.etag)
+        .bind(row.sequence)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
         Ok(row)
     }
@@ -296,6 +310,20 @@ impl<'a> EventRepo<'a> {
         .fetch_optional(&mut *tx)
         .await?
         .ok_or(CalendarError::EventNotFound(id))?;
+
+        sqlx::query(
+            "INSERT INTO calendar_event_history \
+             (tenant_id, calendar_id, event_id, etag, sequence, op) \
+             VALUES ($1, $2, $3, $4, $5, 'PATCH')",
+        )
+        .bind(tenant_id)
+        .bind(row.calendar_id)
+        .bind(row.id)
+        .bind(&row.etag)
+        .bind(row.sequence)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
         Ok(row)
     }
