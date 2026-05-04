@@ -42,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats",            get(message_stats))
         .route("/mail/messages/stats/flags",      get(flag_stats))
         .route("/mail/messages/stats/threads",    get(thread_stats))
+        .route("/mail/messages/stats/senders",    get(sender_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1831,6 +1832,72 @@ async fn flag_stats(
     }).collect();
 
     let mut resp = serde_json::json!({"flags": flags});
+    if let Some(folder) = params.folder {
+        resp["folder"] = serde_json::Value::String(folder);
+    }
+    Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/senders?folder=&limit=N
+///
+/// Top-N senders by message count for the authenticated user. Optional `folder`
+/// scopes to a specific mailbox. `limit` defaults to 20, max 200.
+/// Response: `{folder?, senders: [{from_addr, count}]}` ordered by count DESC.
+/// Sprint #635.
+#[derive(Debug, Deserialize)]
+struct SenderStatsParams {
+    folder: Option<String>,
+    limit:  Option<i64>,
+}
+
+async fn sender_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<SenderStatsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = params.limit.unwrap_or(20).min(200).max(1);
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = if params.folder.is_some() {
+        "AND mb.name = $4"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT m.from_addr, COUNT(*)::BIGINT AS cnt \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+               {folder_filter} \
+         GROUP BY m.from_addr \
+         ORDER BY cnt DESC \
+         LIMIT $3"
+    );
+
+    let rows: Vec<(String, i64)> = if let Some(ref folder) = params.folder {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(limit)
+            .bind(folder)
+            .fetch_all(&mut *tx)
+            .await?
+    } else {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(limit)
+            .fetch_all(&mut *tx)
+            .await?
+    };
+    tx.commit().await?;
+
+    let senders: Vec<serde_json::Value> = rows.into_iter().map(|(from_addr, count)| {
+        serde_json::json!({"from_addr": from_addr, "count": count})
+    }).collect();
+
+    let mut resp = serde_json::json!({"senders": senders});
     if let Some(folder) = params.folder {
         resp["folder"] = serde_json::Value::String(folder);
     }
