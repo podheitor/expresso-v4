@@ -56,6 +56,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/quota",                       get(quota))
         .route("/api/v1/drive/files/stats",                 get(file_stats))
         .route("/api/v1/drive/files/stats/users",           get(file_stats_users))
+        .route("/api/v1/drive/files/stats/folders",         get(file_stats_folders))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -798,6 +799,31 @@ async fn file_stats_users(
         serde_json::json!({"user_id": uid, "file_count": fc, "used_bytes": ub})
     }).collect();
     Ok(Json(serde_json::json!({"users": users})))
+}
+
+/// GET /api/v1/drive/files/stats/folders?limit=N — top-N folders by recursive storage usage.
+///
+/// Returns `{folders: [{folder_id, folder_name, file_count, used_bytes}]}` ordered by
+/// `used_bytes DESC`. Uses a recursive CTE to aggregate size_bytes of all descendant
+/// files for each root folder. Only counts non-deleted files (`kind='file'`).
+/// `limit` default 20, max 200. Sprint #626.
+#[derive(Debug, Deserialize)]
+struct StatsFoldersQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_folders(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsFoldersQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let rows  = QuotaRepo::new(pool).top_folders_by_usage(ctx.tenant_id, limit).await?;
+    let folders: Vec<serde_json::Value> = rows.into_iter().map(|(fid, fname, fc, ub)| {
+        serde_json::json!({"folder_id": fid, "folder_name": fname, "file_count": fc, "used_bytes": ub})
+    }).collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V

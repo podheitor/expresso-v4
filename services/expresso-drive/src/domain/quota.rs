@@ -162,6 +162,46 @@ impl<'a> QuotaRepo<'a> {
         Ok(rows)
     }
 
+    /// Top-N folders by recursive storage usage within a tenant.
+    /// Returns `Vec<(folder_id, folder_name, file_count, used_bytes)>` ordered by used_bytes DESC.
+    /// Uses a recursive CTE to accumulate size_bytes of all descendant files for each folder.
+    pub async fn top_folders_by_usage(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, String, i64, i64)>> {
+        let rows: Vec<(Uuid, String, i64, i64)> = sqlx::query_as(
+            "WITH RECURSIVE folder_tree AS ( \
+                SELECT id, name, parent_id, id AS root_id \
+                  FROM drive_files \
+                 WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'folder' \
+                UNION ALL \
+                SELECT f.id, f.name, f.parent_id, ft.root_id \
+                  FROM drive_files f \
+                  JOIN folder_tree ft ON f.parent_id = ft.id \
+                 WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+             ) \
+             SELECT \
+                 folders.id AS folder_id, \
+                 folders.name AS folder_name, \
+                 COALESCE(agg.file_count, 0)::BIGINT AS file_count, \
+                 COALESCE(agg.used_bytes, 0)::BIGINT AS used_bytes \
+             FROM drive_files folders \
+             LEFT JOIN ( \
+                 SELECT ft.root_id, COUNT(f.id)::BIGINT AS file_count, \
+                        COALESCE(SUM(f.size_bytes), 0)::BIGINT AS used_bytes \
+                   FROM folder_tree ft \
+                   JOIN drive_files f ON f.parent_id = ft.id \
+                  WHERE f.tenant_id = $1 AND f.deleted_at IS NULL AND f.kind = 'file' \
+                  GROUP BY ft.root_id \
+             ) agg ON agg.root_id = folders.id \
+             WHERE folders.tenant_id = $1 AND folders.deleted_at IS NULL AND folders.kind = 'folder' \
+             ORDER BY used_bytes DESC \
+             LIMIT $2",
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(
