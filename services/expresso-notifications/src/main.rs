@@ -537,6 +537,21 @@ async fn mark_all_read(
     Ok(Json(json!({ "marked_read": r.rows_affected() })))
 }
 
+/// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
+async fn count_dlq(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notification_dlq")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"count": count})))
+}
+
 /// GET /api/v1/notifications/dlq?limit=N&offset=N — list DLQ entries (newest first).
 /// No tenant filter — this is an ops/admin endpoint. Limit 1–500, default 50.
 async fn list_dlq(
@@ -822,6 +837,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
+        .route("/api/v1/notifications/dlq/count",   get(count_dlq))
         .route("/api/v1/notifications/dlq",        get(list_dlq))
         .route("/api/v1/notifications/dlq/:id",    delete(delete_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
