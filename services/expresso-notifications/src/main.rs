@@ -613,6 +613,70 @@ async fn delete_dlq_entry(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /api/v1/notifications/dlq/:id/retry — re-dispatch a DLQ entry.
+///
+/// Reads the saved payload, posts it to /internal/notify on this pod, and
+/// removes the DLQ entry on success. On failure the entry remains in the DLQ.
+async fn retry_dlq_entry(
+    State(st): State<AppState>,
+    Path(id):  Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    // Load the DLQ entry.
+    let row = sqlx::query(
+        "SELECT id, tenant_id, user_id, kind, payload, folder, message_id \
+           FROM notification_dlq \
+          WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))))?;
+
+    let payload: serde_json::Value = row.get("payload");
+
+    // Reconstruct the notification from the saved payload.
+    let notif: Notification = serde_json::from_value(payload.clone())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    // Re-dispatch: broadcast locally + Redis + webhook (same as internal_notify).
+    let _ = st.tx.send(notif.clone());
+    NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+
+    if let Some(redis_pool) = &st.redis_pub {
+        if let Ok(body) = serde_json::to_string(&notif) {
+            if let Ok(mut conn) = redis_pool.get().await {
+                use deadpool_redis::redis::AsyncCommands;
+                let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+            }
+        }
+    }
+
+    if let Some((url, client)) = &st.webhook {
+        let url    = url.clone();
+        let client = client.clone();
+        let body   = payload.clone();
+        tokio::spawn(async move {
+            let _ = client.post(url.as_ref()).json(&body).send().await;
+        });
+    }
+
+    // Delete the DLQ entry now that it's been re-dispatched.
+    sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({"retried": true, "id": id, "kind": notif.kind})))
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -760,6 +824,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
         .route("/api/v1/notifications/dlq",        get(list_dlq))
         .route("/api/v1/notifications/dlq/:id",    delete(delete_dlq_entry))
+        .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
