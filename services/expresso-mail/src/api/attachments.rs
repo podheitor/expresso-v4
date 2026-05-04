@@ -14,7 +14,7 @@ use axum::{
     Json,
 };
 use expresso_core::begin_tenant_tx;
-use mail_parser::{MessageParser, MimeHeaders};
+use mail_parser::{MessageParser, MimeHeaders, PartType};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/attachments/:index", get(download_attachment))
         .route("/mail/messages/:id/headers",            get(message_headers))
         .route("/mail/messages/:id/body",               get(message_body))
+        .route("/mail/messages/:id/structure",          get(message_structure))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -291,6 +292,61 @@ async fn message_headers(
         .collect();
 
     Ok(Json(serde_json::json!({"message_id": id, "headers": headers})))
+}
+
+/// GET /api/v1/mail/messages/:id/structure — MIME tree estrutural sem conteúdo.
+///
+/// Retorna `{message_id, parts: [node]}` onde cada nó é:
+/// `{index, content_type, is_attachment, filename?, parts?: [node]}`.
+/// `parts` está presente e não-vazio apenas em nós multipart.
+/// Sprint #596.
+async fn message_structure(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
+    let raw = load_raw(&state, &body_path).await?;
+    let msg = MessageParser::default()
+        .parse(&raw)
+        .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
+
+    fn build_node(msg: &mail_parser::Message, idx: usize) -> serde_json::Value {
+        let part = match msg.part(idx) {
+            Some(p) => p,
+            None    => return serde_json::json!({"index": idx, "content_type": "unknown"}),
+        };
+        let ct = part.content_type().map(|c| format_ct(c))
+            .unwrap_or_else(|| "application/octet-stream".into());
+        let is_attachment = part.attachment_name().is_some();
+        let filename = part.attachment_name().map(str::to_owned);
+
+        match &part.body {
+            PartType::Multipart(children) => {
+                let child_nodes: Vec<serde_json::Value> = children.iter()
+                    .map(|&ci| build_node(msg, ci))
+                    .collect();
+                serde_json::json!({
+                    "index":         idx,
+                    "content_type":  ct,
+                    "is_attachment": is_attachment,
+                    "filename":      filename,
+                    "parts":         child_nodes,
+                })
+            }
+            _ => serde_json::json!({
+                "index":         idx,
+                "content_type":  ct,
+                "is_attachment": is_attachment,
+                "filename":      filename,
+            }),
+        }
+    }
+
+    // Root is always part 0 in mail-parser (the message root).
+    let root = build_node(&msg, 0);
+
+    Ok(Json(serde_json::json!({"message_id": id, "structure": root})))
 }
 
 #[cfg(test)]
