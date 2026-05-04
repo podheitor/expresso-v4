@@ -302,7 +302,7 @@ pub struct DeleteByTenantParams {
     pub tenant_id: String,
 }
 
-/// DELETE /api/v1/index?tenant_id= — remove all documents for a tenant
+/// DELETE /api/v1/index?tenant_id= — remove all documents for a tenant (query-param form)
 pub async fn delete_by_tenant(
     State(store): State<IndexStore>,
     Query(params): Query<DeleteByTenantParams>,
@@ -321,6 +321,31 @@ pub async fn delete_by_tenant(
             }
         })?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// DELETE /api/v1/search/index/tenant/:tenant_id — purge all documents for a tenant.
+///
+/// Path-param form do delete_by_tenant — mais RESTful, sem query string.
+/// Retorna `{tenant_id, status: "purged"}` em vez de 204 para melhor observability.
+/// Sprint #605.
+pub async fn purge_tenant_index(
+    State(store): State<IndexStore>,
+    Path(tenant_id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    store
+        .delete_tenant_documents(&tenant_id)
+        .await
+        .map_err(|e| {
+            if e.to_string().contains("valid UUID") {
+                (StatusCode::BAD_REQUEST, e.to_string())
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
+        })?;
+    Ok(Json(serde_json::json!({
+        "tenant_id": tenant_id,
+        "status":    "purged",
+    })))
 }
 
 #[derive(Debug, Deserialize)]
