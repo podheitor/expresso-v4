@@ -176,6 +176,9 @@ async fn main() -> anyhow::Result<()> {
         api::snooze::spawn_waker(snooze_pool, snooze_interval);
     }
 
+    // Vacation auto-deactivation worker — hourly, deactivates when deactivate_at <= now()
+    api::vacation::spawn_deactivation_worker(state.db().clone());
+
     // IMAP4rev1 (plain, port 143)
     let imap_addr: SocketAddr = format!("0.0.0.0:{}", cfg.mail_server.imap_port).parse()?;
     let imap_state = state.clone();

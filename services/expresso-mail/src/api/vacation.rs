@@ -39,6 +39,34 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/vacation/toggle", patch(toggle_vacation))
 }
 
+/// Spawn vacation auto-deactivation worker.
+/// Runs hourly: sets `enabled=false` + clears `sieve_script` for rows where
+/// `deactivate_at <= now()` AND `enabled=true`.
+pub fn spawn_deactivation_worker(pool: expresso_core::DbPool) {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
+        ticker.tick().await; // skip immediate tick
+        loop {
+            ticker.tick().await;
+            let res = sqlx::query(
+                "UPDATE user_vacation \
+                 SET enabled = false, sieve_script = '', updated_at = now() \
+                 WHERE enabled = true \
+                   AND deactivate_at IS NOT NULL \
+                   AND deactivate_at <= now()"
+            )
+            .execute(&pool)
+            .await;
+            match res {
+                Ok(r) if r.rows_affected() > 0 =>
+                    tracing::info!(rows = r.rows_affected(), "vacation auto-deactivation done"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "vacation auto-deactivation failed"),
+            }
+        }
+    });
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Vacation {
     pub enabled:        bool,
@@ -46,6 +74,9 @@ pub struct Vacation {
     pub starts_at:      Option<OffsetDateTime>,
     #[serde(with = "time::serde::rfc3339::option", default)]
     pub ends_at:        Option<OffsetDateTime>,
+    /// When set, the worker auto-sets `enabled=false` at this timestamp.
+    #[serde(with = "time::serde::rfc3339::option", default)]
+    pub deactivate_at:  Option<OffsetDateTime>,
     pub subject:        String,
     pub body:           String,
     pub interval_days:  i32,
@@ -59,6 +90,7 @@ impl Default for Vacation {
             enabled:       false,
             starts_at:     None,
             ends_at:       None,
+            deactivate_at: None,
             subject:       "Out of office".into(),
             body:          String::new(),
             interval_days: 7,
@@ -95,7 +127,7 @@ async fn get_vacation(
 ) -> Result<Response> {
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     let row = sqlx::query(
-        "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at
+        "SELECT enabled, starts_at, ends_at, deactivate_at, subject, body, interval_days, sieve_script, updated_at
          FROM user_vacation WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
@@ -109,6 +141,7 @@ async fn get_vacation(
                 enabled:       r.get("enabled"),
                 starts_at:     r.try_get("starts_at").ok(),
                 ends_at:       r.try_get("ends_at").ok(),
+                deactivate_at: r.try_get("deactivate_at").ok(),
                 subject:       r.get("subject"),
                 body:          r.get("body"),
                 interval_days: r.get("interval_days"),
@@ -146,12 +179,13 @@ async fn put_vacation(
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
     sqlx::query(
         "INSERT INTO user_vacation
-            (user_id, tenant_id, enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+            (user_id, tenant_id, enabled, starts_at, ends_at, deactivate_at, subject, body, interval_days, sieve_script, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
          ON CONFLICT (user_id) DO UPDATE SET
             enabled       = EXCLUDED.enabled,
             starts_at     = EXCLUDED.starts_at,
             ends_at       = EXCLUDED.ends_at,
+            deactivate_at = EXCLUDED.deactivate_at,
             subject       = EXCLUDED.subject,
             body          = EXCLUDED.body,
             interval_days = EXCLUDED.interval_days,
@@ -163,6 +197,7 @@ async fn put_vacation(
     .bind(v.enabled)
     .bind(v.starts_at)
     .bind(v.ends_at)
+    .bind(v.deactivate_at)
     .bind(&v.subject)
     .bind(&v.body)
     .bind(v.interval_days)
@@ -189,7 +224,7 @@ async fn toggle_vacation(
     let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
 
     let row = sqlx::query(
-        "SELECT enabled, starts_at, ends_at, subject, body, interval_days, sieve_script \
+        "SELECT enabled, starts_at, ends_at, deactivate_at, subject, body, interval_days, sieve_script \
          FROM user_vacation WHERE user_id = $1 AND tenant_id = $2"
     )
     .bind(ctx.user_id)
@@ -201,6 +236,7 @@ async fn toggle_vacation(
             enabled:       r.get("enabled"),
             starts_at:     r.try_get("starts_at").ok(),
             ends_at:       r.try_get("ends_at").ok(),
+            deactivate_at: r.try_get("deactivate_at").ok(),
             subject:       r.get("subject"),
             body:          r.get("body"),
             interval_days: r.get("interval_days"),
@@ -214,8 +250,8 @@ async fn toggle_vacation(
 
     sqlx::query(
         "INSERT INTO user_vacation \
-            (user_id, tenant_id, enabled, starts_at, ends_at, subject, body, interval_days, sieve_script, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now()) \
+            (user_id, tenant_id, enabled, starts_at, ends_at, deactivate_at, subject, body, interval_days, sieve_script, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now()) \
          ON CONFLICT (user_id) DO UPDATE SET \
             enabled      = EXCLUDED.enabled, \
             sieve_script = EXCLUDED.sieve_script, \
@@ -226,6 +262,7 @@ async fn toggle_vacation(
     .bind(v.enabled)
     .bind(v.starts_at)
     .bind(v.ends_at)
+    .bind(v.deactivate_at)
     .bind(&v.subject)
     .bind(&v.body)
     .bind(v.interval_days)
