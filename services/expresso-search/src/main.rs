@@ -122,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search", get(api::search))
         .route("/api/v1/search/stats", get(api::search_stats))
         .route("/api/v1/search/index/segments",           get(api::list_segments))
+        .route("/api/v1/search/index/segments/count",    get(api::segment_count))
         .route("/api/v1/search/index/segments/reload",   post(api::reload_index))
         .route("/api/v1/search/index/segments/merge",    post(api::merge_segments))
         .route("/api/v1/search/index/segments/{id}",     get(api::get_segment))

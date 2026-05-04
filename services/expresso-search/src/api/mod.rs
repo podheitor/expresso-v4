@@ -441,6 +441,22 @@ pub async fn list_segments(
     })))
 }
 
+/// GET /api/v1/search/index/segments/count — current segment count.
+///
+/// Returns `{count}` without transmitting the full segment list. Useful for
+/// badge/alert UIs that only need to know how many segments exist (e.g. "index
+/// needs vacuum if count > N"). Complements `GET /index/segments` (#613).
+/// Sprint #638.
+pub async fn segment_count(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let count = store
+        .list_segments()
+        .map(|s| s.len())
+        .unwrap_or(0);
+    Json(serde_json::json!({"count": count}))
+}
+
 /// GET /api/v1/search/index/segments/:id — metadata for a single segment by UUID.
 ///
 /// Returns `{id, num_docs, disk_bytes}` for the segment visible to the current
