@@ -271,6 +271,10 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events/:id/exdates-preview/stats",
             get(exdates_preview_stats),
         )
+        .route(
+            "/api/v1/calendars/events/search",
+            get(events_search),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -6719,6 +6723,77 @@ async fn events_by_range_cleanup_orphans(
         "orphan_exdates_removed":  orphan_exdates_removed,
         "orphan_overrides_removed": orphan_overrides_removed,
     })))
+}
+
+/// GET /api/v1/calendars/events/search?q=&limit=&offset= — full-text search cross-calendar.
+///
+/// Delega para o expresso-search service via `GET /api/v1/search?q=&tenant_id=&limit=&offset=`.
+/// Retorna `{hits: [{document_id, subject, score, ...}], count}`.
+/// 503 se SEARCH__URL não configurado. Parâmetros: `q` (obrigatório), `limit`
+/// (default 20, máx 200), `offset` (default 0). Sprint #588.
+async fn events_search(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(params): Query<EventsSearchParams>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+
+    let search_url = state.search_url().to_owned();
+    if search_url.is_empty() {
+        return Err(CalendarError::BadRequest(
+            "SEARCH__URL not configured — search unavailable".into(),
+        ));
+    }
+
+    if params.q.trim().is_empty() {
+        return Err(CalendarError::BadRequest("q is required".into()));
+    }
+
+    let limit  = params.limit.unwrap_or(20).min(200);
+    let offset = params.offset.unwrap_or(0);
+
+    let url = format!(
+        "{search_url}/api/v1/search?q={q}&tenant_id={tenant}&limit={limit}&offset={offset}",
+        q      = urlencoding::encode(params.q.trim()),
+        tenant = ctx.tenant_id,
+    );
+
+    let client = reqwest::Client::new();
+    let mut req = client.get(&url);
+    let token = state.search_token().to_owned();
+    if !token.is_empty() {
+        req = req.bearer_auth(&token);
+    }
+
+    let resp = req.send().await.map_err(|e| {
+        CalendarError::BadRequest(format!("search service unreachable: {e}"))
+    })?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(CalendarError::BadRequest(format!(
+            "search service returned {status}: {body}"
+        )));
+    }
+
+    let result: serde_json::Value = resp.json().await.map_err(|e| {
+        CalendarError::BadRequest(format!("failed to parse search response: {e}"))
+    })?;
+
+    Ok(Json(json!({
+        "q":      params.q.trim(),
+        "limit":  limit,
+        "offset": offset,
+        "result": result,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsSearchParams {
+    q:      String,
+    limit:  Option<u32>,
+    offset: Option<u32>,
 }
 
 #[cfg(test)]
