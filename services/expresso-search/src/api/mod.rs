@@ -560,6 +560,30 @@ pub async fn index_health_detailed(
     })))
 }
 
+/// GET /api/v1/search/index/segments/largest — segment with the highest disk_bytes.
+///
+/// Returns `{segment}` with `{id, num_docs, disk_bytes}` for the single largest
+/// segment by `disk_bytes`, or `{segment: null}` when the index is empty.
+/// Useful for spotting bloat after bulk indexing without sorting the full segment
+/// list client-side. Complements `GET /index/segments` (#613). Sprint #649.
+pub async fn largest_segment(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segment = store
+        .list_segments()
+        .ok()
+        .and_then(|mut segs| {
+            segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+            segs.into_iter().next()
+        })
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":         id,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }));
+    Json(serde_json::json!({"segment": segment}))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.
