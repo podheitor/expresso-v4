@@ -692,6 +692,25 @@ async fn retry_dlq_entry(
     Ok(Json(json!({"retried": true, "id": id, "kind": notif.kind})))
 }
 
+/// DELETE /api/v1/notifications/dlq — purge total da DLQ sem re-despachar.
+///
+/// Remove todas as entradas da `notification_dlq`. Operação destrutiva —
+/// usar apenas quando os eventos falhos são obsoletos e não precisam de retry.
+/// Retorna `{deleted}` com a contagem de linhas removidas. Sprint #585.
+async fn purge_dlq(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let res = sqlx::query("DELETE FROM notification_dlq")
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"deleted": res.rows_affected()})))
+}
+
 /// POST /api/v1/notifications/dlq/retry-all — re-despacha todos os entries da DLQ.
 ///
 /// Processa cada entry: broadcast SSE + Redis + webhook fire-and-forget + DELETE.
@@ -907,7 +926,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
         .route("/api/v1/notifications/dlq/count",     get(count_dlq))
         .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
-        .route("/api/v1/notifications/dlq",           get(list_dlq))
+        .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
         .route("/api/v1/notifications/dlq/:id",       delete(delete_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
