@@ -180,6 +180,10 @@ pub fn routes() -> Router<AppState> {
             get(event_history_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/history/:entry_id",
+            get(get_history_entry),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
             get(itip_request),
         )
@@ -2130,6 +2134,50 @@ async fn event_history_stats(
         "patch_count": patch_count,
         "first_at":    first_at,
         "last_at":     last_at,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/history/:entry_id — entrada individual do histórico.
+///
+/// Retorna os mesmos campos do GET /history (id, etag, sequence, op, changed_at) para uma
+/// única entrada identificada por UUID. 404 se o evento não pertence ao tenant/calendar ou
+/// se a entrada não existe nesse evento. Sprint #598.
+async fn get_history_entry(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, event_id, entry_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+
+    let ev = EventRepo::new(pool).get(ctx.tenant_id, event_id).await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let row: Option<(Uuid, String, i32, String, OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, etag, sequence, op, changed_at \
+           FROM calendar_event_history \
+          WHERE tenant_id = $1 AND event_id = $2 AND id = $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .bind(entry_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(CalendarError::Database)?;
+
+    let (id, etag, sequence, op, changed_at) = row
+        .ok_or(CalendarError::EventNotFound(entry_id))?;
+
+    Ok(Json(json!({
+        "id":          id,
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "etag":        etag,
+        "sequence":    sequence,
+        "op":          op,
+        "changed_at":  changed_at,
     })))
 }
 
