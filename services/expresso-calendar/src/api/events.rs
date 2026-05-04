@@ -161,6 +161,10 @@ pub fn routes() -> Router<AppState> {
             patch(events_by_range_set_attendees),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/export",
+            get(events_by_range_export),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -767,6 +771,83 @@ async fn events_by_range_preview(
         "next_cursor": next_cursor,
         "has_more":    has_more,
     })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeExportQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+    /// Output format: "ics" (default). Reserved for future formats (e.g. "json").
+    format: Option<String>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/export?after=&before=&format=ics
+///
+/// Exports events whose `dtstart ∈ [after, before)` as a VCALENDAR ICS file.
+/// Complementary to `GET /export.ics` (full calendar) — this targets a date range.
+/// `after` and `before` are RFC3339. Both optional; omitting both exports all events
+/// (same as full-calendar export). `format=ics` is the only supported value.
+/// Returns `text/calendar; charset=utf-8` with `Content-Disposition: attachment`.
+/// Sprint #612.
+async fn events_by_range_export(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeExportQuery>,
+) -> Result<Response> {
+    use crate::domain::ical;
+
+    let fmt = q.format.as_deref().unwrap_or("ics");
+    if fmt != "ics" {
+        return Err(CalendarError::BadRequest("format must be 'ics'".into()));
+    }
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let events: Vec<Event> = sqlx::query_as::<_, Event>(
+        r#"SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                  description, location, dtstart, dtend, rrule, status,
+                  class, transp, sequence, organizer_email, created_at, updated_at
+             FROM calendar_events
+            WHERE tenant_id   = $1
+              AND calendar_id = $2
+              AND dtstart IS NOT NULL
+              AND ($3::timestamptz IS NULL OR dtstart >= $3)
+              AND ($4::timestamptz IS NULL OR dtstart <  $4)
+            ORDER BY dtstart ASC, id ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let blocks: Vec<String> = events.iter()
+        .filter_map(|e| ical::extract_vevent_block(&e.ical_raw))
+        .collect();
+    let body = ical::wrap_vcalendar(&blocks);
+
+    let mut resp = (StatusCode::OK, body).into_response();
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/calendar; charset=utf-8"),
+    );
+    resp.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"events.ics\""),
+    );
+    Ok(resp)
 }
 
 #[derive(Debug, serde::Deserialize)]
