@@ -692,6 +692,74 @@ async fn retry_dlq_entry(
     Ok(Json(json!({"retried": true, "id": id, "kind": notif.kind})))
 }
 
+/// POST /api/v1/notifications/dlq/retry-all — re-despacha todos os entries da DLQ.
+///
+/// Processa cada entry: broadcast SSE + Redis + webhook fire-and-forget + DELETE.
+/// Entries onde o payload é inválido (JSON corrompido) são contados como falha e
+/// deixados intactos na DLQ. Retorna `{retried, failed, total}` — 200 sempre
+/// (best-effort; falhas parciais não abortam o batch).
+async fn retry_all_dlq(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let rows = sqlx::query(
+        "SELECT id, kind, payload FROM notification_dlq ORDER BY created_at ASC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let total = rows.len() as u64;
+    let (mut retried, mut failed) = (0u64, 0u64);
+
+    for row in rows {
+        let id:      Uuid                = row.get("id");
+        let payload: serde_json::Value   = row.get("payload");
+
+        let notif: Notification = match serde_json::from_value(payload.clone()) {
+            Ok(n)  => n,
+            Err(_) => { failed += 1; continue; }
+        };
+
+        let _ = st.tx.send(notif.clone());
+        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+
+        if let Some(redis_pool) = &st.redis_pub {
+            if let Ok(body) = serde_json::to_string(&notif) {
+                if let Ok(mut conn) = redis_pool.get().await {
+                    use deadpool_redis::redis::AsyncCommands;
+                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+                }
+            }
+        }
+
+        if let Some((url, client)) = &st.webhook {
+            let url    = url.clone();
+            let client = client.clone();
+            let body   = payload.clone();
+            tokio::spawn(async move {
+                let _ = client.post(url.as_ref()).json(&body).send().await;
+            });
+        }
+
+        match sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
+            .bind(id)
+            .execute(pool.as_ref())
+            .await
+        {
+            Ok(_)  => retried += 1,
+            Err(_) => failed  += 1,
+        }
+    }
+
+    Ok(Json(json!({"retried": retried, "failed": failed, "total": total})))
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -837,9 +905,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
-        .route("/api/v1/notifications/dlq/count",   get(count_dlq))
-        .route("/api/v1/notifications/dlq",        get(list_dlq))
-        .route("/api/v1/notifications/dlq/:id",    delete(delete_dlq_entry))
+        .route("/api/v1/notifications/dlq/count",     get(count_dlq))
+        .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
+        .route("/api/v1/notifications/dlq",           get(list_dlq))
+        .route("/api/v1/notifications/dlq/:id",       delete(delete_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
