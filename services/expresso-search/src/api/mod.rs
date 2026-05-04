@@ -328,6 +328,25 @@ pub struct StatsParams {
     pub tenant_id: String,
 }
 
+/// POST /api/v1/search/index/segments/merge — força merge de todos os segmentos Tantivy.
+///
+/// Útil pra reduzir fragmentação após ingestão em lote. Bloqueia até o merge completar.
+/// Retorna `{merged_from, status}` onde status é "merged" ou "already_merged".
+/// Sprint #595.
+pub async fn merge_segments(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let (merged_from, status) = store
+        .force_merge_segments()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "merged_from": merged_from,
+        "status":      status,
+    })))
+}
+
 /// GET /api/v1/search/health/index — Tantivy index health info (ops, tenant-agnostic).
 ///
 /// Retorna `{num_docs, num_segments, disk_bytes}`.

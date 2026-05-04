@@ -20,7 +20,7 @@ use tantivy::{
         Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT,
     },
     snippet::SnippetGenerator,
-    HasLen, Index, IndexReader, IndexWriter, ReloadPolicy,
+    HasLen, Index, IndexReader, IndexWriter, ReloadPolicy, SegmentId,
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -860,6 +860,23 @@ impl IndexStore {
         sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         sorted.truncate(top_n);
         Ok(sorted)
+    }
+
+    /// Force-merge all segments into one. Returns (merged_from, status).
+    /// No-op when already 0–1 segments. Sprint #595.
+    pub async fn force_merge_segments(&self) -> anyhow::Result<(usize, &'static str)> {
+        let segment_ids: Vec<SegmentId> = self.inner.index.searchable_segment_ids()
+            .map_err(|e| anyhow::anyhow!("segment list failed: {:?}", e))?;
+        let merged_from = segment_ids.len();
+        if merged_from <= 1 {
+            return Ok((merged_from, "already_merged"));
+        }
+        let future = {
+            let mut writer = self.inner.writer.lock().await;
+            writer.merge(&segment_ids)
+        };
+        future.await.map_err(|e| anyhow::anyhow!("merge failed: {:?}", e))?;
+        Ok((merged_from, "merged"))
     }
 
     /// Returns index-level health info: total docs across all tenants, number of
