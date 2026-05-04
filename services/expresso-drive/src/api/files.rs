@@ -62,7 +62,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
         .route("/api/v1/drive/files/stats/owners",        get(file_stats_owners))
         .route("/api/v1/drive/files/stats/size-buckets", get(file_stats_size_buckets))
-        .route("/api/v1/drive/files/stats/deleted",      get(file_stats_deleted))
+        .route("/api/v1/drive/files/stats/deleted",         get(file_stats_deleted))
+        .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -998,6 +999,50 @@ async fn file_stats_deleted(
         "oldest_deleted_at":  oldest_deleted_at,
         "newest_deleted_at":  newest_deleted_at,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/by-owner-and-ext?limit=N — top-N pares (owner, extensão) por bytes.
+///
+/// Retorna `{rows:[{owner_user_id,extension,file_count,total_bytes}]}` ordenado por
+/// `total_bytes DESC`. Útil pra identificar quais usuários+tipos de arquivo dominam o
+/// armazenamento. Só arquivos não-deletados (`kind='file'`). `limit` default 20, max 200.
+/// Sprint #662.
+#[derive(Debug, Deserialize)]
+struct StatsOwnerExtQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_by_owner_and_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsOwnerExtQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let rows: Vec<(Uuid, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, extension, \
+                COUNT(*)::BIGINT AS file_count, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+         GROUP BY owner_user_id, extension \
+         ORDER BY total_bytes DESC \
+         LIMIT $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter().map(|(uid, ext, fc, tb)| {
+        serde_json::json!({
+            "owner_user_id": uid,
+            "extension":     ext,
+            "file_count":    fc,
+            "total_bytes":   tb,
+        })
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V

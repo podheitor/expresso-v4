@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #655 — `cc63425`
+**Último sprint:** #662 — `git log --oneline | head -1`
 
 ```
 git log --oneline | head -10
@@ -48,16 +48,22 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #653 | mail | `GET /mail/messages/stats/threads-by-day?since=&until=` — threads iniciadas por dia (subquery MIN) |
 | #654 | search | `GET /search/index/segments/smallest` — simetria com /largest; sort ASC |
 | #655 | calendar | `GET /calendars/:cal_id/events-by-range/transp-stats?after=&before=` — COUNT FILTER por TRANSP |
+| #656 | notifications | `GET /dlq/stats/by-kind-and-day?since=&until=` — COUNT GROUP BY (day, kind) |
+| #657 | drive | `GET /drive/files/stats/deleted` — deleted_count, deleted_bytes, oldest/newest_deleted_at |
+| #658 | mail | `GET /mail/messages/stats/unread-by-folder` — total+unread por mailbox, unread DESC |
+| #659 | search | `GET /search/index/segments/stats` — segment_count+total/largest/smallest_disk_bytes |
+| #660 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-count-stats` — avg/max+with/without (parse in-app) |
+| #661 | notifications | `GET /dlq/stats/by-tenant-and-day?since=&until=` — COUNT GROUP BY (day, tenant_id) |
+| #662 | drive | `GET /drive/files/stats/by-owner-and-ext?limit=N` — top-N (owner_user_id, extension) por total_bytes |
 
 ---
 
-## Próximos candidatos (#656+)
+## Próximos candidatos (#661+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-day?since=&until=` — DATE_TRUNC + COUNT GROUP BY day, kind; `{rows:[{day,kind,count}]}`
-2. **drive** — `GET /drive/files/stats/deleted` — count+bytes de deleted_at IS NOT NULL; `{deleted_count, deleted_bytes, oldest_deleted_at, newest_deleted_at}`
-3. **mail** — `GET /mail/messages/stats/unread-by-folder` — COUNT FILTER (NOT seen) por mailbox; `{folders:[{folder,total,unread}]}`
-4. **search** — `GET /search/index/segments/stats` — consolida count+largest+smallest+total_disk_bytes numa resposta; evita 4 calls no dashboard
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/attendee-count-stats?after=&before=` — parse ical_raw in-app; `{avg_attendees, max_attendees, events_with_attendees, events_without_attendees}`
+1. **mail** — `GET /mail/messages/stats/size-by-folder` — total+avg+max size_bytes por mailbox; `{folders:[{folder,total_bytes,avg_bytes,max_bytes}]}`
+2. **search** — `GET /search/index/segments/age-stats` — min/max/avg num_docs por segmento; `{segment_count,min_docs,max_docs,avg_docs}`
+3. **calendar** — `GET /calendars/:cal_id/events-by-range/location-stats?after=&before=` — eventos com/sem location + top-N locations; `{with_location,without_location,top_locations:[{location,count}]}`
+4. **notifications** — `GET /dlq/stats/by-error-kind?since=&until=` — COUNT GROUP BY error_kind; `{rows:[{error_kind,count}]}`
 
 ---
 
