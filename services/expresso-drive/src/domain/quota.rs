@@ -202,6 +202,28 @@ impl<'a> QuotaRepo<'a> {
         Ok(rows)
     }
 
+    /// Returns (extension, file_count, total_bytes) ordered by total_bytes DESC.
+    /// Extension is derived from `lower(split_part(name, '.', -1))` — the part
+    /// after the last dot. Files with no dot get extension "".
+    pub async fn stats_by_extension(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(String, i64, i64)>> {
+        let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+            "SELECT \
+                lower(split_part(name, '.', -1)) AS ext, \
+                COUNT(*)::BIGINT AS file_count, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+             FROM drive_files \
+             WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+             GROUP BY ext \
+             ORDER BY total_bytes DESC \
+             LIMIT $2",
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(

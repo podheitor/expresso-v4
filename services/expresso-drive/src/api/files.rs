@@ -57,6 +57,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats",                 get(file_stats))
         .route("/api/v1/drive/files/stats/users",           get(file_stats_users))
         .route("/api/v1/drive/files/stats/folders",         get(file_stats_folders))
+        .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -824,6 +825,31 @@ async fn file_stats_folders(
         serde_json::json!({"folder_id": fid, "folder_name": fname, "file_count": fc, "used_bytes": ub})
     }).collect();
     Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/drive/files/stats/extensions?limit=N — breakdown by file extension.
+///
+/// Returns `{extensions: [{extension, file_count, total_bytes}]}` ordered by
+/// `total_bytes DESC`. Extension = `lower(split_part(name, '.', -1))` — the part
+/// after the last dot; files with no dot get extension "". Only counts non-deleted
+/// files (`kind='file'`). `limit` default 50, max 500. Sprint #631.
+#[derive(Debug, Deserialize)]
+struct StatsExtensionsQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_extensions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsExtensionsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let rows  = QuotaRepo::new(pool).stats_by_extension(ctx.tenant_id, limit).await?;
+    let extensions: Vec<serde_json::Value> = rows.into_iter().map(|(ext, fc, tb)| {
+        serde_json::json!({"extension": ext, "file_count": fc, "total_bytes": tb})
+    }).collect();
+    Ok(Json(serde_json::json!({"extensions": extensions})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
