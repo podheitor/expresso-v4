@@ -693,6 +693,52 @@ async fn oldest_dlq_entry(
     Ok(Json(json!({"entry": entry})))
 }
 
+/// GET /api/v1/notifications/dlq/newest — entry mais recente da DLQ.
+///
+/// Retorna o entry com o maior `failed_at` (ORDER BY failed_at DESC LIMIT 1).
+/// Simetria com oldest (#639): juntos formam o par "quando foi a primeira falha /
+/// quando foi a última falha" — útil pra alertas "DLQ ainda está recebendo erros".
+/// Response: `{entry}` com shape idêntico ao GET /dlq/:id, ou `{entry: null}`
+/// quando a DLQ está vazia. Sprint #645.
+async fn newest_dlq_entry(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let row = sqlx::query(
+        "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
+           FROM notification_dlq ORDER BY failed_at DESC LIMIT 1",
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let entry = row.map(|r| {
+        let id:         Uuid                = r.get("id");
+        let tenant_id:  Option<Uuid>        = r.try_get("tenant_id").ok();
+        let user_id:    Option<Uuid>        = r.try_get("user_id").ok();
+        let kind:       String              = r.get("kind");
+        let payload:    serde_json::Value   = r.get("payload");
+        let attempts:   i32                 = r.get("attempts");
+        let last_error: Option<String>      = r.try_get("last_error").ok();
+        let failed_at:  OffsetDateTime      = r.get("failed_at");
+        json!({
+            "id":         id,
+            "tenant_id":  tenant_id,
+            "user_id":    user_id,
+            "kind":       kind,
+            "payload":    payload,
+            "attempts":   attempts,
+            "last_error": last_error,
+            "failed_at":  failed_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+        })
+    });
+    Ok(Json(json!({"entry": entry})))
+}
+
 /// GET /api/v1/notifications/dlq?limit=N&offset=N&kind=K&tenant_id=UUID&since=RFC3339&until=RFC3339
 ///
 /// List DLQ entries (newest first). Optional filters: `kind`, `tenant_id`,
@@ -1536,6 +1582,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats",            get(dlq_stats))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
+        .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
         .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
         .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
         .route("/api/v1/notifications/dlq/bulk",             patch(bulk_patch_dlq))
