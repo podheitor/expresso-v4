@@ -10,7 +10,7 @@ use expresso_core::{begin_tenant_tx, DbPool};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::error::Result;
+use crate::error::{DriveError, Result};
 
 /// Default quota = 10 GB quando tenant não tem linha em drive_quotas.
 pub const DEFAULT_QUOTA_BYTES: i64 = 10 * 1024 * 1024 * 1024;
@@ -31,6 +31,94 @@ impl Quota {
 pub struct UserUsage {
     pub user_id:    Uuid,
     pub used_bytes: i64,
+}
+
+/// Per-folder quota: max bytes allowed in a specific folder (shallow — direct children only).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct FolderQuota {
+    pub folder_id:  Uuid,
+    pub max_bytes:  i64,
+    pub used_bytes: i64,
+}
+
+impl FolderQuota {
+    pub fn fits(&self, extra: i64) -> bool {
+        self.used_bytes.saturating_add(extra) <= self.max_bytes
+    }
+}
+
+pub struct FolderQuotaRepo<'a> {
+    pool: &'a DbPool,
+}
+
+impl<'a> FolderQuotaRepo<'a> {
+    pub fn new(pool: &'a DbPool) -> Self { Self { pool } }
+
+    /// Get folder quota + current shallow used bytes. Returns None if no quota configured.
+    pub async fn get(&self, tenant_id: Uuid, folder_id: Uuid) -> Result<Option<FolderQuota>> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT max_bytes FROM drive_folder_quotas \
+             WHERE tenant_id = $1 AND folder_id = $2"
+        )
+        .bind(tenant_id)
+        .bind(folder_id)
+        .fetch_optional(&mut *tx).await?;
+        let max_bytes = match row {
+            Some((m,)) => m,
+            None => { tx.commit().await?; return Ok(None); }
+        };
+        let (used,): (Option<i64>,) = sqlx::query_as(
+            "SELECT SUM(size_bytes) FROM drive_files \
+             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL"
+        )
+        .bind(tenant_id)
+        .bind(folder_id)
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(Some(FolderQuota { folder_id, max_bytes, used_bytes: used.unwrap_or(0) }))
+    }
+
+    /// Set (upsert) folder quota.
+    pub async fn set(&self, tenant_id: Uuid, folder_id: Uuid, max_bytes: i64) -> Result<FolderQuota> {
+        if max_bytes <= 0 {
+            return Err(DriveError::BadRequest("max_bytes must be > 0".into()));
+        }
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        sqlx::query(
+            "INSERT INTO drive_folder_quotas (tenant_id, folder_id, max_bytes, updated_at) \
+             VALUES ($1, $2, $3, now()) \
+             ON CONFLICT (tenant_id, folder_id) DO UPDATE SET \
+                max_bytes  = EXCLUDED.max_bytes, \
+                updated_at = now()"
+        )
+        .bind(tenant_id)
+        .bind(folder_id)
+        .bind(max_bytes)
+        .execute(&mut *tx).await?;
+        let (used,): (Option<i64>,) = sqlx::query_as(
+            "SELECT SUM(size_bytes) FROM drive_files \
+             WHERE tenant_id = $1 AND parent_id = $2 AND deleted_at IS NULL"
+        )
+        .bind(tenant_id)
+        .bind(folder_id)
+        .fetch_one(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(FolderQuota { folder_id, max_bytes, used_bytes: used.unwrap_or(0) })
+    }
+
+    /// Remove folder quota. Returns true if a row was deleted.
+    pub async fn delete(&self, tenant_id: Uuid, folder_id: Uuid) -> Result<bool> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+        let res = sqlx::query(
+            "DELETE FROM drive_folder_quotas WHERE tenant_id = $1 AND folder_id = $2"
+        )
+        .bind(tenant_id)
+        .bind(folder_id)
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(res.rows_affected() > 0)
+    }
 }
 
 pub struct QuotaRepo<'a> {

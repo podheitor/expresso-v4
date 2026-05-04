@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::{
     api::context::RequestCtx,
-    domain::{DriveFile, FileRepo, FileVersion, NewFile, NewVersion, QuotaRepo, TagRepo, UserUsage, VersionRepo},
+    domain::{DriveFile, FileRepo, FileVersion, FolderQuota, FolderQuotaRepo, NewFile, NewVersion, QuotaRepo, TagRepo, UserUsage, VersionRepo},
     error::{DriveError, Result},
     state::AppState,
 };
@@ -48,6 +48,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/starred",                      get(list_starred))
         .route("/api/v1/drive/starred/count",                get(count_starred))
         .route("/api/v1/drive/folders/:id/download",         get(download_folder))
+        .route("/api/v1/drive/folders/:id/quota",           get(folder_quota).put(set_folder_quota).delete(delete_folder_quota))
         .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
         .route("/api/v1/drive/quota",                       get(quota))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
@@ -201,10 +202,19 @@ async fn upload(
     let bytes = data.ok_or(DriveError::BadRequest("missing file part".into()))?;
     let fname = sanitize_name(&name.unwrap_or_default())?;
 
-    // Quota enforcement — rejeita antes de tocar o disco.
+    // Tenant-level quota check — rejeita antes de tocar o disco.
     let quota = QuotaRepo::new(pool).get(ctx.tenant_id).await?;
     if !quota.fits(bytes.len() as i64) {
         return Err(DriveError::QuotaExceeded);
+    }
+
+    // Folder-level quota check — only when uploading into a specific folder.
+    if let Some(fid) = parent_id {
+        if let Some(fq) = FolderQuotaRepo::new(pool).get(ctx.tenant_id, fid).await? {
+            if !fq.fits(bytes.len() as i64) {
+                return Err(DriveError::QuotaExceeded);
+            }
+        }
     }
 
 
@@ -1257,4 +1267,64 @@ async fn download_folder(
         ],
         zip_bytes,
     ).into_response())
+}
+
+/// GET /api/v1/drive/folders/:id/quota — current folder quota + used bytes.
+/// Returns 404 if folder doesn't exist or has no quota configured.
+async fn folder_quota(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<FolderQuota>> {
+    let pool = state.db_or_unavailable()?;
+    // Verify folder exists and belongs to tenant.
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if f.kind != "folder" {
+        return Err(DriveError::BadRequest("id is not a folder".into()));
+    }
+    FolderQuotaRepo::new(pool)
+        .get(ctx.tenant_id, id).await?
+        .ok_or_else(|| DriveError::NotFound(id))
+        .map(Json)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct FolderQuotaBody {
+    max_bytes: i64,
+}
+
+/// PUT /api/v1/drive/folders/:id/quota — set (upsert) folder quota.
+async fn set_folder_quota(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Json(body):   Json<FolderQuotaBody>,
+) -> Result<Json<FolderQuota>> {
+    let pool = state.db_or_unavailable()?;
+    let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    if f.kind != "folder" {
+        return Err(DriveError::BadRequest("id is not a folder".into()));
+    }
+    if body.max_bytes <= 0 {
+        return Err(DriveError::BadRequest("max_bytes must be > 0".into()));
+    }
+    let fq = FolderQuotaRepo::new(pool).set(ctx.tenant_id, id, body.max_bytes).await?;
+    tracing::info!(target: "audit",
+        event = "drive.folder.quota_set",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id, max_bytes = body.max_bytes);
+    Ok(Json(fq))
+}
+
+/// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
+async fn delete_folder_quota(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<StatusCode> {
+    let pool = state.db_or_unavailable()?;
+    FolderQuotaRepo::new(pool).delete(ctx.tenant_id, id).await?;
+    tracing::info!(target: "audit",
+        event = "drive.folder.quota_deleted",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id);
+    Ok(StatusCode::NO_CONTENT)
 }
