@@ -680,6 +680,53 @@ async fn dlq_stats_by_day(
     Ok(Json(json!({"days": days})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-and-day?since=&until= — falhas DLQ por dia e kind.
+///
+/// Agrupa `notification_dlq` por `(DATE_TRUNC('day', failed_at), kind)` e retorna
+/// `{rows:[{day,kind,count}]}` ordenado `(day ASC, kind ASC)`. `since`/`until` RFC3339
+/// opcionais com o padrão `$N::timestamptz IS NULL OR ...`. Sprint #656.
+async fn dlq_stats_by_kind_and_day(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            kind, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY day, kind \
+         ORDER BY day ASC, kind ASC",
+    )
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, kind, count)| json!({"day": day, "kind": kind, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -1627,7 +1674,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
         .route("/api/v1/notifications/dlq/stats",            get(dlq_stats))
-        .route("/api/v1/notifications/dlq/stats/by-day",    get(dlq_stats_by_day))
+        .route("/api/v1/notifications/dlq/stats/by-day",          get(dlq_stats_by_day))
+        .route("/api/v1/notifications/dlq/stats/by-kind-and-day", get(dlq_stats_by_kind_and_day))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
