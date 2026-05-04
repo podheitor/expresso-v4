@@ -861,6 +861,43 @@ impl IndexStore {
         sorted.truncate(top_n);
         Ok(sorted)
     }
+
+    /// Returns aggregate document counts for a given `tenant_id`:
+    /// total docs + a breakdown by `kind`. Empty `kind` field is reported as
+    /// `"unknown"`. Used by `GET /api/v1/search/stats`. Sprint #584.
+    pub fn doc_stats(&self, tenant_id: &str) -> anyhow::Result<(u64, Vec<(String, u64)>)> {
+        use tantivy::collector::DocSetCollector;
+
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let doc_set = searcher.search(&*query, &DocSetCollector)?;
+
+        let mut kind_counts: std::collections::HashMap<String, u64> =
+            std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let kind = doc.get_first(i.f_kind)
+                .and_then(|v| TantivyValue::as_str(&v))
+                .filter(|s| !s.is_empty())
+                .unwrap_or("unknown")
+                .to_owned();
+            *kind_counts.entry(kind).or_insert(0) += 1;
+        }
+
+        let total: u64 = kind_counts.values().sum();
+        let mut by_kind: Vec<(String, u64)> = kind_counts.into_iter().collect();
+        by_kind.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        Ok((total, by_kind))
+    }
 }
 
 /// Convert unix timestamp (seconds) to a bucket label for temporal facets.

@@ -120,6 +120,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/index/bulk", post(api::bulk_index))
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
+        .route("/api/v1/search/stats", get(api::search_stats))
         .with_state(store);
 
     let api_routes = if !token.is_empty() {

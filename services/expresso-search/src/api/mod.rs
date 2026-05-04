@@ -323,6 +323,44 @@ pub async fn delete_by_tenant(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct StatsParams {
+    pub tenant_id: String,
+}
+
+/// GET /api/v1/search/stats?tenant_id= — aggregate doc counts for a tenant.
+///
+/// Returns `{tenant_id, total, by_kind: [{kind, count}]}` ordered by count DESC.
+/// 400 if `tenant_id` is not a valid UUID. Sprint #584.
+pub async fn search_stats(
+    State(store): State<IndexStore>,
+    Query(params): Query<StatsParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if params.tenant_id.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "tenant_id is required".into()));
+    }
+    let (total, by_kind) = store
+        .doc_stats(&params.tenant_id)
+        .map_err(|e| {
+            if e.to_string().contains("valid UUID") {
+                (StatusCode::BAD_REQUEST, e.to_string())
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+            }
+        })?;
+
+    let kinds: Vec<serde_json::Value> = by_kind
+        .into_iter()
+        .map(|(kind, count)| serde_json::json!({"kind": kind, "count": count}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "tenant_id": params.tenant_id,
+        "total":     total,
+        "by_kind":   kinds,
+    })))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
