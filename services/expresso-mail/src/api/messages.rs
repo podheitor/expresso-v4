@@ -45,7 +45,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/senders",    get(sender_stats))
         .route("/mail/messages/stats/size",       get(size_stats))
         .route("/mail/messages/stats/attachments",    get(attachment_stats))
-        .route("/mail/messages/stats/received-by-day", get(received_by_day_stats))
+        .route("/mail/messages/stats/received-by-day",  get(received_by_day_stats))
+        .route("/mail/messages/stats/threads-by-day",   get(threads_by_day_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2056,6 +2057,52 @@ async fn received_by_day_stats(
         resp["folder"] = serde_json::Value::String(folder);
     }
     Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/threads-by-day?since=&until=
+///
+/// Timeline de threads iniciadas por dia: conta threads distintas cujo `MIN(received_at)`
+/// cai dentro do range `[since, until)`. Retorna `{days:[{day,count}]}` ASC.
+/// `since`/`until` RFC 3339 opcionais — sem eles cobre todo o histórico.
+/// Complementa `received-by-day` (#648) que conta mensagens; aqui a unidade é thread.
+/// Sprint #653.
+async fn threads_by_day_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<ReceivedByDayParams>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    // Subquery computes MIN(received_at) per thread; outer query groups by day.
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', first_received AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COUNT(*)::BIGINT AS count \
+         FROM ( \
+             SELECT m.thread_id, MIN(m.received_at) AS first_received \
+               FROM messages m \
+               JOIN mailboxes mb ON mb.id = m.mailbox_id \
+              WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+                AND m.thread_id IS NOT NULL \
+              GROUP BY m.thread_id \
+         ) threads \
+         WHERE ($3::timestamptz IS NULL OR first_received >= $3) \
+           AND ($4::timestamptz IS NULL OR first_received <  $4) \
+         GROUP BY day \
+         ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(params.since)
+    .bind(params.until)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let days: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"days": days})))
 }
 
 async fn attachment_stats(
