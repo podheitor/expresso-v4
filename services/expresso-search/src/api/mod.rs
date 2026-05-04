@@ -584,6 +584,31 @@ pub async fn largest_segment(
     Json(serde_json::json!({"segment": segment}))
 }
 
+/// GET /api/v1/search/index/segments/smallest — segment with the lowest disk_bytes.
+///
+/// Symmetric with `/segments/largest` (#649): sorts ASC by `disk_bytes` and returns
+/// the first entry. Returns `{segment: null}` when the index is empty.
+/// Useful for fragmentation signals: when `smallest` is orders of magnitude smaller
+/// than `largest`, the index has many tiny segments and a merge may help.
+/// Sprint #654.
+pub async fn smallest_segment(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segment = store
+        .list_segments()
+        .ok()
+        .and_then(|mut segs| {
+            segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
+            segs.into_iter().next()
+        })
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":         id,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }));
+    Json(serde_json::json!({"segment": segment}))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.
