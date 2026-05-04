@@ -27,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/headers",            get(message_headers))
         .route("/mail/messages/:id/body",               get(message_body))
         .route("/mail/messages/:id/structure",          get(message_structure))
+        .route("/mail/messages/:id/inline-images",      get(list_inline_images))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -347,6 +348,60 @@ async fn message_structure(
     let root = build_node(&msg, 0);
 
     Ok(Json(serde_json::json!({"message_id": id, "structure": root})))
+}
+
+/// GET /api/v1/mail/messages/:id/inline-images
+///
+/// Lists MIME parts that have `Content-Disposition: inline` and a `Content-ID`
+/// header (`cid:` reference used by HTML bodies to embed images inline). Returns
+/// `{message_id, inline_images: [{index, content_type, content_id, filename?, size}]}`.
+/// Parts without Content-ID are excluded — they are inline but not CID-referenced.
+/// Useful for HTML rendering clients that need to resolve `<img src="cid:…">`.
+/// 404 if message not found or not owned by the caller. Sprint #615.
+async fn list_inline_images(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
+    let raw = load_raw(&state, &body_path).await?;
+    let msg = MessageParser::default()
+        .parse(&raw)
+        .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
+
+    let inline_images: Vec<serde_json::Value> = msg
+        .parts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, part)| {
+            // Must have Content-ID to be a CID-referenceable inline image.
+            let cid = part.content_id()?;
+            // Must be Content-Disposition: inline (or no explicit disposition but has CID).
+            let is_inline = part
+                .content_disposition()
+                .map(|cd| cd.is_inline())
+                .unwrap_or(true); // no explicit disposition + has CID → treat as inline
+            if !is_inline {
+                return None;
+            }
+            let ct       = part.content_type().map(format_ct)
+                .unwrap_or_else(|| "application/octet-stream".into());
+            let filename = part.attachment_name().map(str::to_owned);
+            let size     = part.len();
+            Some(serde_json::json!({
+                "index":        i,
+                "content_type": ct,
+                "content_id":   cid,
+                "filename":     filename,
+                "size":         size,
+            }))
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "message_id":    id,
+        "inline_images": inline_images,
+    })))
 }
 
 #[cfg(test)]
