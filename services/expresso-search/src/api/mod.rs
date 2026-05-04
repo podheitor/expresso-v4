@@ -670,6 +670,42 @@ pub async fn segment_age_stats(
     }))
 }
 
+/// GET /api/v1/search/index/segments/doc-distribution — histograma de num_docs por faixa.
+///
+/// Classifica cada segmento em 4 faixas: `tiny` (0–100), `small` (101–1 000),
+/// `medium` (1 001–10 000), `large` (>10 000). Retorna
+/// `{segment_count, buckets:[{range,count}]}`. Graceful: zeros se `list_segments()` falhar.
+/// Sprint #669.
+pub async fn segment_doc_distribution(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+
+    let mut tiny   = 0u64;
+    let mut small  = 0u64;
+    let mut medium = 0u64;
+    let mut large  = 0u64;
+
+    for (_, num_docs, _) in &segs {
+        match num_docs {
+            0..=100       => tiny   += 1,
+            101..=1_000   => small  += 1,
+            1_001..=10_000 => medium += 1,
+            _             => large  += 1,
+        }
+    }
+
+    Json(serde_json::json!({
+        "segment_count": segs.len(),
+        "buckets": [
+            {"range": "0-100",       "count": tiny},
+            {"range": "101-1000",    "count": small},
+            {"range": "1001-10000",  "count": medium},
+            {"range": ">10000",      "count": large},
+        ],
+    }))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.

@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #666 — (commit pendente)
+**Último sprint:** #670 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -51,15 +51,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #664 | search | `GET /search/index/segments/age-stats` — min/max/avg num_docs por segmento |
 | #665 | calendar | `GET /calendars/:cal_id/events-by-range/location-stats` — with/without_location + top-20 locations |
 | #666 | notifications | `GET /dlq/stats/by-error-kind?since=&until=` — COUNT GROUP BY last_error, count DESC |
+| #667 | drive | `GET /drive/files/stats/recent?since=&limit=N` — arquivos não-deletados ordenados por updated_at DESC |
+| #668 | mail | `GET /mail/messages/stats/attachments-by-folder` — with/without_attachments+size_bytes por mailbox |
+| #669 | search | `GET /search/index/segments/doc-distribution` — histograma tiny/small/medium/large por num_docs |
+| #670 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-stats` — with/without_organizer + top-20 organizers |
 
 ---
 
-## Próximos candidatos (#667+)
+## Próximos candidatos (#671+)
 
-1. **drive** — `GET /drive/files/stats/recent?since=&limit=N` — arquivos criados/modificados recentemente; `{files:[{id,name,size_bytes,created_at,updated_at}]}` ordenado por updated_at DESC
-2. **mail** — `GET /mail/messages/stats/attachments-by-folder` — with_attachments+without_attachments+size_bytes por mailbox; `{folders:[{folder,with_attachments,without_attachments,size_bytes}]}`
-3. **search** — `GET /search/index/segments/doc-distribution` — histograma de num_docs por faixa (0-100/100-1k/1k-10k/>10k); `{buckets:[{range,count}]}`
-4. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-stats?after=&before=` — top-N organizers por evento_count; `{with_organizer,without_organizer,top_organizers:[{organizer,count}]}`
+1. **notifications** — `GET /dlq/stats/by-tenant?limit=N` — COUNT GROUP BY tenant_id ORDER BY count DESC; `{rows:[{tenant_id,count}]}`; visão agregada sem breakdown temporal
+2. **drive** — `GET /drive/files/stats/mime-by-folder?folder_id=` — breakdown mime_type dentro de uma pasta; `{folder_id,rows:[{mime_type,file_count,total_bytes}]}`
+3. **mail** — `GET /mail/messages/stats/flags-by-folder` — LATERAL unnest + GROUP BY (folder, flag); `{rows:[{folder,flag,count}]}`; complementa flag_stats (#610) com breakdown por mailbox
+4. **search** — `GET /search/index/segments/top-n?limit=N` — top-N segmentos por disk_bytes; `{segments:[{id,num_docs,disk_bytes}]}`; generaliza /largest (#565) para N resultados
 
 ---
 

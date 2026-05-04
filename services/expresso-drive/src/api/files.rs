@@ -64,6 +64,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-buckets", get(file_stats_size_buckets))
         .route("/api/v1/drive/files/stats/deleted",         get(file_stats_deleted))
         .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
+        .route("/api/v1/drive/files/stats/recent",           get(file_stats_recent))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -1043,6 +1044,57 @@ async fn file_stats_by_owner_and_ext(
         })
     }).collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/recent?since=&limit=N — arquivos criados/modificados recentemente.
+///
+/// Retorna `{files:[{id,name,size_bytes,created_at,updated_at}]}` ordenado por
+/// `updated_at DESC`. `since` RFC3339 opcional (filtra `updated_at >= since`).
+/// `limit` default 20 max 200. Só arquivos não-deletados (`kind='file'`). Sprint #667.
+#[derive(Debug, Deserialize)]
+struct StatsRecentQuery {
+    since: Option<String>,
+    limit: Option<i64>,
+}
+
+async fn file_stats_recent(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsRecentQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use time::format_description::well_known::Rfc3339;
+
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let since_dt = q.since.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &Rfc3339))
+        .transpose()
+        .map_err(|_| crate::error::DriveError::BadRequest("since must be RFC3339".into()))?;
+
+    let rows: Vec<(Uuid, String, i64, OffsetDateTime, OffsetDateTime)> = sqlx::query_as(
+        "SELECT id, name, COALESCE(size_bytes, 0)::BIGINT, created_at, updated_at \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+            AND ($2::timestamptz IS NULL OR updated_at >= $2) \
+          ORDER BY updated_at DESC \
+          LIMIT $3",
+    )
+    .bind(ctx.tenant_id)
+    .bind(since_dt)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let files: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(id, name, size_bytes, created_at, updated_at)| serde_json::json!({
+            "id":         id,
+            "name":       name,
+            "size_bytes": size_bytes,
+            "created_at": created_at,
+            "updated_at": updated_at,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"files": files})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V

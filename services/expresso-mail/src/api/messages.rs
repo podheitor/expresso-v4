@@ -49,6 +49,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/threads-by-day",      get(threads_by_day_stats))
         .route("/mail/messages/stats/unread-by-folder",    get(unread_by_folder_stats))
         .route("/mail/messages/stats/size-by-folder",      get(size_by_folder_stats))
+        .route("/mail/messages/stats/attachments-by-folder", get(attachments_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2164,6 +2165,47 @@ async fn attachment_stats(
         resp["folder"] = serde_json::Value::String(folder);
     }
     Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/attachments-by-folder — with/without attachments por mailbox.
+///
+/// Agrega `has_attachments` por `mb.name` retornando
+/// `{folders:[{folder,with_attachments,without_attachments,size_bytes}]}`
+/// ordenado por `with_attachments DESC`. `size_bytes` = total de mensagens com anexo.
+/// LEFT JOIN para incluir pastas vazias com zeros. Sprint #668.
+async fn attachments_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*) FILTER (WHERE m.has_attachments = TRUE)::BIGINT AS with_attachments, \
+            COUNT(*) FILTER (WHERE m.has_attachments IS DISTINCT FROM TRUE)::BIGINT AS without_attachments, \
+            COALESCE(SUM(m.size_bytes) FILTER (WHERE m.has_attachments = TRUE), 0)::BIGINT AS size_bytes \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY with_attachments DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, with_attachments, without_attachments, size_bytes)| serde_json::json!({
+            "folder":             folder,
+            "with_attachments":   with_attachments,
+            "without_attachments": without_attachments,
+            "size_bytes":         size_bytes,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
 
 /// GET /api/v1/mail/messages/stats/size-by-folder — total, avg e max size_bytes por mailbox.
