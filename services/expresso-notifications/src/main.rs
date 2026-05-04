@@ -537,6 +537,50 @@ async fn mark_all_read(
     Ok(Json(json!({ "marked_read": r.rows_affected() })))
 }
 
+/// GET /api/v1/notifications/dlq/stats — contagem agregada por kind + tenant na DLQ.
+///
+/// Retorna `{total, by_kind: [{kind, count}], by_tenant: [{tenant_id, count}]}`
+/// ordenados por count DESC. Útil pra diagnóstico: "que tipos de eventos estão
+/// acumulando na DLQ e de quais tenants?". Endpoint ops — sem tenant filter. Sprint #599.
+async fn dlq_stats(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notification_dlq")
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let kind_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq \
+         GROUP BY kind ORDER BY COUNT(*) DESC, kind ASC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let tenant_rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT tenant_id, COUNT(*)::BIGINT FROM notification_dlq \
+         GROUP BY tenant_id ORDER BY COUNT(*) DESC",
+    )
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let by_kind: Vec<serde_json::Value> = kind_rows.into_iter()
+        .map(|(kind, cnt)| json!({"kind": kind, "count": cnt}))
+        .collect();
+    let by_tenant: Vec<serde_json::Value> = tenant_rows.into_iter()
+        .map(|(tid, cnt)| json!({"tenant_id": tid, "count": cnt}))
+        .collect();
+
+    Ok(Json(json!({"total": count, "by_kind": by_kind, "by_tenant": by_tenant})))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -1040,6 +1084,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
+        .route("/api/v1/notifications/dlq/stats",     get(dlq_stats))
         .route("/api/v1/notifications/dlq/count",     get(count_dlq))
         .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
