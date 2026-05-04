@@ -165,6 +165,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_export),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees",
+            get(events_by_range_attendees),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -848,6 +852,89 @@ async fn events_by_range_export(
         HeaderValue::from_static("attachment; filename=\"events.ics\""),
     );
     Ok(resp)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeAttendeesQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendees?after=&before=
+///
+/// Returns the union of unique attendees across all events whose `dtstart ∈ [after, before)`.
+/// Parses `ATTENDEE` lines from each event's `ical_raw` using `itip::parse_attendees`.
+/// De-duplicates by email (case-insensitive). Response includes the attendee's latest
+/// known CN, role, and partstat (taken from the first occurrence found per email).
+///
+/// Useful for "who is involved in this week?" calendar summaries and scheduling UIs.
+/// Read-only; no auth gate beyond tenant/user ownership of the calendar. Sprint #617.
+async fn events_by_range_attendees(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeAttendeesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use crate::domain::itip;
+    use std::collections::HashMap;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let events: Vec<Event> = sqlx::query_as::<_, Event>(
+        r#"SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                  description, location, dtstart, dtend, rrule, status,
+                  class, transp, sequence, organizer_email, created_at, updated_at
+             FROM calendar_events
+            WHERE tenant_id   = $1
+              AND calendar_id = $2
+              AND dtstart IS NOT NULL
+              AND ($3::timestamptz IS NULL OR dtstart >= $3)
+              AND ($4::timestamptz IS NULL OR dtstart <  $4)
+            ORDER BY dtstart ASC"#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    // De-duplicate by email (case-insensitive); first occurrence wins for metadata.
+    let mut seen: HashMap<String, serde_json::Value> = HashMap::new();
+    for ev in &events {
+        for att in itip::parse_attendees(&ev.ical_raw) {
+            let key = att.email.to_lowercase();
+            seen.entry(key).or_insert_with(|| serde_json::json!({
+                "email":    att.email,
+                "cn":       att.cn,
+                "role":     att.role,
+                "partstat": att.partstat,
+            }));
+        }
+    }
+
+    let mut attendees: Vec<serde_json::Value> = seen.into_values().collect();
+    // Stable sort by email for deterministic response order.
+    attendees.sort_by(|a, b| {
+        a["email"].as_str().unwrap_or("").cmp(b["email"].as_str().unwrap_or(""))
+    });
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "events_scanned": events.len(),
+        "count":          attendees.len(),
+        "attendees":      attendees,
+    })))
 }
 
 #[derive(Debug, serde::Deserialize)]
