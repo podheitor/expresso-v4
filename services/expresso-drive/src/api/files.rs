@@ -60,7 +60,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
         .route("/api/v1/drive/files/stats/activity",       get(file_stats_activity))
         .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
-        .route("/api/v1/drive/files/stats/owners",         get(file_stats_owners))
+        .route("/api/v1/drive/files/stats/owners",        get(file_stats_owners))
+        .route("/api/v1/drive/files/stats/size-buckets", get(file_stats_size_buckets))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -922,6 +923,47 @@ async fn file_stats_owners(
         serde_json::json!({"owner_user_id": uid, "file_count": fc, "total_bytes": tb})
     }).collect();
     Ok(Json(serde_json::json!({"owners": owners})))
+}
+
+/// GET /api/v1/drive/files/stats/size-buckets — distribuição de arquivos por faixa de tamanho.
+///
+/// Retorna `{buckets: [{range, count, total_bytes}]}` com as faixas fixas:
+/// "<1MB", "1–10MB", "10–100MB", ">100MB". Cobre todos os arquivos não-deletados
+/// (`kind='file'`) do tenant. Útil pra "qual percentual do storage são arquivos gigantes?".
+/// Sprint #651.
+async fn file_stats_size_buckets(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let (lt1mb_c, lt1mb_b,
+         lt10mb_c, lt10mb_b,
+         lt100mb_c, lt100mb_b,
+         gt100mb_c, gt100mb_b): (i64, i64, i64, i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*) FILTER (WHERE size_bytes < 1048576)::BIGINT, \
+                COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes < 1048576), 0)::BIGINT, \
+                COUNT(*) FILTER (WHERE size_bytes >= 1048576    AND size_bytes < 10485760)::BIGINT, \
+                COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 1048576    AND size_bytes < 10485760), 0)::BIGINT, \
+                COUNT(*) FILTER (WHERE size_bytes >= 10485760   AND size_bytes < 104857600)::BIGINT, \
+                COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 10485760   AND size_bytes < 104857600), 0)::BIGINT, \
+                COUNT(*) FILTER (WHERE size_bytes >= 104857600)::BIGINT, \
+                COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 104857600), 0)::BIGINT \
+             FROM drive_files \
+             WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file'",
+        )
+        .bind(ctx.tenant_id)
+        .fetch_one(pool)
+        .await?;
+
+    let buckets = vec![
+        serde_json::json!({"range": "<1MB",     "count": lt1mb_c,   "total_bytes": lt1mb_b}),
+        serde_json::json!({"range": "1–10MB",   "count": lt10mb_c,  "total_bytes": lt10mb_b}),
+        serde_json::json!({"range": "10–100MB", "count": lt100mb_c, "total_bytes": lt100mb_b}),
+        serde_json::json!({"range": ">100MB",   "count": gt100mb_c, "total_bytes": gt100mb_b}),
+    ];
+    Ok(Json(serde_json::json!({"buckets": buckets})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
