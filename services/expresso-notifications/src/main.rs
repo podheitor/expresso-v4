@@ -957,6 +957,91 @@ async fn retry_all_dlq(
     Ok(Json(json!({"retried": retried, "failed": failed, "total": total})))
 }
 
+/// POST /api/v1/notifications/dlq/retry-filtered?kind=&tenant_id= — re-dispatch filtrado da DLQ.
+///
+/// Re-despacha apenas os entries que casam com os filtros `kind` e/ou `tenant_id`.
+/// Sem filtros, comporta-se como retry-all. Mesmo padrão best-effort do retry-all:
+/// falhas parciais não abortam o batch; sempre 200 com {retried, failed, total, filter}.
+/// Sprint #606.
+async fn retry_filtered_dlq(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let (where_clause, bind_kind, bind_tenant) = match (&q.kind, &q.tenant_id) {
+        (Some(_), Some(_)) => ("WHERE kind = $1 AND tenant_id = $2", true, true),
+        (Some(_), None)    => ("WHERE kind = $1",                    true, false),
+        (None,    Some(_)) => ("WHERE tenant_id = $1",               false, true),
+        (None,    None)    => ("",                                    false, false),
+    };
+    let sql = format!(
+        "SELECT id, kind, payload FROM notification_dlq {where_clause} ORDER BY created_at ASC"
+    );
+    let mut q_builder = sqlx::query(&sql);
+    if bind_kind   { q_builder = q_builder.bind(q.kind.as_deref().unwrap()); }
+    if bind_tenant { q_builder = q_builder.bind(q.tenant_id.unwrap()); }
+
+    let rows = q_builder
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let total = rows.len() as u64;
+    let (mut retried, mut failed) = (0u64, 0u64);
+
+    for row in rows {
+        let id:      Uuid              = row.get("id");
+        let payload: serde_json::Value = row.get("payload");
+
+        let notif: Notification = match serde_json::from_value(payload.clone()) {
+            Ok(n)  => n,
+            Err(_) => { failed += 1; continue; }
+        };
+
+        let _ = st.tx.send(notif.clone());
+        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+
+        if let Some(redis_pool) = &st.redis_pub {
+            if let Ok(body) = serde_json::to_string(&notif) {
+                if let Ok(mut conn) = redis_pool.get().await {
+                    use deadpool_redis::redis::AsyncCommands;
+                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body).await;
+                }
+            }
+        }
+
+        if let Some((url, client)) = &st.webhook {
+            let url    = url.clone();
+            let client = client.clone();
+            let body   = payload.clone();
+            tokio::spawn(async move {
+                let _ = client.post(url.as_ref()).json(&body).send().await;
+            });
+        }
+
+        match sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
+            .bind(id)
+            .execute(pool.as_ref())
+            .await
+        {
+            Ok(_)  => retried += 1,
+            Err(_) => failed  += 1,
+        }
+    }
+
+    Ok(Json(json!({
+        "retried": retried,
+        "failed":  failed,
+        "total":   total,
+        "filter":  {"kind": q.kind, "tenant_id": q.tenant_id},
+    })))
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -1102,9 +1187,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
-        .route("/api/v1/notifications/dlq/stats",     get(dlq_stats))
-        .route("/api/v1/notifications/dlq/count",     get(count_dlq))
-        .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
+        .route("/api/v1/notifications/dlq/stats",            get(dlq_stats))
+        .route("/api/v1/notifications/dlq/count",            get(count_dlq))
+        .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
+        .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
         .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
