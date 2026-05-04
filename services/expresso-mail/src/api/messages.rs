@@ -50,6 +50,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/unread-by-folder",    get(unread_by_folder_stats))
         .route("/mail/messages/stats/size-by-folder",      get(size_by_folder_stats))
         .route("/mail/messages/stats/attachments-by-folder", get(attachments_by_folder_stats))
+        .route("/mail/messages/stats/flags-by-folder",        get(flags_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2206,6 +2207,38 @@ async fn attachments_by_folder_stats(
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/flags-by-folder — LATERAL unnest flags por (folder, flag).
+///
+/// Agrupa via `CROSS JOIN LATERAL unnest(m.flags)` por `(mb.name, flag)` e retorna
+/// `{rows:[{folder,flag,count}]}` ordenado `(folder ASC, count DESC)`. Complementa
+/// flag_stats (#610) com breakdown por mailbox. Sprint #673.
+async fn flags_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, f.flag, COUNT(*)::BIGINT AS count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+           CROSS JOIN LATERAL unnest(m.flags) AS f(flag) \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, f.flag \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, flag, count)| serde_json::json!({"folder": folder, "flag": flag, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }
 
 /// GET /api/v1/mail/messages/stats/size-by-folder — total, avg e max size_bytes por mailbox.

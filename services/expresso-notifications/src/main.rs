@@ -550,6 +550,11 @@ struct DlqStatsQuery {
     until: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct StatsLimitQuery {
+    limit: Option<i64>,
+}
+
 /// GET /api/v1/notifications/dlq/stats?since=&until=
 ///
 /// Aggregate counts across all DLQ entries: total, breakdown by kind, breakdown
@@ -814,6 +819,41 @@ async fn dlq_stats_by_error_kind(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(error_kind, count)| json!({"error_kind": error_kind, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant?limit=N — DLQ por tenant_id agregado.
+///
+/// Agrupa `notification_dlq` por `tenant_id` e retorna
+/// `{rows:[{tenant_id,count}]}` ordenado `count DESC`. Sem filtro temporal —
+/// visão total acumulada. `limit` default 20 max 200. Complementa `by-tenant-and-day`
+/// (#661) com rollup simples. Sprint #671.
+async fn dlq_stats_by_tenant(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT tenant_id, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY tenant_id \
+          ORDER BY count DESC, tenant_id ASC NULLS LAST \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tid, count)| json!({"tenant_id": tid, "count": count}))
         .collect();
 
     Ok(Json(json!({"rows": result})))
@@ -1770,6 +1810,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-and-day",   get(dlq_stats_by_kind_and_day))
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-day", get(dlq_stats_by_tenant_and_day))
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
+        .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

@@ -706,6 +706,37 @@ pub async fn segment_doc_distribution(
     }))
 }
 
+/// GET /api/v1/search/index/segments/top-n?limit=N — top-N segmentos por disk_bytes.
+///
+/// Generaliza `/segments/largest` (#565) para N resultados. Ordena DESC por `disk_bytes`
+/// e retorna `{segments:[{id,num_docs,disk_bytes}]}`. `limit` default 5 max 50.
+/// Graceful: lista vazia se `list_segments()` falhar. Sprint #674.
+pub async fn segments_top_n(
+    State(store): State<IndexStore>,
+    Query(q):     Query<TopNQuery>,
+) -> Json<serde_json::Value> {
+    let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
+
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_unstable_by(|a, b| b.2.cmp(&a.2));
+    segs.truncate(limit);
+
+    let segments: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":        id,
+            "num_docs":  num_docs,
+            "disk_bytes": disk_bytes,
+        }))
+        .collect();
+
+    Json(serde_json::json!({"segments": segments}))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TopNQuery {
+    limit: Option<u64>,
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.

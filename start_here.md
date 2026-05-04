@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #670 — (commit pendente)
+**Último sprint:** #674 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -55,15 +55,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #668 | mail | `GET /mail/messages/stats/attachments-by-folder` — with/without_attachments+size_bytes por mailbox |
 | #669 | search | `GET /search/index/segments/doc-distribution` — histograma tiny/small/medium/large por num_docs |
 | #670 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-stats` — with/without_organizer + top-20 organizers |
+| #671 | notifications | `GET /dlq/stats/by-tenant?limit=N` — COUNT GROUP BY tenant_id ORDER BY count DESC |
+| #672 | drive | `GET /drive/files/stats/mime-by-folder?folder_id=` — mime_type breakdown por pasta (parent_id ou raiz) |
+| #673 | mail | `GET /mail/messages/stats/flags-by-folder` — LATERAL unnest GROUP BY (folder, flag) ORDER BY count DESC |
+| #674 | search | `GET /search/index/segments/top-n?limit=N` — top-N segmentos por disk_bytes; default 5 max 50 |
 
 ---
 
-## Próximos candidatos (#671+)
+## Próximos candidatos (#675+)
 
-1. **notifications** — `GET /dlq/stats/by-tenant?limit=N` — COUNT GROUP BY tenant_id ORDER BY count DESC; `{rows:[{tenant_id,count}]}`; visão agregada sem breakdown temporal
-2. **drive** — `GET /drive/files/stats/mime-by-folder?folder_id=` — breakdown mime_type dentro de uma pasta; `{folder_id,rows:[{mime_type,file_count,total_bytes}]}`
-3. **mail** — `GET /mail/messages/stats/flags-by-folder` — LATERAL unnest + GROUP BY (folder, flag); `{rows:[{folder,flag,count}]}`; complementa flag_stats (#610) com breakdown por mailbox
-4. **search** — `GET /search/index/segments/top-n?limit=N` — top-N segmentos por disk_bytes; `{segments:[{id,num_docs,disk_bytes}]}`; generaliza /largest (#565) para N resultados
+1. **calendar** — `GET /calendars/:cal_id/events-by-range/status-stats?after=&before=` — COUNT FILTER por status (CONFIRMED/TENTATIVE/CANCELLED/other); `{calendar_id,total,confirmed,tentative,cancelled,other}`; análogo a class-stats (#652) para status
+2. **notifications** — `GET /dlq/stats/by-kind?limit=N` — COUNT GROUP BY kind ORDER BY count DESC sem breakdown temporal; `{rows:[{kind,count}]}`; rollup simples de by-kind-and-day (#656)
+3. **drive** — `GET /drive/files/stats/top-files?limit=N` — top-N arquivos por size_bytes; `{files:[{id,name,size_bytes,owner_user_id,mime_type}]}`; complementa size-buckets (#651) com lista concreta
+4. **mail** — `GET /mail/messages/stats/received-by-folder` — COUNT(*) por folder ordenado por total DESC; `{folders:[{folder,total}]}`; visão de volume total sem temporal
 
 ---
 

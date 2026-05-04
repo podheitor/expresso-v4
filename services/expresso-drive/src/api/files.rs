@@ -65,6 +65,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted",         get(file_stats_deleted))
         .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
         .route("/api/v1/drive/files/stats/recent",           get(file_stats_recent))
+        .route("/api/v1/drive/files/stats/mime-by-folder",  get(file_stats_mime_by_folder))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -1095,6 +1096,62 @@ async fn file_stats_recent(
         }))
         .collect();
     Ok(Json(serde_json::json!({"files": files})))
+}
+
+/// GET /api/v1/drive/files/stats/mime-by-folder?folder_id= — breakdown de mime_type numa pasta.
+///
+/// `folder_id` opcional: quando ausente agrega na raiz (`parent_id IS NULL`).
+/// Retorna `{folder_id, rows:[{mime_type,file_count,total_bytes}]}` ordenado por
+/// `total_bytes DESC`. Só arquivos não-deletados (`kind='file'`). Sprint #672.
+#[derive(Debug, Deserialize)]
+struct StatsMimeByFolderQuery {
+    folder_id: Option<Uuid>,
+}
+
+async fn file_stats_mime_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsMimeByFolderQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, i64)> = if let Some(fid) = q.folder_id {
+        sqlx::query_as(
+            "SELECT mime_type, COUNT(*)::BIGINT AS file_count, \
+                    COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+                AND parent_id = $2 \
+              GROUP BY mime_type \
+              ORDER BY total_bytes DESC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(fid)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            "SELECT mime_type, COUNT(*)::BIGINT AS file_count, \
+                    COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+                AND parent_id IS NULL \
+              GROUP BY mime_type \
+              ORDER BY total_bytes DESC",
+        )
+        .bind(ctx.tenant_id)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, fc, tb)| serde_json::json!({
+            "mime_type":   mime,
+            "file_count":  fc,
+            "total_bytes": tb,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
