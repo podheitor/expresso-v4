@@ -66,7 +66,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
         .route("/api/v1/drive/files/stats/recent",           get(file_stats_recent))
         .route("/api/v1/drive/files/stats/mime-by-folder",  get(file_stats_mime_by_folder))
-        .route("/api/v1/drive/files/stats/top-files",       get(file_stats_top_files))
+        .route("/api/v1/drive/files/stats/top-files",        get(file_stats_top_files))
+        .route("/api/v1/drive/files/stats/created-by-day",  get(file_stats_created_by_day))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -884,6 +885,41 @@ async fn file_stats_activity(
     let days: Vec<serde_json::Value> = rows.into_iter().map(|(day, uploads, updates, deletes)| {
         serde_json::json!({"day": day, "uploads": uploads, "updates": updates, "deletes": deletes})
     }).collect();
+    Ok(Json(serde_json::json!({"days": days})))
+}
+
+/// GET /api/v1/drive/files/stats/created-by-day?since=&until= — arquivos criados por dia.
+///
+/// DATE_TRUNC('day', created_at) + COUNT sobre `drive_files` (kind='file', não-deletados).
+/// `since`/`until` RFC3339 opcionais via `$N::timestamptz IS NULL OR`. Retorna
+/// `{days:[{day,count}]}` ordenado dia ASC. Foca em criação (vs activity/#636 que usa audit).
+/// Sprint #682.
+async fn file_stats_created_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsActivityQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+            AND ($2::timestamptz IS NULL OR created_at >= $2) \
+            AND ($3::timestamptz IS NULL OR created_at <  $3) \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.since)
+    .bind(q.until)
+    .fetch_all(pool)
+    .await?;
+
+    let days: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
     Ok(Json(serde_json::json!({"days": days})))
 }
 

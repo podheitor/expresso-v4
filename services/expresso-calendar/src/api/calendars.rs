@@ -1,12 +1,13 @@
 //! Calendar collection REST endpoints (JSON).
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
+use serde::Deserialize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -17,6 +18,7 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/v1/calendars/stats/by-tenant", get(stats_by_tenant))
         .route("/api/v1/calendars",       post(create).get(list))
         .route("/api/v1/calendars/:id",   get(get_one).delete(delete).patch(update))
         .route("/api/v1/calendars/:id/ctag", get(ctag_one))
@@ -131,4 +133,45 @@ async fn ctag_one(
     let pool = state.db_or_unavailable()?;
     let ctag = CalendarRepo::new(pool).ctag(ctx.tenant_id, id).await?;
     Ok(Json(serde_json::json!({ "id": id, "ctag": ctag })))
+}
+
+/// GET /api/v1/calendars/stats/by-tenant?limit=N — contagem de calendars+events por tenant_id.
+///
+/// Endpoint ops cross-tenant (sem RequestCtx/RLS). Retorna
+/// `{rows:[{tenant_id,calendar_count,event_count}]}` ordenado por `calendar_count DESC`.
+/// `limit` default 20 max 200. Sprint #680.
+#[derive(Debug, Deserialize)]
+struct StatsByTenantQuery {
+    limit: Option<i64>,
+}
+
+async fn stats_by_tenant(
+    State(state): State<AppState>,
+    Query(q):     Query<StatsByTenantQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT c.tenant_id, \
+                COUNT(DISTINCT c.id)::BIGINT AS calendar_count, \
+                COUNT(e.id)::BIGINT          AS event_count \
+           FROM calendars c \
+           LEFT JOIN calendar_events e ON e.calendar_id = c.id AND e.tenant_id = c.tenant_id \
+          GROUP BY c.tenant_id \
+          ORDER BY calendar_count DESC, c.tenant_id ASC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tid, cc, ec)| serde_json::json!({
+            "tenant_id":      tid,
+            "calendar_count": cc,
+            "event_count":    ec,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }

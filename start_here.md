@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #678 — (commit pendente)
+**Último sprint:** #682 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -63,15 +63,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #676 | notifications | `GET /dlq/stats/by-kind?limit=N` — GROUP BY kind ORDER BY count DESC; rollup sem temporal |
 | #677 | drive | `GET /drive/files/stats/top-files?limit=N` — top-N arquivos por size_bytes; default 20 max 200 |
 | #678 | mail | `GET /mail/messages/stats/received-by-folder` — COUNT(*) por mailbox; LEFT JOIN pastas vazias; total DESC |
+| #679 | search | `GET /search/index/segments/bottom-n?limit=N` — sort ASC + truncate; simetria com top-n (#674); default 5 max 50 |
+| #680 | calendar | `GET /calendars/stats/by-tenant` — COUNT DISTINCT calendars + events por tenant_id; ops cross-tenant |
+| #681 | notifications | `GET /dlq/stats/attempts-distribution` — COUNT FILTER buckets 1/2/3/4/5+; identifica retry loops |
+| #682 | drive | `GET /drive/files/stats/created-by-day?since=&until=` — DATE_TRUNC dia via created_at; kind='file' não-deletados |
 
 ---
 
-## Próximos candidatos (#679+)
+## Próximos candidatos (#683+)
 
-1. **search** — `GET /search/index/segments/bottom-n?limit=N` — bottom-N segmentos por disk_bytes (candidatos a merge); sort ASC + truncate; simetria com top-n (#674)
-2. **calendar** — `GET /calendars/stats/by-tenant` — COUNT calendars+events por tenant_id; `{rows:[{tenant_id,calendar_count,event_count}]}`; visão ops cross-calendar
-3. **notifications** — `GET /dlq/stats/attempts-distribution` — histograma de `attempts` (1/2/3/4/5+); `{buckets:[{attempts,count}]}`; identifica entradas presas em retry loops
-4. **drive** — `GET /drive/files/stats/created-by-day?since=&until=` — COUNT arquivos criados por dia; `{days:[{day,count}]}`; análogo a activity (#636) mas foca só em criação via drive_files.created_at
+1. **mail** — `GET /mail/messages/stats/threads-by-folder` — COUNT DISTINCT thread_id por mailbox; `{folders:[{folder,thread_count,unread_thread_count}]}`; complementa threads (#630) com breakdown por folder
+2. **search** — `GET /search/stats/by-tenant?limit=N` — COUNT docs por tenant_id (field f_tenant_id); `{rows:[{tenant_id,doc_count}]}`; ops cross-tenant sem RLS
+3. **calendar** — `GET /calendars/:cal_id/events-by-range/priority-stats?after=&before=` — COUNT FILTER por PRIORITY (0-undefined/1-9 buckets high/medium/low); `{calendar_id,total,high,medium,low,undefined}`
+4. **notifications** — `GET /dlq/stats/by-user?limit=N` — COUNT GROUP BY user_id ORDER BY count DESC; `{rows:[{user_id,count}]}`; análogo a by-tenant (#671) escopado por usuário
 
 ---
 

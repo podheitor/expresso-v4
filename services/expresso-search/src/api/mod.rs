@@ -737,6 +737,32 @@ struct TopNQuery {
     limit: Option<u64>,
 }
 
+/// GET /api/v1/search/index/segments/bottom-n?limit=N — bottom-N segmentos por disk_bytes.
+///
+/// Candidatos a merge — os menores segmentos em disco. Simetria com top-n (#674):
+/// sort ASC por `disk_bytes` + truncate. `limit` default 5 max 50.
+/// Graceful: lista vazia se `list_segments()` falhar. Sprint #679.
+pub async fn segments_bottom_n(
+    State(store): State<IndexStore>,
+    Query(q):     Query<TopNQuery>,
+) -> Json<serde_json::Value> {
+    let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
+
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_unstable_by(|a, b| a.2.cmp(&b.2));
+    segs.truncate(limit);
+
+    let segments: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":         id,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }))
+        .collect();
+
+    Json(serde_json::json!({"segments": segments}))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.

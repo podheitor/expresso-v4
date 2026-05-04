@@ -892,6 +892,43 @@ async fn dlq_stats_by_kind(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/attempts-distribution — histograma de attempts.
+///
+/// Classifica entradas por `attempts`: buckets 1/2/3/4/5+ via COUNT FILTER.
+/// Retorna `{buckets:[{attempts,count}]}`. Identifica entradas presas em retry loops.
+/// Sprint #681.
+async fn dlq_stats_attempts_distribution(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let (a1, a2, a3, a4, a5plus): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE attempts = 1)::BIGINT, \
+            COUNT(*) FILTER (WHERE attempts = 2)::BIGINT, \
+            COUNT(*) FILTER (WHERE attempts = 3)::BIGINT, \
+            COUNT(*) FILTER (WHERE attempts = 4)::BIGINT, \
+            COUNT(*) FILTER (WHERE attempts >= 5)::BIGINT \
+           FROM notification_dlq",
+    )
+    .fetch_one(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "buckets": [
+            {"attempts": 1,    "count": a1},
+            {"attempts": 2,    "count": a2},
+            {"attempts": 3,    "count": a3},
+            {"attempts": 4,    "count": a4},
+            {"attempts": "5+", "count": a5plus},
+        ]
+    })))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -1844,7 +1881,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-day", get(dlq_stats_by_tenant_and_day))
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
         .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
-        .route("/api/v1/notifications/dlq/stats/by-kind",           get(dlq_stats_by_kind))
+        .route("/api/v1/notifications/dlq/stats/by-kind",             get(dlq_stats_by_kind))
+        .route("/api/v1/notifications/dlq/stats/attempts-distribution", get(dlq_stats_attempts_distribution))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
