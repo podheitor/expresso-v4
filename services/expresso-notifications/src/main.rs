@@ -671,6 +671,79 @@ async fn delete_dlq_entry(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// PATCH /api/v1/notifications/dlq/:id — ops annotation: atualiza last_error e/ou attempts.
+///
+/// Body JSON: `{last_error?: string | null, attempts?: integer}`.
+/// Útil para operadores anotarem a causa raiz ou resetarem contagem de tentativas
+/// sem precisar deletar + re-inserir a entry. 404 se entry não existe.
+/// Retorna `{id, updated}` com campos efetivamente alterados. Sprint #593.
+#[derive(Debug, Deserialize)]
+struct PatchDlqBody {
+    last_error: Option<serde_json::Value>, // string | null
+    attempts:   Option<i32>,
+}
+
+async fn patch_dlq_entry(
+    State(st): State<AppState>,
+    Path(id):  Path<Uuid>,
+    Json(body): Json<PatchDlqBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    // Validate at least one field provided.
+    if body.last_error.is_none() && body.attempts.is_none() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "at least one of last_error or attempts is required"})),
+        ));
+    }
+
+    // Verify entry exists first (404 guard).
+    let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM notification_dlq WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    if exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))));
+    }
+
+    let mut updated: Vec<&str> = Vec::new();
+
+    if let Some(ref le) = body.last_error {
+        let val: Option<String> = match le {
+            serde_json::Value::Null => None,
+            serde_json::Value::String(s) => Some(s.clone()),
+            _ => return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "last_error must be a string or null"})))),
+        };
+        sqlx::query("UPDATE notification_dlq SET last_error = $1 WHERE id = $2")
+            .bind(val)
+            .bind(id)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        updated.push("last_error");
+    }
+
+    if let Some(att) = body.attempts {
+        if att < 0 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "attempts must be >= 0"}))));
+        }
+        sqlx::query("UPDATE notification_dlq SET attempts = $1 WHERE id = $2")
+            .bind(att)
+            .bind(id)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        updated.push("attempts");
+    }
+
+    Ok(Json(json!({"id": id, "updated": updated})))
+}
+
 /// POST /api/v1/notifications/dlq/:id/retry — re-dispatch a DLQ entry.
 ///
 /// Reads the saved payload, posts it to /internal/notify on this pod, and
@@ -970,7 +1043,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/count",     get(count_dlq))
         .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
-        .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry))
+        .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
