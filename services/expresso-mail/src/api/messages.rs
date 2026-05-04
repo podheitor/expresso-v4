@@ -51,6 +51,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-by-folder",      get(size_by_folder_stats))
         .route("/mail/messages/stats/attachments-by-folder", get(attachments_by_folder_stats))
         .route("/mail/messages/stats/flags-by-folder",        get(flags_by_folder_stats))
+        .route("/mail/messages/stats/received-by-folder",      get(received_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2239,6 +2240,37 @@ async fn flags_by_folder_stats(
         .map(|(folder, flag, count)| serde_json::json!({"folder": folder, "flag": flag, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/mail/messages/stats/received-by-folder — volume total de mensagens por mailbox.
+///
+/// COUNT(*) por `mb.name` ordenado por `total DESC`. LEFT JOIN para incluir pastas vazias.
+/// Retorna `{folders:[{folder,total}]}`. Visão de volume sem breakdown temporal.
+/// Complementa received-by-day (#648) com perspectiva por mailbox. Sprint #678.
+async fn received_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, COUNT(m.id)::BIGINT AS total \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total)| serde_json::json!({"folder": folder, "total": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
 
 /// GET /api/v1/mail/messages/stats/size-by-folder — total, avg e max size_bytes por mailbox.

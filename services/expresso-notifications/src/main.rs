@@ -859,6 +859,39 @@ async fn dlq_stats_by_tenant(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind?limit=N — DLQ por kind agregado.
+///
+/// GROUP BY kind ORDER BY count DESC sem breakdown temporal. `limit` default 20 max 200.
+/// Rollup simples de by-kind-and-day (#656) — visão total acumulada. Sprint #676.
+async fn dlq_stats_by_kind(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY kind \
+          ORDER BY count DESC, kind ASC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, count)| json!({"kind": kind, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -1811,6 +1844,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-day", get(dlq_stats_by_tenant_and_day))
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
         .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
+        .route("/api/v1/notifications/dlq/stats/by-kind",           get(dlq_stats_by_kind))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

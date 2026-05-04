@@ -66,6 +66,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/by-owner-and-ext", get(file_stats_by_owner_and_ext))
         .route("/api/v1/drive/files/stats/recent",           get(file_stats_recent))
         .route("/api/v1/drive/files/stats/mime-by-folder",  get(file_stats_mime_by_folder))
+        .route("/api/v1/drive/files/stats/top-files",       get(file_stats_top_files))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -1152,6 +1153,48 @@ async fn file_stats_mime_by_folder(
         }))
         .collect();
     Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/top-files?limit=N — top-N arquivos por size_bytes.
+///
+/// Retorna `{files:[{id,name,size_bytes,owner_user_id,mime_type}]}` ordenado por
+/// `size_bytes DESC`. `limit` default 20 max 200. Só arquivos não-deletados.
+/// Complementa size-buckets (#651) com lista concreta dos maiores arquivos. Sprint #677.
+#[derive(Debug, Deserialize)]
+struct StatsTopFilesQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_top_files(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Uuid, String, i64, Uuid, Option<String>)> = sqlx::query_as(
+        "SELECT id, name, COALESCE(size_bytes, 0)::BIGINT, owner_user_id, mime_type \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+          ORDER BY size_bytes DESC NULLS LAST \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let files: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(id, name, size_bytes, owner_user_id, mime_type)| serde_json::json!({
+            "id":            id,
+            "name":          name,
+            "size_bytes":    size_bytes,
+            "owner_user_id": owner_user_id,
+            "mime_type":     mime_type,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"files": files})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V

@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #674 — (commit pendente)
+**Último sprint:** #678 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -59,15 +59,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #672 | drive | `GET /drive/files/stats/mime-by-folder?folder_id=` — mime_type breakdown por pasta (parent_id ou raiz) |
 | #673 | mail | `GET /mail/messages/stats/flags-by-folder` — LATERAL unnest GROUP BY (folder, flag) ORDER BY count DESC |
 | #674 | search | `GET /search/index/segments/top-n?limit=N` — top-N segmentos por disk_bytes; default 5 max 50 |
+| #675 | calendar | `GET /calendars/:cal_id/events-by-range/status-stats` — COUNT FILTER CONFIRMED/TENTATIVE/CANCELLED/other/unset |
+| #676 | notifications | `GET /dlq/stats/by-kind?limit=N` — GROUP BY kind ORDER BY count DESC; rollup sem temporal |
+| #677 | drive | `GET /drive/files/stats/top-files?limit=N` — top-N arquivos por size_bytes; default 20 max 200 |
+| #678 | mail | `GET /mail/messages/stats/received-by-folder` — COUNT(*) por mailbox; LEFT JOIN pastas vazias; total DESC |
 
 ---
 
-## Próximos candidatos (#675+)
+## Próximos candidatos (#679+)
 
-1. **calendar** — `GET /calendars/:cal_id/events-by-range/status-stats?after=&before=` — COUNT FILTER por status (CONFIRMED/TENTATIVE/CANCELLED/other); `{calendar_id,total,confirmed,tentative,cancelled,other}`; análogo a class-stats (#652) para status
-2. **notifications** — `GET /dlq/stats/by-kind?limit=N` — COUNT GROUP BY kind ORDER BY count DESC sem breakdown temporal; `{rows:[{kind,count}]}`; rollup simples de by-kind-and-day (#656)
-3. **drive** — `GET /drive/files/stats/top-files?limit=N` — top-N arquivos por size_bytes; `{files:[{id,name,size_bytes,owner_user_id,mime_type}]}`; complementa size-buckets (#651) com lista concreta
-4. **mail** — `GET /mail/messages/stats/received-by-folder` — COUNT(*) por folder ordenado por total DESC; `{folders:[{folder,total}]}`; visão de volume total sem temporal
+1. **search** — `GET /search/index/segments/bottom-n?limit=N` — bottom-N segmentos por disk_bytes (candidatos a merge); sort ASC + truncate; simetria com top-n (#674)
+2. **calendar** — `GET /calendars/stats/by-tenant` — COUNT calendars+events por tenant_id; `{rows:[{tenant_id,calendar_count,event_count}]}`; visão ops cross-calendar
+3. **notifications** — `GET /dlq/stats/attempts-distribution` — histograma de `attempts` (1/2/3/4/5+); `{buckets:[{attempts,count}]}`; identifica entradas presas em retry loops
+4. **drive** — `GET /drive/files/stats/created-by-day?since=&until=` — COUNT arquivos criados por dia; `{days:[{day,count}]}`; análogo a activity (#636) mas foca só em criação via drive_files.created_at
 
 ---
 

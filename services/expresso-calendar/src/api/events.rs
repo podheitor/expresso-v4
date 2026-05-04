@@ -213,6 +213,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_organizer_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/status-stats",
+            get(events_by_range_status_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1647,6 +1651,58 @@ async fn events_by_range_organizer_stats(
         "with_organizer":    with_organizer,
         "without_organizer": without_organizer,
         "top_organizers":    top_organizers,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/status-stats?after=&before=
+///
+/// COUNT FILTER por `status` (CONFIRMED/TENTATIVE/CANCELLED/other/unset) no range
+/// `dtstart ∈ [after, before)`. Análogo a class-stats (#652) para a coluna `status`.
+/// `other` = valores não-padrão RFC 5545; `unset` = IS NULL. Sprint #675.
+async fn events_by_range_status_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, confirmed, tentative, cancelled, other, unset): (i64, i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT                                                          AS total, \
+                COUNT(*) FILTER (WHERE status = 'CONFIRMED')::BIGINT                     AS confirmed, \
+                COUNT(*) FILTER (WHERE status = 'TENTATIVE')::BIGINT                     AS tentative, \
+                COUNT(*) FILTER (WHERE status = 'CANCELLED')::BIGINT                     AS cancelled, \
+                COUNT(*) FILTER (WHERE status IS NOT NULL \
+                                   AND status NOT IN ('CONFIRMED','TENTATIVE','CANCELLED'))::BIGINT \
+                                                                                         AS other, \
+                COUNT(*) FILTER (WHERE status IS NULL)::BIGINT                           AS unset \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND dtstart IS NOT NULL \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "total":       total,
+        "confirmed":   confirmed,
+        "tentative":   tentative,
+        "cancelled":   cancelled,
+        "other":       other,
+        "unset":       unset,
     })))
 }
 
