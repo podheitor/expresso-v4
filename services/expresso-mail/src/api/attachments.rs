@@ -27,7 +27,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/headers",            get(message_headers))
         .route("/mail/messages/:id/body",               get(message_body))
         .route("/mail/messages/:id/structure",          get(message_structure))
-        .route("/mail/messages/:id/inline-images",      get(list_inline_images))
+        .route("/mail/messages/:id/inline-images",            get(list_inline_images))
+        .route("/mail/messages/:id/inline-images/:index",     get(download_inline_image))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -402,6 +403,60 @@ async fn list_inline_images(
         "message_id":    id,
         "inline_images": inline_images,
     })))
+}
+
+/// GET /api/v1/mail/messages/:id/inline-images/:index — download binary content of
+/// a CID-referenceable inline image part by its index in `msg.parts`.
+///
+/// Complements `GET /inline-images` (list) with actual blob delivery.
+/// Content-Disposition is `inline` so clients can render directly.
+/// 404 if message not found or index has no Content-ID (not an inline image).
+/// Sprint #620.
+async fn download_inline_image(
+    State(state):       State<AppState>,
+    ctx:                RequestCtx,
+    Path((id, index)):  Path<(Uuid, usize)>,
+) -> Result<Response> {
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
+    let raw = load_raw(&state, &body_path).await?;
+    let msg = MessageParser::default()
+        .parse(&raw)
+        .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
+
+    let part = msg.parts.get(index)
+        .ok_or_else(|| MailError::InvalidMessage(format!("index {index} out of range")))?;
+
+    // Must be CID-referenceable.
+    let _cid = part.content_id()
+        .ok_or_else(|| MailError::InvalidMessage(format!("part at index {index} has no Content-ID")))?;
+
+    let is_inline = part.content_disposition()
+        .map(|cd| cd.is_inline())
+        .unwrap_or(true);
+    if !is_inline {
+        return Err(MailError::InvalidMessage(format!("part at index {index} is not inline")));
+    }
+
+    let ct = part.content_type().map(format_ct)
+        .unwrap_or_else(|| "application/octet-stream".into());
+    let filename = part.attachment_name().unwrap_or("inline").to_owned();
+    let body = part.contents().to_vec();
+
+    let ct_safe = sanitize_header_token(&ct, "application/octet-stream");
+    let ascii: String = filename.chars().map(|c| {
+        if c.is_ascii_graphic() && c != '"' && c != '\\' { c } else { '_' }
+    }).collect();
+    let ascii = if ascii.trim().is_empty() { "inline".to_string() } else { ascii };
+    let cd = format!("inline; filename=\"{ascii}\"");
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,        ct_safe),
+            (header::CONTENT_DISPOSITION, cd),
+        ],
+        body,
+    ).into_response())
 }
 
 #[cfg(test)]
