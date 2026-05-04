@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",          get(download_version).delete(delete_version))
         .route("/api/v1/drive/files/:id/versions/:v/metadata", get(version_metadata))
+        .route("/api/v1/drive/files/:id/versions/:v/restore",  post(restore_version))
         .route("/api/v1/drive/files/:id/versions/:v/diff-content", get(diff_version_content))
         .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
         .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
@@ -899,6 +900,69 @@ async fn download_version(
         file_id = %id, version_no = v);
     let filename = format!("{}.v{}", parent.name, v);
     Ok(attachment_response(&filename, ver.mime_type.as_deref(), bytes))
+}
+
+/// POST /api/v1/drive/files/:id/versions/:v/restore
+///
+/// Promotes a historical version `:v` to the current live content of file `:id`.
+/// The current live content is archived as a new version before the swap, so no
+/// data is lost. Returns the updated file record.
+///
+/// Flow:
+///   1. Fetch current live file (404 if not found or deleted).
+///   2. Fetch target version `:v` (404 if missing).
+///   3. Archive current live blob as a new version (next_no).
+///   4. Swap `drive_files.storage_key / size_bytes / sha256 / mime_type` to the
+///      target version's blob via `FileRepo::update_content`.
+///
+/// Idempotent if called twice with the same version: the second call finds the
+/// current live content already matching, creates an extra archive version.
+/// Sprint #611.
+async fn restore_version(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, v)): Path<(Uuid, i32)>,
+) -> Result<Json<DriveFile>> {
+    let pool = state.db_or_unavailable()?;
+
+    let file_repo = FileRepo::new(pool);
+    let ver_repo  = VersionRepo::new(pool);
+
+    let current = file_repo.get(ctx.tenant_id, id).await?;
+    let target  = ver_repo.get(ctx.tenant_id, id, v).await?
+        .ok_or(DriveError::NotFound(id))?;
+
+    // Archive the current live blob as a new historical version.
+    if let Some(ref current_key) = current.storage_key {
+        let next_no = ver_repo.next_no(ctx.tenant_id, id).await?;
+        ver_repo.insert(&NewVersion {
+            file_id:     id,
+            tenant_id:   ctx.tenant_id,
+            version_no:  next_no,
+            storage_key: current_key,
+            size_bytes:  current.size_bytes,
+            sha256:      current.sha256.as_deref(),
+            mime_type:   current.mime_type.as_deref(),
+            created_by:  ctx.user_id,
+        }).await?;
+    }
+
+    // Promote target version to live.
+    let updated = file_repo.update_content(
+        ctx.tenant_id,
+        id,
+        &target.storage_key,
+        target.size_bytes,
+        target.sha256.as_deref(),
+        target.mime_type.as_deref(),
+    ).await?;
+
+    tracing::info!(target: "audit",
+        event = "drive.file.restore_version",
+        tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
+        file_id = %id, version_no = v);
+
+    Ok(Json(updated))
 }
 
 /// GET /api/v1/drive/files/:id/versions/:v/diff-content
