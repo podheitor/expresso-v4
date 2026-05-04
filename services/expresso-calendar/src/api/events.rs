@@ -176,6 +176,10 @@ pub fn routes() -> Router<AppState> {
             get(event_history).delete(delete_event_history),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/:id/history/stats",
+            get(event_history_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id/itip/request.ics",
             get(itip_request),
         )
@@ -2078,6 +2082,54 @@ async fn delete_event_history(
         "event_id":    event_id,
         "calendar_id": cal_id,
         "deleted":     result.rows_affected(),
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/:id/history/stats — estatísticas do histórico.
+///
+/// Retorna `{event_id, calendar_id, total, put_count, patch_count, first_at, last_at}`.
+/// `first_at`/`last_at` são null se não há entradas (evento nunca sofreu PUT/PATCH rastreado).
+/// 404 se evento não pertence ao tenant/calendar. Sprint #594.
+async fn event_history_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((cal_id, event_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+    let pool = state.db_or_unavailable()?;
+
+    let ev = EventRepo::new(pool)
+        .get(ctx.tenant_id, event_id)
+        .await?;
+    if ev.calendar_id != cal_id {
+        return Err(CalendarError::EventNotFound(event_id));
+    }
+
+    let row: (i64, i64, i64, Option<OffsetDateTime>, Option<OffsetDateTime>) = sqlx::query_as(
+        "SELECT COUNT(*) AS total, \
+                COUNT(*) FILTER (WHERE op = 'PUT')   AS put_count, \
+                COUNT(*) FILTER (WHERE op = 'PATCH') AS patch_count, \
+                MIN(changed_at) AS first_at, \
+                MAX(changed_at) AS last_at \
+           FROM calendar_event_history \
+          WHERE tenant_id = $1 AND event_id = $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(event_id)
+    .fetch_one(pool)
+    .await
+    .map_err(CalendarError::Database)?;
+
+    let (total, put_count, patch_count, first_at, last_at) = row;
+
+    Ok(Json(json!({
+        "event_id":    event_id,
+        "calendar_id": cal_id,
+        "total":       total,
+        "put_count":   put_count,
+        "patch_count": patch_count,
+        "first_at":    first_at,
+        "last_at":     last_at,
     })))
 }
 
