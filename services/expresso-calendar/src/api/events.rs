@@ -177,6 +177,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_locations),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summaries",
+            get(events_by_range_summaries),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1066,6 +1070,63 @@ async fn events_by_range_locations(
         "events_scanned": events_scanned,
         "count":          locations.len(),
         "locations":      locations,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summaries?after=&before=
+///
+/// Retorna union de `summary` únicos (não-nulos) no range de dtstart dado.
+/// Usa SQL DISTINCT na coluna — análogo ao #627 locations e #622 organizers.
+/// Completa o trio subject/location/summary da família events-by-range/*.
+/// Response: `{calendar_id, events_scanned, count, summaries: [string]}`. Sprint #632.
+async fn events_by_range_summaries(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeAttendeesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (events_scanned,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT summary \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND summary IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          ORDER BY summary ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let summaries: Vec<&str> = rows.iter().map(|(s,)| s.as_str()).collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "events_scanned": events_scanned,
+        "count":          summaries.len(),
+        "summaries":      summaries,
     })))
 }
 
