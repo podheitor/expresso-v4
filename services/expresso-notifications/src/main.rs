@@ -1207,6 +1207,52 @@ async fn retry_filtered_dlq(
     })))
 }
 
+/// POST /api/v1/notifications/dlq/bulk/count — count DLQ entries by list of IDs.
+///
+/// Body: `{ids: [uuid]}`. Returns `{found, not_found, ids_found: [uuid]}`.
+/// Useful for UI to verify which IDs are still in the DLQ before bulk retry.
+/// Max 200 IDs per call. Does NOT modify any entry. Sprint #634.
+#[derive(Debug, Deserialize)]
+struct BulkCountDlqBody {
+    ids: Vec<Uuid>,
+}
+
+async fn bulk_count_dlq(
+    State(st): State<AppState>,
+    Json(body): Json<BulkCountDlqBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if body.ids.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+    }
+    if body.ids.len() > 200 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+    }
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    // Single query: fetch all ids that exist, preserving input ordering.
+    let found_rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM notification_dlq WHERE id = ANY($1)",
+    )
+    .bind(&body.ids)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let found_set: std::collections::HashSet<Uuid> = found_rows.into_iter().map(|(id,)| id).collect();
+    let ids_found: Vec<Uuid> = body.ids.iter().filter(|id| found_set.contains(id)).copied().collect();
+    let not_found = body.ids.len() - ids_found.len();
+
+    Ok(Json(json!({
+        "found":     ids_found.len(),
+        "not_found": not_found,
+        "ids_found": ids_found,
+    })))
+}
+
 /// POST /api/v1/notifications/dlq/bulk/retry — bulk retry por lista de IDs.
 ///
 /// Body: `{ids: [uuid]}`. Re-despacha cada entry: broadcast SSE + Redis + webhook
@@ -1447,6 +1493,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
         .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
         .route("/api/v1/notifications/dlq/bulk",             patch(bulk_patch_dlq))
+        .route("/api/v1/notifications/dlq/bulk/count",       post(bulk_count_dlq))
         .route("/api/v1/notifications/dlq/bulk/retry",       post(bulk_retry_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
         .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
