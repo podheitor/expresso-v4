@@ -62,6 +62,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
         .route("/api/v1/drive/files/stats/owners",        get(file_stats_owners))
         .route("/api/v1/drive/files/stats/size-buckets", get(file_stats_size_buckets))
+        .route("/api/v1/drive/files/stats/deleted",      get(file_stats_deleted))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -964,6 +965,39 @@ async fn file_stats_size_buckets(
         serde_json::json!({"range": ">100MB",   "count": gt100mb_c, "total_bytes": gt100mb_b}),
     ];
     Ok(Json(serde_json::json!({"buckets": buckets})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted — métricas de arquivos na lixeira.
+///
+/// Conta arquivos com `deleted_at IS NOT NULL` e soma seus bytes. Retorna também
+/// `oldest_deleted_at` e `newest_deleted_at` para dar o intervalo temporal da lixeira.
+/// Tenant-scoped. Sprint #657.
+async fn file_stats_deleted(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let (deleted_count, deleted_bytes, oldest_deleted_at, newest_deleted_at):
+        (i64, i64, Option<OffsetDateTime>, Option<OffsetDateTime>) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT, \
+                MIN(deleted_at), \
+                MAX(deleted_at) \
+             FROM drive_files \
+             WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND kind = 'file'",
+        )
+        .bind(ctx.tenant_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "deleted_count":      deleted_count,
+        "deleted_bytes":      deleted_bytes,
+        "oldest_deleted_at":  oldest_deleted_at,
+        "newest_deleted_at":  newest_deleted_at,
+    })))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
