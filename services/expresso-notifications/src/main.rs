@@ -1207,6 +1207,96 @@ async fn retry_filtered_dlq(
     })))
 }
 
+/// POST /api/v1/notifications/dlq/bulk/retry — bulk retry por lista de IDs.
+///
+/// Body: `{ids: [uuid]}`. Re-despacha cada entry: broadcast SSE + Redis + webhook
+/// fire-and-forget + DELETE. Entries não encontradas são contadas como `not_found`.
+/// Payload inválido (JSON corrompido no `payload`) conta como `failed` e a entry
+/// fica intacta na DLQ. Retorna `{retried, failed, not_found, ids_retried: [uuid]}`.
+/// Best-effort: falhas parciais não abortam o batch; sempre 200 (exceto validação).
+/// Paralelo do bulk-patch #624 mas com re-dispatch + delete. Sprint #629.
+#[derive(Debug, Deserialize)]
+struct BulkRetryDlqBody {
+    ids: Vec<Uuid>,
+}
+
+async fn bulk_retry_dlq(
+    State(st): State<AppState>,
+    Json(body): Json<BulkRetryDlqBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if body.ids.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+    }
+    if body.ids.len() > 200 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+    }
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    use sqlx::Row as _;
+    let mut ids_retried: Vec<Uuid> = Vec::new();
+    let mut not_found = 0usize;
+    let mut failed    = 0usize;
+
+    for &id in &body.ids {
+        let row = sqlx::query(
+            "SELECT id, kind, payload FROM notification_dlq WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+        let Some(row) = row else { not_found += 1; continue; };
+
+        let payload: serde_json::Value = row.get("payload");
+        let notif: Notification = match serde_json::from_value(payload.clone()) {
+            Ok(n)  => n,
+            Err(_) => { failed += 1; continue; }
+        };
+
+        let _ = st.tx.send(notif.clone());
+        NOTIFICATIONS_DISPATCHED.with_label_values(&[&notif.kind]).inc();
+
+        if let Some(redis_pool) = &st.redis_pub {
+            if let Ok(body_str) = serde_json::to_string(&notif) {
+                if let Ok(mut conn) = redis_pool.get().await {
+                    use deadpool_redis::redis::AsyncCommands;
+                    let _ = conn.publish::<_, _, ()>("expresso:notifications", &body_str).await;
+                }
+            }
+        }
+
+        if let Some((url, client)) = &st.webhook {
+            let url    = url.clone();
+            let client = client.clone();
+            let body_v = payload.clone();
+            tokio::spawn(async move {
+                let _ = client.post(url.as_ref()).json(&body_v).send().await;
+            });
+        }
+
+        match sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
+            .bind(id)
+            .execute(pool.as_ref())
+            .await
+        {
+            Ok(_)  => ids_retried.push(id),
+            Err(_) => failed += 1,
+        }
+    }
+
+    Ok(Json(json!({
+        "retried":     ids_retried.len(),
+        "failed":      failed,
+        "not_found":   not_found,
+        "ids_retried": ids_retried,
+    })))
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -1357,6 +1447,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
         .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
         .route("/api/v1/notifications/dlq/bulk",             patch(bulk_patch_dlq))
+        .route("/api/v1/notifications/dlq/bulk/retry",       post(bulk_retry_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
         .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
