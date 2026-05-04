@@ -1,6 +1,7 @@
 //! Tantivy index management — shared state for the search service.
 //! Schema: document_id (stored), tenant_id (indexed), subject (full-text+stored),
-//! from_addr (stored+indexed), body (full-text+stored), received_at (fast-field).
+//! from_addr (stored+indexed), body (full-text+stored), kind (string+stored),
+//! received_at (u64 fast-field, unix timestamp in seconds, STORED).
 //!
 //! NOTE: body was changed from TEXT to TEXT|STORED. Existing indexes built
 //! before this change need re-indexing to populate stored body values; until
@@ -14,9 +15,9 @@ use tantivy::{
     collector::TopDocs,
     directory::MmapDirectory,
     doc,
-    query::{BooleanQuery, Occur, Query, QueryParser, TermQuery},
+    query::{BooleanQuery, Occur, Query, QueryParser, RangeQuery, TermQuery},
     schema::{
-        Field, IndexRecordOption, Schema, STORED, STRING, TEXT,
+        Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT,
     },
     snippet::SnippetGenerator,
     Index, IndexReader, IndexWriter, ReloadPolicy,
@@ -41,6 +42,7 @@ struct Inner {
     pub f_from_addr: Field,
     pub f_body: Field,
     pub f_kind: Field,
+    pub f_received_at: Field,
 }
 
 /// Document to be indexed
@@ -53,6 +55,9 @@ pub struct IndexDoc {
     pub body: Option<String>,
     /// Categorization (e.g. "mail", "drive", "contact"). Used for faceted search.
     pub kind: Option<String>,
+    /// Unix timestamp in seconds (UTC). Used for temporal facets and range queries.
+    /// Absent/null → stored as 0 (epoch), excluded from temporal range filters.
+    pub received_at: Option<u64>,
 }
 
 /// Search result item
@@ -66,6 +71,9 @@ pub struct SearchHit {
     /// the document was indexed before body became STORED (needs re-index).
     pub snippet: Option<String>,
     pub kind: Option<String>,
+    /// Unix timestamp in seconds. None when document has no received_at (stored as 0).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub received_at: Option<u64>,
 }
 
 impl IndexStore {
@@ -78,6 +86,12 @@ impl IndexStore {
         let f_from_addr = schema_builder.add_text_field("from_addr", TEXT | STORED);
         let f_body = schema_builder.add_text_field("body", TEXT | STORED);
         let f_kind = schema_builder.add_text_field("kind", STRING | STORED);
+        // received_at: fast-field (column store) + stored so it can be returned in hits.
+        // u64 unix timestamp in seconds. 0 = absent/unknown (excluded from range filters).
+        let f_received_at = schema_builder.add_u64_field(
+            "received_at",
+            NumericOptions::default().set_fast().set_stored(),
+        );
         let schema = schema_builder.build();
 
         std::fs::create_dir_all(data_dir)?;
@@ -102,6 +116,7 @@ impl IndexStore {
                 f_from_addr,
                 f_body,
                 f_kind,
+                f_received_at,
             }),
         })
     }
@@ -129,12 +144,13 @@ impl IndexStore {
         writer.delete_term(term);
 
         writer.add_document(doc!(
-            i.f_doc_id    => doc_data.document_id.as_str(),
-            i.f_tenant_id => tenant_canonical.as_str(),
-            i.f_subject   => doc_data.subject.as_deref().unwrap_or(""),
-            i.f_from_addr => doc_data.from_addr.as_deref().unwrap_or(""),
-            i.f_body      => doc_data.body.as_deref().unwrap_or(""),
-            i.f_kind      => doc_data.kind.as_deref().unwrap_or(""),
+            i.f_doc_id      => doc_data.document_id.as_str(),
+            i.f_tenant_id   => tenant_canonical.as_str(),
+            i.f_subject     => doc_data.subject.as_deref().unwrap_or(""),
+            i.f_from_addr   => doc_data.from_addr.as_deref().unwrap_or(""),
+            i.f_body        => doc_data.body.as_deref().unwrap_or(""),
+            i.f_kind        => doc_data.kind.as_deref().unwrap_or(""),
+            i.f_received_at => doc_data.received_at.unwrap_or(0u64),
         ))?;
 
         writer.commit()?;
@@ -164,12 +180,13 @@ impl IndexStore {
             let term = tantivy::Term::from_field_text(i.f_doc_id, &doc_data.document_id);
             writer.delete_term(term);
             writer.add_document(doc!(
-                i.f_doc_id    => doc_data.document_id.as_str(),
-                i.f_tenant_id => tenant_canonical.as_str(),
-                i.f_subject   => doc_data.subject.as_deref().unwrap_or(""),
-                i.f_from_addr => doc_data.from_addr.as_deref().unwrap_or(""),
-                i.f_body      => doc_data.body.as_deref().unwrap_or(""),
-                i.f_kind      => doc_data.kind.as_deref().unwrap_or(""),
+                i.f_doc_id      => doc_data.document_id.as_str(),
+                i.f_tenant_id   => tenant_canonical.as_str(),
+                i.f_subject     => doc_data.subject.as_deref().unwrap_or(""),
+                i.f_from_addr   => doc_data.from_addr.as_deref().unwrap_or(""),
+                i.f_body        => doc_data.body.as_deref().unwrap_or(""),
+                i.f_kind        => doc_data.kind.as_deref().unwrap_or(""),
+                i.f_received_at => doc_data.received_at.unwrap_or(0u64),
             ))?;
         }
 
@@ -282,13 +299,16 @@ impl IndexStore {
             let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
             let kind      = doc.get_first(i.f_kind).and_then(|v| TantivyValue::as_str(&v))
                                .filter(|s| !s.is_empty()).map(str::to_owned);
+            let received_at = doc.get_first(i.f_received_at)
+                .and_then(|v| TantivyValue::as_u64(&v))
+                .filter(|&ts| ts > 0);
             let snippet = snippet_gen.as_ref().map(|gen| {
                 let s = gen.snippet_from_doc(&doc);
                 let text = s.to_html();
                 // Strip tantivy's <b>…</b> highlight tags — return plain text.
                 text.replace("<b>", "").replace("</b>", "")
             }).filter(|s| !s.is_empty());
-            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind });
+            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind, received_at });
         }
 
         Ok(results)
@@ -633,6 +653,158 @@ impl IndexStore {
         Ok(sorted)
     }
 
+    /// Temporal facet: counts hits bucketed by `received_at` using the requested
+    /// granularity ("day" → YYYY-MM-DD, "week" → YYYY-Www, "month" → YYYY-MM).
+    /// Documents with `received_at == 0` (absent) are excluded from buckets.
+    /// Returns Vec<(bucket_label, count)> sorted by label ascending (chronological).
+    pub fn facet_received_at_buckets(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        granularity: &str,
+    ) -> anyhow::Result<Vec<(String, u64)>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let final_query: Box<dyn Query> = if trimmed.is_empty() {
+            tenant_query
+        } else {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            Box::new(BooleanQuery::new(vec![
+                (Occur::Must, tenant_query),
+                (Occur::Must, user_query),
+            ]))
+        };
+
+        use tantivy::collector::DocSetCollector;
+        let doc_set = searcher.search(&*final_query, &DocSetCollector)?;
+
+        let mut counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+        for doc_addr in doc_set {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let ts = match doc.get_first(i.f_received_at).and_then(|v| TantivyValue::as_u64(&v)) {
+                Some(t) if t > 0 => t,
+                _ => continue,
+            };
+            // Convert unix seconds to NaiveDate via integer arithmetic (no external dep).
+            // Using Gregorian proleptic calendar: days since 1970-01-01.
+            let bucket = unix_secs_to_bucket(ts, granularity);
+            *counts.entry(bucket).or_insert(0) += 1;
+        }
+
+        let mut sorted: Vec<(String, u64)> = counts.into_iter().collect();
+        sorted.sort_by(|a, b| a.0.cmp(&b.0)); // chronological by label
+        Ok(sorted)
+    }
+
+    /// Range filter on `received_at`: returns only documents where
+    /// `after_secs <= received_at < before_secs`. Either bound optional.
+    /// Documents with `received_at == 0` are always excluded.
+    pub fn search_with_received_at_filter(
+        &self,
+        query_str: &str,
+        tenant_id: &str,
+        limit: usize,
+        offset: usize,
+        after_secs: Option<u64>,
+        before_secs: Option<u64>,
+    ) -> anyhow::Result<Vec<SearchHit>> {
+        let tenant_uuid = Uuid::parse_str(tenant_id.trim())
+            .map_err(|_| anyhow::anyhow!("tenant_id must be a valid UUID"))?;
+        let tenant_canonical = tenant_uuid.to_string();
+
+        let trimmed = query_str.trim();
+        if !trimmed.is_empty() {
+            let lowered = trimmed.to_ascii_lowercase();
+            if lowered.contains("tenant_id:") || lowered.contains("document_id:") {
+                anyhow::bail!("bad_query: query must not reference internal fields");
+            }
+        }
+
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let tenant_term = tantivy::Term::from_field_text(i.f_tenant_id, &tenant_canonical);
+        let tenant_query: Box<dyn Query> =
+            Box::new(TermQuery::new(tenant_term, IndexRecordOption::Basic));
+
+        let mut clauses: Vec<(Occur, Box<dyn Query>)> = vec![(Occur::Must, tenant_query)];
+
+        if !trimmed.is_empty() {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            let user_query = parser.parse_query(trimmed)
+                .map_err(|e| anyhow::anyhow!("bad_query: {e}"))?;
+            clauses.push((Occur::Must, user_query));
+        }
+
+        // received_at range: exclude 0 (absent) by setting lower bound to max(1, after).
+        let lo = after_secs.map(|v| v.max(1)).unwrap_or(1u64);
+        let hi = before_secs;
+        let range_query: Box<dyn Query> = Box::new(RangeQuery::new_u64_bounds(
+            "received_at".to_owned(),
+            std::ops::Bound::Included(lo),
+            hi.map(std::ops::Bound::Excluded).unwrap_or(std::ops::Bound::Unbounded),
+        ));
+        clauses.push((Occur::Must, range_query));
+
+        let final_query = Box::new(BooleanQuery::new(clauses));
+
+        let user_query_for_snippet = if !trimmed.is_empty() {
+            let parser = QueryParser::for_index(&i.index, vec![i.f_subject, i.f_body, i.f_from_addr]);
+            parser.parse_query(trimmed).ok()
+        } else {
+            None
+        };
+
+        let snippet_gen = user_query_for_snippet.as_ref().and_then(|q| {
+            SnippetGenerator::create(&searcher, q.as_ref(), i.f_body).ok()
+        }).map(|mut gen| { gen.set_max_num_chars(200); gen });
+
+        let top_docs = searcher.search(&*final_query, &TopDocs::with_limit(limit).and_offset(offset))?;
+
+        let mut results = Vec::with_capacity(top_docs.len());
+        for (score, doc_addr) in top_docs {
+            let doc: tantivy::TantivyDocument = searcher.doc(doc_addr)?;
+            let doc_id = match doc.get_first(i.f_doc_id).and_then(|v| TantivyValue::as_str(&v)) {
+                Some(id) => id.to_owned(),
+                None => continue,
+            };
+            let subject   = doc.get_first(i.f_subject).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            let from_addr = doc.get_first(i.f_from_addr).and_then(|v| TantivyValue::as_str(&v)).map(str::to_owned);
+            let kind      = doc.get_first(i.f_kind).and_then(|v| TantivyValue::as_str(&v))
+                               .filter(|s| !s.is_empty()).map(str::to_owned);
+            let received_at = doc.get_first(i.f_received_at)
+                .and_then(|v| TantivyValue::as_u64(&v))
+                .filter(|&ts| ts > 0);
+            let snippet = snippet_gen.as_ref().map(|gen| {
+                let s = gen.snippet_from_doc(&doc);
+                let text = s.to_html();
+                text.replace("<b>", "").replace("</b>", "")
+            }).filter(|s| !s.is_empty());
+            results.push(SearchHit { document_id: doc_id, score, subject, from_addr, snippet, kind, received_at });
+        }
+
+        Ok(results)
+    }
+
     pub fn facet_counts_by_from(
         &self,
         query_str: &str,
@@ -691,6 +863,56 @@ impl IndexStore {
     }
 }
 
+/// Convert unix timestamp (seconds) to a bucket label for temporal facets.
+/// granularity: "day" → "YYYY-MM-DD", "week" → "YYYY-Www", "month" → "YYYY-MM".
+/// Any unrecognised granularity falls back to "day".
+fn unix_secs_to_bucket(ts: u64, granularity: &str) -> String {
+    // Integer-only Gregorian calendar computation (no chrono/time dep in index_store).
+    let days = (ts / 86400) as i64; // days since 1970-01-01
+    let (y, m, d) = days_to_ymd(days);
+    match granularity {
+        "month" => format!("{:04}-{:02}", y, m),
+        "week" => {
+            // ISO week: use the Thursday-anchor rule. Compute day-of-week (Mon=0).
+            let dow = ((days + 3) % 7) as i32; // Mon=0 … Sun=6 (1970-01-01 was Thu=3)
+            // Thursday of the same ISO week
+            let thursday_days = days + (3 - dow) as i64;
+            let (ty, _, _) = days_to_ymd(thursday_days);
+            // Week number = ceil((thursday_days - first_thursday_of_year) / 7) + 1
+            let jan1_days = ymd_to_days(ty, 1, 1);
+            let jan1_dow = ((jan1_days + 3) % 7) as i32;
+            let first_thursday = jan1_days + (3 - jan1_dow) as i64;
+            let week_num = ((thursday_days - first_thursday) / 7 + 1) as u32;
+            format!("{:04}-W{:02}", ty, week_num)
+        }
+        _ => format!("{:04}-{:02}-{:02}", y, m, d),
+    }
+}
+
+fn days_to_ymd(days: i64) -> (i32, u32, u32) {
+    // Proleptic Gregorian; algorithm from Henry F. Fliegel & Thomas C. Van Flandern (1968).
+    let jd = days + 2440588; // Julian Day Number for 1970-01-01 is 2440588
+    let l = jd + 68569;
+    let n = (4 * l) / 146097;
+    let l = l - (146097 * n + 3) / 4;
+    let i = (4000 * (l + 1)) / 1461001;
+    let l = l - (1461 * i) / 4 + 31;
+    let j = (80 * l) / 2447;
+    let d = l - (2447 * j) / 80;
+    let l = j / 11;
+    let m = j + 2 - 12 * l;
+    let y = 100 * (n - 49) + i + l;
+    (y as i32, m as u32, d as u32)
+}
+
+fn ymd_to_days(y: i32, m: u32, d: u32) -> i64 {
+    let jd = (1461 * (y as i64 + 4800 + (m as i64 - 14) / 12)) / 4
+        + (367 * (m as i64 - 2 - 12 * ((m as i64 - 14) / 12))) / 12
+        - (3 * ((y as i64 + 4900 + (m as i64 - 14) / 12) / 100)) / 4
+        + d as i64 - 32075;
+    jd - 2440588
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -710,6 +932,8 @@ mod tests {
             subject: Some("Meeting tomorrow".to_owned()),
             from_addr: Some("alice@example.com".to_owned()),
             body: Some("Please join the meeting at 10am in the main hall".to_owned()),
+            kind: None,
+            received_at: None,
         };
 
         store.index_document(&doc).await.unwrap();
@@ -754,6 +978,8 @@ mod tests {
             subject: None,
             from_addr: None,
             body: None,
+            kind: None,
+            received_at: None,
         };
         assert!(store.index_document(&bad).await.is_err());
     }
@@ -769,6 +995,8 @@ mod tests {
             subject: Some("hello".into()),
             from_addr: None,
             body: None,
+            kind: None,
+            received_at: None,
         };
         store.index_document(&doc).await.unwrap();
         store.reload().unwrap();

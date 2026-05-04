@@ -35,7 +35,14 @@ pub struct SearchParams {
     /// "kind_x_from" → `facets.kind_x_from` (top-N pares "kind|from_addr", sprint #436).
     /// "domain" → `facets.domain` (top-N domínios after-@ do from_addr, sprint #441).
     /// "domain_x_kind" → `facets.domain_x_kind` (top-N pares "domain|kind", sprint #446).
+    /// "received_at" → `facets.received_at` (bucket counts by granularity, sprint #564).
     pub facet: Option<String>,
+    /// Temporal facet granularity: "day" (default), "week", "month". Only used when facet=received_at.
+    pub facet_granularity: Option<String>,
+    /// Filter: only return docs with received_at >= after_secs (unix seconds).
+    pub after_secs: Option<u64>,
+    /// Filter: only return docs with received_at < before_secs (unix seconds).
+    pub before_secs: Option<u64>,
 }
 
 /// Cap on top-N entries returned for high-cardinality facets like from_addr.
@@ -155,7 +162,7 @@ fn map_search_err(e: anyhow::Error) -> (StatusCode, String) {
     }
 }
 
-/// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0[&facet=kind]
+/// GET /api/v1/search?q=...&tenant_id=...&limit=20&offset=0[&facet=kind][&after_secs=&before_secs=]
 pub async fn search(
     State(store): State<IndexStore>,
     Query(mut params): Query<SearchParams>,
@@ -163,12 +170,42 @@ pub async fn search(
     if let Some(msg) = validate_search_params(&mut params) {
         return Err((StatusCode::BAD_REQUEST, msg));
     }
-    let hits = store
-        .search(&params.q, &params.tenant_id, params.limit, params.offset)
-        .map_err(map_search_err)?;
+
+    // Use temporal-range search path when any received_at filter is active.
+    let hits = if params.after_secs.is_some() || params.before_secs.is_some() {
+        store
+            .search_with_received_at_filter(
+                &params.q,
+                &params.tenant_id,
+                params.limit,
+                params.offset,
+                params.after_secs,
+                params.before_secs,
+            )
+            .map_err(map_search_err)?
+    } else {
+        store
+            .search(&params.q, &params.tenant_id, params.limit, params.offset)
+            .map_err(map_search_err)?
+    };
     let count = hits.len();
 
     let facets = match params.facet.as_deref() {
+        Some("received_at") => {
+            let granularity = params.facet_granularity.as_deref().unwrap_or("day");
+            if !matches!(granularity, "day" | "week" | "month") {
+                return Err((StatusCode::BAD_REQUEST, "facet_granularity must be day, week, or month".into()));
+            }
+            let buckets = store
+                .facet_received_at_buckets(&params.q, &params.tenant_id, granularity)
+                .map_err(map_search_err)?;
+            let entries: Vec<FacetEntry> = buckets.into_iter()
+                .map(|(value, count)| FacetEntry { value, count })
+                .collect();
+            let mut map = std::collections::HashMap::new();
+            map.insert("received_at".to_string(), entries);
+            Some(map)
+        }
         Some("kind") => {
             let counts = store
                 .facet_counts_by_kind(&params.q, &params.tenant_id)
@@ -292,11 +329,14 @@ mod tests {
 
     fn p(q: &str, limit: usize) -> SearchParams {
         SearchParams {
-            q:         q.to_string(),
-            tenant_id: "00000000-0000-0000-0000-000000000000".into(),
+            q:                 q.to_string(),
+            tenant_id:         "00000000-0000-0000-0000-000000000000".into(),
             limit,
-            offset:    0,
-            facet:     None,
+            offset:            0,
+            facet:             None,
+            facet_granularity: None,
+            after_secs:        None,
+            before_secs:       None,
         }
     }
 
