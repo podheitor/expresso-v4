@@ -835,6 +835,8 @@ async fn download_version(
 struct DiffParams {
     /// Lines of context around each changed region (default 3, clamped to 0–50).
     context: Option<u32>,
+    /// Output format: "unified" (default) or "side-by-side".
+    format: Option<String>,
 }
 
 async fn diff_version_content(
@@ -847,6 +849,11 @@ async fn diff_version_content(
 
     if v <= 1 {
         return Err(DriveError::BadRequest("no previous version to diff (v must be > 1)".into()));
+    }
+
+    let fmt = params.format.as_deref().unwrap_or("unified");
+    if fmt != "unified" && fmt != "side-by-side" {
+        return Err(DriveError::BadRequest("format must be 'unified' or 'side-by-side'".into()));
     }
 
     let context = params.context.unwrap_or(3).min(50) as usize;
@@ -877,14 +884,145 @@ async fn diff_version_content(
     let lines_a: Vec<&str> = text_a.lines().collect();
     let lines_b: Vec<&str> = text_b.lines().collect();
 
+    if fmt == "side-by-side" {
+        let rows = side_by_side_diff(&lines_a, &lines_b, context);
+        return Ok(Json(json!({
+            "file_id":   id,
+            "version_a": v - 1,
+            "version_b": v,
+            "format":    "side-by-side",
+            "context":   context,
+            "rows":      rows,
+        })));
+    }
+
     let hunks = unified_diff(&lines_a, &lines_b, context);
     Ok(Json(json!({
         "file_id":   id,
         "version_a": v - 1,
         "version_b": v,
+        "format":    "unified",
         "context":   context,
         "hunks":     hunks,
     })))
+}
+
+/// Compute a side-by-side diff: each row has `{type, left, right}`.
+/// `type`: "equal" | "changed" | "deleted" | "inserted".
+/// `left`/`right`: `{line_no: usize | null, text: String | null}`.
+/// Rows outside a context window of a change are suppressed.
+/// Sprint #592.
+fn side_by_side_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value {
+    use serde_json::json;
+
+    let m = old.len();
+    let n = new.len();
+
+    // LCS table (same DP as unified_diff).
+    let mut lcs = vec![vec![0usize; n + 1]; m + 1];
+    for i in (0..m).rev() {
+        for j in (0..n).rev() {
+            lcs[i][j] = if old[i] == new[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Op { Eq, Del, Ins }
+
+    let mut ops: Vec<(Op, usize, usize)> = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < m || j < n {
+        if i < m && j < n && old[i] == new[j] {
+            ops.push((Op::Eq, i, j)); i += 1; j += 1;
+        } else if j < n && (i >= m || lcs[i][j + 1] >= lcs[i + 1][j]) {
+            ops.push((Op::Ins, i, j)); j += 1;
+        } else {
+            ops.push((Op::Del, i, j)); i += 1;
+        }
+    }
+
+    // Pair up consecutive Del+Ins into "changed" rows; lone Del → "deleted"; lone Ins → "inserted".
+    // Then filter to within context of any non-equal row.
+    #[derive(Clone)]
+    struct Row {
+        kind:     &'static str,
+        left_no:  Option<usize>,
+        left_txt: Option<String>,
+        right_no: Option<usize>,
+        right_txt: Option<String>,
+    }
+
+    let mut raw: Vec<Row> = Vec::new();
+    let total = ops.len();
+    let mut k = 0;
+    while k < total {
+        match ops[k].0 {
+            Op::Eq => {
+                let (_, oi, ni) = ops[k];
+                raw.push(Row {
+                    kind: "equal",
+                    left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
+                    right_no: Some(ni + 1), right_txt: Some(new[ni].to_owned()),
+                });
+                k += 1;
+            }
+            Op::Del => {
+                let (_, oi, _ni) = ops[k];
+                // Peek: if next op is Ins, pair as "changed".
+                if k + 1 < total && ops[k + 1].0 == Op::Ins {
+                    let (_, _oi2, ni2) = ops[k + 1];
+                    raw.push(Row {
+                        kind: "changed",
+                        left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
+                        right_no: Some(ni2 + 1), right_txt: Some(new[ni2].to_owned()),
+                    });
+                    k += 2;
+                } else {
+                    raw.push(Row {
+                        kind: "deleted",
+                        left_no: Some(oi + 1), left_txt: Some(old[oi].to_owned()),
+                        right_no: None, right_txt: None,
+                    });
+                    k += 1;
+                }
+            }
+            Op::Ins => {
+                let (_, _, ni) = ops[k];
+                raw.push(Row {
+                    kind: "inserted",
+                    left_no: None, left_txt: None,
+                    right_no: Some(ni + 1), right_txt: Some(new[ni].to_owned()),
+                });
+                k += 1;
+            }
+        }
+    }
+
+    // Mark which rows are "near" a change (within context distance).
+    let total_rows = raw.len();
+    let mut visible = vec![false; total_rows];
+    for r in 0..total_rows {
+        if raw[r].kind != "equal" {
+            let lo = r.saturating_sub(context);
+            let hi = (r + context + 1).min(total_rows);
+            for v in lo..hi { visible[v] = true; }
+        }
+    }
+
+    let rows: Vec<serde_json::Value> = raw.iter().zip(visible.iter())
+        .filter(|(_, &vis)| vis)
+        .map(|(row, _)| json!({
+            "type":  row.kind,
+            "left":  json!({"line_no": row.left_no, "text": row.left_txt}),
+            "right": json!({"line_no": row.right_no, "text": row.right_txt}),
+        }))
+        .collect();
+
+    serde_json::Value::Array(rows)
 }
 
 /// Compute a unified diff between two line slices with `context` lines of context.
