@@ -224,6 +224,35 @@ impl<'a> QuotaRepo<'a> {
         Ok(rows)
     }
 
+    /// Returns (day, uploads, updates, deletes) for the given range.
+    /// `since`/`until` are optional bounds on `created_at`. Sprint #636.
+    pub async fn activity_by_day(
+        &self,
+        tenant_id: Uuid,
+        since:     Option<time::OffsetDateTime>,
+        until:     Option<time::OffsetDateTime>,
+    ) -> Result<Vec<(String, i64, i64, i64)>> {
+        let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+            "SELECT \
+                to_char(date_trunc('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*) FILTER (WHERE action = 'upload')::BIGINT   AS uploads, \
+                COUNT(*) FILTER (WHERE action = 'update')::BIGINT   AS updates, \
+                COUNT(*) FILTER (WHERE action = 'delete')::BIGINT   AS deletes \
+             FROM drive_file_activity \
+             WHERE tenant_id = $1 \
+               AND ($2::timestamptz IS NULL OR created_at >= $2) \
+               AND ($3::timestamptz IS NULL OR created_at <  $3) \
+             GROUP BY day \
+             ORDER BY day ASC",
+        )
+        .bind(tenant_id)
+        .bind(since)
+        .bind(until)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(

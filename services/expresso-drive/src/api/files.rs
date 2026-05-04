@@ -58,6 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/users",           get(file_stats_users))
         .route("/api/v1/drive/files/stats/folders",         get(file_stats_folders))
         .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
+        .route("/api/v1/drive/files/stats/activity",       get(file_stats_activity))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -850,6 +851,32 @@ async fn file_stats_extensions(
         serde_json::json!({"extension": ext, "file_count": fc, "total_bytes": tb})
     }).collect();
     Ok(Json(serde_json::json!({"extensions": extensions})))
+}
+
+/// GET /api/v1/drive/files/stats/activity?since=&until=
+///
+/// Returns uploads/updates/deletes per day for the tenant in the given range.
+/// `since`/`until` are RFC 3339 timestamps (optional). Response:
+/// `{days: [{day, uploads, updates, deletes}]}` ordered by day ASC. Sprint #636.
+#[derive(Debug, Deserialize)]
+struct StatsActivityQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    since: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    until: Option<OffsetDateTime>,
+}
+
+async fn file_stats_activity(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsActivityQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows = QuotaRepo::new(pool).activity_by_day(ctx.tenant_id, q.since, q.until).await?;
+    let days: Vec<serde_json::Value> = rows.into_iter().map(|(day, uploads, updates, deletes)| {
+        serde_json::json!({"day": day, "uploads": uploads, "updates": updates, "deletes": deletes})
+    }).collect();
+    Ok(Json(serde_json::json!({"days": days})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
