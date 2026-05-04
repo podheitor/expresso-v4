@@ -197,6 +197,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_class_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/transp-stats",
+            get(events_by_range_transp_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1392,6 +1396,53 @@ async fn events_by_range_class_stats(
         "private":        private,
         "confidential":   confidential,
         "unset":          unset,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/transp-stats?after=&before=
+///
+/// Contagem por TRANSP (OPAQUE/TRANSPARENT/unset) no range `dtstart ∈ [after, before)`.
+/// Análogo a class-stats (#652) para a coluna `transp` introduzida no #556.
+/// Retorna `{calendar_id, total, opaque, transparent, unset}` onde `unset` conta
+/// eventos com `transp IS NULL` (RFC 5545: null → OPAQUE, bloqueia free/busy).
+/// Sprint #655.
+async fn events_by_range_transp_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, opaque, transparent, unset): (i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT                                                   AS total, \
+                COUNT(*) FILTER (WHERE transp = 'OPAQUE')::BIGINT                 AS opaque, \
+                COUNT(*) FILTER (WHERE transp = 'TRANSPARENT')::BIGINT            AS transparent, \
+                COUNT(*) FILTER (WHERE transp IS NULL)::BIGINT                    AS unset \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":  cal_id,
+        "total":        total,
+        "opaque":       opaque,
+        "transparent":  transparent,
+        "unset":        unset,
     })))
 }
 
