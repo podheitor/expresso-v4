@@ -253,6 +253,24 @@ impl<'a> QuotaRepo<'a> {
         Ok(rows)
     }
 
+    /// Returns (month, file_count) ordered ASC — when files were created, by calendar month.
+    /// Sprint #641.
+    pub async fn age_by_month(&self, tenant_id: Uuid) -> Result<Vec<(String, i64)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT \
+                to_char(date_trunc('month', created_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month, \
+                COUNT(*)::BIGINT AS file_count \
+             FROM drive_files \
+             WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+             GROUP BY month \
+             ORDER BY month ASC",
+        )
+        .bind(tenant_id)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(

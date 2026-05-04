@@ -59,6 +59,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folders",         get(file_stats_folders))
         .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
         .route("/api/v1/drive/files/stats/activity",       get(file_stats_activity))
+        .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -877,6 +878,23 @@ async fn file_stats_activity(
         serde_json::json!({"day": day, "uploads": uploads, "updates": updates, "deletes": deletes})
     }).collect();
     Ok(Json(serde_json::json!({"days": days})))
+}
+
+/// GET /api/v1/drive/files/stats/age — file creation timeline by calendar month.
+///
+/// Returns `{months: [{month, file_count}]}` ordered month ASC. Month format is
+/// `YYYY-MM`. Only counts non-deleted files (`kind='file'`). Tenant-scoped.
+/// Useful for "when were files uploaded" dashboards. Sprint #641.
+async fn file_stats_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows = QuotaRepo::new(pool).age_by_month(ctx.tenant_id).await?;
+    let months: Vec<serde_json::Value> = rows.into_iter().map(|(month, file_count)| {
+        serde_json::json!({"month": month, "file_count": file_count})
+    }).collect();
+    Ok(Json(serde_json::json!({"months": months})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
