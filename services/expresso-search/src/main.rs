@@ -130,6 +130,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/tenant/{tenant_id}", delete(api::purge_tenant_index))
         .route("/api/v1/search/health/index",             get(api::index_health))
         .route("/api/v1/search/health/index/detailed",    get(api::index_health_detailed))
+        .route("/api/v1/search/index/disk-usage",          get(api::index_disk_usage))
         .route("/api/v1/search/index/writer/stats",       get(api::writer_stats))
         .with_state(store);
 

@@ -560,6 +560,29 @@ pub async fn index_health_detailed(
     })))
 }
 
+/// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
+///
+/// Aggregates `disk_bytes` across all segments returned by `list_segments()`.
+/// Returns `{total_disk_bytes, segment_count}`. Complements `GET /index/health`
+/// (which also exposes `disk_bytes` as a side-effect) with a dedicated,
+/// self-descriptive ops endpoint for storage dashboards. Graceful degradation:
+/// returns zeros when `list_segments()` fails. Sprint #644.
+pub async fn index_disk_usage(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let (total_disk_bytes, segment_count) = store
+        .list_segments()
+        .map(|segs| {
+            let total = segs.iter().map(|(_, _, db)| db).sum::<u64>();
+            (total, segs.len())
+        })
+        .unwrap_or((0, 0));
+    Json(serde_json::json!({
+        "total_disk_bytes": total_disk_bytes,
+        "segment_count":    segment_count,
+    }))
+}
+
 /// GET /api/v1/search/index/writer/stats — writer-level observability.
 ///
 /// Returns: `heap_budget_bytes` (static 50 MB allocated to the writer),
