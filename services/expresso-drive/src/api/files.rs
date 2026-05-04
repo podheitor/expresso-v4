@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/folders/:id/quota",           get(folder_quota).put(set_folder_quota).delete(delete_folder_quota))
         .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
         .route("/api/v1/drive/quota",                       get(quota))
+        .route("/api/v1/drive/files/stats",                 get(file_stats))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -1551,6 +1552,61 @@ async fn user_usage(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/drive/files/stats
+///
+/// Returns storage breakdown for the tenant: total files, total folders, total
+/// size, and per-MIME-type aggregates. Only non-deleted (live) files are counted.
+/// `by_mime_type` is ordered by `total_bytes DESC` so the heaviest types appear
+/// first — useful for "storage breakdown" UIs. Folders have no mime_type and
+/// appear as `"application/x-directory"` bucket (folded from NULL + kind=folder).
+/// Response: `{files, folders, total_bytes, by_mime_type: [{mime_type, count, total_bytes}]}`.
+/// Sprint #616.
+async fn file_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    // Total file and folder counts + overall size.
+    let (files, folders, total_bytes): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE kind = 'file') AS files, \
+            COUNT(*) FILTER (WHERE kind = 'folder') AS folders, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE kind = 'file'), 0)::BIGINT AS total_bytes \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    // Per-MIME-type breakdown (files only; NULL mime_type grouped as 'application/octet-stream').
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(mime_type, 'application/octet-stream') AS mime_type, \
+            COUNT(*)::BIGINT AS count, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+         GROUP BY mime_type \
+         ORDER BY total_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    let by_mime: Vec<serde_json::Value> = rows.into_iter().map(|(mime, count, bytes)| {
+        serde_json::json!({"mime_type": mime, "count": count, "total_bytes": bytes})
+    }).collect();
+
+    Ok(Json(serde_json::json!({
+        "files":        files,
+        "folders":      folders,
+        "total_bytes":  total_bytes,
+        "by_mime_type": by_mime,
+    })))
 }
 
 #[derive(Debug, Deserialize)]
