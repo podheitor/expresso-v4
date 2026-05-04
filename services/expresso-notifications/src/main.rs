@@ -885,6 +885,92 @@ async fn patch_dlq_entry(
     Ok(Json(json!({"id": id, "updated": updated})))
 }
 
+/// PATCH /api/v1/notifications/dlq/bulk — bulk patch multiple DLQ entries by IDs.
+///
+/// Body: `{ids: [uuid], last_error?: string | null, attempts?: integer}`.
+/// At least one of `last_error` or `attempts` must be present.
+/// At least one ID must be provided; max 200 IDs per call.
+/// Returns `{updated, not_found, ids_updated: [uuid]}`. Sprint #624.
+#[derive(Debug, Deserialize)]
+struct BulkPatchDlqBody {
+    ids:        Vec<Uuid>,
+    last_error: Option<serde_json::Value>, // string | null
+    attempts:   Option<i32>,
+}
+
+async fn bulk_patch_dlq(
+    State(st): State<AppState>,
+    Json(body): Json<BulkPatchDlqBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if body.ids.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "ids must not be empty"}))));
+    }
+    if body.ids.len() > 200 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": format!("too many ids: {} (max 200)", body.ids.len())}))));
+    }
+    if body.last_error.is_none() && body.attempts.is_none() {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "at least one of last_error or attempts is required"}))));
+    }
+
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    // Validate last_error value if present.
+    let last_error_val: Option<Option<String>> = match &body.last_error {
+        None => None,
+        Some(serde_json::Value::Null) => Some(None),
+        Some(serde_json::Value::String(s)) => Some(Some(s.clone())),
+        Some(_) => return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "last_error must be a string or null"})))),
+    };
+    if let Some(att) = body.attempts {
+        if att < 0 {
+            return Err((StatusCode::BAD_REQUEST, Json(json!({"error": "attempts must be >= 0"}))));
+        }
+    }
+
+    // Apply updates and collect which IDs existed.
+    let mut ids_updated: Vec<Uuid> = Vec::new();
+
+    for &id in &body.ids {
+        // Check existence first.
+        let exists: Option<(Uuid,)> = sqlx::query_as("SELECT id FROM notification_dlq WHERE id = $1")
+            .bind(id)
+            .fetch_optional(pool.as_ref())
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        if exists.is_none() {
+            continue;
+        }
+
+        if let Some(ref le) = last_error_val {
+            sqlx::query("UPDATE notification_dlq SET last_error = $1 WHERE id = $2")
+                .bind(le.as_deref())
+                .bind(id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        }
+        if let Some(att) = body.attempts {
+            sqlx::query("UPDATE notification_dlq SET attempts = $1 WHERE id = $2")
+                .bind(att)
+                .bind(id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+        }
+        ids_updated.push(id);
+    }
+
+    let not_found = body.ids.len() - ids_updated.len();
+    Ok(Json(json!({
+        "updated":     ids_updated.len(),
+        "not_found":   not_found,
+        "ids_updated": ids_updated,
+    })))
+}
+
 /// POST /api/v1/notifications/dlq/:id/retry — re-dispatch a DLQ entry.
 ///
 /// Reads the saved payload, posts it to /internal/notify on this pod, and
@@ -1270,6 +1356,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/retry-all",        post(retry_all_dlq))
         .route("/api/v1/notifications/dlq/retry-filtered",   post(retry_filtered_dlq))
+        .route("/api/v1/notifications/dlq/bulk",             patch(bulk_patch_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
         .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry).patch(patch_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
