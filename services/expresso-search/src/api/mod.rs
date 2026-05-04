@@ -441,6 +441,33 @@ pub async fn list_segments(
     })))
 }
 
+/// GET /api/v1/search/index/segments/:id — metadata for a single segment by UUID.
+///
+/// Returns `{id, num_docs, disk_bytes}` for the segment visible to the current
+/// reader. 404 if no segment with that ID exists (may have been merged/vacuumed).
+/// Complements `GET /index/segments` (list all) with single-segment lookup.
+/// Sprint #618.
+pub async fn get_segment(
+    State(store): State<IndexStore>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let seg = store
+        .get_segment(&id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    match seg {
+        Some((sid, num_docs, disk_bytes)) => Ok(Json(serde_json::json!({
+            "id":         sid,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            format!("segment '{id}' not found"),
+        )),
+    }
+}
+
 /// GET /api/v1/search/stats?tenant_id= — aggregate doc counts for a tenant.
 ///
 /// Returns `{tenant_id, total, by_kind: [{kind, count}]}` ordered by count DESC.

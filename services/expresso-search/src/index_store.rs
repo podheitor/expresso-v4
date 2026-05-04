@@ -943,6 +943,31 @@ impl IndexStore {
         Ok(segments)
     }
 
+    /// Returns metadata for a single segment by its UUID string. Returns `None`
+    /// if no segment with that ID is visible to the current reader. Sprint #618.
+    pub fn get_segment(&self, id: &str) -> anyhow::Result<Option<(String, u64, u64)>> {
+        let i   = &self.inner;
+        let dir = i.index.directory();
+        let searcher = i.reader.searcher();
+
+        let result = searcher
+            .segment_readers()
+            .iter()
+            .find(|sr| sr.segment_id().uuid_string() == id)
+            .map(|sr| {
+                let seg_id   = sr.segment_id().uuid_string();
+                let num_docs = sr.num_docs() as u64;
+                let seg_bytes: u64 = dir.list_managed_files()
+                    .iter()
+                    .filter(|p| p.to_string_lossy().starts_with(&seg_id))
+                    .filter_map(|p| dir.get_file_handle(p).ok())
+                    .map(|fh| fh.len() as u64)
+                    .sum();
+                (seg_id, num_docs, seg_bytes)
+            });
+        Ok(result)
+    }
+
     /// Returns aggregate document counts for a given `tenant_id`:
     /// total docs + a breakdown by `kind`. Empty `kind` field is reported as
     /// `"unknown"`. Used by `GET /api/v1/search/stats`. Sprint #584.
