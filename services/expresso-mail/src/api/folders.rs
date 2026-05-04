@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/folders/rename-history/revert-all", axum::routing::post(revert_all_folder_renames))
         .route("/mail/folders/rename-history/by-mailbox/:mailbox_id/undo", axum::routing::post(undo_folder_rename_by_mailbox))
         .route("/mail/folders/rename-history/:id/undo", axum::routing::post(undo_folder_rename))
+        .route("/mail/folders/:id/stats",          get(folder_stats_by_id))
         .route("/mail/folders/:name",              axum::routing::patch(rename_folder).delete(delete_folder))
         .route("/mail/folders/:name/mark-read",    axum::routing::post(mark_folder_read))
         .route("/mail/folders/:name/mark-unread",  axum::routing::post(mark_folder_unread))
@@ -1401,6 +1402,54 @@ async fn folders_size_summary(
     Ok(Json(serde_json::json!({
         "total_bytes": total_bytes,
         "folders":     folders,
+    })))
+}
+
+/// GET /mail/folders/:id/stats — stats de uma pasta por UUID.
+///
+/// Retorna `{folder_id, folder, special_use, total, unread, read, size_bytes}`.
+/// 404 se o folder não pertence ao tenant/user. Paralelo de `/mail/folders/stats`
+/// (#454) mas por UUID em vez de listar todos (sprint #581).
+async fn folder_stats_by_id(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<(Uuid, String, Option<String>, i64, i64, i64)> = sqlx::query_as(
+        r#"
+        SELECT mb.id,
+               mb.folder_name,
+               mb.special_use,
+               COUNT(m.id)                                                         AS total,
+               COUNT(m.id) FILTER (WHERE NOT ('\Seen' = ANY(m.flags)))             AS unread,
+               COALESCE(SUM(m.size_bytes)::bigint, 0)                              AS size_bytes
+        FROM mailboxes mb
+        LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1
+        WHERE mb.tenant_id = $1
+          AND mb.user_id   = $2
+          AND mb.id        = $3
+        GROUP BY mb.id, mb.folder_name, mb.special_use
+        "#,
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let (fid, folder, special_use, total, unread, size_bytes) = row
+        .ok_or(MailError::NotFound)?;
+
+    Ok(Json(serde_json::json!({
+        "folder_id":   fid,
+        "folder":      folder,
+        "special_use": special_use,
+        "total":       total,
+        "unread":      unread,
+        "read":        total - unread,
+        "size_bytes":  size_bytes,
     })))
 }
 
