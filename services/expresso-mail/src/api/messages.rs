@@ -44,7 +44,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/threads",    get(thread_stats))
         .route("/mail/messages/stats/senders",    get(sender_stats))
         .route("/mail/messages/stats/size",       get(size_stats))
-        .route("/mail/messages/stats/attachments", get(attachment_stats))
+        .route("/mail/messages/stats/attachments",    get(attachment_stats))
+        .route("/mail/messages/stats/received-by-day", get(received_by_day_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1983,6 +1984,78 @@ async fn size_stats(
 #[derive(Debug, Deserialize)]
 struct AttachmentStatsParams {
     folder: Option<String>,
+}
+
+/// GET /api/v1/mail/messages/stats/received-by-day?since=&until=&folder=
+///
+/// Volume de mensagens recebidas por dia no range `[since, until)`.
+/// Retorna `{days: [{day, count}]}` ordenado ASC. `since`/`until` são RFC 3339
+/// opcionais; sem eles cobre todo o histórico. `folder` opcional restringe a
+/// uma mailbox. Útil pra timeline de volume de recebimento. Sprint #648.
+#[derive(Debug, Deserialize)]
+struct ReceivedByDayParams {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    since:  Option<time::OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    until:  Option<time::OffsetDateTime>,
+    folder: Option<String>,
+}
+
+async fn received_by_day_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<ReceivedByDayParams>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = if params.folder.is_some() {
+        "AND mb.name = $5"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT \
+            to_char(date_trunc('day', m.received_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COUNT(*)::BIGINT AS count \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND ($3::timestamptz IS NULL OR m.received_at >= $3) \
+           AND ($4::timestamptz IS NULL OR m.received_at <  $4) \
+               {folder_filter} \
+         GROUP BY day \
+         ORDER BY day ASC"
+    );
+
+    let rows: Vec<(String, i64)> = if let Some(ref folder) = params.folder {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(params.since)
+            .bind(params.until)
+            .bind(folder)
+            .fetch_all(&mut *tx)
+            .await?
+    } else {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(params.since)
+            .bind(params.until)
+            .fetch_all(&mut *tx)
+            .await?
+    };
+    tx.commit().await?;
+
+    let days: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    let mut resp = serde_json::json!({"days": days});
+    if let Some(folder) = params.folder {
+        resp["folder"] = serde_json::Value::String(folder);
+    }
+    Ok(Json(resp))
 }
 
 async fn attachment_stats(
