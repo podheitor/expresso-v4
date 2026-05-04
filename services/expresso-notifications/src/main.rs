@@ -45,7 +45,7 @@ use axum::{
     http::{request::Parts, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response, Sse, sse::Event},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use time::OffsetDateTime;
@@ -537,6 +537,82 @@ async fn mark_all_read(
     Ok(Json(json!({ "marked_read": r.rows_affected() })))
 }
 
+/// GET /api/v1/notifications/dlq?limit=N&offset=N — list DLQ entries (newest first).
+/// No tenant filter — this is an ops/admin endpoint. Limit 1–500, default 50.
+async fn list_dlq(
+    State(st):   State<AppState>,
+    Query(q):    Query<DlqListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit  = q.limit.unwrap_or(50).clamp(1, 500) as i64;
+    let offset = q.offset.unwrap_or(0).max(0) as i64;
+    let rows = sqlx::query(
+        "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
+           FROM notification_dlq \
+          ORDER BY failed_at DESC \
+          LIMIT $1 OFFSET $2",
+    )
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "internal", "message": e.to_string()})),
+    ))?;
+    let items: Vec<serde_json::Value> = rows.iter().map(|r| {
+        let id:         Uuid                  = r.get("id");
+        let tenant_id:  Option<Uuid>          = r.try_get("tenant_id").ok();
+        let user_id:    Option<Uuid>          = r.try_get("user_id").ok();
+        let kind:       String                = r.get("kind");
+        let payload:    serde_json::Value     = r.get("payload");
+        let attempts:   i32                   = r.get("attempts");
+        let last_error: Option<String>        = r.try_get("last_error").ok();
+        let failed_at:  OffsetDateTime        = r.get("failed_at");
+        json!({
+            "id":         id,
+            "tenant_id":  tenant_id,
+            "user_id":    user_id,
+            "kind":       kind,
+            "payload":    payload,
+            "attempts":   attempts,
+            "last_error": last_error,
+            "failed_at":  failed_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+        })
+    }).collect();
+    Ok(Json(json!({"items": items, "limit": limit, "offset": offset})))
+}
+
+#[derive(Debug, Deserialize)]
+struct DlqListQuery {
+    limit:  Option<u32>,
+    offset: Option<u32>,
+}
+
+/// DELETE /api/v1/notifications/dlq/:id — remove a DLQ entry (after manual retry).
+async fn delete_dlq_entry(
+    State(st): State<AppState>,
+    Path(id):  Path<Uuid>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    sqlx::query("DELETE FROM notification_dlq WHERE id = $1")
+        .bind(id)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        ))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn health() -> Json<serde_json::Value> {
     Json(json!({"service": SERVICE, "status": "ok"}))
 }
@@ -682,6 +758,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/:id/read",   patch(mark_read))
         .route("/api/v1/notifications/read-all",   patch(mark_all_read))
         .route("/api/v1/notifications/push",       post(push_subscribe).delete(push_unsubscribe))
+        .route("/api/v1/notifications/dlq",        get(list_dlq))
+        .route("/api/v1/notifications/dlq/:id",    delete(delete_dlq_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
         .with_state(state);
