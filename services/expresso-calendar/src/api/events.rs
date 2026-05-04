@@ -173,6 +173,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_organizers),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/locations",
+            get(events_by_range_locations),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1006,6 +1010,62 @@ async fn events_by_range_organizers(
         "events_scanned": events_scanned,
         "count":          organizers.len(),
         "organizers":     organizers,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/locations?after=&before=
+///
+/// Retorna union de `location` únicos (não-nulos) no range de dtstart dado.
+/// Usa SQL DISTINCT na coluna — sem parse de ical_raw, análogo ao #622 organizers.
+/// Response: `{calendar_id, events_scanned, count, locations: [string]}`. Sprint #627.
+async fn events_by_range_locations(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeAttendeesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (events_scanned,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT location \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND location IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          ORDER BY location ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let locations: Vec<&str> = rows.iter().map(|(l,)| l.as_str()).collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "events_scanned": events_scanned,
+        "count":          locations.len(),
+        "locations":      locations,
     })))
 }
 
