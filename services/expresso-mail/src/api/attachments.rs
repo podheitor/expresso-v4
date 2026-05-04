@@ -8,14 +8,14 @@
 use axum::{
     Router,
     routing::get,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{StatusCode, header, HeaderMap, HeaderValue},
     response::{IntoResponse, Response},
     Json,
 };
 use expresso_core::begin_tenant_tx;
 use mail_parser::{MessageParser, MimeHeaders};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{api::context::RequestCtx, error::{MailError, Result}, state::AppState};
@@ -25,6 +25,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/attachments",        get(list_attachments))
         .route("/mail/messages/:id/attachments/:index", get(download_attachment))
         .route("/mail/messages/:id/headers",            get(message_headers))
+        .route("/mail/messages/:id/body",               get(message_body))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -215,6 +216,51 @@ fn percent_encode_filename(name: &str) -> String {
         }
     }
     out
+}
+
+/// GET /api/v1/mail/messages/:id/body?format=text|html — body de uma mensagem.
+///
+/// Retorna `{message_id, format, body}` com o corpo extraído do .eml via mail-parser.
+/// `format=text` → primeiro part text/plain; `format=html` → primeiro part text/html.
+/// 404 se mensagem não pertence ao tenant/user. 400 se format inválido.
+/// 404 com mensagem específica se o format pedido não existe na mensagem. Sprint #589.
+#[derive(Debug, serde::Deserialize)]
+struct BodyParams {
+    format: Option<String>,
+}
+
+async fn message_body(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    Query(params): Query<BodyParams>,
+) -> Result<Json<serde_json::Value>> {
+    let format = params.format.as_deref().unwrap_or("text");
+    if format != "text" && format != "html" {
+        return Err(MailError::InvalidMessage("format must be 'text' or 'html'".into()));
+    }
+
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
+    let raw = load_raw(&state, &body_path).await?;
+    let msg = MessageParser::default()
+        .parse(&raw)
+        .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
+
+    let body = if format == "html" {
+        msg.body_html(0).map(|s| s.into_owned())
+    } else {
+        msg.body_text(0).map(|s| s.into_owned())
+    };
+
+    let body = body.ok_or_else(|| {
+        MailError::InvalidMessage(format!("no {format} body part found in message"))
+    })?;
+
+    Ok(Json(serde_json::json!({
+        "message_id": id,
+        "format":     format,
+        "body":       body,
+    })))
 }
 
 /// GET /api/v1/mail/messages/:id/headers — headers parsed de uma mensagem.
