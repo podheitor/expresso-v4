@@ -31,6 +31,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
+        .route("/mail/messages/:id/thread", get(get_message_thread))
         .route("/mail/messages/:id/raw",    get(get_message_raw).head(head_message_raw))
         .route("/mail/messages/:id/move",   patch(move_message))
         .route("/mail/messages/:id/flags",  get(get_message_flags).patch(update_flags))
@@ -911,6 +912,61 @@ async fn list_thread(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/mail/messages/:id/thread — thread da mensagem dado o message ID.
+///
+/// Alias conveniente pra `GET /threads/:thread_id` sem precisar conhecer o thread_id
+/// de antemão. Busca o thread_id da mensagem e retorna todas as mensagens do thread
+/// em ordem cronológica. 404 se a mensagem não pertence ao tenant/user.
+/// Response: `{thread_id, messages: [MessageListItem]}`. Sprint #607.
+async fn get_message_thread(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let thread_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT m.thread_id FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.id = $1 AND m.tenant_id = $2 AND mb.tenant_id = $2 AND mb.user_id = $3 \
+         LIMIT 1",
+    )
+    .bind(id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .flatten();
+
+    let thread_id = thread_id.ok_or(MailError::MessageNotFound(id))?;
+
+    let rows: Vec<MessageListItem> = sqlx::query_as(
+        r#"
+        SELECT
+            m.id, m.thread_id, m.subject, m.from_addr, m.from_name,
+            m.has_attachments, m.preview_text, m.flags, m.date, m.size_bytes
+        FROM messages  m
+        JOIN mailboxes mb ON mb.id = m.mailbox_id
+        WHERE m.thread_id  = $1
+          AND m.tenant_id  = $2
+          AND mb.tenant_id = $2
+          AND mb.user_id   = $3
+        ORDER BY m.received_at ASC
+        "#,
+    )
+    .bind(thread_id)
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "thread_id": thread_id,
+        "messages":  rows,
+    })))
 }
 
 /// DELETE /api/v1/mail/messages/:id — soft-delete: move to Trash
