@@ -520,6 +520,25 @@ pub async fn search_stats(
     })))
 }
 
+/// GET /api/v1/search/index/writer/stats — writer-level observability.
+///
+/// Returns: `heap_budget_bytes` (static 50 MB allocated to the writer),
+/// `writer_busy` (true if writer mutex is currently held by another task),
+/// `num_docs_committed` (live docs in current reader snapshot),
+/// `num_segments_committed` (segments in current reader snapshot).
+/// Does NOT block on the writer lock — safe to call under load. Sprint #628.
+pub async fn writer_stats(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let (heap_budget_bytes, writer_busy, num_docs, num_segments) = store.writer_stats();
+    Json(serde_json::json!({
+        "heap_budget_bytes":      heap_budget_bytes,
+        "writer_busy":            writer_busy,
+        "num_docs_committed":     num_docs,
+        "num_segments_committed": num_segments,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

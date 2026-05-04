@@ -218,11 +218,26 @@ impl IndexStore {
         Ok(())
     }
 
-    /// Force reader reload — primarily for tests.
-    #[cfg(test)]
+    /// Force reader reload — exposed as POST /segments/reload.
     pub fn reload(&self) -> anyhow::Result<()> {
         self.inner.reader.reload()?;
         Ok(())
+    }
+
+    /// Returns writer-level stats observable without blocking on the writer lock.
+    ///
+    /// - `heap_budget_bytes`: static allocation given to the writer at open (50 MB).
+    /// - `writer_busy`: true if another task currently holds the writer mutex (try_lock).
+    /// - `num_docs_committed`: total live docs visible to the current reader snapshot.
+    /// - `num_segments_committed`: segment count in the current reader snapshot.
+    pub fn writer_stats(&self) -> (u64, bool, u64, usize) {
+        let i = &self.inner;
+        let writer_busy = i.writer.try_lock().is_err();
+        let searcher = i.reader.searcher();
+        let num_docs: u64 = searcher.segment_readers().iter()
+            .map(|sr| sr.num_docs() as u64).sum();
+        let num_segments = searcher.segment_readers().len();
+        (50_000_000u64, writer_busy, num_docs, num_segments)
     }
 
     /// Full-text search filtered by tenant.
