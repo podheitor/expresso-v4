@@ -831,16 +831,25 @@ async fn download_version(
 /// text (detected via Content-Type prefix). 409 if v == 1 (no previous version).
 /// Response: `{version_a, version_b, hunks: [{header, lines: [{tag,text}]}]}`.
 /// Binary-safe guard: rejects blobs with a NUL byte in the first 8 KiB.
+#[derive(Debug, Deserialize)]
+struct DiffParams {
+    /// Lines of context around each changed region (default 3, clamped to 0–50).
+    context: Option<u32>,
+}
+
 async fn diff_version_content(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path((id, v)): Path<(Uuid, i32)>,
+    Query(params): Query<DiffParams>,
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
 
     if v <= 1 {
         return Err(DriveError::BadRequest("no previous version to diff (v must be > 1)".into()));
     }
+
+    let context = params.context.unwrap_or(3).min(50) as usize;
 
     let pool = state.db_or_unavailable()?;
     let _file = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
@@ -868,11 +877,12 @@ async fn diff_version_content(
     let lines_a: Vec<&str> = text_a.lines().collect();
     let lines_b: Vec<&str> = text_b.lines().collect();
 
-    let hunks = unified_diff(&lines_a, &lines_b, 3);
+    let hunks = unified_diff(&lines_a, &lines_b, context);
     Ok(Json(json!({
         "file_id":   id,
         "version_a": v - 1,
         "version_b": v,
+        "context":   context,
         "hunks":     hunks,
     })))
 }
