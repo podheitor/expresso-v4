@@ -837,6 +837,8 @@ struct DiffParams {
     context: Option<u32>,
     /// Output format: "unified" (default) or "side-by-side".
     format: Option<String>,
+    /// Base version to diff from. Defaults to v-1 (previous version).
+    from: Option<i32>,
 }
 
 async fn diff_version_content(
@@ -847,10 +849,6 @@ async fn diff_version_content(
 ) -> Result<Json<serde_json::Value>> {
     use serde_json::json;
 
-    if v <= 1 {
-        return Err(DriveError::BadRequest("no previous version to diff (v must be > 1)".into()));
-    }
-
     let fmt = params.format.as_deref().unwrap_or("unified");
     if fmt != "unified" && fmt != "side-by-side" {
         return Err(DriveError::BadRequest("format must be 'unified' or 'side-by-side'".into()));
@@ -858,12 +856,31 @@ async fn diff_version_content(
 
     let context = params.context.unwrap_or(3).min(50) as usize;
 
+    // Determine which version pair to diff.
+    let v_a = match params.from {
+        Some(from) => {
+            if from < 1 {
+                return Err(DriveError::BadRequest("from must be >= 1".into()));
+            }
+            if from == v {
+                return Err(DriveError::BadRequest("from and v must differ".into()));
+            }
+            from
+        }
+        None => {
+            if v <= 1 {
+                return Err(DriveError::BadRequest("no previous version to diff (v must be > 1, or specify ?from=)".into()));
+            }
+            v - 1
+        }
+    };
+
     let pool = state.db_or_unavailable()?;
     let _file = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
 
     let ver_b = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
         .ok_or(DriveError::NotFound(id))?;
-    let ver_a = VersionRepo::new(pool).get(ctx.tenant_id, id, v - 1).await?
+    let ver_a = VersionRepo::new(pool).get(ctx.tenant_id, id, v_a).await?
         .ok_or(DriveError::NotFound(id))?;
 
     let bytes_a = fs::read(state.data_root().join(&ver_a.storage_key)).await
@@ -888,7 +905,7 @@ async fn diff_version_content(
         let rows = side_by_side_diff(&lines_a, &lines_b, context);
         return Ok(Json(json!({
             "file_id":   id,
-            "version_a": v - 1,
+            "version_a": v_a,
             "version_b": v,
             "format":    "side-by-side",
             "context":   context,
@@ -899,7 +916,7 @@ async fn diff_version_content(
     let hunks = unified_diff(&lines_a, &lines_b, context);
     Ok(Json(json!({
         "file_id":   id,
-        "version_a": v - 1,
+        "version_a": v_a,
         "version_b": v,
         "format":    "unified",
         "context":   context,
