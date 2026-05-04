@@ -542,34 +542,81 @@ async fn mark_all_read(
 /// Retorna `{total, by_kind: [{kind, count}], by_tenant: [{tenant_id, count}]}`
 /// ordenados por count DESC. Útil pra diagnóstico: "que tipos de eventos estão
 /// acumulando na DLQ e de quais tenants?". Endpoint ops — sem tenant filter. Sprint #599.
+#[derive(Debug, Deserialize)]
+struct DlqStatsQuery {
+    /// RFC3339 lower bound on failed_at (inclusive). Sprint #619.
+    since: Option<String>,
+    /// RFC3339 upper bound on failed_at (exclusive). Sprint #619.
+    until: Option<String>,
+}
+
+/// GET /api/v1/notifications/dlq/stats?since=&until=
+///
+/// Aggregate counts across all DLQ entries: total, breakdown by kind, breakdown
+/// by tenant_id. `since` (RFC3339, inclusive) and `until` (RFC3339, exclusive)
+/// are optional temporal filters on `failed_at`. Without them, stats cover all
+/// entries. Sprints #599 (base) + #619 (temporal filter).
 async fn dlq_stats(
-    State(st): State<AppState>,
+    State(st):   State<AppState>,
+    Query(q):    Query<DlqStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let pool = st.db.as_ref().ok_or_else(|| (
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "unavailable"})),
     ))?;
 
-    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM notification_dlq")
+    // Parse temporal bounds.
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    // Build temporal WHERE clause (shared across all 3 queries).
+    let (where_clause, has_since, has_until) = match (since_dt.is_some(), until_dt.is_some()) {
+        (true,  true)  => ("WHERE failed_at >= $1::timestamptz AND failed_at < $2::timestamptz", true, true),
+        (true,  false) => ("WHERE failed_at >= $1::timestamptz", true, false),
+        (false, true)  => ("WHERE failed_at < $1::timestamptz", false, true),
+        (false, false) => ("", false, false),
+    };
+
+    // Helper: bind temporal params in consistent order.
+    macro_rules! bind_temporal {
+        ($q:expr) => {{
+            let mut qb = $q;
+            if has_since { qb = qb.bind(since_dt.unwrap()); }
+            if has_until { qb = qb.bind(until_dt.unwrap()); }
+            qb
+        }};
+    }
+
+    let count_sql  = format!("SELECT COUNT(*) FROM notification_dlq {where_clause}");
+    let kind_sql   = format!(
+        "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq {where_clause} \
+         GROUP BY kind ORDER BY COUNT(*) DESC, kind ASC"
+    );
+    let tenant_sql = format!(
+        "SELECT tenant_id, COUNT(*)::BIGINT FROM notification_dlq {where_clause} \
+         GROUP BY tenant_id ORDER BY COUNT(*) DESC"
+    );
+
+    let (count,): (i64,) = bind_temporal!(sqlx::query_as(&count_sql))
         .fetch_one(pool.as_ref())
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let kind_rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq \
-         GROUP BY kind ORDER BY COUNT(*) DESC, kind ASC",
-    )
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let kind_rows: Vec<(String, i64)> = bind_temporal!(sqlx::query_as(&kind_sql))
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
-    let tenant_rows: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
-        "SELECT tenant_id, COUNT(*)::BIGINT FROM notification_dlq \
-         GROUP BY tenant_id ORDER BY COUNT(*) DESC",
-    )
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let tenant_rows: Vec<(Option<uuid::Uuid>, i64)> = bind_temporal!(sqlx::query_as(&tenant_sql))
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
 
     let by_kind: Vec<serde_json::Value> = kind_rows.into_iter()
         .map(|(kind, cnt)| json!({"kind": kind, "count": cnt}))
@@ -578,7 +625,12 @@ async fn dlq_stats(
         .map(|(tid, cnt)| json!({"tenant_id": tid, "count": cnt}))
         .collect();
 
-    Ok(Json(json!({"total": count, "by_kind": by_kind, "by_tenant": by_tenant})))
+    Ok(Json(json!({
+        "total":     count,
+        "by_kind":   by_kind,
+        "by_tenant": by_tenant,
+        "filter": {"since": q.since, "until": q.until},
+    })))
 }
 
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
