@@ -201,6 +201,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_transp_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-stats",
+            get(events_by_range_attendee_count_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1443,6 +1447,71 @@ async fn events_by_range_transp_stats(
         "opaque":       opaque,
         "transparent":  transparent,
         "unset":        unset,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-stats?after=&before=
+///
+/// Para cada evento em `dtstart ∈ [after, before)` conta ATTENDEEs via
+/// `itip::parse_attendees` (parse in-app do ical_raw). Calcula:
+/// `avg_attendees` (f64, 0.0 se nenhum evento), `max_attendees`, e
+/// `events_with_attendees` / `events_without_attendees`. Sprint #660.
+async fn events_by_range_attendee_count_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use crate::domain::itip;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    // Fetch only ical_raw — the only column needed for attendee parsing.
+    let raws: Vec<(String,)> = sqlx::query_as(
+        "SELECT ical_raw \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let counts: Vec<usize> = raws.iter()
+        .map(|(raw,)| itip::parse_attendees(raw).len())
+        .collect();
+
+    let total_events = counts.len();
+    let events_with    = counts.iter().filter(|&&c| c > 0).count() as i64;
+    let events_without = (total_events as i64) - events_with;
+    let max_attendees  = counts.iter().copied().max().unwrap_or(0) as i64;
+    let avg_attendees: f64 = if total_events == 0 {
+        0.0
+    } else {
+        counts.iter().sum::<usize>() as f64 / total_events as f64
+    };
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":            cal_id,
+        "total_events":           total_events,
+        "avg_attendees":          avg_attendees,
+        "max_attendees":          max_attendees,
+        "events_with_attendees":  events_with,
+        "events_without_attendees": events_without,
     })))
 }
 
