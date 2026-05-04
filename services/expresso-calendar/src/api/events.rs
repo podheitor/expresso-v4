@@ -772,9 +772,13 @@ async fn events_by_range_preview(
 #[derive(Debug, serde::Deserialize)]
 struct EventsByRangeStatsQuery {
     #[serde(default, with = "time::serde::rfc3339::option")]
-    after:  Option<OffsetDateTime>,
+    after:    Option<OffsetDateTime>,
     #[serde(default, with = "time::serde::rfc3339::option")]
-    before: Option<OffsetDateTime>,
+    before:   Option<OffsetDateTime>,
+    /// Temporal breakdown granularity: "day", "week", or "month".
+    /// When present, response includes `by_period: [{period, count}]`.
+    /// Sprint #609.
+    group_by: Option<String>,
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/stats?after=&before= —
@@ -873,7 +877,46 @@ async fn events_by_range_stats(
         *entry = serde_json::json!(prev + c);
     }
 
-    Ok(Json(serde_json::json!({
+    // Optional temporal breakdown via group_by=day|week|month. Sprint #609.
+    let by_period = if let Some(granularity) = &q.group_by {
+        let trunc = match granularity.as_str() {
+            "day"   => "day",
+            "week"  => "week",
+            "month" => "month",
+            other   => return Err(CalendarError::BadRequest(
+                format!("group_by must be 'day', 'week', or 'month'; got '{other}'")
+            )),
+        };
+        let period_rows: Vec<(OffsetDateTime, i64)> = sqlx::query_as(
+            &format!(
+                r#"SELECT DATE_TRUNC('{trunc}', dtstart AT TIME ZONE 'UTC') AS period,
+                          COUNT(*) AS cnt
+                     FROM calendar_events
+                    WHERE tenant_id   = $1
+                      AND calendar_id = $2
+                      AND dtstart IS NOT NULL
+                      AND ($3::timestamptz IS NULL OR dtstart >= $3)
+                      AND ($4::timestamptz IS NULL OR dtstart <  $4)
+                    GROUP BY period
+                    ORDER BY period ASC"#
+            )
+        )
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .bind(q.after)
+        .bind(q.before)
+        .fetch_all(pool)
+        .await?;
+
+        let buckets: Vec<serde_json::Value> = period_rows.iter().map(|(dt, cnt)| {
+            serde_json::json!({"period": dt, "count": cnt})
+        }).collect();
+        Some(buckets)
+    } else {
+        None
+    };
+
+    let mut resp = serde_json::json!({
         "calendar_id":    cal_id,
         "total":          total,
         "with_rrule":     with_rrule,
@@ -881,7 +924,12 @@ async fn events_by_range_stats(
         "with_dtend":     with_dtend,
         "without_dtend":  without_dtend,
         "by_status":      by_status,
-    })))
+    });
+    if let Some(bp) = by_period {
+        resp["by_period"]    = serde_json::json!(bp);
+        resp["group_by"]     = serde_json::json!(q.group_by);
+    }
+    Ok(Json(resp))
 }
 
 #[derive(Debug, serde::Deserialize)]
