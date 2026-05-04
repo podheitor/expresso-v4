@@ -39,6 +39,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
         .route("/mail/messages/:id/read-receipt", post(send_read_receipt))
         .route("/mail/messages/stats",            get(message_stats))
+        .route("/mail/messages/stats/flags",      get(flag_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1636,4 +1637,67 @@ async fn message_stats(
     }).collect();
 
     Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+#[derive(Debug, Deserialize)]
+struct FlagStatsParams {
+    /// Mailbox name filter (e.g. "INBOX"). Omit for all folders.
+    folder: Option<String>,
+}
+
+/// GET /api/v1/mail/messages/stats/flags?folder=INBOX
+///
+/// Returns per-flag message counts for the user, across all folders or a
+/// specific folder. Only flags present on at least one message are included.
+/// Response: `{folder?, flags: [{flag, count}]}` ordered by count DESC.
+/// Sprint #610.
+async fn flag_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<FlagStatsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = if params.folder.is_some() {
+        "AND mb.name = $3"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT f.flag, COUNT(*) AS cnt \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         CROSS JOIN LATERAL unnest(m.flags) AS f(flag) \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+               {folder_filter} \
+         GROUP BY f.flag \
+         ORDER BY cnt DESC"
+    );
+
+    let rows: Vec<(String, i64)> = if let Some(ref folder) = params.folder {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(folder)
+            .fetch_all(&mut *tx)
+            .await?
+    } else {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_all(&mut *tx)
+            .await?
+    };
+    tx.commit().await?;
+
+    let flags: Vec<serde_json::Value> = rows.into_iter().map(|(flag, count)| {
+        serde_json::json!({"flag": flag, "count": count})
+    }).collect();
+
+    let mut resp = serde_json::json!({"flags": flags});
+    if let Some(folder) = params.folder {
+        resp["folder"] = serde_json::Value::String(folder);
+    }
+    Ok(Json(resp))
 }
