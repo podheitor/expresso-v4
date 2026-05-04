@@ -142,6 +142,26 @@ impl<'a> QuotaRepo<'a> {
         Ok(UserUsage { user_id, used_bytes: used.unwrap_or(0) })
     }
 
+    /// Top-N users by storage usage within a tenant (non-deleted files only).
+    /// Returns `Vec<(owner_user_id, file_count, used_bytes)>` ordered by used_bytes DESC.
+    pub async fn top_users_by_usage(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, i64, i64)>> {
+        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT owner_user_id, \
+                    COUNT(*)::BIGINT AS file_count, \
+                    COALESCE(SUM(size_bytes), 0)::BIGINT AS used_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+              GROUP BY owner_user_id \
+              ORDER BY used_bytes DESC \
+              LIMIT $2",
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
         let (max,): (Option<i64>,) = sqlx::query_as(

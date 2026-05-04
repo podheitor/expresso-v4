@@ -55,6 +55,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/trash",                       get(trash).delete(purge_trash))
         .route("/api/v1/drive/quota",                       get(quota))
         .route("/api/v1/drive/files/stats",                 get(file_stats))
+        .route("/api/v1/drive/files/stats/users",           get(file_stats_users))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -773,6 +774,30 @@ async fn purge_trash(
         "purged":   ids.len(),
         "file_ids": ids,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/users?limit=N — top-N users by storage usage.
+///
+/// Returns `{users: [{user_id, file_count, used_bytes}]}` ordered by `used_bytes DESC`.
+/// Only counts non-deleted files (`kind='file'`). `limit` default 20, max 200.
+/// Useful for capacity planning and "heavy users" dashboards. Sprint #621.
+#[derive(Debug, Deserialize)]
+struct StatsUsersQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_users(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsUsersQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let rows  = QuotaRepo::new(pool).top_users_by_usage(ctx.tenant_id, limit).await?;
+    let users: Vec<serde_json::Value> = rows.into_iter().map(|(uid, fc, ub)| {
+        serde_json::json!({"user_id": uid, "file_count": fc, "used_bytes": ub})
+    }).collect();
+    Ok(Json(serde_json::json!({"users": users})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
