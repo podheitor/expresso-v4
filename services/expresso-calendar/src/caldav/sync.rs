@@ -8,6 +8,8 @@
 //! - Token < current  → *incremental*: emit events with `last_ctag > client`
 //!   as 200 OK (added/modified) plus tombstone rows with `deleted_ctag > client`
 //!   as 404 Not Found (removed).
+//! - Token > current  → 410 Gone (RFC 6578 §3.7) — calendar was restored/rolled
+//!   back; client must restart with a fresh initial sync.
 
 use axum::{body::Body, http::StatusCode, response::Response};
 use expresso_core::{begin_tenant_tx, DbPool};
@@ -53,8 +55,25 @@ pub async fn handle(
             write_changed_since(&mut out, pool, principal, calendar_id, from).await?;
             write_tombstones_since(&mut out, pool, principal, calendar_id, from).await?;
         }
+        // Token from the future — calendar was restored/rolled back; client must
+        // restart. RFC 6578 §3.7 mandates 410 Gone with the new current token so
+        // the client can immediately switch to the valid token without an extra round-trip.
+        Some(_future) => {
+            let body = format!(
+                "{XML_PROLOG}\
+                 <D:error xmlns:D=\"DAV:\">\
+                   <D:valid-sync-token/>\
+                 </D:error>"
+            );
+            return Ok(Response::builder()
+                .status(StatusCode::GONE)
+                .header("Content-Type", MULTISTATUS_CT)
+                .header("DAV-Sync-Token", new_token)
+                .body(Body::from(body))
+                .unwrap());
+        }
         // Initial sync — full resend, no tombstones.
-        _ => {
+        None => {
             let events = EventRepo::new(pool)
                 .list(principal.tenant_id, calendar_id, &EventQuery::default())
                 .await?;
