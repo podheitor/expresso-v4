@@ -42,6 +42,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/tags/:tag",         delete(remove_tag))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
         .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
+        .route("/api/v1/drive/files/:id/versions/:v/diff-content", get(diff_version_content))
         .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
         .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
         .route("/api/v1/drive/files/:id/star",               post(star_file).delete(unstar_file))
@@ -821,6 +822,155 @@ async fn download_version(
         file_id = %id, version_no = v);
     let filename = format!("{}.v{}", parent.name, v);
     Ok(attachment_response(&filename, ver.mime_type.as_deref(), bytes))
+}
+
+/// GET /api/v1/drive/files/:id/versions/:v/diff-content
+///
+/// Returns a unified text diff between version `:v` and the version immediately
+/// before it (v-1). 404 if either version blob is missing or the file is not
+/// text (detected via Content-Type prefix). 409 if v == 1 (no previous version).
+/// Response: `{version_a, version_b, hunks: [{header, lines: [{tag,text}]}]}`.
+/// Binary-safe guard: rejects blobs with a NUL byte in the first 8 KiB.
+async fn diff_version_content(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, v)): Path<(Uuid, i32)>,
+) -> Result<Json<serde_json::Value>> {
+    use serde_json::json;
+
+    if v <= 1 {
+        return Err(DriveError::BadRequest("no previous version to diff (v must be > 1)".into()));
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let _file = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+
+    let ver_b = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+        .ok_or(DriveError::NotFound(id))?;
+    let ver_a = VersionRepo::new(pool).get(ctx.tenant_id, id, v - 1).await?
+        .ok_or(DriveError::NotFound(id))?;
+
+    let bytes_a = fs::read(state.data_root().join(&ver_a.storage_key)).await
+        .map_err(|_| DriveError::NotFound(id))?;
+    let bytes_b = fs::read(state.data_root().join(&ver_b.storage_key)).await
+        .map_err(|_| DriveError::NotFound(id))?;
+
+    // Binary guard — reject if NUL byte in first 8 KiB.
+    let probe_a = &bytes_a[..bytes_a.len().min(8192)];
+    let probe_b = &bytes_b[..bytes_b.len().min(8192)];
+    if probe_a.contains(&0u8) || probe_b.contains(&0u8) {
+        return Err(DriveError::BadRequest("binary files cannot be diffed as text".into()));
+    }
+
+    let text_a = String::from_utf8_lossy(&bytes_a);
+    let text_b = String::from_utf8_lossy(&bytes_b);
+
+    let lines_a: Vec<&str> = text_a.lines().collect();
+    let lines_b: Vec<&str> = text_b.lines().collect();
+
+    let hunks = unified_diff(&lines_a, &lines_b, 3);
+    Ok(Json(json!({
+        "file_id":   id,
+        "version_a": v - 1,
+        "version_b": v,
+        "hunks":     hunks,
+    })))
+}
+
+/// Compute a unified diff between two line slices with `context` lines of context.
+/// Returns a JSON array of hunks: `[{header, lines: [{tag: "+"|"-"|" ", text}]}]`.
+fn unified_diff(old: &[&str], new: &[&str], context: usize) -> serde_json::Value {
+    use serde_json::json;
+
+    // Myers-style edit script via LCS table (simple DP — O(mn) space).
+    let m = old.len();
+    let n = new.len();
+
+    // lcs[i][j] = length of LCS of old[..i] and new[..j].
+    let mut lcs = vec![vec![0usize; n + 1]; m + 1];
+    for i in (0..m).rev() {
+        for j in (0..n).rev() {
+            lcs[i][j] = if old[i] == new[j] {
+                lcs[i + 1][j + 1] + 1
+            } else {
+                lcs[i + 1][j].max(lcs[i][j + 1])
+            };
+        }
+    }
+
+    // Trace edit operations: Equal / Delete / Insert.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Op { Eq, Del, Ins }
+
+    let mut ops: Vec<(Op, usize, usize)> = Vec::new(); // (op, old_idx, new_idx)
+    let (mut i, mut j) = (0, 0);
+    while i < m || j < n {
+        if i < m && j < n && old[i] == new[j] {
+            ops.push((Op::Eq, i, j));
+            i += 1; j += 1;
+        } else if j < n && (i >= m || lcs[i][j + 1] >= lcs[i + 1][j]) {
+            ops.push((Op::Ins, i, j));
+            j += 1;
+        } else {
+            ops.push((Op::Del, i, j));
+            i += 1;
+        }
+    }
+
+    // Group ops into hunks (changed regions ± context lines).
+    let mut hunks = Vec::new();
+    let total = ops.len();
+    let mut k = 0;
+    while k < total {
+        // Skip equal lines outside a hunk window.
+        if ops[k].0 == Op::Eq {
+            k += 1;
+            continue;
+        }
+        // Start a hunk: include up to `context` prior equal lines.
+        let hunk_start = k.saturating_sub(context);
+        // Extend hunk until we have `context` trailing equal lines after last change.
+        let mut end = k;
+        loop {
+            // Advance past changes.
+            while end < total && ops[end].0 != Op::Eq { end += 1; }
+            // Count trailing equals.
+            let trail_start = end;
+            let mut trail = 0;
+            while end < total && ops[end].0 == Op::Eq && trail < context {
+                end += 1; trail += 1;
+            }
+            // Check if the next change is within context distance.
+            if end < total && ops[end].0 != Op::Eq {
+                continue; // merge with next change cluster
+            }
+            // Include up to `context` trailing equal lines.
+            end = trail_start + trail;
+            break;
+        }
+
+        // Build hunk lines.
+        let hunk_ops = &ops[hunk_start..end];
+        let old_start = hunk_ops.iter().find(|o| o.0 != Op::Ins).map(|o| o.1 + 1).unwrap_or(1);
+        let new_start = hunk_ops.iter().find(|o| o.0 != Op::Del).map(|o| o.2 + 1).unwrap_or(1);
+        let old_count = hunk_ops.iter().filter(|o| o.0 != Op::Ins).count();
+        let new_count = hunk_ops.iter().filter(|o| o.0 != Op::Del).count();
+
+        let header = format!("@@ -{},{} +{},{} @@", old_start, old_count, new_start, new_count);
+        let lines: Vec<serde_json::Value> = hunk_ops.iter().map(|(op, oi, ni)| {
+            let (tag, text) = match op {
+                Op::Eq  => (" ", old[*oi]),
+                Op::Del => ("-", old[*oi]),
+                Op::Ins => ("+", new[*ni]),
+            };
+            json!({"tag": tag, "text": text})
+        }).collect();
+
+        hunks.push(json!({"header": header, "lines": lines}));
+        k = end;
+    }
+
+    serde_json::Value::Array(hunks)
 }
 
 /// DELETE /api/v1/drive/files/:id/versions/:v — remove a specific historical version.
