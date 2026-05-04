@@ -773,16 +773,29 @@ async fn purge_trash(
     })))
 }
 
+/// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
+///
+/// Lista versões em ordem DESC de version_no. `before_version` é o version_no
+/// do último item da página anterior (keyset cursor — retorna versões com
+/// version_no < before_version). `limit` default 50, max 500.
+/// Response inclui `{versions, next_cursor, has_more}`. Sprint #608.
+#[derive(Debug, Deserialize)]
+struct ListVersionsParams {
+    limit:          Option<i64>,
+    before_version: Option<i32>,
+}
+
 async fn list_versions(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(id):     Path<Uuid>,
+    Query(q):     Query<ListVersionsParams>,
     req_headers:  HeaderMap,
 ) -> Result<Response> {
     let pool = state.db_or_unavailable()?;
     let f = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
     let max_created: Option<OffsetDateTime> = sqlx::query_scalar(
-        "SELECT MAX(created_at) FROM file_versions WHERE tenant_id = $1 AND file_id = $2",
+        "SELECT MAX(created_at) FROM drive_file_versions WHERE tenant_id = $1 AND file_id = $2",
     )
     .bind(ctx.tenant_id)
     .bind(id)
@@ -800,10 +813,48 @@ async fn list_versions(
             }
         }
     }
-    let rows = VersionRepo::new(pool).list(ctx.tenant_id, id).await?;
-    let mut resp = Json(rows).into_response();
-    resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
-    Ok(resp)
+
+    let limit = q.limit.unwrap_or(50).clamp(1, 500);
+    let rows: Vec<crate::domain::version::FileVersion> = if let Some(bv) = q.before_version {
+        sqlx::query_as(
+            "SELECT id, file_id, tenant_id, version_no, storage_key, size_bytes, sha256, \
+                    mime_type, created_by, created_at \
+               FROM drive_file_versions \
+              WHERE tenant_id = $1 AND file_id = $2 AND version_no < $3 \
+              ORDER BY version_no DESC \
+              LIMIT $4",
+        )
+        .bind(ctx.tenant_id).bind(id).bind(bv).bind(limit)
+        .fetch_all(pool).await?
+    } else {
+        sqlx::query_as(
+            "SELECT id, file_id, tenant_id, version_no, storage_key, size_bytes, sha256, \
+                    mime_type, created_by, created_at \
+               FROM drive_file_versions \
+              WHERE tenant_id = $1 AND file_id = $2 \
+              ORDER BY version_no DESC \
+              LIMIT $3",
+        )
+        .bind(ctx.tenant_id).bind(id).bind(limit)
+        .fetch_all(pool).await?
+    };
+
+    let has_more    = rows.len() as i64 == limit;
+    let next_cursor = rows.last().map(|v| v.version_no);
+    let count       = rows.len();
+
+    let mut resp = serde_json::json!({
+        "versions":    rows,
+        "next_cursor": next_cursor,
+        "has_more":    has_more,
+    });
+    // Back-compat: when no cursor params, also embed total count.
+    if q.before_version.is_none() {
+        resp["total"] = serde_json::json!(count);
+    }
+    let mut r = Json(resp).into_response();
+    r.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
+    Ok(r)
 }
 
 /// GET /api/v1/drive/files/:id/versions/:v/metadata — metadados de uma versão sem download.
