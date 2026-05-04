@@ -189,6 +189,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_status_timeline),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/rrule-stats",
+            get(events_by_range_rrule_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1263,6 +1267,77 @@ async fn events_by_range_status_timeline(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "days":        days,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/rrule-stats?after=&before=
+///
+/// Breakdown de recorrências por frequência no range `dtstart ∈ [after, before)`.
+/// Retorna `{calendar_id, total_with_rrule, total_without_rrule, by_freq: [{freq, count}]}`
+/// onde `freq` ∈ {DAILY, WEEKLY, MONTHLY, YEARLY, OTHER}. A frequência é extraída da
+/// coluna `rrule` via `LIKE '%FREQ=DAILY%'` etc. — sem parse in-app; a coluna `rrule`
+/// é autoritativa (SET/CLEAR via events-by-range/set-rrule). `OTHER` captura RRULE
+/// com FREQ ausente ou valor não-padrão (e.g. SECONDLY, MINUTELY, HOURLY).
+/// Sprint #647.
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeRruleStatsQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+async fn events_by_range_rrule_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total_with, total_without, daily, weekly, monthly, yearly, other): (i64, i64, i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*) FILTER (WHERE rrule IS NOT NULL)::BIGINT                            AS with_rrule, \
+                COUNT(*) FILTER (WHERE rrule IS NULL)::BIGINT                                AS without_rrule, \
+                COUNT(*) FILTER (WHERE rrule LIKE '%FREQ=DAILY%')::BIGINT                   AS daily, \
+                COUNT(*) FILTER (WHERE rrule LIKE '%FREQ=WEEKLY%')::BIGINT                  AS weekly, \
+                COUNT(*) FILTER (WHERE rrule LIKE '%FREQ=MONTHLY%')::BIGINT                 AS monthly, \
+                COUNT(*) FILTER (WHERE rrule LIKE '%FREQ=YEARLY%')::BIGINT                  AS yearly, \
+                COUNT(*) FILTER (WHERE rrule IS NOT NULL \
+                                   AND rrule NOT LIKE '%FREQ=DAILY%' \
+                                   AND rrule NOT LIKE '%FREQ=WEEKLY%' \
+                                   AND rrule NOT LIKE '%FREQ=MONTHLY%' \
+                                   AND rrule NOT LIKE '%FREQ=YEARLY%')::BIGINT              AS other \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let by_freq = vec![
+        serde_json::json!({"freq": "DAILY",   "count": daily}),
+        serde_json::json!({"freq": "WEEKLY",  "count": weekly}),
+        serde_json::json!({"freq": "MONTHLY", "count": monthly}),
+        serde_json::json!({"freq": "YEARLY",  "count": yearly}),
+        serde_json::json!({"freq": "OTHER",   "count": other}),
+    ];
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":      cal_id,
+        "total_with_rrule": total_with,
+        "total_without_rrule": total_without,
+        "by_freq":          by_freq,
     })))
 }
 
