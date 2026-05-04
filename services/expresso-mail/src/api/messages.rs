@@ -41,6 +41,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/read-receipt", post(send_read_receipt))
         .route("/mail/messages/stats",            get(message_stats))
         .route("/mail/messages/stats/flags",      get(flag_stats))
+        .route("/mail/messages/stats/threads",    get(thread_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -992,6 +993,61 @@ async fn list_thread(
         resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     }
     Ok(resp)
+}
+
+/// GET /api/v1/mail/messages/stats/threads?folder=
+///
+/// Aggregate thread stats for the user: total distinct threads, threads with at
+/// least one unread message, total messages, and per-folder breakdown.
+/// Useful for badge counts and "unread threads" indicators without listing threads.
+/// Complements #625 (list_threads). Sprint #630.
+#[derive(Debug, Deserialize)]
+struct ThreadStatsParams {
+    folder: Option<String>,
+}
+
+async fn thread_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<ThreadStatsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = params.folder.as_deref()
+        .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT \
+            COUNT(DISTINCT m.thread_id)::BIGINT AS total_threads, \
+            COUNT(DISTINCT CASE WHEN NOT (m.flags @> ARRAY['\\\\Seen']) THEN m.thread_id END)::BIGINT AS unread_threads, \
+            COUNT(*)::BIGINT AS total_messages \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND m.thread_id IS NOT NULL \
+           {folder_filter}"
+    );
+
+    let row: (i64, i64, i64) = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    let (total_threads, unread_threads, total_messages) = row;
+
+    let mut resp = serde_json::json!({
+        "total_threads":   total_threads,
+        "unread_threads":  unread_threads,
+        "read_threads":    total_threads - unread_threads,
+        "total_messages":  total_messages,
+    });
+    if let Some(folder) = params.folder {
+        resp["folder"] = serde_json::Value::String(folder);
+    }
+    Ok(Json(resp))
 }
 
 /// GET /api/v1/mail/messages/:id/thread — thread da mensagem dado o message ID.
