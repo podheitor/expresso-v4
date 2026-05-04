@@ -7,6 +7,7 @@
 mod api;
 mod domain;
 mod error;
+mod invite_mail;
 mod jitsi;
 mod state;
 pub mod webhook;
@@ -142,7 +143,11 @@ async fn main() -> anyhow::Result<()> {
     if webhook.is_some() {
         info!("webhook dispatch enabled (MEET__WEBHOOK_URL)");
     }
-    let state = AppState::new(db, jitsi, webhook);
+    let invite_mailer = invite_mail::InviteMailer::from_env();
+    if invite_mailer.is_some() {
+        info!("invite mailer enabled (MEET__SMTP_HOST)");
+    }
+    let state = AppState::new(db, jitsi, webhook, invite_mailer);
     let app = api::router(state, oidc, multi, resolver);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;
 

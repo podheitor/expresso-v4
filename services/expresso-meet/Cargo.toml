@@ -25,6 +25,7 @@ time                = { workspace = true }
 sqlx                = { workspace = true }
 jsonwebtoken        = { workspace = true }
 reqwest             = { workspace = true }
+lettre              = { workspace = true }
 
 expresso-core        = { path = "../../libs/expresso-core" }
 expresso-observability = { workspace = true }

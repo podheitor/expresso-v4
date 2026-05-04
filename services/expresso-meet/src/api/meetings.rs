@@ -63,6 +63,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/meetings/:id/tokens", post(mint_token))
         .route("/api/v1/meetings/:id/participants", post(add_participant).get(list_participants))
         .route("/api/v1/meetings/:id/participants-invite", post(invite_participant))
+        .route("/api/v1/meetings/:id/participants-invite-mail", post(invite_participant_mail))
         .route("/api/v1/meetings/:id/participants/count", get(count_participants))
         .route("/api/v1/meetings/:id/participants/:user_id", get(get_participant).delete(remove_participant).patch(update_participant_role))
         .route("/api/v1/meetings/:id/recording/start", post(recording_start))
@@ -631,6 +632,87 @@ async fn invite_participant(
         role,
         join_url:         issued.join_url,
         expires_at_epoch: issued.expires_at_epoch,
+    })))
+}
+
+#[derive(Debug, Serialize)]
+pub struct InviteParticipantMailResponse {
+    pub user_id:          Uuid,
+    pub role:             ParticipantRole,
+    pub join_url:         String,
+    pub expires_at_epoch: i64,
+    /// true when MEET__SMTP_HOST is configured and the email was delivered.
+    pub email_sent:       bool,
+}
+
+/// POST /api/v1/meetings/:id/participants-invite-mail — como participants-invite mas
+/// também envia o join_url por email real via SMTP (MEET__SMTP_HOST). Requer que
+/// `email` esteja presente no body. Moderator-only. Email send é best-effort:
+/// 201 é retornado independente de falha SMTP — `email_sent` indica sucesso.
+async fn invite_participant_mail(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(id): Path<Uuid>,
+    Json(body): Json<InviteParticipantBody>,
+) -> Result<(StatusCode, Json<InviteParticipantMailResponse>)> {
+    let pool  = state.db_or_unavailable()?;
+    let jitsi = state.jitsi_or_unavailable()?;
+    let repo  = MeetingRepo::new(pool);
+
+    match repo.participant_role(ctx.tenant_id, id, ctx.user_id).await? {
+        Some(ParticipantRole::Moderator) => {}
+        Some(_) => return Err(MeetError::Forbidden),
+        None    => return Err(MeetError::NotParticipant),
+    }
+
+    if let Some(d) = body.display_name.as_deref() {
+        if d.len() > MAX_DISPLAY_NAME_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "display_name too long: {} bytes (max {})", d.len(), MAX_DISPLAY_NAME_BYTES
+            )));
+        }
+    }
+    if let Some(e) = body.email.as_deref() {
+        if e.len() > MAX_EMAIL_BYTES {
+            return Err(MeetError::BadRequest(format!(
+                "email too long: {} bytes (max {})", e.len(), MAX_EMAIL_BYTES
+            )));
+        }
+    } else {
+        return Err(MeetError::BadRequest("email is required for invite-mail".into()));
+    }
+
+    let m = repo.get(ctx.tenant_id, id).await
+        .map_err(|_| MeetError::MeetingNotFound(id))?;
+
+    let role = body.role.unwrap_or(ParticipantRole::Participant);
+    repo.add_participant(ctx.tenant_id, id, body.user_id, role.clone()).await?;
+
+    let display_name = body.display_name.as_deref().unwrap_or("Guest");
+    let email        = body.email.as_deref().unwrap_or("");
+
+    let issued = jitsi.mint(&IssueRequest {
+        room:            &m.room_name,
+        user_id:         body.user_id,
+        display_name,
+        email,
+        moderator:       matches!(role, ParticipantRole::Moderator),
+        allow_recording: false,
+    })?;
+
+    let email_sent = if let Some(mailer) = state.invite_mailer() {
+        mailer.send(email, &m.title, &issued.join_url).await
+    } else {
+        tracing::debug!("MEET__SMTP_HOST not configured — skipping invite email");
+        false
+    };
+
+    Ok((StatusCode::CREATED, Json(InviteParticipantMailResponse {
+        user_id:          body.user_id,
+        role,
+        join_url:         issued.join_url,
+        expires_at_epoch: issued.expires_at_epoch,
+        email_sent,
     })))
 }
 
