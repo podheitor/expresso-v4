@@ -328,6 +328,27 @@ pub struct StatsParams {
     pub tenant_id: String,
 }
 
+/// GET /api/v1/search/health/index — Tantivy index health info (ops, tenant-agnostic).
+///
+/// Retorna `{num_docs, num_segments, disk_bytes}`.
+/// `num_docs` = total de documentos no índice (todos os tenants).
+/// `num_segments` = número de segmentos Tantivy (indica fragmentação; writer commit cria
+/// novos segmentos; merger os consolida). `disk_bytes` = soma dos tamanhos dos arquivos
+/// gerenciados pelo índice. Sprint #591.
+pub async fn index_health(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let (num_docs, num_segments, disk_bytes) = store
+        .index_health()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "num_docs":     num_docs,
+        "num_segments": num_segments,
+        "disk_bytes":   disk_bytes,
+    })))
+}
+
 /// GET /api/v1/search/stats?tenant_id= — aggregate doc counts for a tenant.
 ///
 /// Returns `{tenant_id, total, by_kind: [{kind, count}]}` ordered by count DESC.

@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/index/{id}", delete(api::delete_doc))
         .route("/api/v1/search", get(api::search))
         .route("/api/v1/search/stats", get(api::search_stats))
+        .route("/api/v1/search/health/index", get(api::index_health))
         .with_state(store);
 
     let api_routes = if !token.is_empty() {

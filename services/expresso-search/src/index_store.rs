@@ -13,14 +13,14 @@ use std::sync::Arc;
 
 use tantivy::{
     collector::TopDocs,
-    directory::MmapDirectory,
+    directory::{Directory, MmapDirectory},
     doc,
     query::{BooleanQuery, Occur, Query, QueryParser, RangeQuery, TermQuery},
     schema::{
         Field, IndexRecordOption, NumericOptions, Schema, STORED, STRING, TEXT,
     },
     snippet::SnippetGenerator,
-    Index, IndexReader, IndexWriter, ReloadPolicy,
+    HasLen, Index, IndexReader, IndexWriter, ReloadPolicy,
 };
 use tokio::sync::Mutex;
 use tracing::info;
@@ -860,6 +860,29 @@ impl IndexStore {
         sorted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         sorted.truncate(top_n);
         Ok(sorted)
+    }
+
+    /// Returns index-level health info: total docs across all tenants, number of
+    /// segments, and estimated disk size in bytes. Tenant-agnostic (ops endpoint).
+    /// Sprint #591.
+    pub fn index_health(&self) -> anyhow::Result<(u64, usize, u64)> {
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+
+        let num_docs: u64 = searcher.segment_readers().iter()
+            .map(|sr| sr.num_docs() as u64)
+            .sum();
+        let num_segments = searcher.segment_readers().len();
+
+        // Disk size: sum sizes of all files in the index directory.
+        let meta = i.index.directory();
+        let disk_bytes: u64 = meta.list_managed_files()
+            .iter()
+            .filter_map(|path| meta.get_file_handle(path).ok())
+            .map(|fh| fh.len() as u64)
+            .sum();
+
+        Ok((num_docs, num_segments, disk_bytes))
     }
 
     /// Returns aggregate document counts for a given `tenant_id`:
