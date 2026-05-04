@@ -37,6 +37,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/bulk",        post(bulk_action).delete(bulk_delete))
         .route("/mail/messages/bulk/flags", patch(bulk_update_flags))
         .route("/mail/messages/:id/read-receipt", post(send_read_receipt))
+        .route("/mail/messages/stats",            get(message_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1515,4 +1516,68 @@ async fn send_read_receipt(
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id,
         message_id = %id, recipient = %recipient_str);
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+struct StatsParams {
+    /// Mailbox name filter (e.g. "INBOX"). Omit for all folders.
+    folder: Option<String>,
+    /// RFC 3339 lower bound on received_at. Omit for all time.
+    since:  Option<String>,
+}
+
+/// GET /api/v1/mail/messages/stats?folder=INBOX&since=<rfc3339>
+///
+/// Returns per-folder counts: total, unread (no `\Seen`), size_bytes.
+/// When `folder` is given, returns a single-element list for that folder.
+/// Grouped by mailbox name, ordered by total DESC.
+async fn message_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<StatsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db();
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let folder_filter = params.folder.as_deref().map(|f| {
+        let esc = f.replace('\'', "''");
+        format!("AND mb.name = '{esc}'")
+    }).unwrap_or_default();
+
+    let since_filter = params.since.as_deref().map(|s| {
+        let esc = s.replace('\'', "''");
+        format!("AND m.received_at >= '{esc}'::timestamptz")
+    }).unwrap_or_default();
+
+    let sql = format!(
+        "SELECT mb.name AS folder, \
+                COUNT(*) AS total, \
+                COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(m.flags))) AS unread, \
+                COALESCE(SUM(m.size_bytes), 0)::BIGINT AS size_bytes \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+               {folder_filter} {since_filter} \
+         GROUP BY mb.name \
+         ORDER BY total DESC"
+    );
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter().map(|(folder, total, unread, size_bytes)| {
+        serde_json::json!({
+            "folder":     folder,
+            "total":      total,
+            "unread":     unread,
+            "read":       total - unread,
+            "size_bytes": size_bytes,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
