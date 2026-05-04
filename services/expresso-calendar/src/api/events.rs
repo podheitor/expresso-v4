@@ -10,6 +10,7 @@ use axum::{
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+use expresso_core::begin_tenant_tx;
 use crate::api::context::RequestCtx;
 use crate::domain::{Event, EventQuery, EventRepo};
 use crate::error::{CalendarError, Result};
@@ -661,27 +662,21 @@ struct EventsByRangePreviewQuery {
     before: Option<OffsetDateTime>,
     #[serde(default)]
     limit:  Option<i64>,
+    /// Keyset cursor: RFC3339 `dtstart` of the last event from the previous page.
+    /// When present, returns events with `dtstart > cursor`. Enables stable
+    /// cursor pagination over large ranges without offset drift. Sprint #604.
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    cursor: Option<OffsetDateTime>,
 }
 
-/// GET /api/v1/calendars/:cal_id/events-by-range?after=&before=&limit= —
-/// read-only listagem dos eventos cujo `dtstart` ∈ `[after, before)` no
-/// calendário (sprint #544, foundation pra futuros bulk-update / bulk-set-rrule
-/// / bulk-move-calendar e paralelo direto do `events-bulk-delete` #457 mas em
-/// modo discovery sem side effect). Mesmo critério temporal half-open do #457
-/// (eventos sem `dtstart` são EXCLUÍDOS — não há critério pra incluí-los).
-/// Útil pra UI fazer "discovery" antes de qualquer bulk mutation: "quais
-/// eventos seriam afetados se eu rodar bulk-update nesta janela?". Dual
-/// filosófico do `overrides-by-range/preview` #543 mas a nível de master events
-/// em vez de RECURRENCE-ID overrides; pattern "preview-first, mutate-after"
-/// consolidado em #543 agora aplicado proativamente ANTES do PATCH em massa
-/// existir — abre caminho pro bulk-update (mover/mudar calendar/set RRULE) num
-/// sprint posterior, mantendo cadência narrow. Sem WRITE+ (read-only). Retorna
-/// `{calendar_id, count, events: [{id, uid, summary, dtstart, dtend, rrule}]}`
-/// — projeção mínima identificadora (sem ical_raw nem description; UI faz
-/// follow-up GET /:id pra detalhe completo). `count` reflete o tamanho do
-/// vetor retornado (após `limit` clamp), NÃO o total não-paginado — UI percebe
-/// truncamento se `count == limit`. `limit` opcional default 1000, clamp
-/// 1..=10_000 (mesmo contrato do `EventRepo::list` #133 reusado direto).
+/// GET /api/v1/calendars/:cal_id/events-by-range?after=&before=&limit=&cursor=
+///
+/// Read-only listagem dos eventos cujo `dtstart` ∈ `[after, before)` no calendário.
+/// `cursor` é o RFC3339 dtstart do último evento da página anterior — retorna
+/// eventos com `dtstart > cursor` dentro do range original (keyset pagination).
+/// `next_cursor` no response é o dtstart do último evento retornado, ou null se
+/// não há mais páginas. `count == limit` indica possível próxima página.
+/// Sprints #544 (foundation) + #604 (cursor pagination).
 async fn events_by_range_preview(
     State(state): State<AppState>,
     ctx:          RequestCtx,
@@ -694,37 +689,83 @@ async fn events_by_range_preview(
         }
     }
     let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(1000).clamp(1, 10_000);
 
-    let listed = EventRepo::new(pool)
-        .list(
-            ctx.tenant_id,
-            cal_id,
-            &EventQuery { from: q.after, to: q.before, limit: q.limit },
+    // Keyset lower bound: max(after, cursor+1ns). cursor is exclusive (>), not >=.
+    // We implement "> cursor" via "after_effective = cursor" + SQL "> $cursor".
+    let effective_after = match (q.after, q.cursor) {
+        (Some(a), Some(c)) => Some(if c > a { c } else { a }),
+        (None,    Some(c)) => Some(c),
+        (after,   None)    => after,
+    };
+    let has_cursor = q.cursor.is_some();
+
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+    // When cursor is active we use strict > on dtstart (keyset pagination).
+    // Without cursor we use >= (inclusive lower bound from `after`).
+    let rows: Vec<Event> = if has_cursor {
+        sqlx::query_as::<_, Event>(
+            r#"SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                      description, location, dtstart, dtend, rrule, status,
+                      class, transp, sequence, organizer_email, created_at, updated_at
+                 FROM calendar_events
+                WHERE tenant_id    = $1
+                  AND calendar_id  = $2
+                  AND dtstart IS NOT NULL
+                  AND ($3::timestamptz IS NULL OR dtstart >  $3)
+                  AND ($4::timestamptz IS NULL OR dtstart <  $4)
+                ORDER BY dtstart ASC, id ASC
+                LIMIT $5"#,
         )
-        .await?;
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .bind(effective_after)
+        .bind(q.before)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        sqlx::query_as::<_, Event>(
+            r#"SELECT id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                      description, location, dtstart, dtend, rrule, status,
+                      class, transp, sequence, organizer_email, created_at, updated_at
+                 FROM calendar_events
+                WHERE tenant_id    = $1
+                  AND calendar_id  = $2
+                  AND dtstart IS NOT NULL
+                  AND ($3::timestamptz IS NULL OR dtstart >= $3)
+                  AND ($4::timestamptz IS NULL OR dtstart <  $4)
+                ORDER BY dtstart ASC, id ASC
+                LIMIT $5"#,
+        )
+        .bind(ctx.tenant_id)
+        .bind(cal_id)
+        .bind(effective_after)
+        .bind(q.before)
+        .bind(limit)
+        .fetch_all(&mut *tx)
+        .await?
+    };
+    tx.commit().await?;
 
-    let mut events: Vec<serde_json::Value> = Vec::with_capacity(listed.len());
-    for ev in &listed {
-        if let Some(ds) = ev.dtstart {
-            if let Some(a) = q.after  { if ds <  a { continue; } }
-            if let Some(b) = q.before { if ds >= b { continue; } }
-        } else {
-            continue;
-        }
-        events.push(serde_json::json!({
-            "id":      ev.id,
-            "uid":     ev.uid,
-            "summary": ev.summary,
-            "dtstart": ev.dtstart,
-            "dtend":   ev.dtend,
-            "rrule":   ev.rrule,
-        }));
-    }
+    let next_cursor = rows.last().and_then(|ev| ev.dtstart);
+    let has_more    = rows.len() as i64 == limit;
+
+    let events: Vec<serde_json::Value> = rows.iter().map(|ev| serde_json::json!({
+        "id":      ev.id,
+        "uid":     ev.uid,
+        "summary": ev.summary,
+        "dtstart": ev.dtstart,
+        "dtend":   ev.dtend,
+        "rrule":   ev.rrule,
+    })).collect();
 
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "count":       events.len(),
         "events":      events,
+        "next_cursor": next_cursor,
+        "has_more":    has_more,
     })))
 }
 
