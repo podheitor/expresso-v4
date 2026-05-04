@@ -161,7 +161,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route(
             "/api/v1/calendars/:cal_id/events/:id",
-            get(get_one).put(update).delete(delete),
+            get(get_one).put(update).patch(patch_event).delete(delete),
         )
         .route(
             "/api/v1/calendars/:cal_id/export.ics",
@@ -1774,6 +1774,83 @@ async fn update(
         summary: ev.summary.clone(), sequence: ev.sequence,
     });
     state.events().publish_imip(ev.clone(), "REQUEST");
+
+    let etag = format!("\"{}\"", ev.etag);
+    let mut resp = Json(ev).into_response();
+    resp.headers_mut().insert(header::ETAG, HeaderValue::from_str(&etag).unwrap());
+    Ok(resp)
+}
+
+/// PATCH /api/v1/calendars/:cal_id/events/:id — update individual fields without
+/// replacing the full iCal body. All fields are optional; absent fields are preserved.
+/// `null` clears a nullable field (summary, location, description, status).
+/// `dtstart`/`dtend` accept RFC 3339. `status` accepts TENTATIVE|CONFIRMED|CANCELLED.
+/// `ical_raw` is left stale until the client does a PUT — consistent with events-by-range/*.
+#[derive(Debug, serde::Deserialize)]
+struct PatchEventBody {
+    summary:     Option<serde_json::Value>,
+    location:    Option<serde_json::Value>,
+    description: Option<serde_json::Value>,
+    dtstart:     Option<serde_json::Value>,
+    dtend:       Option<serde_json::Value>,
+    status:      Option<serde_json::Value>,
+}
+
+async fn patch_event(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path((cal_id, id)): Path<(Uuid, Uuid)>,
+    Json(body): Json<PatchEventBody>,
+) -> Result<Response> {
+    let pool = state.db_or_unavailable()?;
+    assert_can_write(pool, ctx.tenant_id, cal_id, ctx.user_id).await?;
+
+    fn str_field(v: Option<serde_json::Value>) -> Result<Option<Option<String>>> {
+        match v {
+            None => Ok(None),
+            Some(serde_json::Value::Null) => Ok(Some(None)),
+            Some(serde_json::Value::String(s)) => Ok(Some(Some(s))),
+            _ => Err(CalendarError::BadRequest("field must be a string or null".into())),
+        }
+    }
+
+    fn ts_field(v: Option<serde_json::Value>) -> Result<Option<Option<OffsetDateTime>>> {
+        match v {
+            None => Ok(None),
+            Some(serde_json::Value::Null) => Ok(Some(None)),
+            Some(serde_json::Value::String(s)) => {
+                OffsetDateTime::parse(&s, &time::format_description::well_known::Rfc3339)
+                    .map(|dt| Some(Some(dt)))
+                    .map_err(|_| CalendarError::BadRequest("dtstart/dtend must be RFC 3339".into()))
+            }
+            _ => Err(CalendarError::BadRequest("dtstart/dtend must be a string or null".into())),
+        }
+    }
+
+    let summary     = str_field(body.summary)?;
+    let location    = str_field(body.location)?;
+    let description = str_field(body.description)?;
+    let status      = str_field(body.status)?;
+    let dtstart     = ts_field(body.dtstart)?;
+    let dtend       = ts_field(body.dtend)?;
+
+    if let Some(Some(ref s)) = status {
+        let s = s.as_str();
+        if s != "TENTATIVE" && s != "CONFIRMED" && s != "CANCELLED" {
+            return Err(CalendarError::BadRequest(
+                "status must be TENTATIVE, CONFIRMED, or CANCELLED".into(),
+            ));
+        }
+    }
+
+    let ev = EventRepo::new(pool)
+        .patch_fields(ctx.tenant_id, id, summary, location, description, dtstart, dtend, status)
+        .await?;
+
+    state.events().publish(crate::events::Event::EventUpdated {
+        tenant_id: ctx.tenant_id, event_id: ev.id,
+        summary: ev.summary.clone(), sequence: ev.sequence,
+    });
 
     let etag = format!("\"{}\"", ev.etag);
     let mut resp = Json(ev).into_response();

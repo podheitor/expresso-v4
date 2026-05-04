@@ -236,6 +236,70 @@ impl<'a> EventRepo<'a> {
         Ok(row)
     }
 
+    /// Patch individual fields on an event without replacing the full iCal body.
+    /// `None` fields are preserved; `Some(None)` clears a nullable field.
+    /// `ical_raw` is left STALE (structural authority remains with PUT).
+    /// `etag` and `updated_at` are refreshed; `sequence` increments only when
+    /// any of summary/location/dtstart/dtend/status changes.
+    pub async fn patch_fields(
+        &self,
+        tenant_id:   Uuid,
+        id:          Uuid,
+        summary:     Option<Option<String>>,
+        location:    Option<Option<String>>,
+        description: Option<Option<String>>,
+        dtstart:     Option<Option<OffsetDateTime>>,
+        dtend:       Option<Option<OffsetDateTime>>,
+        status:      Option<Option<String>>,
+    ) -> Result<Event> {
+        let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
+
+        let row = sqlx::query_as::<_, Event>(
+            r#"
+            UPDATE calendar_events SET
+                summary     = CASE WHEN $3  THEN $4::TEXT    ELSE summary     END,
+                location    = CASE WHEN $5  THEN $6::TEXT    ELSE location    END,
+                description = CASE WHEN $7  THEN $8::TEXT    ELSE description END,
+                dtstart     = CASE WHEN $9  THEN $10::TIMESTAMPTZ ELSE dtstart END,
+                dtend       = CASE WHEN $11 THEN $12::TIMESTAMPTZ ELSE dtend   END,
+                status      = CASE WHEN $13 THEN $14::TEXT   ELSE status      END,
+                etag        = md5(gen_random_uuid()::text),
+                sequence    = CASE
+                    WHEN ($3  AND summary  IS DISTINCT FROM $4::TEXT)
+                      OR ($5  AND location IS DISTINCT FROM $6::TEXT)
+                      OR ($9  AND dtstart  IS DISTINCT FROM $10::TIMESTAMPTZ)
+                      OR ($11 AND dtend    IS DISTINCT FROM $12::TIMESTAMPTZ)
+                      OR ($13 AND status   IS DISTINCT FROM $14::TEXT)
+                    THEN sequence + 1
+                    ELSE sequence
+                END
+            WHERE tenant_id = $1 AND id = $2
+            RETURNING id, calendar_id, tenant_id, uid, etag, ical_raw, summary,
+                      description, location, dtstart, dtend, rrule, status,
+                      class, transp, sequence, organizer_email, created_at, updated_at
+            "#,
+        )
+        .bind(tenant_id)
+        .bind(id)
+        .bind(summary.is_some())
+        .bind(summary.and_then(|v| v))
+        .bind(location.is_some())
+        .bind(location.and_then(|v| v))
+        .bind(description.is_some())
+        .bind(description.and_then(|v| v))
+        .bind(dtstart.is_some())
+        .bind(dtstart.and_then(|v| v))
+        .bind(dtend.is_some())
+        .bind(dtend.and_then(|v| v))
+        .bind(status.is_some())
+        .bind(status.and_then(|v| v))
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(CalendarError::EventNotFound(id))?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
     /// Delete event by id.
     pub async fn delete(&self, tenant_id: Uuid, id: Uuid) -> Result<()> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
