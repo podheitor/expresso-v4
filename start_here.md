@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #662 — `git log --oneline | head -1`
+**Último sprint:** #662 — `33c1f70`
 
 ```
 git log --oneline | head -10
