@@ -46,7 +46,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size",       get(size_stats))
         .route("/mail/messages/stats/attachments",    get(attachment_stats))
         .route("/mail/messages/stats/received-by-day",  get(received_by_day_stats))
-        .route("/mail/messages/stats/threads-by-day",   get(threads_by_day_stats))
+        .route("/mail/messages/stats/threads-by-day",      get(threads_by_day_stats))
+        .route("/mail/messages/stats/unread-by-folder",    get(unread_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2162,4 +2163,38 @@ async fn attachment_stats(
         resp["folder"] = serde_json::Value::String(folder);
     }
     Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/unread-by-folder — contagem total e não-lidos por mailbox.
+///
+/// Agrupa mensagens por `mb.name` e retorna `{folders:[{folder,total,unread}]}`
+/// ordenado por `unread DESC`. Escopo por user+tenant via begin_tenant_tx.
+/// Complementa `stats/` com visão focada somente em leitura. Sprint #658.
+async fn unread_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*)::BIGINT AS total, \
+            COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(m.flags)))::BIGINT AS unread \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY unread DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, unread)| serde_json::json!({"folder": folder, "total": total, "unread": unread}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
