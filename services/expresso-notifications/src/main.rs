@@ -596,8 +596,10 @@ async fn count_dlq(
     Ok(Json(json!({"count": count})))
 }
 
-/// GET /api/v1/notifications/dlq?limit=N&offset=N — list DLQ entries (newest first).
-/// No tenant filter — this is an ops/admin endpoint. Limit 1–500, default 50.
+/// GET /api/v1/notifications/dlq?limit=N&offset=N&kind=K&tenant_id=UUID
+///
+/// List DLQ entries (newest first). Optional filters: `kind` and/or `tenant_id`.
+/// Limit 1–500, default 50. Ops/admin endpoint — no auth tenant scoping.
 async fn list_dlq(
     State(st):   State<AppState>,
     Query(q):    Query<DlqListQuery>,
@@ -609,20 +611,33 @@ async fn list_dlq(
     ))?;
     let limit  = q.limit.unwrap_or(50).clamp(1, 500) as i64;
     let offset = q.offset.unwrap_or(0).max(0) as i64;
-    let rows = sqlx::query(
+
+    // Build WHERE clause from optional filters.
+    // $1=limit, $2=offset are always present; filters shift bind positions.
+    let (where_clause, bind_kind, bind_tenant) = match (&q.kind, &q.tenant_id) {
+        (Some(_), Some(_)) => ("WHERE kind = $3 AND tenant_id = $4", true, true),
+        (Some(_), None)    => ("WHERE kind = $3",                    true, false),
+        (None,    Some(_)) => ("WHERE tenant_id = $3",               false, true),
+        (None,    None)    => ("",                                    false, false),
+    };
+    let sql = format!(
         "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
            FROM notification_dlq \
+          {where_clause} \
           ORDER BY failed_at DESC \
-          LIMIT $1 OFFSET $2",
-    )
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool.as_ref())
-    .await
-    .map_err(|e| (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "internal", "message": e.to_string()})),
-    ))?;
+          LIMIT $1 OFFSET $2"
+    );
+    let mut q_builder = sqlx::query(&sql).bind(limit).bind(offset);
+    if bind_kind    { q_builder = q_builder.bind(q.kind.as_deref().unwrap()); }
+    if bind_tenant  { q_builder = q_builder.bind(q.tenant_id.unwrap()); }
+
+    let rows = q_builder
+        .fetch_all(pool.as_ref())
+        .await
+        .map_err(|e| (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "internal", "message": e.to_string()})),
+        ))?;
     let items: Vec<serde_json::Value> = rows.iter().map(|r| {
         let id:         Uuid                  = r.get("id");
         let tenant_id:  Option<Uuid>          = r.try_get("tenant_id").ok();
@@ -643,13 +658,16 @@ async fn list_dlq(
             "failed_at":  failed_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
         })
     }).collect();
-    Ok(Json(json!({"items": items, "limit": limit, "offset": offset})))
+    Ok(Json(json!({"items": items, "limit": limit, "offset": offset,
+        "filter": {"kind": q.kind, "tenant_id": q.tenant_id}})))
 }
 
 #[derive(Debug, Deserialize)]
 struct DlqListQuery {
-    limit:  Option<u32>,
-    offset: Option<u32>,
+    limit:     Option<u32>,
+    offset:    Option<u32>,
+    kind:      Option<String>,
+    tenant_id: Option<Uuid>,
 }
 
 /// GET /api/v1/notifications/dlq/:id — inspeciona uma entrada individual da DLQ.
