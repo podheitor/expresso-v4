@@ -48,6 +48,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/received-by-day",  get(received_by_day_stats))
         .route("/mail/messages/stats/threads-by-day",      get(threads_by_day_stats))
         .route("/mail/messages/stats/unread-by-folder",    get(unread_by_folder_stats))
+        .route("/mail/messages/stats/size-by-folder",      get(size_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2163,6 +2164,46 @@ async fn attachment_stats(
         resp["folder"] = serde_json::Value::String(folder);
     }
     Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/size-by-folder — total, avg e max size_bytes por mailbox.
+///
+/// Agrega `size_bytes` por `mb.name` e retorna `{folders:[{folder,total_bytes,avg_bytes,max_bytes}]}`
+/// ordenado por `total_bytes DESC`. `avg_bytes` e `max_bytes` são `null` para pastas vazias.
+/// Complementa `stats/size` (#640) com breakdown por folder. Sprint #663.
+async fn size_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COALESCE(SUM(m.size_bytes), 0)::BIGINT AS total_bytes, \
+            AVG(m.size_bytes)::FLOAT8 AS avg_bytes, \
+            MAX(m.size_bytes)::BIGINT AS max_bytes \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total_bytes DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total_bytes, avg_bytes, max_bytes)| serde_json::json!({
+            "folder":      folder,
+            "total_bytes": total_bytes,
+            "avg_bytes":   avg_bytes,
+            "max_bytes":   max_bytes,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }
 
 /// GET /api/v1/mail/messages/stats/unread-by-folder — contagem total e não-lidos por mailbox.

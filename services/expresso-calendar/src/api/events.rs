@@ -205,6 +205,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendee_count_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/location-stats",
+            get(events_by_range_location_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1512,6 +1516,69 @@ async fn events_by_range_attendee_count_stats(
         "max_attendees":          max_attendees,
         "events_with_attendees":  events_with,
         "events_without_attendees": events_without,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/location-stats?after=&before=&limit=N
+///
+/// Retorna `{calendar_id, with_location, without_location, top_locations:[{location,count}]}`
+/// para eventos em `dtstart ∈ [after, before)`. Uma query única com COUNT FILTER + subquery
+/// GROUP BY para top-N locations (limit default 20, max 200). Sprint #665.
+async fn events_by_range_location_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (with_location, without_location): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE location IS NOT NULL)::BIGINT, \
+            COUNT(*) FILTER (WHERE location IS NULL)::BIGINT \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+
+    let top_rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT location, COUNT(*)::BIGINT AS cnt \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND location IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY location \
+          ORDER BY cnt DESC, location ASC \
+          LIMIT 20",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let top_locations: Vec<serde_json::Value> = top_rows.into_iter()
+        .map(|(location, count)| serde_json::json!({"location": location, "count": count}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":      cal_id,
+        "with_location":    with_location,
+        "without_location": without_location,
+        "top_locations":    top_locations,
     })))
 }
 

@@ -640,6 +640,36 @@ pub async fn segment_stats(
     }))
 }
 
+/// GET /api/v1/search/index/segments/age-stats — num_docs distribution across segments.
+///
+/// Retorna `{segment_count, min_docs, max_docs, avg_docs}` com a distribuição de
+/// `num_docs` por segmento. `min_docs`, `max_docs` e `avg_docs` são `null` quando o
+/// índice está vazio. Graceful: zeros/nulls se `list_segments()` falhar. Sprint #664.
+pub async fn segment_age_stats(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let (segment_count, min_docs, max_docs, avg_docs) = store
+        .list_segments()
+        .map(|segs| {
+            if segs.is_empty() {
+                return (0usize, None::<u64>, None::<u64>, None::<f64>);
+            }
+            let docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+            let min  = docs.iter().copied().min();
+            let max  = docs.iter().copied().max();
+            let avg  = Some(docs.iter().sum::<u64>() as f64 / docs.len() as f64);
+            (segs.len(), min, max, avg)
+        })
+        .unwrap_or((0, None, None, None));
+
+    Json(serde_json::json!({
+        "segment_count": segment_count,
+        "min_docs":      min_docs,
+        "max_docs":      max_docs,
+        "avg_docs":      avg_docs,
+    }))
+}
+
 /// GET /api/v1/search/index/disk-usage — total disk bytes used by index segments.
 ///
 /// Aggregates `disk_bytes` across all segments returned by `list_segments()`.
