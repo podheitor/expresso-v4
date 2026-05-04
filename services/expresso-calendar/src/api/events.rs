@@ -185,6 +185,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/status-timeline",
+            get(events_by_range_status_timeline),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1193,6 +1197,72 @@ async fn events_by_range_duration_stats(
         "min_minutes":          min_minutes,
         "max_minutes":          max_minutes,
         "total_minutes":        total_minutes,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/status-timeline?after=&before=
+///
+/// Contagem de eventos por status por dia no range `dtstart ∈ [after, before)`.
+/// Cada bucket de dia inclui CONFIRMED, TENTATIVE, CANCELLED e OTHER (NULL/vazio/outro).
+/// Útil pra dashboards de "evolução de confirmações ao longo do tempo".
+/// Response: `{calendar_id, days: [{day, confirmed, tentative, cancelled, other}]}` ASC.
+/// Sprint #642.
+#[derive(Debug, serde::Deserialize)]
+struct EventsByRangeStatusTimelineQuery {
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    after:  Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    before: Option<OffsetDateTime>,
+}
+
+async fn events_by_range_status_timeline(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeStatusTimelineQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', dtstart AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(NULLIF(status,''),'OTHER')) = 'CONFIRMED')::BIGINT  AS confirmed, \
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(NULLIF(status,''),'OTHER')) = 'TENTATIVE')::BIGINT  AS tentative, \
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(NULLIF(status,''),'OTHER')) = 'CANCELLED')::BIGINT  AS cancelled, \
+            COUNT(*) FILTER (WHERE UPPER(COALESCE(NULLIF(status,''),'OTHER')) NOT IN \
+                             ('CONFIRMED','TENTATIVE','CANCELLED'))::BIGINT                            AS other \
+         FROM calendar_events \
+         WHERE tenant_id   = $1 \
+           AND calendar_id = $2 \
+           AND dtstart IS NOT NULL \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+         GROUP BY day \
+         ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let days: Vec<serde_json::Value> = rows.into_iter().map(|(day, confirmed, tentative, cancelled, other)| {
+        serde_json::json!({
+            "day":       day,
+            "confirmed": confirmed,
+            "tentative": tentative,
+            "cancelled": cancelled,
+            "other":     other,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "days":        days,
     })))
 }
 
