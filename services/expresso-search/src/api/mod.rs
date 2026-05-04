@@ -411,6 +411,36 @@ pub async fn index_health(
     })))
 }
 
+/// GET /api/v1/search/index/segments — list active index segments with metadata.
+///
+/// Returns `{count, segments: [{id, num_docs, disk_bytes}]}` for each segment
+/// visible to the current index reader. Useful for observability: spot segment
+/// explosion (many small segments → slow searches → trigger merge), confirm that
+/// vacuum removed unreferenced files, and see per-segment doc counts.
+/// Tenant-agnostic (ops endpoint). Sprint #613.
+pub async fn list_segments(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let segs = store
+        .list_segments()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let count = segs.len();
+    let segments: Vec<serde_json::Value> = segs
+        .into_iter()
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":         id,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "count":    count,
+        "segments": segments,
+    })))
+}
+
 /// GET /api/v1/search/stats?tenant_id= — aggregate doc counts for a tenant.
 ///
 /// Returns `{tenant_id, total, by_kind: [{kind, count}]}` ordered by count DESC.

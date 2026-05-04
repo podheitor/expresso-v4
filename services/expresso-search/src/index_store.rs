@@ -914,6 +914,35 @@ impl IndexStore {
         Ok((num_docs, num_segments, disk_bytes))
     }
 
+    /// Returns per-segment metadata: id, num_docs, and disk bytes consumed by
+    /// that segment's files. Tenant-agnostic (ops endpoint). Sprint #613.
+    pub fn list_segments(&self) -> anyhow::Result<Vec<(String, u64, u64)>> {
+        let i = &self.inner;
+        let searcher = i.reader.searcher();
+        let dir      = i.index.directory();
+
+        let segments: Vec<(String, u64, u64)> = searcher
+            .segment_readers()
+            .iter()
+            .map(|sr| {
+                let seg_id    = sr.segment_id().uuid_string();
+                let num_docs  = sr.num_docs() as u64;
+                // Sum file sizes for files belonging to this segment (prefix match).
+                let seg_bytes: u64 = dir.list_managed_files()
+                    .iter()
+                    .filter(|p| {
+                        p.to_string_lossy().starts_with(&seg_id)
+                    })
+                    .filter_map(|p| dir.get_file_handle(p).ok())
+                    .map(|fh| fh.len() as u64)
+                    .sum();
+                (seg_id, num_docs, seg_bytes)
+            })
+            .collect();
+
+        Ok(segments)
+    }
+
     /// Returns aggregate document counts for a given `tenant_id`:
     /// total docs + a breakdown by `kind`. Empty `kind` field is reported as
     /// `"unknown"`. Used by `GET /api/v1/search/stats`. Sprint #584.
