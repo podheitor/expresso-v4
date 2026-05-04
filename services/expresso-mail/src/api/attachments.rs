@@ -24,6 +24,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/messages/:id/attachments",        get(list_attachments))
         .route("/mail/messages/:id/attachments/:index", get(download_attachment))
+        .route("/mail/messages/:id/headers",            get(message_headers))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -214,6 +215,36 @@ fn percent_encode_filename(name: &str) -> String {
         }
     }
     out
+}
+
+/// GET /api/v1/mail/messages/:id/headers — headers parsed de uma mensagem.
+///
+/// Retorna `{message_id, headers: [{name, value}]}` com todos os headers RFC 5322
+/// da mensagem na ordem em que aparecem no raw `.eml`. Valores multi-ocorrência
+/// (ex.: `Received`) são listados individualmente. 404 se mensagem não pertence
+/// ao tenant/user. Sprint #587.
+async fn message_headers(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let (body_path, _) = fetch_message_meta(&state, &ctx, id).await?;
+    let raw = load_raw(&state, &body_path).await?;
+    let msg = MessageParser::default()
+        .parse(&raw)
+        .ok_or_else(|| MailError::InvalidMessage("failed to parse MIME".into()))?;
+
+    let headers: Vec<serde_json::Value> = msg
+        .headers()
+        .iter()
+        .map(|h| {
+            let name  = h.name();
+            let value = h.value().as_text().unwrap_or("").to_string();
+            serde_json::json!({"name": name, "value": value})
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({"message_id": id, "headers": headers})))
 }
 
 #[cfg(test)]
