@@ -41,7 +41,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/:id/tags",              get(list_tags).post(add_tag))
         .route("/api/v1/drive/files/:id/tags/:tag",         delete(remove_tag))
         .route("/api/v1/drive/files/:id/versions",          get(list_versions))
-        .route("/api/v1/drive/files/:id/versions/:v",       get(download_version).delete(delete_version))
+        .route("/api/v1/drive/files/:id/versions/:v",          get(download_version).delete(delete_version))
+        .route("/api/v1/drive/files/:id/versions/:v/metadata", get(version_metadata))
         .route("/api/v1/drive/files/:id/versions/:v/diff-content", get(diff_version_content))
         .route("/api/v1/drive/files/:id/expiry",              patch(set_expiry))
         .route("/api/v1/drive/files/:id/lock",               post(lock_file).delete(unlock_file))
@@ -803,6 +804,31 @@ async fn list_versions(
     let mut resp = Json(rows).into_response();
     resp.headers_mut().insert(header::LAST_MODIFIED, HeaderValue::from_str(&lm).unwrap());
     Ok(resp)
+}
+
+/// GET /api/v1/drive/files/:id/versions/:v/metadata — metadados de uma versão sem download.
+///
+/// Retorna `{version_no, mime_type, sha256, size_bytes, created_at}` para a versão `:v`.
+/// Útil pra verificar integridade (sha256) sem baixar o blob. 404 se versão não encontrada.
+/// Sprint #602.
+async fn version_metadata(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path((id, v)): Path<(Uuid, i32)>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    // Tenant-gate via file ownership check.
+    let _ = FileRepo::new(pool).get(ctx.tenant_id, id).await?;
+    let ver = VersionRepo::new(pool).get(ctx.tenant_id, id, v).await?
+        .ok_or(DriveError::NotFound(id))?;
+    Ok(Json(serde_json::json!({
+        "file_id":    id,
+        "version_no": ver.version_no,
+        "mime_type":  ver.mime_type,
+        "sha256":     ver.sha256,
+        "size_bytes": ver.size_bytes,
+        "created_at": ver.created_at,
+    })))
 }
 
 async fn download_version(
