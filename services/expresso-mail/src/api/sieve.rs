@@ -30,7 +30,9 @@ use crate::state::AppState;
 pub const MAX_SIEVE_SCRIPT_BYTES: usize = 64 * 1024;
 
 pub fn routes() -> Router<AppState> {
-    Router::new().route("/mail/sieve", get(get_sieve).put(put_sieve))
+    Router::new()
+        .route("/mail/sieve", get(get_sieve).put(put_sieve))
+        .route("/mail/sieve/test", axum::routing::post(test_sieve))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -109,6 +111,71 @@ async fn put_sieve(
     tx.commit().await?;
 
     Ok(Json(rules))
+}
+
+/// Max raw message size for sieve test endpoint. Prevents DoS via huge bodies
+/// through the sieve runtime. 1 MiB covers realistic test messages.
+pub const MAX_TEST_MESSAGE_BYTES: usize = 1024 * 1024;
+
+#[derive(Debug, Deserialize)]
+pub struct SieveTestRequest {
+    /// Sieve script to test (does not need to be the saved script).
+    pub script: String,
+    /// Raw RFC 2822 message to evaluate against the script.
+    pub raw_message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SieveTestAction {
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SieveTestResponse {
+    pub actions: Vec<SieveTestAction>,
+}
+
+/// POST /api/v1/mail/sieve/test — avalia o script Sieve fornecido contra a
+/// mensagem RFC 2822 fornecida e retorna as ações resultantes sem persistir
+/// nada. Permite que a UI valide regras antes de PUT. O script não precisa
+/// ser o script salvo do usuário — qualquer script válido funciona.
+async fn test_sieve(
+    _ctx: RequestCtx,
+    Json(req): Json<SieveTestRequest>,
+) -> Result<Json<SieveTestResponse>> {
+    if req.raw_message.len() > MAX_TEST_MESSAGE_BYTES {
+        return Err(MailError::BadRequest(format!(
+            "raw_message too large: {} bytes (max {})",
+            req.raw_message.len(), MAX_TEST_MESSAGE_BYTES
+        )));
+    }
+    // Validate + compile script first (size + syntax). Returns 400 on error.
+    validate_script(&req.script)?;
+
+    let actions_raw = crate::sieve::evaluate(req.script.as_bytes(), req.raw_message.as_bytes());
+
+    let actions: Vec<SieveTestAction> = actions_raw.into_iter().map(|a| match a {
+        crate::sieve::FilterAction::Keep { flags } =>
+            SieveTestAction { action: "keep".into(), folder: None, reason: None, address: None, flags },
+        crate::sieve::FilterAction::FileInto { folder, flags } =>
+            SieveTestAction { action: "fileinto".into(), folder: Some(folder), reason: None, address: None, flags },
+        crate::sieve::FilterAction::Reject { reason } =>
+            SieveTestAction { action: "reject".into(), folder: None, reason: Some(reason), address: None, flags: vec![] },
+        crate::sieve::FilterAction::Discard =>
+            SieveTestAction { action: "discard".into(), folder: None, reason: None, address: None, flags: vec![] },
+        crate::sieve::FilterAction::Redirect { address } =>
+            SieveTestAction { action: "redirect".into(), folder: None, reason: None, address: Some(address), flags: vec![] },
+    }).collect();
+
+    Ok(Json(SieveTestResponse { actions }))
 }
 
 /// Valida script antes de gravar. Ordem importa: tamanho primeiro pra
