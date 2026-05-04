@@ -608,6 +608,49 @@ struct DlqListQuery {
     offset: Option<u32>,
 }
 
+/// GET /api/v1/notifications/dlq/:id — inspeciona uma entrada individual da DLQ.
+///
+/// Retorna os mesmos campos que o list (id, tenant_id, user_id, kind, payload,
+/// attempts, last_error, failed_at). 404 se o entry não existe. Sprint #586.
+async fn get_dlq_entry(
+    State(st): State<AppState>,
+    Path(id):  Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    use sqlx::Row as _;
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let row = sqlx::query(
+        "SELECT id, tenant_id, user_id, kind, payload, attempts, last_error, failed_at \
+           FROM notification_dlq WHERE id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, Json(json!({"error": "not_found"}))))?;
+
+    let tenant_id:  Option<Uuid>      = row.try_get("tenant_id").ok();
+    let user_id:    Option<Uuid>      = row.try_get("user_id").ok();
+    let kind:       String            = row.get("kind");
+    let payload:    serde_json::Value = row.get("payload");
+    let attempts:   i32               = row.get("attempts");
+    let last_error: Option<String>    = row.try_get("last_error").ok();
+    let failed_at:  OffsetDateTime    = row.get("failed_at");
+
+    Ok(Json(json!({
+        "id":         id,
+        "tenant_id":  tenant_id,
+        "user_id":    user_id,
+        "kind":       kind,
+        "payload":    payload,
+        "attempts":   attempts,
+        "last_error": last_error,
+        "failed_at":  failed_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+    })))
+}
+
 /// DELETE /api/v1/notifications/dlq/:id — remove a DLQ entry (after manual retry).
 async fn delete_dlq_entry(
     State(st): State<AppState>,
@@ -927,7 +970,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/count",     get(count_dlq))
         .route("/api/v1/notifications/dlq/retry-all", post(retry_all_dlq))
         .route("/api/v1/notifications/dlq",           get(list_dlq).delete(purge_dlq))
-        .route("/api/v1/notifications/dlq/:id",       delete(delete_dlq_entry))
+        .route("/api/v1/notifications/dlq/:id",       get(get_dlq_entry).delete(delete_dlq_entry))
         .route("/api/v1/notifications/dlq/:id/retry", post(retry_dlq_entry))
         .merge(expresso_observability::metrics_router())
         .layer(middleware::from_fn_with_state(state.clone(), inject_validator))
