@@ -164,6 +164,50 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Trash auto-purge worker — hourly scan; per-tenant config in tenants.config JSONB.
+    // Only runs when DATABASE__URL is set and tenants have trash_auto_purge_days configured.
+    if let Some(pool) = db.clone() {
+        let root = data_root.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
+            ticker.tick().await; // skip first immediate tick
+            loop {
+                ticker.tick().await;
+                // Query tenants that have trash_auto_purge_days configured.
+                let rows: Vec<(uuid::Uuid, i64)> = match sqlx::query_as(
+                    "SELECT id, (config->>'trash_auto_purge_days')::bigint \
+                     FROM tenants \
+                     WHERE config ? 'trash_auto_purge_days' \
+                       AND (config->>'trash_auto_purge_days')::bigint BETWEEN 1 AND 3650",
+                )
+                .fetch_all(&pool)
+                .await {
+                    Ok(r) => r,
+                    Err(e) => { warn!(error = %e, "trash auto-purge: tenant query failed"); continue; }
+                };
+
+                for (tenant_id, days) in rows {
+                    let cutoff = time::OffsetDateTime::now_utc()
+                        - time::Duration::days(days);
+                    let repo = domain::file::FileRepo::new(&pool);
+                    match repo.purge_trashed_older_than(tenant_id, cutoff).await {
+                        Ok(purged) if !purged.is_empty() => {
+                            for (file_id, key) in &purged {
+                                if let Some(k) = key {
+                                    let _ = tokio::fs::remove_file(root.join(k)).await;
+                                }
+                                info!(%tenant_id, %file_id, "trash auto-purge: file removed");
+                            }
+                            info!(%tenant_id, count = purged.len(), days, "trash auto-purge done");
+                        }
+                        Ok(_)  => {}
+                        Err(e) => warn!(error = %e, %tenant_id, "trash auto-purge failed"),
+                    }
+                }
+            }
+        });
+    }
+
     let (multi, resolver) = resolve_multi_realm();
     let mut app = api::router(state);
     if let Some(m) = multi    { app = app.layer(axum::extract::Extension(m)); }

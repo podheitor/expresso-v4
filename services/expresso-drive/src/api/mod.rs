@@ -4,6 +4,7 @@ mod comments;
 mod files;
 mod health;
 mod reactions;
+mod settings;
 mod shares;
 mod wopi;
 mod wopi_metrics;
@@ -26,6 +27,7 @@ pub fn router(state: AppState) -> Router {
         .merge(comments::routes())
         .merge(reactions::routes())
         .merge(files::routes())
+        .merge(settings::routes())
         .merge(shares::routes())
         .merge(wopi::routes())
         .merge(tags::routes())
