@@ -27,6 +27,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/:id/headers",            get(message_headers))
         .route("/mail/messages/:id/body",               get(message_body))
         .route("/mail/messages/:id/structure",          get(message_structure))
+        .route("/mail/messages/:id/raw",                get(download_raw))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -347,6 +348,42 @@ async fn message_structure(
     let root = build_node(&msg, 0);
 
     Ok(Json(serde_json::json!({"message_id": id, "structure": root})))
+}
+
+/// GET /api/v1/mail/messages/:id/raw — download the raw .eml file.
+///
+/// Returns the verbatim RFC 5322 bytes with `Content-Type: message/rfc822` and
+/// `Content-Disposition: attachment; filename="<id>.eml"`. ETag based on
+/// size_bytes + id (same scheme as list_attachments — immutable after delivery).
+/// Sprint #601.
+async fn download_raw(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(id):     Path<Uuid>,
+    req_headers:  HeaderMap,
+) -> Result<Response> {
+    let (body_path, size_bytes) = fetch_message_meta(&state, &ctx, id).await?;
+
+    let etag = format!("\"{}-{}\"", size_bytes, id);
+    if let Some(inm) = req_headers.get(header::IF_NONE_MATCH) {
+        if inm.as_bytes() == etag.as_bytes() {
+            return Ok(StatusCode::NOT_MODIFIED.into_response());
+        }
+    }
+
+    let raw = load_raw(&state, &body_path).await?;
+    let filename = format!("{id}.eml");
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE,        "message/rfc822".to_string()),
+            (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{filename}\"")),
+            (header::ETAG,                etag),
+        ],
+        raw,
+    )
+        .into_response())
 }
 
 #[cfg(test)]
