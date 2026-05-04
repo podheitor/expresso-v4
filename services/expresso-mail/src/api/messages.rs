@@ -43,6 +43,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flags",      get(flag_stats))
         .route("/mail/messages/stats/threads",    get(thread_stats))
         .route("/mail/messages/stats/senders",    get(sender_stats))
+        .route("/mail/messages/stats/size",       get(size_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -1898,6 +1899,74 @@ async fn sender_stats(
     }).collect();
 
     let mut resp = serde_json::json!({"senders": senders});
+    if let Some(folder) = params.folder {
+        resp["folder"] = serde_json::Value::String(folder);
+    }
+    Ok(Json(resp))
+}
+
+/// GET /api/v1/mail/messages/stats/size?folder=
+///
+/// Message size stats for the authenticated user: avg, min, max, and total bytes.
+/// Optional `folder` scopes to a specific mailbox. Useful for storage dashboards.
+/// Response: `{folder?, total_messages, avg_bytes, min_bytes, max_bytes, total_bytes}`.
+/// All size fields are `null` when total_messages = 0. Sprint #640.
+#[derive(Debug, Deserialize)]
+struct SizeStatsParams {
+    folder: Option<String>,
+}
+
+async fn size_stats(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<SizeStatsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let folder_filter = if params.folder.is_some() {
+        "AND mb.name = $3"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT \
+            COUNT(*)::BIGINT                     AS total_messages, \
+            AVG(m.size_bytes)                    AS avg_bytes, \
+            MIN(m.size_bytes)::BIGINT            AS min_bytes, \
+            MAX(m.size_bytes)::BIGINT            AS max_bytes, \
+            COALESCE(SUM(m.size_bytes), 0)::BIGINT AS total_bytes \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+               {folder_filter}"
+    );
+
+    let row: (i64, Option<f64>, Option<i64>, Option<i64>, i64) = if let Some(ref folder) = params.folder {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .bind(folder)
+            .fetch_one(&mut *tx)
+            .await?
+    } else {
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(ctx.user_id)
+            .fetch_one(&mut *tx)
+            .await?
+    };
+    tx.commit().await?;
+
+    let (total_messages, avg_bytes, min_bytes, max_bytes, total_bytes) = row;
+
+    let mut resp = serde_json::json!({
+        "total_messages": total_messages,
+        "avg_bytes":      avg_bytes,
+        "min_bytes":      min_bytes,
+        "max_bytes":      max_bytes,
+        "total_bytes":    total_bytes,
+    });
     if let Some(folder) = params.folder {
         resp["folder"] = serde_json::Value::String(folder);
     }
