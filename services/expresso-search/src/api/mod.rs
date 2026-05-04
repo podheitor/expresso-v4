@@ -520,6 +520,30 @@ pub async fn search_stats(
     })))
 }
 
+/// GET /api/v1/search/index/health/detailed — consolidated index health.
+///
+/// Combines index_health (#591) + writer_stats (#628) into a single response:
+/// `{status, num_docs, num_segments, disk_bytes, writer_busy, heap_budget_bytes}`.
+/// `status` is "ok" always — endpoint exists to surface metrics, not circuit-break.
+/// Useful as a single-call "how is the index?" dashboard source. Sprint #633.
+pub async fn index_health_detailed(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let (num_docs, num_segments, disk_bytes) = store
+        .index_health()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let (heap_budget_bytes, writer_busy, _, _) = store.writer_stats();
+
+    Ok(Json(serde_json::json!({
+        "status":            "ok",
+        "num_docs":          num_docs,
+        "num_segments":      num_segments,
+        "disk_bytes":        disk_bytes,
+        "writer_busy":       writer_busy,
+        "heap_budget_bytes": heap_budget_bytes,
+    })))
+}
+
 /// GET /api/v1/search/index/writer/stats — writer-level observability.
 ///
 /// Returns: `heap_budget_bytes` (static 50 MB allocated to the writer),
