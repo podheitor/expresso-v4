@@ -115,6 +115,10 @@ pub fn routes() -> Router<AppState> {
             get(intersect_exclude_files_by_tags),
         )
         .route(
+            "/api/v1/drive/tags/intersect-exclude-by-user",
+            get(intersect_exclude_files_by_tags_by_user),
+        )
+        .route(
             "/api/v1/drive/tags/union",
             get(union_files_by_tags),
         )
@@ -1280,6 +1284,98 @@ async fn intersect_exclude_files_by_tags(
     let file_count = file_ids.len() as i64;
 
     Ok(Json(IntersectExcludeResult { tags, exclude, file_ids, file_count }))
+}
+
+#[derive(Debug, Deserialize)]
+struct IntersectExcludeByUserQuery {
+    tags:       String,
+    exclude:    Option<String>,
+    /// Filter by file owner. Defaults to the authenticated user when absent.
+    created_by: Option<Uuid>,
+}
+
+#[derive(Debug, Serialize)]
+struct IntersectExcludeByUserResult {
+    tags:       Vec<String>,
+    exclude:    Vec<String>,
+    created_by: Uuid,
+    file_ids:   Vec<Uuid>,
+    file_count: i64,
+}
+
+/// GET /api/v1/drive/tags/intersect-exclude-by-user?tags=a,b&exclude=x,y[&created_by=uuid] —
+/// variante user-scoped do intersect-exclude (#489, sprint #569): além das
+/// condições AND-set + NOT-EXISTS, filtra por `f.owner_user_id = created_by`.
+/// `created_by` ausente → usa o usuário autenticado (self-lookup seguro).
+/// `created_by` presente → deve ser UUID válido; tenant-scoped (tenant_id
+/// garante que um usuário não veja arquivos de outro tenant). Útil pra
+/// "todos docs com cliente=acme do usuário X mas sem confidential" — caso de
+/// uso em views compartilhadas ou admin por-usuário. Mesmo normalização e
+/// validação do #489 (lowercase, trim, dedup, max 32 tags, max 64 chars/tag).
+async fn intersect_exclude_files_by_tags_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<IntersectExcludeByUserQuery>,
+) -> Result<impl IntoResponse> {
+    fn norm(raw: &str) -> Vec<String> {
+        let mut out: Vec<String> = raw
+            .split(',')
+            .map(|t| t.trim().to_lowercase())
+            .filter(|t| !t.is_empty())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+    let tags    = norm(&q.tags);
+    let exclude = norm(q.exclude.as_deref().unwrap_or(""));
+
+    if tags.is_empty() {
+        return Err(DriveError::BadRequest("at least one tag required".into()));
+    }
+    if tags.len() > 32 || exclude.len() > 32 {
+        return Err(DriveError::BadRequest("max 32 tags per list".into()));
+    }
+    for t in tags.iter().chain(exclude.iter()) {
+        if t.chars().count() > 64 {
+            return Err(DriveError::BadRequest("each tag must be 1-64 characters".into()));
+        }
+    }
+
+    let created_by = q.created_by.unwrap_or(ctx.user_id);
+    let pool = state.db_or_unavailable()?;
+    let n = tags.len() as i64;
+
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT t.file_id \
+         FROM drive_file_tags t \
+         JOIN drive_files f ON f.id = t.file_id AND f.tenant_id = t.tenant_id \
+         WHERE t.tenant_id = $1 \
+           AND t.tag = ANY($2::text[]) \
+           AND f.deleted_at IS NULL \
+           AND f.owner_user_id = $5 \
+           AND NOT EXISTS ( \
+                 SELECT 1 FROM drive_file_tags x \
+                  WHERE x.tenant_id = t.tenant_id \
+                    AND x.file_id   = t.file_id \
+                    AND x.tag = ANY($4::text[]) \
+           ) \
+         GROUP BY t.file_id \
+         HAVING COUNT(DISTINCT t.tag) = $3 \
+         ORDER BY t.file_id",
+    )
+    .bind(ctx.tenant_id)
+    .bind(&tags)
+    .bind(n)
+    .bind(&exclude)
+    .bind(created_by)
+    .fetch_all(pool)
+    .await?;
+
+    let file_ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
+    let file_count = file_ids.len() as i64;
+
+    Ok(Json(IntersectExcludeByUserResult { tags, exclude, created_by, file_ids, file_count }))
 }
 
 #[derive(Debug, Serialize)]
