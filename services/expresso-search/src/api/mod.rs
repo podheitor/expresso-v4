@@ -347,6 +347,24 @@ pub async fn merge_segments(
     })))
 }
 
+/// POST /api/v1/search/index/vacuum — garbage-collect unreferenced segment files.
+///
+/// Remove arquivos de segmento obsoletos (tombstones, merges antigos) do disco.
+/// Análogo a VACUUM no Postgres — não afeta queries em andamento.
+/// Retorna `{deleted_files}` com número de arquivos removidos. Sprint #603.
+pub async fn vacuum_index(
+    State(store): State<IndexStore>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let deleted = store
+        .vacuum()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "deleted_files": deleted,
+    })))
+}
+
 /// GET /api/v1/search/health/index — Tantivy index health info (ops, tenant-agnostic).
 ///
 /// Retorna `{num_docs, num_segments, disk_bytes}`.

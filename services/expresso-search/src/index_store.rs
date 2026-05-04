@@ -879,6 +879,18 @@ impl IndexStore {
         Ok((merged_from, "merged"))
     }
 
+    /// Garbage-collect unreferenced segment files (tombstones, old merges).
+    /// Returns the number of files deleted. Sprint #603.
+    pub async fn vacuum(&self) -> anyhow::Result<usize> {
+        let future = {
+            let mut writer = self.inner.writer.lock().await;
+            writer.garbage_collect_files()
+        };
+        let result = future.await
+            .map_err(|e| anyhow::anyhow!("vacuum failed: {:?}", e))?;
+        Ok(result.deleted_files.len())
+    }
+
     /// Returns index-level health info: total docs across all tenants, number of
     /// segments, and estimated disk size in bytes. Tenant-agnostic (ops endpoint).
     /// Sprint #591.
