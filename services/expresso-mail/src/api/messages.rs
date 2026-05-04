@@ -28,6 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/mail/messages",            get(list_messages))
         .route("/mail/search",              get(search_messages))
+        .route("/mail/threads",             get(list_threads))
         .route("/mail/threads/:thread_id",  get(list_thread))
         .route("/mail/messages/:id",        get(get_message))
         .route("/mail/messages/:id",        delete(delete_message))
@@ -818,6 +819,84 @@ async fn fetch_body_bytes_api(state: &AppState, body_path: &str) -> Option<Vec<u
     } else {
         None
     }
+}
+
+/// GET /api/v1/mail/threads?folder=&limit=&offset= — list distinct threads with per-thread stats.
+///
+/// Returns threads visible to the authenticated user, ordered by `last_received_at DESC`
+/// (most recently active first). Each entry includes `thread_id`, `message_count`,
+/// `unread_count`, `subject` (from the first message), `from_addrs` (unique senders),
+/// `last_received_at`, and `has_attachments` (any in thread). Sprint #625.
+#[derive(Debug, Deserialize)]
+struct ListThreadsParams {
+    folder: Option<String>,
+    limit:  Option<i64>,
+    offset: Option<i64>,
+}
+
+async fn list_threads(
+    State(state):  State<AppState>,
+    ctx:           RequestCtx,
+    Query(params): Query<ListThreadsParams>,
+) -> Result<Json<serde_json::Value>> {
+    let limit  = params.limit.unwrap_or(50).clamp(1, 200);
+    let offset = params.offset.unwrap_or(0).max(0);
+
+    let folder_filter = params.folder.as_deref()
+        .map(|f| format!("AND mb.folder_name = '{}'", f.replace('\'', "''")))
+        .unwrap_or_default();
+
+    let sql = format!(
+        "SELECT \
+            m.thread_id, \
+            COUNT(*)::BIGINT AS message_count, \
+            COUNT(*) FILTER (WHERE NOT (m.flags @> ARRAY['\\\\Seen']))::BIGINT AS unread_count, \
+            MIN(m.subject) AS subject, \
+            MAX(m.received_at) AS last_received_at, \
+            BOOL_OR(m.has_attachments) AS has_attachments \
+         FROM messages m \
+         JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND m.thread_id IS NOT NULL \
+           {folder_filter} \
+         GROUP BY m.thread_id \
+         ORDER BY last_received_at DESC \
+         LIMIT $3 OFFSET $4"
+    );
+
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows = sqlx::query(&sql)
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    use sqlx::Row as _;
+    let threads: Vec<serde_json::Value> = rows.iter().map(|r| {
+        let thread_id:       Uuid                   = r.get("thread_id");
+        let message_count:   i64                    = r.get("message_count");
+        let unread_count:    i64                    = r.get("unread_count");
+        let subject:         Option<String>         = r.try_get("subject").ok().flatten();
+        let last_received_at: OffsetDateTime        = r.get("last_received_at");
+        let has_attachments: bool                   = r.get("has_attachments");
+        serde_json::json!({
+            "thread_id":       thread_id,
+            "message_count":   message_count,
+            "unread_count":    unread_count,
+            "subject":         subject,
+            "last_received_at": last_received_at.format(&time::format_description::well_known::Rfc3339).unwrap_or_default(),
+            "has_attachments": has_attachments,
+        })
+    }).collect();
+
+    Ok(Json(serde_json::json!({
+        "threads": threads,
+        "limit":   limit,
+        "offset":  offset,
+    })))
 }
 
 /// GET /api/v1/mail/threads/:thread_id — list all messages in thread ordered ASC.
