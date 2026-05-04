@@ -253,6 +253,27 @@ impl<'a> QuotaRepo<'a> {
         Ok(rows)
     }
 
+    /// Top-N owners by file count + total bytes within a tenant (non-deleted files only).
+    /// Returns `Vec<(owner_user_id, file_count, total_bytes)>` ordered by file_count DESC.
+    /// Sprint #646.
+    pub async fn top_owners_by_file_count(&self, tenant_id: Uuid, limit: i64) -> Result<Vec<(Uuid, i64, i64)>> {
+        let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+            "SELECT owner_user_id, \
+                    COUNT(*)::BIGINT AS file_count, \
+                    COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+              GROUP BY owner_user_id \
+              ORDER BY file_count DESC \
+              LIMIT $2",
+        )
+        .bind(tenant_id)
+        .bind(limit)
+        .fetch_all(self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Returns (month, file_count) ordered ASC — when files were created, by calendar month.
     /// Sprint #641.
     pub async fn age_by_month(&self, tenant_id: Uuid) -> Result<Vec<(String, i64)>> {

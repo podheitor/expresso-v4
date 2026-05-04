@@ -60,6 +60,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/extensions",      get(file_stats_extensions))
         .route("/api/v1/drive/files/stats/activity",       get(file_stats_activity))
         .route("/api/v1/drive/files/stats/age",            get(file_stats_age))
+        .route("/api/v1/drive/files/stats/owners",         get(file_stats_owners))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -895,6 +896,32 @@ async fn file_stats_age(
         serde_json::json!({"month": month, "file_count": file_count})
     }).collect();
     Ok(Json(serde_json::json!({"months": months})))
+}
+
+/// GET /api/v1/drive/files/stats/owners?limit=N — top-N file owners by file count.
+///
+/// Returns `{owners: [{owner_user_id, file_count, total_bytes}]}` ordered by
+/// `file_count DESC`. Complements `stats/users` (#621) which orders by `used_bytes`;
+/// here the primary sort is file count — useful for identifying users who create
+/// many small files vs few large ones. Only counts non-deleted files (`kind='file'`).
+/// `limit` default 20, max 200. Sprint #646.
+#[derive(Debug, Deserialize)]
+struct StatsOwnersQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_owners(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsOwnersQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool  = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+    let rows  = QuotaRepo::new(pool).top_owners_by_file_count(ctx.tenant_id, limit).await?;
+    let owners: Vec<serde_json::Value> = rows.into_iter().map(|(uid, fc, tb)| {
+        serde_json::json!({"owner_user_id": uid, "file_count": fc, "total_bytes": tb})
+    }).collect();
+    Ok(Json(serde_json::json!({"owners": owners})))
 }
 
 /// GET /api/v1/drive/files/:id/versions?limit=N&before_version=V
