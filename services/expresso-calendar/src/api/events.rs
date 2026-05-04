@@ -169,6 +169,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendees),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/organizers",
+            get(events_by_range_organizers),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -934,6 +938,74 @@ async fn events_by_range_attendees(
         "events_scanned": events.len(),
         "count":          attendees.len(),
         "attendees":      attendees,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/organizers?after=&before=
+///
+/// Returns the union of unique `organizer_email` values across all events whose
+/// `dtstart ∈ [after, before)`. Unlike `attendees`, organizer_email is a SQL
+/// column (no ical_raw parse needed) — single query, dedup via DISTINCT.
+/// Response: `{calendar_id, events_scanned, count, organizers: [email]}`.
+/// Sprint #622.
+async fn events_by_range_organizers(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeAttendeesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    // Total events scanned (for the events_scanned field).
+    let (events_scanned,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    // Distinct non-null organizer_email values sorted alphabetically.
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT organizer_email \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND organizer_email IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          ORDER BY organizer_email ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let organizers: Vec<&str> = rows.iter().map(|(e,)| e.as_str()).collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "events_scanned": events_scanned,
+        "count":          organizers.len(),
+        "organizers":     organizers,
     })))
 }
 
