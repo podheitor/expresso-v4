@@ -2688,6 +2688,168 @@ async fn dlq_stats_by_day_and_hour_and_kind(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-user-and-kind?limit=N — 3D tenant×user×kind.
+///
+/// GROUP BY (tenant_id, user_id, kind) COUNT DESC; default limit 50. Sprint #950.
+async fn dlq_stats_by_tenant_and_user_and_kind(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+
+    let rows: Vec<(Option<Uuid>, Option<Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT \
+            tenant_id, \
+            user_id, \
+            COALESCE(kind, 'unknown') AS kind, \
+            COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY tenant_id, user_id, kind \
+          ORDER BY count DESC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tenant, user, kind, count)| json!({"tenant_id": tenant, "user_id": user, "kind": kind, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-and-hour?since=&until= — GROUP BY (user_id, hour_of_day) COUNT.
+///
+/// ORDER BY user_id ASC, hour_of_day ASC. Sprint #945.
+async fn dlq_stats_by_user_and_hour(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since = q.since.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+    let until = q.until.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+
+    let rows: Vec<(Option<Uuid>, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            user_id, \
+            EXTRACT(HOUR FROM failed_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+            AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+          GROUP BY user_id, hour_of_day \
+          ORDER BY user_id ASC, hour_of_day ASC",
+    )
+    .bind(since).bind(until)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(user, hour, count)| json!({"user_id": user, "hour": hour, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-day-and-kind?since=&until= — 3D tenant×day×kind.
+///
+/// GROUP BY (tenant_id, day, kind) ORDER BY day ASC, tenant_id ASC. Sprint #940.
+async fn dlq_stats_by_tenant_and_day_and_kind(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since = q.since.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+    let until = q.until.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+
+    let rows: Vec<(Option<Uuid>, String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            tenant_id, \
+            to_char(DATE_TRUNC('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COALESCE(kind, 'unknown') AS kind, \
+            COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+            AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+          GROUP BY tenant_id, day, kind \
+          ORDER BY day ASC, tenant_id ASC, kind ASC",
+    )
+    .bind(since).bind(until)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tenant, day, kind, count)| json!({"tenant_id": tenant, "day": day, "kind": kind, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-and-user-and-day?since=&until= — 3D kind×user×day.
+///
+/// GROUP BY (kind, user_id, day) ORDER BY day ASC, kind ASC. Sprint #935.
+async fn dlq_stats_by_kind_and_user_and_day(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since = q.since.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+    let until = q.until.as_deref()
+        .map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e.to_string()}))))?;
+
+    let rows: Vec<(String, Option<Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(kind, 'unknown') AS kind, \
+            user_id, \
+            to_char(DATE_TRUNC('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+            AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+          GROUP BY kind, user_id, day \
+          ORDER BY day ASC, kind ASC, user_id ASC",
+    )
+    .bind(since).bind(until)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, user, day, count)| json!({"kind": kind, "user_id": user, "day": day, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-hour-and-day?since=&until= — 2D (day, hour) granularidade.
 ///
 /// DATE_TRUNC('hour') → extrai dia e hora; GROUP BY (day, hour) ASC. Sprint #915.
@@ -3896,6 +4058,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-hour-and-day-and-tenant",      get(dlq_stats_by_hour_and_day_and_tenant))
         .route("/api/v1/notifications/dlq/stats/by-day-and-hour-and-kind",        get(dlq_stats_by_day_and_hour_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-hour-and-day",                 get(dlq_stats_by_hour_and_day))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-user-and-kind",     get(dlq_stats_by_tenant_and_user_and_kind))
+        .route("/api/v1/notifications/dlq/stats/by-user-and-hour",                get(dlq_stats_by_user_and_hour))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-day-and-kind",      get(dlq_stats_by_tenant_and_day_and_kind))
+        .route("/api/v1/notifications/dlq/stats/by-kind-and-user-and-day",        get(dlq_stats_by_kind_and_user_and_day))
         .route("/api/v1/notifications/dlq/stats/by-attempts-and-tenant",       get(dlq_stats_by_attempts_and_tenant))
         .route("/api/v1/notifications/dlq/stats/failed-at-hour-distribution",  get(dlq_stats_failed_at_hour_distribution))
         .route("/api/v1/notifications/dlq/stats/retry-rate-by-kind",          get(dlq_stats_retry_rate_by_kind))

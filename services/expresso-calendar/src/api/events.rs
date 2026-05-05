@@ -377,6 +377,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_organizer_count_by_day),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/alarm-count-stats",
+            get(events_by_range_alarm_count_stats),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-bucket",
+            get(events_by_range_duration_bucket),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-entropy",
+            get(events_by_range_summary_entropy),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/class-stats",
+            get(events_by_range_class_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/rrule-interval-stats",
             get(events_by_range_rrule_interval_stats),
         )
@@ -3320,6 +3336,179 @@ async fn events_by_range_attendee_response_stats(
         .collect();
     rows.sort_by(|a, b| b["count"].as_i64().cmp(&a["count"].as_i64()));
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "total_attendee_responses": total, "rows": rows})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/alarm-count-stats?after=&before= — with/without VALARM + avg alarms/evento.
+///
+/// LIKE '%BEGIN:VALARM%'; conta via regexp_count. Sprint #954.
+async fn events_by_range_alarm_count_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (with_alarm, without_alarm, total, avg_alarms): (i64, i64, i64, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE ical_raw LIKE '%BEGIN:VALARM%')::BIGINT     AS with_alarm, \
+            COUNT(*) FILTER (WHERE ical_raw NOT LIKE '%BEGIN:VALARM%')::BIGINT AS without_alarm, \
+            COUNT(*)::BIGINT AS total, \
+            AVG(regexp_count(ical_raw, 'BEGIN:VALARM'))::FLOAT8 \
+                FILTER (WHERE ical_raw LIKE '%BEGIN:VALARM%') AS avg_alarms_per_event \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let pct_with = if total > 0 { (with_alarm as f64 / total as f64 * 1000.0).round() / 10.0 } else { 0.0 };
+    Ok(Json(serde_json::json!({
+        "calendar_id":           cal_id,
+        "with_alarm":            with_alarm,
+        "without_alarm":         without_alarm,
+        "total":                 total,
+        "pct_with_alarm":        pct_with,
+        "avg_alarms_per_event":  avg_alarms,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-bucket?after=&before= — histograma <30min/30-60min/1-4h/4-8h/>8h.
+///
+/// EXTRACT(EPOCH FROM (dtend-dtstart))/60 → minutos; 5 buckets FILTER. Sprint #949.
+async fn events_by_range_duration_bucket(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (c0, c1, c2, c3, c4): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart))/60.0 < 30)::BIGINT         AS lt_30m, \
+            COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart))/60.0 BETWEEN 30 AND 59.999)::BIGINT AS m30_60, \
+            COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart))/60.0 BETWEEN 60 AND 239.999)::BIGINT AS h1_4, \
+            COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart))/60.0 BETWEEN 240 AND 479.999)::BIGINT AS h4_8, \
+            COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart))/60.0 >= 480)::BIGINT       AS gt_8h \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtend IS NOT NULL AND dtstart IS NOT NULL AND dtend > dtstart \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total = c0 + c1 + c2 + c3 + c4;
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "total_events_with_duration": total,
+        "buckets": [
+            {"range": "<30min",    "count": c0},
+            {"range": "30-60min",  "count": c1},
+            {"range": "1-4h",      "count": c2},
+            {"range": "4-8h",      "count": c3},
+            {"range": ">8h",       "count": c4},
+        ]
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-entropy?after=&before= — Shannon H sobre summaries únicos.
+///
+/// H=-Σp*log2(p) sobre LOWER(TRIM(summary)); guard n<2. Sprint #944.
+async fn events_by_range_summary_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND summary IS NOT NULL AND TRIM(summary) <> '' \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY LOWER(TRIM(summary))",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let counts: Vec<i64> = rows.into_iter().map(|(c,)| c).collect();
+    let total: i64 = counts.iter().sum();
+    let entropy = if total < 2 { None } else {
+        Some(counts.iter().filter(|&&c| c > 0).fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / total as f64;
+            acc - p * p.log2()
+        }))
+    };
+    let distinct = counts.len() as i64;
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "entropy": entropy,
+        "distinct_summaries": distinct,
+        "total_events": total,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/class-stats?after=&before= — CLASS distribution global.
+///
+/// COALESCE(UPPER(class),'UNSET') GROUP BY class COUNT DESC; classes RFC 5545. Sprint #939.
+async fn events_by_range_class_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(NULLIF(UPPER(class), ''), 'UNSET') AS class, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY class \
+          ORDER BY count DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, count)| {
+            let pct = if total > 0 { (count as f64 / total as f64 * 1000.0).round() / 10.0 } else { 0.0 };
+            serde_json::json!({"class": class, "count": count, "pct": pct})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "total": total, "rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/organizer-count-by-day?after=&before= — COUNT DISTINCT organizer por dia.

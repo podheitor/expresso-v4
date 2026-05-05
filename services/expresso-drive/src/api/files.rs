@@ -113,6 +113,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/created-by-hour",           get(file_stats_created_by_hour))
         .route("/api/v1/drive/files/stats/last-modified-by-folder",   get(file_stats_last_modified_by_folder))
         .route("/api/v1/drive/files/stats/starred-by-folder",         get(file_stats_starred_by_folder))
+        .route("/api/v1/drive/files/stats/zero-size",                 get(file_stats_zero_size))
+        .route("/api/v1/drive/files/stats/ext-by-weekday",            get(file_stats_ext_by_weekday))
+        .route("/api/v1/drive/files/stats/size-by-weekday",           get(file_stats_size_by_weekday))
+        .route("/api/v1/drive/files/stats/modified-by-hour",          get(file_stats_modified_by_hour))
         .route("/api/v1/drive/files/stats/ext-version-age",           get(file_stats_ext_version_age))
         .route("/api/v1/drive/files/stats/storage-by-folder",        get(file_stats_storage_by_folder))
         .route("/api/v1/drive/files/stats/avg-file-size-by-folder", get(file_stats_avg_file_size_by_folder))
@@ -3969,6 +3973,134 @@ async fn file_stats_last_modified_by_folder(
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/zero-size — COUNT kind='file' WHERE size_bytes = 0 OR NULL.
+///
+/// total_zero + null_size + zero_bytes; útil para detectar uploads incompletos. Sprint #951.
+async fn file_stats_zero_size(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (null_size, zero_bytes, total_files): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE size_bytes IS NULL)::BIGINT     AS null_size, \
+            COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT         AS zero_bytes, \
+            COUNT(*)::BIGINT                                        AS total_files \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let total_zero = null_size + zero_bytes;
+    Ok(Json(serde_json::json!({
+        "null_size":   null_size,
+        "zero_bytes":  zero_bytes,
+        "total_zero":  total_zero,
+        "total_files": total_files,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/ext-by-weekday — COUNT por (DOW, extensão) de created_at.
+///
+/// LOWER(SUBSTRING(name FROM '\.[^.]*$')); GROUP BY (dow, ext); ORDER BY dow, count DESC. Sprint #946.
+async fn file_stats_ext_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND created_at IS NOT NULL \
+          GROUP BY dow, ext \
+          ORDER BY dow ASC, count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let mut by_dow: std::collections::BTreeMap<i32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (dow, ext, count) in rows {
+        by_dow.entry(dow).or_default().push(serde_json::json!({"ext": ext, "count": count}));
+    }
+    let result: Vec<serde_json::Value> = by_dow.into_iter()
+        .map(|(dow, exts)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "extensions": exts})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-by-weekday — AVG/SUM size_bytes por DOW de created_at (0=Dom).
+///
+/// EXTRACT(DOW FROM created_at) GROUP BY dow; mostra padrão de uploads por dia da semana. Sprint #941.
+async fn file_stats_size_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(COALESCE(size_bytes, 0))::FLOAT8 AS avg_size_bytes, \
+            SUM(COALESCE(size_bytes, 0))::BIGINT  AS total_size_bytes, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND created_at IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, avg, total, count)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "avg_size_bytes": avg, "total_size_bytes": total, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/modified-by-hour — histograma hora-do-dia de updated_at (0-23).
+///
+/// EXTRACT(HOUR FROM updated_at) GROUP BY hour; complementa created-by-hour (#926). Sprint #936.
+async fn file_stats_modified_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM updated_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND updated_at IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(hour, count)| serde_json::json!({"hour": hour, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/starred-by-folder?limit=N — COUNT starred_at IS NOT NULL por pasta.

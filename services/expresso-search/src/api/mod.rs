@@ -2159,6 +2159,81 @@ pub async fn segment_above_p75(
     Json(serde_json::json!({"p75_bytes": p75, "rows": above, "count_above": count_above, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-floor — segmento com menor num_docs e valor do piso.
+///
+/// Retorna `{floor_docs,segment:{id,num_docs,disk_bytes}|null,segment_count}`. Sprint #953.
+pub async fn segment_docs_floor(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"floor_docs": null, "segment": null, "segment_count": 0}));
+    }
+    let min_seg = segs.iter().min_by_key(|(_, nd, _)| *nd);
+    let result = min_seg.map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}));
+    let floor = min_seg.map(|(_, nd, _)| *nd);
+    Json(serde_json::json!({"floor_docs": floor, "segment": result, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/id-length-stats — avg/min/max LENGTH(id) dos segment ids.
+///
+/// Retorna `{avg_id_length,min_id_length,max_id_length,segment_count}`. Sprint #948.
+pub async fn segment_id_length_stats(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_id_length": null, "min_id_length": null, "max_id_length": null, "segment_count": 0}));
+    }
+    let lengths: Vec<usize> = segs.iter().map(|(id, _, _)| id.len()).collect();
+    let min_len = lengths.iter().min().copied().unwrap_or(0);
+    let max_len = lengths.iter().max().copied().unwrap_or(0);
+    let avg_len = lengths.iter().sum::<usize>() as f64 / n as f64;
+    Json(serde_json::json!({
+        "avg_id_length": avg_len,
+        "min_id_length": min_len,
+        "max_id_length": max_len,
+        "segment_count": n,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum — soma total de num_docs de todos os segmentos.
+///
+/// Retorna `{total_docs,segment_count,avg_docs_per_segment}`. Sprint #943.
+pub async fn segment_docs_sum(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let avg = if n > 0 { total as f64 / n as f64 } else { 0.0 };
+    Json(serde_json::json!({"total_docs": total, "segment_count": n, "avg_docs_per_segment": avg}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-rank — rank num_docs/disk_bytes (docs_per_byte) DESC.
+///
+/// Retorna `{rows:[{rank,id,num_docs,disk_bytes,docs_per_byte}]}`. Sprint #938.
+pub async fn segment_docs_density_rank(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut ranked: Vec<(String, u64, u64, f64)> = segs.into_iter()
+        .map(|(id, nd, db)| {
+            let dpb = if db > 0 { nd as f64 / db as f64 } else { 0.0 };
+            (id, nd, db, dpb)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    let rows: Vec<serde_json::Value> = ranked.into_iter().enumerate()
+        .map(|(i, (id, nd, db, dpb))| serde_json::json!({
+            "rank": i + 1, "id": id, "num_docs": nd, "disk_bytes": db, "docs_per_byte": dpb
+        }))
+        .collect();
+    Json(serde_json::json!({"rows": rows}))
+}
+
 /// GET /api/v1/search/index/segments/variance — variância amostral (n-1) de num_docs e disk_bytes.
 ///
 /// Retorna `{docs_variance,bytes_variance,segment_count}`. Sprint #918.
