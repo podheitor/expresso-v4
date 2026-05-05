@@ -107,6 +107,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-addrs-per-message",       get(to_addrs_per_message_stats))
         .route("/mail/messages/stats/subject-re-fwd-by-folder",   get(subject_re_fwd_stats))
         .route("/mail/messages/stats/sender-domain-by-weekday",   get(sender_domain_by_weekday_stats))
+        .route("/mail/messages/stats/thread-count-by-weekday",    get(thread_count_by_weekday_stats))
+        .route("/mail/messages/stats/to-addrs-domain",            get(to_addrs_domain_stats))
+        .route("/mail/messages/stats/msg-id-length-by-folder",    get(msg_id_length_stats))
+        .route("/mail/messages/stats/from-addr-count",            get(from_addr_count_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4485,4 +4489,144 @@ async fn attachment_count_distribution_stats(
         "total_messages":      total,
         "pct_with_attachments": pct,
     })))
+}
+
+/// GET /mail/messages/stats/from-addr-count — COUNT DISTINCT from_addr por pasta.
+///
+/// LEFT JOIN para incluir pastas sem mensagens. Sprint #957.
+async fn from_addr_count_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            COUNT(DISTINCT m.from_addr)::BIGINT AS distinct_senders \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id \
+              AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY distinct_senders DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, distinct)| serde_json::json!({
+            "folder": folder,
+            "total_messages": total,
+            "distinct_senders": distinct,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/msg-id-length-by-folder — avg/max LENGTH(message_id) por pasta.
+///
+/// Só mensagens com message_id IS NOT NULL. Sprint #962.
+async fn msg_id_length_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<f64>, Option<i64>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            AVG(LENGTH(m.message_id))             AS avg_length, \
+            MAX(LENGTH(m.message_id))::BIGINT     AS max_length, \
+            COUNT(*) FILTER (WHERE m.message_id IS NOT NULL)::BIGINT AS with_message_id, \
+            COUNT(*)::BIGINT                      AS total_messages \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id \
+              AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY avg_length DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, avg, max, with_id, total)| serde_json::json!({
+            "folder": folder,
+            "avg_length": avg,
+            "max_length": max,
+            "with_message_id": with_id,
+            "total_messages": total,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/to-addrs-domain — top domínios de destinatários em to_addrs jsonb.
+///
+/// Extrai SPLIT_PART de cada elemento de to_addrs via jsonb_array_elements_text. Sprint #967.
+async fn to_addrs_domain_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SPLIT_PART(addr.val, '@', 2), '')) AS domain, \
+            COUNT(*)::BIGINT AS occurrence_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+           JOIN LATERAL jsonb_array_elements_text(m.to_addrs) AS addr(val) ON true \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY domain \
+          ORDER BY occurrence_count DESC \
+          LIMIT 20",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, count)| serde_json::json!({"domain": domain, "occurrence_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/thread-count-by-weekday — COUNT DISTINCT thread_id por DOW.
+///
+/// EXTRACT(DOW FROM received_at): 0=Dom..6=Sáb. Sprint #972.
+async fn thread_count_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS message_count, \
+            COUNT(DISTINCT thread_id)::BIGINT AS distinct_threads \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND received_at IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, msg_count, thread_count)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "message_count": msg_count, "distinct_threads": thread_count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }

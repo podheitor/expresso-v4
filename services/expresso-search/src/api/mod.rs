@@ -2399,6 +2399,70 @@ pub async fn segment_docs_percentile_band(
     }))
 }
 
+/// GET /api/v1/search/index/segments/bytes-ceiling — segmento com maior disk_bytes.
+///
+/// Retorna `{segment:{id,num_docs,disk_bytes}|null,segment_count}`. Sprint #958.
+pub async fn segment_bytes_ceiling(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let top = segs.into_iter().max_by_key(|(_, _, db)| *db);
+    let segment = top.map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}));
+    Json(serde_json::json!({"segment": segment, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-mean — segmentos com num_docs > média.
+///
+/// Retorna `{mean_docs,rows:[{id,num_docs,disk_bytes}],count_above,segment_count}`. Sprint #963.
+pub async fn segment_docs_above_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_docs": null, "rows": [], "count_above": 0, "segment_count": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let mean = total_docs as f64 / n as f64;
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd as f64 > mean)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    let count_above = above.len();
+    Json(serde_json::json!({"mean_docs": mean, "rows": above, "count_above": count_above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-above-mean — segmentos com disk_bytes > média.
+///
+/// Retorna `{mean_bytes,rows:[{id,num_docs,disk_bytes}],count_above,segment_count}`. Sprint #968.
+pub async fn segment_bytes_above_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_bytes": null, "rows": [], "count_above": 0, "segment_count": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let mean = total_bytes as f64 / n as f64;
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db as f64 > mean)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    let count_above = above.len();
+    Json(serde_json::json!({"mean_bytes": mean, "rows": above, "count_above": count_above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-above-mean — alias semântico para bytes-above-mean.
+///
+/// Retorna `{mean_bytes,rows:[{id,num_docs,disk_bytes}],count_above,segment_count}`. Sprint #973.
+pub async fn segment_size_above_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    segment_bytes_above_mean(State(store)).await
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

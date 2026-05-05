@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #954
+**Último sprint:** #974
 
 ```
 git log --oneline | head -10
@@ -348,15 +348,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #953 | search | `GET /search/index/segments/docs-floor` — segmento com menor num_docs (piso) |
 | #954 | calendar | `GET /calendars/:cal_id/events-by-range/alarm-count-stats` — with/without VALARM + avg alarms |
 
+| #955 | notifications | `GET /dlq/stats/by-kind-and-tenant-and-hour` — 3D kind×tenant×hour |
+| #956 | drive | `GET /drive/files/stats/size-percentile` — p25/p50/p75/p90/p95 de size_bytes |
+| #957 | mail | `GET /mail/messages/stats/from-addr-count` — COUNT DISTINCT from_addr por pasta |
+| #958 | search | `GET /search/index/segments/bytes-ceiling` — segmento com maior disk_bytes |
+| #959 | calendar | `GET /calendars/:cal_id/events-by-range/sequence-by-weekday` — avg sequence por DOW |
+| #960 | notifications | `GET /dlq/stats/by-kind-and-hour-and-user` — 3D kind×hour×user |
+| #961 | drive | `GET /drive/files/stats/owner-entropy` — Shannon H sobre owner_user_id |
+| #962 | mail | `GET /mail/messages/stats/msg-id-length-by-folder` — avg/max LENGTH(message_id) por pasta |
+| #963 | search | `GET /search/index/segments/docs-above-mean` — segmentos com num_docs > média |
+| #964 | calendar | `GET /calendars/:cal_id/events-by-range/recurrence-by-month` — rrule events por mês |
+| #965 | notifications | `GET /dlq/stats/by-tenant-and-hour-and-user` — 3D tenant×hour×user |
+| #966 | drive | `GET /drive/files/stats/version-size-by-ext` — total version bytes por extensão |
+| #967 | mail | `GET /mail/messages/stats/to-addrs-domain` — top domínios em to_addrs jsonb |
+| #968 | search | `GET /search/index/segments/bytes-above-mean` — segmentos com disk_bytes > média |
+| #969 | calendar | `GET /calendars/:cal_id/events-by-range/description-word-count` — avg/max palavras em description |
+| #970 | notifications | `GET /dlq/stats/by-user-and-day-and-hour` — 3D user×day×hour ASC |
+| #971 | drive | `GET /drive/files/stats/locked-age` — avg/max dias bloqueados (locked_at) |
+| #972 | mail | `GET /mail/messages/stats/thread-count-by-weekday` — COUNT DISTINCT thread_id por DOW |
+| #973 | search | `GET /search/index/segments/size-above-mean` — alias semântico bytes-above-mean |
+| #974 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-by-month` — COUNT por mês (1-12) de dtstart |
+
 ---
 
-## Próximos candidatos (#955+)
+## Próximos candidatos (#975+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-tenant-and-hour` — 3D kind×tenant×hour
-2. **drive** — `GET /drive/files/stats/size-percentile` — p25/p50/p75/p90/p95 de size_bytes
-3. **mail** — `GET /mail/messages/stats/from-addr-count` — COUNT DISTINCT from_addr por pasta
-4. **search** — `GET /search/index/segments/bytes-ceiling` — segmento com maior disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/sequence-by-weekday` — avg sequence por DOW
+1. **notifications** — `GET /dlq/stats/by-kind-and-user-and-hour` — 3D kind×user×hour
+2. **drive** — `GET /drive/files/stats/tag-size-by-ext` — top (tag, ext) por total_bytes
+3. **mail** — `GET /mail/messages/stats/has-reply-to-by-folder` — with/without reply_to por pasta
+4. **search** — `GET /search/index/segments/bytes-floor` — segmento com menor disk_bytes
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-by-month` — top organizers por mês
 
 ---
 

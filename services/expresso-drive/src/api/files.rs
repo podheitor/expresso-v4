@@ -121,6 +121,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/storage-by-folder",        get(file_stats_storage_by_folder))
         .route("/api/v1/drive/files/stats/avg-file-size-by-folder", get(file_stats_avg_file_size_by_folder))
         .route("/api/v1/drive/files/stats/folder-size-entropy",   get(file_stats_folder_size_entropy))
+        .route("/api/v1/drive/files/stats/locked-age",            get(file_stats_locked_age))
+        .route("/api/v1/drive/files/stats/version-size-by-ext",   get(file_stats_version_size_by_ext))
+        .route("/api/v1/drive/files/stats/owner-entropy",          get(file_stats_owner_entropy))
+        .route("/api/v1/drive/files/stats/size-percentile",        get(file_stats_size_percentile))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -4319,6 +4323,131 @@ async fn file_stats_folder_size_entropy(
         "entropy": entropy,
         "total_bytes": total,
         "folder_count": folder_count,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/size-percentile — p25/p50/p75/p90/p95 de size_bytes.
+///
+/// Ordena size_bytes dos arquivos não-deletados e interpola percentis. Sprint #956.
+async fn file_stats_size_percentile(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let sizes: Vec<(i64,)> = sqlx::query_as(
+        "SELECT COALESCE(size_bytes, 0)::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          ORDER BY size_bytes ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let n = sizes.len();
+    if n == 0 {
+        return Ok(Json(serde_json::json!({"p25": null, "p50": null, "p75": null, "p90": null, "p95": null, "count": 0})));
+    }
+    let vals: Vec<i64> = sizes.into_iter().map(|(v,)| v).collect();
+    let pct = |p: f64| -> i64 {
+        let idx = ((n as f64 - 1.0) * p) as usize;
+        vals[idx.min(n - 1)]
+    };
+    Ok(Json(serde_json::json!({
+        "p25": pct(0.25),
+        "p50": pct(0.50),
+        "p75": pct(0.75),
+        "p90": pct(0.90),
+        "p95": pct(0.95),
+        "count": n,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/owner-entropy — Shannon H sobre owner_user_id.
+///
+/// H=-Σp*log2(p) sobre distribuição de arquivos por owner_user_id. Sprint #961.
+async fn file_stats_owner_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY owner_user_id",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let owner_count = rows.len();
+    if total == 0 || owner_count < 2 {
+        return Ok(Json(serde_json::json!({"entropy": serde_json::Value::Null, "total_files": total, "owner_count": owner_count})));
+    }
+    let entropy: f64 = rows.iter()
+        .filter(|(_, c)| *c > 0)
+        .fold(0.0_f64, |acc, (_, c)| {
+            let p = *c as f64 / total as f64;
+            acc - p * p.log2()
+        });
+    Ok(Json(serde_json::json!({"entropy": entropy, "total_files": total, "owner_count": owner_count})))
+}
+
+/// GET /api/v1/drive/files/stats/version-size-by-ext — total version bytes por extensão.
+///
+/// JOIN drive_file_versions → GROUP BY extensão (LOWER NULLIF substring). Sprint #966.
+async fn file_stats_version_size_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SUBSTRING(f.name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS version_count, \
+            COALESCE(SUM(fv.size_bytes), 0)::BIGINT AS total_bytes \
+           FROM drive_file_versions fv \
+           JOIN drive_files f ON f.id = fv.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY ext \
+          ORDER BY total_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, vc, tb)| serde_json::json!({"ext": ext, "version_count": vc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/locked-age — avg/max dias que arquivos estão bloqueados.
+///
+/// NOW()-locked_at em dias para kind='file' com locked_at IS NOT NULL. Sprint #971.
+async fn file_stats_locked_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (locked_count, avg_days, max_days): (i64, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS locked_count, \
+            AVG(EXTRACT(EPOCH FROM NOW() - locked_at) / 86400.0) AS avg_days_locked, \
+            MAX(EXTRACT(EPOCH FROM NOW() - locked_at) / 86400.0) AS max_days_locked \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND locked_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "locked_count":   locked_count,
+        "avg_days_locked": avg_days,
+        "max_days_locked": max_days,
     })))
 }
 
