@@ -916,6 +916,49 @@ pub async fn segment_doc_ratio(
     Json(serde_json::json!({"segments": out}))
 }
 
+/// GET /api/v1/search/index/segments/overlap — pares de segmentos com faixas de num_docs sobrepostas.
+///
+/// Dois segmentos "sobrepõem" quando max(min_a, min_b) <= min(max_a, max_b) usando
+/// bandas de tamanho `band` (default 1000 docs). Segmentos na mesma banda são candidatos
+/// a merge combinado. Retorna `{band,pairs:[{seg_a,seg_b,docs_a,docs_b}]}` ordenado por
+/// (docs_a ASC). `band` query param default 1000. Sprint #703.
+#[derive(Debug, serde::Deserialize)]
+struct OverlapQuery {
+    band: Option<u64>,
+}
+
+pub async fn segments_overlap(
+    State(store): State<IndexStore>,
+    Query(q):     Query<OverlapQuery>,
+) -> Json<serde_json::Value> {
+    let band = q.band.unwrap_or(1000).max(1);
+    let segs = store.list_segments().unwrap_or_default();
+
+    let mut pairs: Vec<serde_json::Value> = Vec::new();
+    for i in 0..segs.len() {
+        for j in (i + 1)..segs.len() {
+            let (ref id_a, docs_a, _) = segs[i];
+            let (ref id_b, docs_b, _) = segs[j];
+            let band_a = docs_a / band;
+            let band_b = docs_b / band;
+            if band_a == band_b {
+                pairs.push(serde_json::json!({
+                    "seg_a":  id_a,
+                    "seg_b":  id_b,
+                    "docs_a": docs_a,
+                    "docs_b": docs_b,
+                    "band":   band_a * band,
+                }));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| {
+        a["docs_a"].as_u64().unwrap_or(0)
+            .cmp(&b["docs_a"].as_u64().unwrap_or(0))
+    });
+    Json(serde_json::json!({"band": band, "pair_count": pairs.len(), "pairs": pairs}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

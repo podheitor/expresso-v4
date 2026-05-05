@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #702 — (commit pendente)
+**Último sprint:** #706 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -87,15 +87,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #700 | notifications | `GET /dlq/stats/by-hour?since=&until=` — DATE_TRUNC('hour') GROUP BY; granularidade intra-dia |
 | #701 | drive | `GET /drive/files/stats/version-count?limit=N` — top-N arquivos por version_count; JOIN drive_file_versions |
 | #702 | mail | `GET /mail/messages/stats/bcc-by-folder` — with_bcc/without_bcc por mailbox; análogo a cc-by-folder (#697) |
+| #703 | search | `GET /search/index/segments/overlap` — pares em mesma banda de num_docs (band param); merge candidates |
+| #704 | calendar | `GET /calendars/:cal_id/events-by-range/recurrence-duration-stats` — avg/min/max/total minutos só rrule |
+| #705 | notifications | `GET /dlq/stats/by-kind-and-user?limit=N` — GROUP BY (kind, user_id) COUNT DESC |
+| #706 | drive | `GET /drive/files/stats/tag-count?limit=N` — top-N tags por file_count; GROUP BY drive_file_tags.tag |
 
 ---
 
-## Próximos candidatos (#703+)
+## Próximos candidatos (#707+)
 
-1. **search** — `GET /search/index/segments/overlap` — pares de segmentos com faixas de num_docs sobrepostas; candidatos a merge combinado
-2. **calendar** — `GET /calendars/:cal_id/events-by-range/recurrence-duration-stats` — avg/min/max duração apenas de eventos recorrentes (with_rrule=true)
-3. **notifications** — `GET /dlq/stats/by-kind-and-user?limit=N` — GROUP BY (kind, user_id) COUNT DESC; identifica usuários afetados por tipo
-4. **drive** — `GET /drive/files/stats/shared-count` — COUNT arquivos com share_links ativos (se tabela existir) ou arquivos acessados por múltiplos users
+1. **mail** — `GET /mail/messages/stats/reply-rate-by-folder` — COUNT(in_reply_to IS NOT NULL)/total por folder; taxa de respostas
+2. **search** — `GET /search/index/segments/cumulative` — acumulado de num_docs e disk_bytes por segmento (ordenado por num_docs ASC, cumsum)
+3. **calendar** — `GET /calendars/stats/event-density?bucket=day|week|month` — cross-tenant: total de eventos por bucket temporal via DATE_TRUNC
+4. **notifications** — `GET /dlq/stats/by-tenant-and-kind?limit=N` — GROUP BY (tenant_id, kind) COUNT DESC; análogo a by-kind-and-user
 
 ---
 

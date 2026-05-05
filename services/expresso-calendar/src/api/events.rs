@@ -225,6 +225,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_distribution),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/recurrence-duration-stats",
+            get(events_by_range_recurrence_duration_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -1807,6 +1811,57 @@ async fn events_by_range_duration_distribution(
             {"range": "8h-1d", "count": h8_24},
             {"range": ">1d",   "count": gt24h},
         ],
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/recurrence-duration-stats?after=&before=
+///
+/// avg/min/max/total duration em minutos — apenas eventos com rrule definido (recorrentes)
+/// e dtend > dtstart. Complementa `duration-stats` (#637) com foco em eventos recorrentes.
+/// Retorna `{calendar_id,recurrent_with_duration,avg_minutes,min_minutes,max_minutes,total_minutes}`. Sprint #704.
+async fn events_by_range_recurrence_duration_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let row: (i64, Option<f64>, Option<f64>, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS recurrent_with_duration, \
+            AVG(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS avg_minutes, \
+            MIN(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS min_minutes, \
+            MAX(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS max_minutes, \
+            SUM(EXTRACT(EPOCH FROM (dtend - dtstart)) / 60.0) AS total_minutes \
+         FROM calendar_events \
+         WHERE tenant_id   = $1 \
+           AND calendar_id = $2 \
+           AND dtstart IS NOT NULL \
+           AND dtend   IS NOT NULL \
+           AND dtend   > dtstart \
+           AND rrule IS NOT NULL AND rrule <> '' \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let (recurrent_with_duration, avg_minutes, min_minutes, max_minutes, total_minutes) = row;
+    Ok(Json(serde_json::json!({
+        "calendar_id":             cal_id,
+        "recurrent_with_duration": recurrent_with_duration,
+        "avg_minutes":             avg_minutes,
+        "min_minutes":             min_minutes,
+        "max_minutes":             max_minutes,
+        "total_minutes":           total_minutes,
     })))
 }
 

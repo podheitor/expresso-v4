@@ -72,6 +72,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/updated-by-day",  get(file_stats_updated_by_day))
         .route("/api/v1/drive/files/stats/folder-depth",    get(file_stats_folder_depth))
         .route("/api/v1/drive/files/stats/version-count",   get(file_stats_version_count))
+        .route("/api/v1/drive/files/stats/tag-count",        get(file_stats_tag_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2475,6 +2476,43 @@ async fn file_stats_version_count(
         }))
         .collect();
     Ok(Json(serde_json::json!({"files": files})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-count?limit=N — top-N tags por uso.
+///
+/// GROUP BY tag em `drive_file_tags`, COUNT DISTINCT file_id. Retorna
+/// `{tags:[{tag,file_count}]}` ordenado por file_count DESC. `limit` default 20 max 200.
+/// Sprint #706.
+#[derive(Debug, Deserialize)]
+struct StatsTagCountQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_tag_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTagCountQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT tag, COUNT(DISTINCT file_id)::BIGINT AS file_count \
+           FROM drive_file_tags \
+          WHERE tenant_id = $1 \
+          GROUP BY tag \
+          ORDER BY file_count DESC, tag ASC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let tags: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tag, file_count)| serde_json::json!({"tag": tag, "file_count": file_count}))
+        .collect();
+    Ok(Json(serde_json::json!({"tags": tags})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
