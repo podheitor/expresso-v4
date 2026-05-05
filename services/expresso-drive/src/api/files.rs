@@ -101,6 +101,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-size-by-user",   get(file_stats_version_size_by_user))
         .route("/api/v1/drive/files/stats/ext-size-by-folder",     get(file_stats_ext_size_by_folder))
         .route("/api/v1/drive/files/stats/tag-by-user",            get(file_stats_tag_by_user))
+        .route("/api/v1/drive/files/stats/tag-entropy",            get(file_stats_tag_entropy))
+        .route("/api/v1/drive/files/stats/folder-mime-entropy",    get(file_stats_folder_mime_entropy))
+        .route("/api/v1/drive/files/stats/size-entropy",           get(file_stats_size_entropy))
+        .route("/api/v1/drive/files/stats/version-count-by-ext",   get(file_stats_version_count_by_ext))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -3598,6 +3602,165 @@ async fn file_stats_tag_by_user(
             "owner_user_id": uid,
             "tag":           tag,
             "tag_count":     tc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-entropy — Shannon H=-Σp*log2(p) sobre tags globais.
+///
+/// Análogo a mime-entropy (#781) mas sobre drive_file_tags. Sprint #856.
+async fn file_stats_tag_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT t.tag, COUNT(*)::BIGINT AS cnt \
+           FROM drive_file_tags t \
+           JOIN drive_files f ON f.id = t.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY t.tag \
+          ORDER BY cnt DESC \
+          LIMIT 100",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let entropy = if total == 0 || rows.len() < 2 {
+        0.0_f64
+    } else {
+        rows.iter().fold(0.0_f64, |acc, (_, c)| {
+            let p = *c as f64 / total as f64;
+            acc - p * p.log2()
+        })
+    };
+    let top: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tag, cnt)| serde_json::json!({"tag": tag, "count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"entropy": entropy, "total_tags_used": total, "top": top})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-mime-entropy?folder_id= — Shannon H sobre mime_type por folder.
+///
+/// Entropia de distribuição de tipos MIME dentro de uma pasta (ou tenant inteiro). Sprint #861.
+async fn file_stats_folder_mime_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsMimeByFolderQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'application/octet-stream'), COUNT(*)::BIGINT AS cnt \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND ($2::uuid IS NULL OR parent_id = $2) \
+          GROUP BY mime_type",
+    )
+    .bind(ctx.tenant_id).bind(q.folder_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let entropy = if total == 0 || rows.len() < 2 {
+        0.0_f64
+    } else {
+        rows.iter().fold(0.0_f64, |acc, (_, c)| {
+            let p = *c as f64 / total as f64;
+            acc - p * p.log2()
+        })
+    };
+    Ok(Json(serde_json::json!({
+        "folder_id": q.folder_id,
+        "entropy":   entropy,
+        "total":     total,
+        "distinct_mime_types": rows.len(),
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/size-entropy — Shannon H sobre distribuição de tamanhos por bucket.
+///
+/// 8 buckets <1KB/1-10KB/10-100KB/100KB-1MB/1-10MB/10-100MB/100MB-1GB/>1GB. Sprint #866.
+async fn file_stats_size_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (b0, b1, b2, b3, b4, b5, b6, b7): (i64, i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE size_bytes <          1024)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=         1024 AND size_bytes <        10240)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=        10240 AND size_bytes <       102400)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=       102400 AND size_bytes <      1048576)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=      1048576 AND size_bytes <     10485760)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=     10485760 AND size_bytes <    104857600)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=    104857600 AND size_bytes <   1073741824)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >=   1073741824)::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let counts = [b0, b1, b2, b3, b4, b5, b6, b7];
+    let total: i64 = counts.iter().sum();
+    let entropy = if total == 0 {
+        0.0_f64
+    } else {
+        counts.iter().fold(0.0_f64, |acc, &c| {
+            if c == 0 { acc } else {
+                let p = c as f64 / total as f64;
+                acc - p * p.log2()
+            }
+        })
+    };
+    let labels = ["<1KB","1-10KB","10-100KB","100KB-1MB","1-10MB","10-100MB","100MB-1GB",">1GB"];
+    let buckets: Vec<serde_json::Value> = labels.iter().zip(counts.iter())
+        .map(|(l, c)| serde_json::json!({"range": l, "count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({"entropy": entropy, "total": total, "buckets": buckets})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-by-ext?limit=N — avg/max versões por extensão.
+///
+/// JOIN drive_file_versions; GROUP BY ext; ordenado por avg_versions DESC. Sprint #871.
+async fn file_stats_version_count_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(SUBSTRING(f.name FROM '\\.[^.]*$')) AS ext, \
+            AVG(vc)::FLOAT8 AS avg_versions, \
+            MAX(vc)::BIGINT AS max_versions, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM ( \
+                SELECT f.id, f.name, COUNT(v.id) AS vc \
+                  FROM drive_files f \
+                  LEFT JOIN drive_file_versions v ON v.file_id = f.id \
+                 WHERE f.tenant_id = $1 AND f.kind = 'file' AND f.deleted_at IS NULL \
+                 GROUP BY f.id, f.name \
+           ) f \
+          GROUP BY ext \
+          ORDER BY avg_versions DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, avg, max, fc)| serde_json::json!({
+            "ext":          ext,
+            "avg_versions": avg,
+            "max_versions": max,
+            "file_count":   fc,
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))

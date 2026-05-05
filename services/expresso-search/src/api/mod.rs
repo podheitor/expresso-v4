@@ -1981,6 +1981,92 @@ pub async fn segment_fragmentation(
     }))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-by-segment — disk_bytes/num_docs por segmento DESC.
+///
+/// Retorna `{rows:[{id,num_docs,disk_bytes,bytes_per_doc}]}`. Sprint #858.
+pub async fn segment_bytes_per_doc_by_segment(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut rows: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, nd, db)| {
+            let bpd = if nd == 0 { 0.0_f64 } else { db as f64 / nd as f64 };
+            serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": bpd})
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b["bytes_per_doc"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&a["bytes_per_doc"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Json(serde_json::json!({"rows": rows}))
+}
+
+/// GET /api/v1/search/index/segments/health-score — balance × (1 − fragmentation).
+///
+/// Composite score ∈ (-∞, 1]: próximo de 1 = índice saudável. Sprint #863.
+pub async fn segment_health_score(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"health_score": null, "balance_score": null, "fragmentation": null, "segment_count": 0}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let total_docs: f64 = docs.iter().sum();
+    let mean = total_docs / n as f64;
+    let stdev = if n > 1 {
+        (docs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64).sqrt()
+    } else { 0.0 };
+    let balance = if mean == 0.0 { 1.0 } else { 1.0 - stdev / mean };
+    let fragmentation = if total_docs == 0.0 { 0.0 } else { n as f64 / total_docs };
+    let health = balance * (1.0 - fragmentation.min(1.0));
+    Json(serde_json::json!({
+        "health_score":  health,
+        "balance_score": balance,
+        "fragmentation": fragmentation,
+        "segment_count": n,
+        "total_docs":    total_docs as u64,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/write-amplification — total_bytes / total_docs; bytes-per-doc global.
+///
+/// Análogo a size-ratio mas agrega todos os segmentos. Sprint #868.
+pub async fn segment_write_amplification(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64  = segs.iter().map(|(_, d, _)| d).sum();
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    let write_amplification = if total_docs == 0 { 0.0_f64 } else { total_bytes as f64 / total_docs as f64 };
+    Json(serde_json::json!({
+        "write_amplification": write_amplification,
+        "total_bytes":         total_bytes,
+        "total_docs":          total_docs,
+        "segment_count":       segs.len(),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/utilization?max_docs=N — num_docs/max_docs ratio por segmento.
+///
+/// `max_docs` default 10_000_000. Retorna `{rows:[{id,num_docs,utilization_pct}]}`. Sprint #873.
+pub async fn segment_utilization(
+    State(store): State<IndexStore>,
+    Query(q):     Query<DecayQuery>,
+) -> Json<serde_json::Value> {
+    let max_docs = q.threshold.unwrap_or(10_000_000);
+    let segs = store.list_segments().unwrap_or_default();
+    let rows: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, nd, _)| {
+            let pct = if max_docs == 0 { 0.0_f64 } else { nd as f64 / max_docs as f64 * 100.0 };
+            serde_json::json!({"id": id, "num_docs": nd, "utilization_pct": pct})
+        })
+        .collect();
+    Json(serde_json::json!({"max_docs_per_segment": max_docs, "rows": rows}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

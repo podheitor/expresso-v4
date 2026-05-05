@@ -87,6 +87,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/list-id-by-folder",           get(list_id_by_folder_stats))
         .route("/mail/messages/stats/keywords-by-folder",          get(keywords_by_folder_stats))
         .route("/mail/messages/stats/inboxed-vs-sent-by-day",      get(inboxed_vs_sent_by_day_stats))
+        .route("/mail/messages/stats/auto-replied-by-folder",      get(auto_replied_by_folder_stats))
+        .route("/mail/messages/stats/x-mailer-by-folder",          get(x_mailer_by_folder_stats))
+        .route("/mail/messages/stats/content-type-by-folder",      get(content_type_by_folder_stats))
+        .route("/mail/messages/stats/disposition-by-folder",       get(disposition_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -3754,4 +3758,143 @@ async fn inboxed_vs_sent_by_day_stats(
         .map(|(day, mb, count)| serde_json::json!({"day": day, "mailbox": mb, "count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/mail/messages/stats/auto-replied-by-folder — Auto-Submitted header por pasta.
+///
+/// with_auto_submitted / without; identifica respostas automáticas. Sprint #857.
+async fn auto_replied_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*) FILTER (WHERE m.auto_submitted IS NOT NULL AND m.auto_submitted <> '')::BIGINT AS with_auto_submitted, \
+            COUNT(*) FILTER (WHERE m.auto_submitted IS NULL OR m.auto_submitted = '')::BIGINT     AS without \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY with_auto_submitted DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, with_as, without)| serde_json::json!({
+            "folder":             folder,
+            "with_auto_submitted": with_as,
+            "without":            without,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/x-mailer-by-folder — X-Mailer header por pasta.
+///
+/// GROUP BY (folder, x_mailer) count DESC. Sprint #862.
+async fn x_mailer_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            m.x_mailer, \
+            COUNT(*)::BIGINT AS count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, m.x_mailer \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut folder_map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (folder, x_mailer, count) in rows {
+        folder_map.entry(folder).or_default()
+            .push(serde_json::json!({"x_mailer": x_mailer, "count": count}));
+    }
+    let folders: Vec<serde_json::Value> = folder_map.into_iter()
+        .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/content-type-by-folder — Content-Type header por pasta.
+///
+/// GROUP BY (folder, content_type) count DESC. Sprint #867.
+async fn content_type_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            m.content_type, \
+            COUNT(*)::BIGINT AS count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, m.content_type \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut folder_map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (folder, content_type, count) in rows {
+        folder_map.entry(folder).or_default()
+            .push(serde_json::json!({"content_type": content_type, "count": count}));
+    }
+    let folders: Vec<serde_json::Value> = folder_map.into_iter()
+        .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/disposition-by-folder — Content-Disposition header por pasta.
+///
+/// GROUP BY (folder, disposition) count DESC. Sprint #872.
+async fn disposition_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            m.disposition, \
+            COUNT(*)::BIGINT AS count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, m.disposition \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut folder_map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (folder, disposition, count) in rows {
+        folder_map.entry(folder).or_default()
+            .push(serde_json::json!({"disposition": disposition, "count": count}));
+    }
+    let folders: Vec<serde_json::Value> = folder_map.into_iter()
+        .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
 }

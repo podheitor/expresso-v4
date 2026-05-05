@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #854
+**Último sprint:** #874
 
 ```
 git log --oneline | head -10
@@ -243,15 +243,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #853 | search | `GET /search/index/segments/fragmentation` — segment_count / total_docs |
 | #854 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-response-by-weekday` — PARTSTAT × DOW |
 
+| #855 | notifications | `GET /dlq/stats/by-second-and-user` — DATE_TRUNC('second') × user_id |
+| #856 | drive | `GET /drive/files/stats/tag-entropy` — Shannon H sobre tags |
+| #857 | mail | `GET /mail/messages/stats/auto-replied-by-folder` — Auto-Submitted header por pasta |
+| #858 | search | `GET /search/index/segments/bytes-per-doc-by-segment` — bytes/doc por segmento DESC |
+| #859 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-domain-by-weekday` — SPLIT_PART('@',2) × DOW |
+| #860 | notifications | `GET /dlq/stats/by-second-and-kind-and-tenant` — 3D second×kind×tenant |
+| #861 | drive | `GET /drive/files/stats/folder-mime-entropy` — Shannon H sobre mime_type por folder |
+| #862 | mail | `GET /mail/messages/stats/x-mailer-by-folder` — X-Mailer header por pasta |
+| #863 | search | `GET /search/index/segments/health-score` — balance × (1−fragmentation) |
+| #864 | calendar | `GET /calendars/:cal_id/events-by-range/class-by-weekday` — CLASS × DOW |
+| #865 | notifications | `GET /dlq/stats/by-minute-and-kind-and-user` — 3D minute×kind×user |
+| #866 | drive | `GET /drive/files/stats/size-entropy` — Shannon H sobre 8 size buckets |
+| #867 | mail | `GET /mail/messages/stats/content-type-by-folder` — Content-Type header por pasta |
+| #868 | search | `GET /search/index/segments/write-amplification` — total_bytes/total_docs global |
+| #869 | calendar | `GET /calendars/:cal_id/events-by-range/status-by-weekday` — STATUS × DOW |
+| #870 | notifications | `GET /dlq/stats/by-hour-and-kind-and-user` — 3D hour×kind×user |
+| #871 | drive | `GET /drive/files/stats/version-count-by-ext` — avg/max versões por extensão |
+| #872 | mail | `GET /mail/messages/stats/disposition-by-folder` — Content-Disposition por pasta |
+| #873 | search | `GET /search/index/segments/utilization?max_docs=N` — num_docs/max_docs ratio |
+| #874 | calendar | `GET /calendars/:cal_id/events-by-range/priority-by-weekday` — PRIORITY bucket × DOW |
+
 ---
 
-## Próximos candidatos (#855+)
+## Próximos candidatos (#875+)
 
-1. **notifications** — `GET /dlq/stats/by-second-and-user` — DATE_TRUNC('second') × user_id
-2. **drive** — `GET /drive/files/stats/tag-entropy` — Shannon H sobre tags
-3. **mail** — `GET /mail/messages/stats/auto-replied-by-folder` — Auto-Submitted header por pasta
-4. **search** — `GET /search/index/segments/bytes-per-doc-by-segment` — bytes/doc por segmento
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-domain-by-weekday` — domínio × DOW
+1. **notifications** — `GET /dlq/stats/by-hour-and-user-and-kind` — 3D hour×user×kind
+2. **drive** — `GET /drive/files/stats/folder-size-entropy` — Shannon H sobre total_bytes por folder
+3. **mail** — `GET /mail/messages/stats/organization-by-folder` — Organization header por pasta
+4. **search** — `GET /search/index/segments/docs-percentile-band` — conta segmentos por faixa percentil
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/transparency-by-weekday` — TRANSP × DOW
 
 ---
 
