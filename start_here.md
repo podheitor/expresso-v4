@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #698 — (commit pendente)
+**Último sprint:** #702 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -83,15 +83,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #696 | drive | `GET /drive/files/stats/folder-depth` — CTE recursiva histograma depth→count+total_bytes |
 | #697 | mail | `GET /mail/messages/stats/cc-by-folder` — COUNT with_cc/without_cc por folder; LEFT JOIN |
 | #698 | search | `GET /search/index/segments/doc-ratio` — num_docs/disk_bytes por segmento; docs_per_byte DESC |
+| #699 | calendar | `GET /calendars/:cal_id/events-by-range/duration-distribution` — histograma <1h/1-4h/4-8h/8h-1d/>1d |
+| #700 | notifications | `GET /dlq/stats/by-hour?since=&until=` — DATE_TRUNC('hour') GROUP BY; granularidade intra-dia |
+| #701 | drive | `GET /drive/files/stats/version-count?limit=N` — top-N arquivos por version_count; JOIN drive_file_versions |
+| #702 | mail | `GET /mail/messages/stats/bcc-by-folder` — with_bcc/without_bcc por mailbox; análogo a cc-by-folder (#697) |
 
 ---
 
-## Próximos candidatos (#699+)
+## Próximos candidatos (#703+)
 
-1. **calendar** — `GET /calendars/:cal_id/events-by-range/duration-distribution` — histograma de duração: <1h/1-4h/4-8h/1d/>1d; `{calendar_id,total,buckets:[{range,count}]}`
-2. **notifications** — `GET /dlq/stats/by-hour?since=&until=` — COUNT GROUP BY DATE_TRUNC('hour', failed_at); granularidade intra-dia
-3. **drive** — `GET /drive/files/stats/version-count?limit=N` — top-N arquivos por número de versões; `{files:[{file_id,name,version_count}]}`
-4. **mail** — `GET /mail/messages/stats/bcc-by-folder` — COUNT with_bcc/without_bcc por folder; análogo a cc-by-folder (#697)
+1. **search** — `GET /search/index/segments/overlap` — pares de segmentos com faixas de num_docs sobrepostas; candidatos a merge combinado
+2. **calendar** — `GET /calendars/:cal_id/events-by-range/recurrence-duration-stats` — avg/min/max duração apenas de eventos recorrentes (with_rrule=true)
+3. **notifications** — `GET /dlq/stats/by-kind-and-user?limit=N` — GROUP BY (kind, user_id) COUNT DESC; identifica usuários afetados por tipo
+4. **drive** — `GET /drive/files/stats/shared-count` — COUNT arquivos com share_links ativos (se tabela existir) ou arquivos acessados por múltiplos users
 
 ---
 

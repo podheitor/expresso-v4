@@ -221,6 +221,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_priority_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-distribution",
+            get(events_by_range_duration_distribution),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -1749,6 +1753,60 @@ async fn events_class_distribution(
         "private":      private,
         "confidential": confidential,
         "unset":        unset,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-distribution?after=&before=
+///
+/// Histograma de duração para eventos com dtstart ∈ [after, before) e dtend definido.
+/// Buckets: <1h / 1-4h / 4-8h / 1d (8h-24h) / >1d (>=24h). Eventos sem dtend excluídos.
+/// Retorna `{calendar_id,total,buckets:[{range,count}]}`. Sprint #699.
+async fn events_by_range_duration_distribution(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeDurationStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, lt1h, h1_4, h4_8, h8_24, gt24h): (i64, i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT AS total, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) < 3600)::BIGINT           AS lt1h, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) >= 3600   AND EXTRACT(EPOCH FROM (dtend - dtstart)) < 14400)::BIGINT  AS h1_4, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) >= 14400  AND EXTRACT(EPOCH FROM (dtend - dtstart)) < 28800)::BIGINT  AS h4_8, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) >= 28800  AND EXTRACT(EPOCH FROM (dtend - dtstart)) < 86400)::BIGINT  AS h8_24, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) >= 86400)::BIGINT         AS gt24h \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND dtstart IS NOT NULL \
+               AND dtend   IS NOT NULL \
+               AND dtend   > dtstart \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "total":       total,
+        "buckets": [
+            {"range": "<1h",   "count": lt1h},
+            {"range": "1-4h",  "count": h1_4},
+            {"range": "4-8h",  "count": h4_8},
+            {"range": "8h-1d", "count": h8_24},
+            {"range": ">1d",   "count": gt24h},
+        ],
     })))
 }
 

@@ -71,6 +71,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/by-size-bucket",  get(file_stats_by_size_bucket))
         .route("/api/v1/drive/files/stats/updated-by-day",  get(file_stats_updated_by_day))
         .route("/api/v1/drive/files/stats/folder-depth",    get(file_stats_folder_depth))
+        .route("/api/v1/drive/files/stats/version-count",   get(file_stats_version_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2432,6 +2433,48 @@ async fn file_stats_folder_depth(
         }))
         .collect();
     Ok(Json(serde_json::json!({"buckets": buckets})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count?limit=N — top-N arquivos por número de versões.
+///
+/// JOIN `drive_file_versions` com `drive_files` (não-deletados, kind='file').
+/// Retorna `{files:[{file_id,name,version_count}]}` ordenado por version_count DESC.
+/// `limit` default 20 max 200. Sprint #701.
+#[derive(Debug, Deserialize)]
+struct StatsVersionCountQuery {
+    limit: Option<i64>,
+}
+
+async fn file_stats_version_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsVersionCountQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(
+        "SELECT f.id, f.name, COUNT(v.id)::BIGINT AS version_count \
+           FROM drive_files f \
+           JOIN drive_file_versions v ON v.file_id = f.id AND v.tenant_id = $1 \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL AND f.kind = 'file' \
+          GROUP BY f.id, f.name \
+          ORDER BY version_count DESC, f.name ASC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let files: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(file_id, name, version_count)| serde_json::json!({
+            "file_id":       file_id,
+            "name":          name,
+            "version_count": version_count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"files": files})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
