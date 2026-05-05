@@ -2463,6 +2463,85 @@ pub async fn segment_size_above_mean(
     segment_bytes_above_mean(State(store)).await
 }
 
+/// GET /api/v1/search/index/segments/bytes-floor — segmento com menor disk_bytes.
+///
+/// Retorna `{segment:{id,num_docs,disk_bytes}|null,segment_count}`. Sprint #978.
+pub async fn segment_bytes_floor(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let bottom = segs.into_iter().min_by_key(|(_, _, db)| *db);
+    let segment = bottom.map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}));
+    Json(serde_json::json!({"segment": segment, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-median-deviation — |num_docs − mediana| por segmento.
+///
+/// Retorna `{median_docs,rows:[{id,num_docs,disk_bytes,deviation}],segment_count}`. Sprint #983.
+pub async fn segment_docs_median_deviation(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"median_docs": null, "rows": [], "segment_count": 0}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs_sorted.sort_unstable();
+    let median = if n % 2 == 1 {
+        docs_sorted[n / 2] as f64
+    } else {
+        (docs_sorted[n / 2 - 1] + docs_sorted[n / 2]) as f64 / 2.0
+    };
+    let rows: Vec<serde_json::Value> = segs.iter()
+        .map(|(id, nd, db)| {
+            let dev = (*nd as f64 - median).abs();
+            serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "deviation": dev})
+        })
+        .collect();
+    Json(serde_json::json!({"median_docs": median, "rows": rows, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-median — mediana de disk_bytes.
+///
+/// Retorna `{median_bytes,segment_count}`. Sprint #988.
+pub async fn segment_size_median(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"median_bytes": null, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let median = if n % 2 == 1 {
+        bytes[n / 2] as f64
+    } else {
+        (bytes[n / 2 - 1] + bytes[n / 2]) as f64 / 2.0
+    };
+    Json(serde_json::json!({"median_bytes": median, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/top-n-by-bytes?limit=N — top-N segmentos por disk_bytes DESC.
+///
+/// Default limit=5 max=50. Sprint #993.
+pub async fn segment_top_n_by_bytes(
+    State(store): State<IndexStore>,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Json<serde_json::Value> {
+    let limit = q.limit.unwrap_or(5).clamp(1, 50) as usize;
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs;
+    sorted.sort_by(|a, b| b.2.cmp(&a.2));
+    sorted.truncate(limit);
+    let rows: Vec<serde_json::Value> = sorted.into_iter()
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"rows": rows, "limit": limit}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

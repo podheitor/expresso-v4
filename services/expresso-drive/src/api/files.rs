@@ -125,6 +125,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-size-by-ext",   get(file_stats_version_size_by_ext))
         .route("/api/v1/drive/files/stats/owner-entropy",          get(file_stats_owner_entropy))
         .route("/api/v1/drive/files/stats/size-percentile",        get(file_stats_size_percentile))
+        .route("/api/v1/drive/files/stats/created-vs-updated-gap", get(file_stats_created_vs_updated_gap))
+        .route("/api/v1/drive/files/stats/starred-age",            get(file_stats_starred_age))
+        .route("/api/v1/drive/files/stats/folder-age",             get(file_stats_folder_age))
+        .route("/api/v1/drive/files/stats/tag-size-by-ext",        get(file_stats_tag_size_by_ext))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -4448,6 +4452,120 @@ async fn file_stats_locked_age(
         "locked_count":   locked_count,
         "avg_days_locked": avg_days,
         "max_days_locked": max_days,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/tag-size-by-ext — top (tag, ext) por total_bytes.
+///
+/// JOIN drive_file_tags → GROUP BY (tag, ext) ORDER BY total_bytes DESC LIMIT 50. Sprint #976.
+async fn file_stats_tag_size_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            t.tag, \
+            LOWER(NULLIF(SUBSTRING(f.name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS file_count, \
+            COALESCE(SUM(f.size_bytes), 0)::BIGINT AS total_bytes \
+           FROM drive_file_tags t \
+           JOIN drive_files f ON f.id = t.file_id \
+          WHERE f.tenant_id = $1 AND f.kind = 'file' AND f.deleted_at IS NULL \
+          GROUP BY t.tag, ext \
+          ORDER BY total_bytes DESC \
+          LIMIT 50",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tag, ext, fc, tb)| serde_json::json!({"tag": tag, "ext": ext, "file_count": fc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-age — avg/max idade em dias de pastas (kind='folder') por created_at.
+///
+/// EXTRACT(EPOCH FROM NOW()-created_at)/86400. Sprint #981.
+async fn file_stats_folder_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (folder_count, avg_days, max_days): (i64, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS folder_count, \
+            AVG(EXTRACT(EPOCH FROM NOW() - created_at) / 86400.0) AS avg_days, \
+            MAX(EXTRACT(EPOCH FROM NOW() - created_at) / 86400.0) AS max_days \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "folder_count": folder_count,
+        "avg_days_old": avg_days,
+        "max_days_old": max_days,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/starred-age — avg/max dias desde starred_at.
+///
+/// Para arquivos com starred_at IS NOT NULL. Sprint #986.
+async fn file_stats_starred_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (starred_count, avg_days, max_days): (i64, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS starred_count, \
+            AVG(EXTRACT(EPOCH FROM NOW() - starred_at) / 86400.0) AS avg_days_starred, \
+            MAX(EXTRACT(EPOCH FROM NOW() - starred_at) / 86400.0) AS max_days_starred \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND starred_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "starred_count":    starred_count,
+        "avg_days_starred": avg_days,
+        "max_days_starred": max_days,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/created-vs-updated-gap — avg dias entre created_at e updated_at.
+///
+/// (updated_at - created_at) em dias, para arquivos modificados após criação. Sprint #991.
+async fn file_stats_created_vs_updated_gap(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (file_count, avg_days, max_days): (i64, Option<f64>, Option<f64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE updated_at > created_at)::BIGINT AS file_count, \
+            AVG(EXTRACT(EPOCH FROM updated_at - created_at) / 86400.0) \
+                FILTER (WHERE updated_at > created_at) AS avg_gap_days, \
+            MAX(EXTRACT(EPOCH FROM updated_at - created_at) / 86400.0) \
+                FILTER (WHERE updated_at > created_at) AS max_gap_days \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "modified_file_count": file_count,
+        "avg_gap_days": avg_days,
+        "max_gap_days": max_days,
     })))
 }
 

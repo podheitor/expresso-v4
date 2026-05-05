@@ -111,6 +111,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-addrs-domain",            get(to_addrs_domain_stats))
         .route("/mail/messages/stats/msg-id-length-by-folder",    get(msg_id_length_stats))
         .route("/mail/messages/stats/from-addr-count",            get(from_addr_count_stats))
+        .route("/mail/messages/stats/bcc-domain",                 get(bcc_domain_stats))
+        .route("/mail/messages/stats/sender-coverage-by-folder",  get(sender_coverage_by_folder_stats))
+        .route("/mail/messages/stats/reply-chain-depth",          get(reply_chain_depth_stats))
+        .route("/mail/messages/stats/has-reply-to-by-folder",     get(has_reply_to_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4627,6 +4631,152 @@ async fn thread_count_by_weekday_stats(
             let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": name, "message_count": msg_count, "distinct_threads": thread_count})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-reply-to-by-folder — with/without reply_to por pasta.
+///
+/// LEFT JOIN pastas vazias. Sprint #977.
+async fn has_reply_to_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id) FILTER (WHERE m.reply_to IS NOT NULL AND m.reply_to <> '')::BIGINT AS with_reply_to, \
+            COUNT(m.id) FILTER (WHERE m.reply_to IS NULL OR m.reply_to = '')::BIGINT AS without_reply_to, \
+            COUNT(m.id)::BIGINT AS total_messages \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id \
+              AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY with_reply_to DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, with_rt, without_rt, total)| serde_json::json!({
+            "folder": folder,
+            "with_reply_to": with_rt,
+            "without_reply_to": without_rt,
+            "total_messages": total,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/reply-chain-depth — avg/max msgs com in_reply_to por pasta.
+///
+/// COUNT reply msgs (in_reply_to IS NOT NULL) + ratio por pasta. Sprint #982.
+async fn reply_chain_depth_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, f64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id) FILTER (WHERE m.in_reply_to IS NOT NULL)::BIGINT AS reply_count, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            CASE WHEN COUNT(m.id) > 0 \
+                 THEN COUNT(m.id) FILTER (WHERE m.in_reply_to IS NOT NULL)::FLOAT8 / COUNT(m.id) \
+                 ELSE 0.0 END AS reply_ratio \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id \
+              AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY reply_ratio DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, reply_count, total, ratio)| serde_json::json!({
+            "folder": folder,
+            "reply_count": reply_count,
+            "total_messages": total,
+            "reply_ratio": ratio,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/sender-coverage-by-folder — DISTINCT from_addr / total por pasta.
+///
+/// sender_coverage_pct = distinct_senders / total * 100. Sprint #987.
+async fn sender_coverage_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, f64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(DISTINCT m.from_addr)::BIGINT AS distinct_senders, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            CASE WHEN COUNT(m.id) > 0 \
+                 THEN COUNT(DISTINCT m.from_addr)::FLOAT8 / COUNT(m.id) * 100.0 \
+                 ELSE 0.0 END AS sender_coverage_pct \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id \
+              AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY distinct_senders DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, distinct, total, pct)| serde_json::json!({
+            "folder": folder,
+            "distinct_senders": distinct,
+            "total_messages": total,
+            "sender_coverage_pct": pct,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-domain — top domínios em bcc_addrs jsonb.
+///
+/// LATERAL jsonb_array_elements_text(bcc_addrs) + SPLIT_PART('@'). Sprint #992.
+async fn bcc_domain_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SPLIT_PART(addr.val, '@', 2), '')) AS domain, \
+            COUNT(*)::BIGINT AS occurrence_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+           JOIN LATERAL jsonb_array_elements_text(m.bcc_addrs) AS addr(val) ON true \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY domain \
+          ORDER BY occurrence_count DESC \
+          LIMIT 20",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, count)| serde_json::json!({"domain": domain, "occurrence_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

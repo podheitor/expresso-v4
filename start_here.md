@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #974
+**Último sprint:** #994
 
 ```
 git log --oneline | head -10
@@ -369,15 +369,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #973 | search | `GET /search/index/segments/size-above-mean` — alias semântico bytes-above-mean |
 | #974 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-by-month` — COUNT por mês (1-12) de dtstart |
 
+| #975 | notifications | `GET /dlq/stats/by-kind-and-user-and-hour` — 3D kind×user×hour COUNT DESC |
+| #976 | drive | `GET /drive/files/stats/tag-size-by-ext` — top (tag, ext) por total_bytes LIMIT 50 |
+| #977 | mail | `GET /mail/messages/stats/has-reply-to-by-folder` — with/without reply_to por pasta |
+| #978 | search | `GET /search/index/segments/bytes-floor` — segmento com menor disk_bytes |
+| #979 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-by-month` — top organizers por mês |
+| #980 | notifications | `GET /dlq/stats/by-day-and-kind-and-user` — 3D day×kind×user ASC |
+| #981 | drive | `GET /drive/files/stats/folder-age` — avg/max idade dias de pastas (kind='folder') |
+| #982 | mail | `GET /mail/messages/stats/reply-chain-depth` — reply_count + ratio por pasta |
+| #983 | search | `GET /search/index/segments/docs-median-deviation` — \|num_docs−mediana\| por segmento |
+| #984 | calendar | `GET /calendars/:cal_id/events-by-range/class-by-month` — CLASS × mês |
+| #985 | notifications | `GET /dlq/stats/by-tenant-and-kind-and-minute` — 3D tenant×kind×minute ASC |
+| #986 | drive | `GET /drive/files/stats/starred-age` — avg/max dias desde starred_at |
+| #987 | mail | `GET /mail/messages/stats/sender-coverage-by-folder` — DISTINCT from_addr/total por pasta |
+| #988 | search | `GET /search/index/segments/size-median` — mediana de disk_bytes |
+| #989 | calendar | `GET /calendars/:cal_id/events-by-range/sequence-stats` — avg/max/min sequence global |
+| #990 | notifications | `GET /dlq/stats/by-user-and-kind-and-minute` — 3D user×kind×minute ASC |
+| #991 | drive | `GET /drive/files/stats/created-vs-updated-gap` — avg dias entre created_at e updated_at |
+| #992 | mail | `GET /mail/messages/stats/bcc-domain` — top domínios em bcc_addrs jsonb |
+| #993 | search | `GET /search/index/segments/top-n-by-bytes?limit=N` — top-N segmentos por disk_bytes |
+| #994 | calendar | `GET /calendars/:cal_id/events-by-range/has-location-by-month` — with/without location × mês |
+
 ---
 
-## Próximos candidatos (#975+)
+## Próximos candidatos (#995+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-user-and-hour` — 3D kind×user×hour
-2. **drive** — `GET /drive/files/stats/tag-size-by-ext` — top (tag, ext) por total_bytes
-3. **mail** — `GET /mail/messages/stats/has-reply-to-by-folder` — with/without reply_to por pasta
-4. **search** — `GET /search/index/segments/bytes-floor` — segmento com menor disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-by-month` — top organizers por mês
+1. **notifications** — `GET /dlq/stats/by-kind-and-day-and-hour` — 3D kind×day×hour
+2. **drive** — `GET /drive/files/stats/ext-count-by-user` — top (owner, ext) por file_count
+3. **mail** — `GET /mail/messages/stats/has-cc-by-weekday` — with/without cc por DOW
+4. **search** — `GET /search/index/segments/docs-range` — max_docs − min_docs amplitude
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/transparency-by-month` — TRANSP × mês
 
 ---
 
