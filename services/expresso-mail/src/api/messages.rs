@@ -67,6 +67,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/message-id-coverage",         get(message_id_coverage_stats))
         .route("/mail/messages/stats/body-size-by-folder",          get(body_size_by_folder_stats))
         .route("/mail/messages/stats/reply-to-by-folder",           get(reply_to_by_folder_stats))
+        .route("/mail/messages/stats/thread-depth-by-folder",        get(thread_depth_by_folder_stats))
+        .route("/mail/messages/stats/flags-summary",                  get(flags_summary_stats))
+        .route("/mail/messages/stats/size-distribution",              get(size_distribution_stats))
+        .route("/mail/messages/stats/oldest-newest-by-folder",        get(oldest_newest_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2959,6 +2963,162 @@ async fn reply_to_by_folder_stats(
             "total":           total,
             "with_reply_to":   with_rt,
             "without_reply_to": without_rt,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/thread-depth-by-folder — avg/max mensagens por thread por pasta.
+///
+/// Calcula depth = COUNT(msgs) agrupado por thread_id, depois agrega avg/max desses depths por pasta.
+/// LEFT JOIN para incluir pastas vazias. Retorna `{folders:[{folder,thread_count,avg_depth,max_depth}]}`. Sprint #757.
+async fn thread_depth_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(DISTINCT m.thread_id)::BIGINT AS thread_count, \
+            AVG(thread_sizes.depth), \
+            MAX(thread_sizes.depth)::BIGINT \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         LEFT JOIN ( \
+             SELECT mailbox_id, thread_id, COUNT(*)::BIGINT AS depth \
+               FROM messages \
+              WHERE tenant_id = $1 \
+              GROUP BY mailbox_id, thread_id \
+         ) thread_sizes ON thread_sizes.mailbox_id = mb.id AND thread_sizes.thread_id = m.thread_id \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY thread_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, thread_count, avg_depth, max_depth)| serde_json::json!({
+            "folder":       folder,
+            "thread_count": thread_count,
+            "avg_depth":    avg_depth,
+            "max_depth":    max_depth,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/flags-summary — total de cada flag cross-folder.
+///
+/// LATERAL unnest(flags) cross-folder, COUNT por flag. Global no tenant/user.
+/// Retorna `{flags:[{flag,count}]}` count DESC. Sprint #762.
+async fn flags_summary_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT flag, COUNT(*)::BIGINT AS count \
+           FROM messages m, LATERAL unnest(m.flags) AS flag \
+          WHERE m.tenant_id = $1 \
+            AND EXISTS ( \
+                SELECT 1 FROM mailboxes mb \
+                 WHERE mb.id = m.mailbox_id \
+                   AND mb.tenant_id = $1 \
+                   AND mb.user_id   = $2 \
+            ) \
+          GROUP BY flag \
+          ORDER BY count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let flags: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(flag, count)| serde_json::json!({"flag": flag, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"flags": flags})))
+}
+
+/// GET /mail/messages/stats/size-distribution — histograma de tamanho cross-folder.
+///
+/// Buckets: <1KB / 1-10KB / 10-100KB / 100KB-1MB / >1MB por size_bytes. Sprint #767.
+async fn size_distribution_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (lt_1k, k1_to_10k, k10_to_100k, k100_to_1m, gt_1m): (i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*) FILTER (WHERE m.size_bytes < 1024)::BIGINT, \
+                COUNT(*) FILTER (WHERE m.size_bytes >= 1024       AND m.size_bytes < 10240)::BIGINT, \
+                COUNT(*) FILTER (WHERE m.size_bytes >= 10240      AND m.size_bytes < 102400)::BIGINT, \
+                COUNT(*) FILTER (WHERE m.size_bytes >= 102400     AND m.size_bytes < 1048576)::BIGINT, \
+                COUNT(*) FILTER (WHERE m.size_bytes >= 1048576)::BIGINT \
+             FROM messages m \
+             JOIN mailboxes mb ON mb.id = m.mailbox_id AND mb.user_id = $2 \
+            WHERE m.tenant_id = $1",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_one(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "lt_1kb":       lt_1k,
+        "kb1_to_10kb":  k1_to_10k,
+        "kb10_to_100kb": k10_to_100k,
+        "kb100_to_1mb": k100_to_1m,
+        "gt_1mb":       gt_1m,
+    })))
+}
+
+/// GET /mail/messages/stats/oldest-newest-by-folder — MIN/MAX received_at por pasta.
+///
+/// Envelope temporal granular por pasta com contagem. LEFT JOIN para pastas vazias.
+/// Retorna `{folders:[{folder,message_count,oldest,newest}]}` total DESC. Sprint #772.
+async fn oldest_newest_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<time::OffsetDateTime>, Option<time::OffsetDateTime>)> =
+        sqlx::query_as(
+            "SELECT \
+                mb.name AS folder, \
+                COUNT(m.id)::BIGINT AS message_count, \
+                MIN(m.received_at), \
+                MAX(m.received_at) \
+             FROM mailboxes mb \
+             LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+             WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+             GROUP BY mb.name \
+             ORDER BY message_count DESC, mb.name ASC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, message_count, oldest, newest)| serde_json::json!({
+            "folder":        folder,
+            "message_count": message_count,
+            "oldest":        oldest.map(|t| t.to_string()),
+            "newest":        newest.map(|t| t.to_string()),
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

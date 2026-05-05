@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #754 — (commit pendente)
+**Último sprint:** #774 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -139,16 +139,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #752 | mail | `GET /mail/messages/stats/reply-to-by-folder` — with/without reply_to; LEFT JOIN pastas vazias |
 | #753 | search | `GET /search/index/segments/mad` — MAD (median absolute deviation) de num_docs e disk_bytes |
 | #754 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-domain-stats` — top-20 domínios de organizer_email (SQL SPLIT_PART) |
+| #755 | notifications | `GET /dlq/stats/summary` — rollup global: total + by_kind |
+| #756 | drive | `GET /drive/files/stats/ext-top-n?limit=N` — top-N extensões globais por file_count |
+| #757 | mail | `GET /mail/messages/stats/thread-depth-by-folder` — avg/max msgs por thread_id por pasta |
+| #758 | search | `GET /search/index/segments/kurtosis` — curtose g2 excess de num_docs e disk_bytes |
+| #759 | calendar | `GET /calendars/:cal_id/events-by-range/created-by-day` — COUNT por DATE_TRUNC('day', created_at) |
+| #760 | notifications | `GET /dlq/stats/by-tenant-and-kind-and-day` — 3D GROUP BY (day, tenant_id, kind) |
+| #761 | drive | `GET /drive/files/stats/storage-by-user?limit=N` — top-N users por total_bytes |
+| #762 | mail | `GET /mail/messages/stats/flags-summary` — cross-folder COUNT por flag via unnest |
+| #763 | search | `GET /search/index/segments/trimmed-mean?pct=N` — média podada descartando top/bottom N% |
+| #764 | calendar | `GET /calendars/:cal_id/events-by-range/updated-by-day` — COUNT por DATE_TRUNC('day', updated_at) |
+| #765 | notifications | `GET /dlq/stats/by-day-and-tenant` — GROUP BY (day, tenant_id) ASC |
+| #766 | drive | `GET /drive/files/stats/quota-usage` — max_bytes + used_bytes + pct_used por folder com quota |
+| #767 | mail | `GET /mail/messages/stats/size-distribution` — histograma <1KB/1-10KB/10-100KB/100KB-1MB/>1MB |
+| #768 | search | `GET /search/index/segments/harmonic-mean` — média harmônica de num_docs e disk_bytes |
+| #769 | calendar | `GET /calendars/:cal_id/events-by-range/etag-collision-check` — total vs COUNT(DISTINCT etag) |
+| #770 | notifications | `GET /dlq/stats/age-distribution` — buckets <1h/1-6h/6-24h/1-7d/>7d por NOW()-failed_at |
+| #771 | drive | `GET /drive/files/stats/folder-file-count?limit=N` — top-N pastas por file_count |
+| #772 | mail | `GET /mail/messages/stats/oldest-newest-by-folder` — MIN/MAX received_at por pasta |
+| #773 | search | `GET /search/index/segments/geometric-mean` — média geométrica de num_docs e disk_bytes |
+| #774 | calendar | `GET /calendars/:cal_id/events-by-range/no-end-count` — COUNT eventos sem dtend |
 
 ---
 
-## Próximos candidatos (#755+)
+## Próximos candidatos (#775+)
 
-1. **notifications** — `GET /dlq/stats/summary` — rollup global: total + by_kind counts num; snapshot de saúde DLQ
-2. **drive** — `GET /drive/files/stats/ext-top-n?limit=N` — top-N extensões globais por file_count; complementa mime-top-n (#731)
-3. **mail** — `GET /mail/messages/stats/thread-depth-by-folder` — avg/max thread size (msgs por thread_id) por pasta
-4. **search** — `GET /search/index/segments/kurtosis` — curtose (g2 excess) de num_docs; distribuição de caudas
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/created-by-day` — DATE_TRUNC('day', created_at) COUNT
+1. **notifications** — `GET /dlq/stats/by-hour-and-tenant?since=&until=` — GROUP BY (hour, tenant_id); simetria com by-tenant-and-hour (#740)
+2. **drive** — `GET /drive/files/stats/deep-files?min_depth=N` — arquivos em pastas com profundidade >= N (CTE recursiva)
+3. **mail** — `GET /mail/messages/stats/encoding-by-folder` — COUNT por charset/encoding via JSONB metadata (se disponível)
+4. **search** — `GET /search/index/segments/winsorized-mean?pct=N` — mean após clamp top/bottom N% (não descarta, limita)
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/rrule-freq-stats` — GROUP BY frequência RRULE extraída (DAILY/WEEKLY/etc)
 
 ---
 

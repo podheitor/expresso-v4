@@ -265,6 +265,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_organizer_domain_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/created-by-day",
+            get(events_by_range_created_by_day),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/updated-by-day",
+            get(events_by_range_updated_by_day),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/etag-collision-check",
+            get(events_by_range_etag_collision_check),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/no-end-count",
+            get(events_by_range_no_end_count),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -2271,6 +2287,146 @@ async fn events_by_range_organizer_domain_stats(
     Ok(Json(serde_json::json!({
         "calendar_id": cal_id,
         "rows":        out,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/created-by-day?after=&before=
+///
+/// COUNT por DATE_TRUNC('day', created_at) no intervalo dtstart. Retorna `{calendar_id,rows:[{day,count}]}` day ASC. Sprint #759.
+async fn events_by_range_created_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY day ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": out})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/updated-by-day?after=&before=
+///
+/// COUNT por DATE_TRUNC('day', updated_at). Complementa created-by-day (#759). Sprint #764.
+async fn events_by_range_updated_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('day', updated_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY day ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": out})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/etag-collision-check?after=&before=
+///
+/// total vs COUNT(DISTINCT etag); colisões = total - unique_etags. Detecta regeneração de etag incorreta.
+/// Retorna `{calendar_id,total,unique_etags,collisions}`. Sprint #769.
+async fn events_by_range_etag_collision_check(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, unique_etags): (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT, COUNT(DISTINCT etag)::BIGINT \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":  cal_id,
+        "total":        total,
+        "unique_etags": unique_etags,
+        "collisions":   total - unique_etags,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/no-end-count?after=&before=
+///
+/// COUNT eventos sem dtend (duração indefinida) no intervalo.
+/// Retorna `{calendar_id,total,no_end_count,with_end_count}`. Sprint #774.
+async fn events_by_range_no_end_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, no_end_count): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT, \
+            COUNT(*) FILTER (WHERE dtend IS NULL)::BIGINT \
+          FROM calendar_events \
+         WHERE tenant_id   = $1 AND calendar_id = $2 \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "total":          total,
+        "no_end_count":   no_end_count,
+        "with_end_count": total - no_end_count,
     })))
 }
 

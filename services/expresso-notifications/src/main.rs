@@ -1504,6 +1504,150 @@ async fn dlq_stats_by_error_prefix(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/summary — rollup global DLQ: total + contagem por kind.
+///
+/// Snapshot de saúde da DLQ sem filtro temporal. Retorna `{total,by_kind:[{kind,count}]}`. Sprint #755.
+async fn dlq_stats_summary(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*)::BIGINT FROM notification_dlq")
+        .fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let by_kind: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT FROM notification_dlq GROUP BY kind ORDER BY count DESC",
+    )
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let by_kind_out: Vec<serde_json::Value> = by_kind.into_iter()
+        .map(|(kind, count)| json!({"kind": kind, "count": count}))
+        .collect();
+    Ok(Json(json!({"total": total, "by_kind": by_kind_out})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-kind-and-day?since=&until= — 3D GROUP BY.
+///
+/// GROUP BY (tenant_id, kind, day) ASC — visão completa para dashboards de operação multi-tenant.
+/// Retorna `{rows:[{day,tenant_id,kind,count}]}`. Sprint #760.
+async fn dlq_stats_by_tenant_and_kind_and_day(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            tenant_id::TEXT, kind, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY day, tenant_id, kind \
+         ORDER BY day ASC, tenant_id ASC, kind ASC",
+    )
+    .bind(since_dt).bind(until_dt)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, tenant_id, kind, count)| json!({"day": day, "tenant_id": tenant_id, "kind": kind, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-day-and-tenant?since=&until= — GROUP BY (day, tenant_id).
+///
+/// Simetria com by-tenant-and-kind-and-day mas sem kind. Retorna `{rows:[{day,tenant_id,count}]}` day ASC. Sprint #765.
+async fn dlq_stats_by_day_and_tenant(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            tenant_id::TEXT, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY day, tenant_id \
+         ORDER BY day ASC, tenant_id ASC",
+    )
+    .bind(since_dt).bind(until_dt)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, tenant_id, count)| json!({"day": day, "tenant_id": tenant_id, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/age-distribution — histograma de idade das entradas DLQ.
+///
+/// Buckets: <1h / 1-6h / 6-24h / 1-7d / >7d por (NOW() - failed_at).
+/// Retorna `{lt_1h,h1_to_6h,h6_to_24h,d1_to_7d,gt_7d}`. Sprint #770.
+async fn dlq_stats_age_distribution(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let (lt_1h, h1_to_6h, h6_to_24h, d1_to_7d, gt_7d): (i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*) FILTER (WHERE failed_at >= NOW() - INTERVAL '1 hour')::BIGINT, \
+                COUNT(*) FILTER (WHERE failed_at >= NOW() - INTERVAL '6 hours'  AND failed_at < NOW() - INTERVAL '1 hour')::BIGINT, \
+                COUNT(*) FILTER (WHERE failed_at >= NOW() - INTERVAL '24 hours' AND failed_at < NOW() - INTERVAL '6 hours')::BIGINT, \
+                COUNT(*) FILTER (WHERE failed_at >= NOW() - INTERVAL '7 days'   AND failed_at < NOW() - INTERVAL '24 hours')::BIGINT, \
+                COUNT(*) FILTER (WHERE failed_at <  NOW() - INTERVAL '7 days')::BIGINT \
+             FROM notification_dlq",
+        )
+        .fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "lt_1h":     lt_1h,
+        "h1_to_6h":  h1_to_6h,
+        "h6_to_24h": h6_to_24h,
+        "d1_to_7d":  d1_to_7d,
+        "gt_7d":     gt_7d,
+    })))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -2472,6 +2616,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-hour",     get(dlq_stats_by_tenant_and_hour))
         .route("/api/v1/notifications/dlq/stats/by-kind-and-hour",       get(dlq_stats_by_kind_and_hour))
         .route("/api/v1/notifications/dlq/stats/by-error-prefix",        get(dlq_stats_by_error_prefix))
+        .route("/api/v1/notifications/dlq/stats/summary",                get(dlq_stats_summary))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-kind-and-day", get(dlq_stats_by_tenant_and_kind_and_day))
+        .route("/api/v1/notifications/dlq/stats/by-day-and-tenant",      get(dlq_stats_by_day_and_tenant))
+        .route("/api/v1/notifications/dlq/stats/age-distribution",        get(dlq_stats_age_distribution))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

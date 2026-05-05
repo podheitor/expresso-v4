@@ -82,6 +82,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/empty-files",      get(file_stats_empty_files))
         .route("/api/v1/drive/files/stats/deleted-by-day",   get(file_stats_deleted_by_day))
         .route("/api/v1/drive/files/stats/name-length",       get(file_stats_name_length))
+        .route("/api/v1/drive/files/stats/ext-top-n",         get(file_stats_ext_top_n))
+        .route("/api/v1/drive/files/stats/storage-by-user",   get(file_stats_storage_by_user))
+        .route("/api/v1/drive/files/stats/quota-usage",        get(file_stats_quota_usage))
+        .route("/api/v1/drive/files/stats/folder-file-count",  get(file_stats_folder_file_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2861,6 +2865,136 @@ async fn file_stats_name_length(
         "avg_name_length":  avg_name_length,
         "max_name_length":  max_name_length,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/ext-top-n?limit=N — top-N extensões globais por file_count.
+///
+/// Complementa mime-top-n (#731) com extensão extraída via substring. Default 20 max 100.
+/// Retorna `{rows:[{extension,file_count}]}` count DESC. Sprint #756.
+async fn file_stats_ext_top_n(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(100).max(1);
+    let pool  = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(SUBSTRING(name FROM '\\.[^.]*$')) AS extension, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+            AND name LIKE '%.%' \
+          GROUP BY extension \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, cnt)| serde_json::json!({"extension": ext, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/storage-by-user?limit=N — top-N usuários por total_bytes.
+///
+/// Soma size_bytes de arquivos não-deletados (kind='file') por owner_user_id. Default 20 max 200.
+/// Retorna `{rows:[{user_id,file_count,total_bytes}]}` total_bytes DESC. Sprint #761.
+async fn file_stats_storage_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool  = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT AS file_count, COALESCE(SUM(size_bytes),0)::BIGINT AS total_bytes \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+          GROUP BY owner_user_id \
+          ORDER BY total_bytes DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, fc, tb)| serde_json::json!({"user_id": uid, "file_count": fc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/quota-usage — pastas com quota: total_bytes + quota + pct_used.
+///
+/// JOIN drive_folder_quotas com SUM(size_bytes) dos filhos diretos (parent_id = folder_id).
+/// Retorna `{rows:[{folder_id,max_bytes,used_bytes,pct_used}]}`. Sprint #766.
+async fn file_stats_quota_usage(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT q.folder_id, q.max_bytes, \
+                COALESCE(SUM(f.size_bytes), 0)::BIGINT AS used_bytes \
+           FROM drive_folder_quotas q \
+           LEFT JOIN drive_files f ON f.parent_id = q.folder_id \
+                                  AND f.tenant_id = $1 \
+                                  AND f.deleted_at IS NULL \
+                                  AND f.kind = 'file' \
+          WHERE q.tenant_id = $1 \
+          GROUP BY q.folder_id, q.max_bytes \
+          ORDER BY used_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, max_bytes, used_bytes)| {
+            let pct = if max_bytes > 0 { used_bytes as f64 / max_bytes as f64 * 100.0 } else { 0.0 };
+            serde_json::json!({"folder_id": folder_id, "max_bytes": max_bytes, "used_bytes": used_bytes, "pct_used": pct})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count?limit=N — top-N pastas por file_count.
+///
+/// COUNT de arquivos não-deletados (kind='file') por parent_id. Default 20 max 200.
+/// Retorna `{rows:[{folder_id,file_count,total_bytes}]}` file_count DESC. Sprint #771.
+async fn file_stats_folder_file_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool  = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
+        "SELECT parent_id, COUNT(*)::BIGINT AS file_count, COALESCE(SUM(size_bytes),0)::BIGINT AS total_bytes \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+          GROUP BY parent_id \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(pid, fc, tb)| serde_json::json!({"folder_id": pid, "file_count": fc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

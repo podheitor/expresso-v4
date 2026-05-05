@@ -1287,6 +1287,157 @@ pub async fn segment_mad(
     }))
 }
 
+/// GET /api/v1/search/index/segments/kurtosis — curtose excess g2 de num_docs e disk_bytes.
+///
+/// g2 = [(n(n+1)/((n-1)(n-2)(n-3))) * Σ((xi-m)⁴/s⁴)] - 3(n-1)²/((n-2)(n-3)).
+/// Null quando n < 4. Positivo = caudas pesadas (leptocúrtico). Sprint #758.
+pub async fn segment_kurtosis(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n < 4 {
+        return Json(serde_json::json!({
+            "segment_count":       n,
+            "num_docs_kurtosis":   serde_json::Value::Null,
+            "disk_bytes_kurtosis": serde_json::Value::Null,
+        }));
+    }
+
+    fn kurtosis(vals: &[f64]) -> Option<f64> {
+        let n = vals.len() as f64;
+        let mean = vals.iter().sum::<f64>() / n;
+        let var  = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std  = var.sqrt();
+        if std == 0.0 { return Some(0.0); }
+        let m4: f64 = vals.iter().map(|x| ((x - mean) / std).powi(4)).sum();
+        let kurt = (n * (n + 1.0)) / ((n - 1.0) * (n - 2.0) * (n - 3.0)) * m4
+            - 3.0 * (n - 1.0).powi(2) / ((n - 2.0) * (n - 3.0));
+        Some(kurt)
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":       n,
+        "num_docs_kurtosis":   kurtosis(&docs),
+        "disk_bytes_kurtosis": kurtosis(&bytes),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/trimmed-mean?pct=N — média podada descartando top+bottom N%.
+///
+/// `pct` 0-49, default 10. Remove os N% menores e N% maiores de num_docs e disk_bytes.
+/// Robusta a outliers extremos. Retorna `{segment_count,pct,num_docs_trimmed_mean,disk_bytes_trimmed_mean}`. Sprint #763.
+#[derive(Debug, serde::Deserialize)]
+pub struct TrimmedMeanQuery {
+    pct: Option<usize>,
+}
+
+pub async fn segment_trimmed_mean(
+    State(store): State<IndexStore>,
+    Query(q): Query<TrimmedMeanQuery>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let pct = q.pct.unwrap_or(10).min(49);
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count": 0,
+            "pct": pct,
+            "num_docs_trimmed_mean":   serde_json::Value::Null,
+            "disk_bytes_trimmed_mean": serde_json::Value::Null,
+        }));
+    }
+
+    fn trimmed_mean(vals: &mut Vec<f64>, pct: usize) -> f64 {
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let trim = (vals.len() * pct / 100).min(vals.len() / 2);
+        let slice = &vals[trim..vals.len() - trim];
+        if slice.is_empty() { return 0.0; }
+        slice.iter().sum::<f64>() / slice.len() as f64
+    }
+
+    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":           n,
+        "pct":                     pct,
+        "num_docs_trimmed_mean":   trimmed_mean(&mut docs,  pct),
+        "disk_bytes_trimmed_mean": trimmed_mean(&mut bytes, pct),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/harmonic-mean — média harmônica de num_docs.
+///
+/// H = n / Σ(1/xi). Undefined quando algum xi=0 (retorna null). Sprint #768.
+pub async fn segment_harmonic_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":             0,
+            "num_docs_harmonic_mean":    serde_json::Value::Null,
+            "disk_bytes_harmonic_mean":  serde_json::Value::Null,
+        }));
+    }
+
+    fn harmonic(vals: &[f64]) -> Option<f64> {
+        if vals.iter().any(|&x| x == 0.0) { return None; }
+        let sum_inv: f64 = vals.iter().map(|x| 1.0 / x).sum();
+        Some(vals.len() as f64 / sum_inv)
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":            n,
+        "num_docs_harmonic_mean":   harmonic(&docs),
+        "disk_bytes_harmonic_mean": harmonic(&bytes),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/geometric-mean — média geométrica de num_docs e disk_bytes.
+///
+/// G = exp(Σ(ln(xi))/n). Undefined quando algum xi=0 (retorna null). Sprint #773.
+pub async fn segment_geometric_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":              0,
+            "num_docs_geometric_mean":    serde_json::Value::Null,
+            "disk_bytes_geometric_mean":  serde_json::Value::Null,
+        }));
+    }
+
+    fn geometric(vals: &[f64]) -> Option<f64> {
+        if vals.iter().any(|&x| x <= 0.0) { return None; }
+        let sum_ln: f64 = vals.iter().map(|x| x.ln()).sum();
+        Some((sum_ln / vals.len() as f64).exp())
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":             n,
+        "num_docs_geometric_mean":   geometric(&docs),
+        "disk_bytes_geometric_mean": geometric(&bytes),
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.
