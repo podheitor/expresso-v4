@@ -137,6 +137,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-cv-by-folder",               get(file_stats_size_cv_by_folder))
         .route("/api/v1/drive/files/stats/deleted-by-day",                  get(file_stats_deleted_by_day))
         .route("/api/v1/drive/files/stats/mime-top-by-size",                get(file_stats_mime_top_by_size))
+        .route("/api/v1/drive/files/stats/name-length-by-ext",  get(file_stats_name_length_by_ext))
+        .route("/api/v1/drive/files/stats/ext-size-percentile", get(file_stats_ext_size_percentile))
+        .route("/api/v1/drive/files/stats/orphan-files",        get(file_stats_orphan_files))
+        .route("/api/v1/drive/files/stats/duplicate-name",      get(file_stats_duplicate_name))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -4832,6 +4836,128 @@ async fn file_stats_mime_top_by_size(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(mime, fc, tb)| serde_json::json!({"mime_type": mime, "file_count": fc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-by-ext — avg/max comprimento do nome por extensão. Sprint #1039.
+async fn file_stats_name_length_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS file_count, \
+            AVG(LENGTH(name)) AS avg_name_length, \
+            MAX(LENGTH(name))::BIGINT AS max_name_length \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY ext \
+          ORDER BY avg_name_length DESC NULLS LAST \
+          LIMIT 50",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(e, fc, avg, max)| serde_json::json!({
+            "ext": e, "file_count": fc, "avg_name_length": avg, "max_name_length": max,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-size-percentile — P25/P50/P75/P90 de size_bytes por extensão. Sprint #1040.
+async fn file_stats_ext_size_percentile(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, i64, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p25, \
+            PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p50, \
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p75, \
+            PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p90, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND size_bytes IS NOT NULL \
+          GROUP BY ext \
+          HAVING COUNT(*) >= 3 \
+          ORDER BY p50 DESC NULLS LAST \
+          LIMIT 50",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(e, p25, p50, p75, p90, fc)| serde_json::json!({
+            "ext": e, "p25": p25, "p50": p50, "p75": p75, "p90": p90, "file_count": fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/orphan-files — arquivos sem parent_id (raiz) por tipo. Sprint #1041.
+async fn file_stats_orphan_files(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_root, file_count, folder_count, total_bytes): (i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS total_root, \
+            COUNT(*) FILTER (WHERE kind = 'file')::BIGINT AS file_count, \
+            COUNT(*) FILTER (WHERE kind = 'folder')::BIGINT AS folder_count, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE kind = 'file'), 0)::BIGINT AS total_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND parent_id IS NULL AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "total_root_items": total_root,
+        "root_file_count": file_count,
+        "root_folder_count": folder_count,
+        "root_total_bytes": total_bytes,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/duplicate-name — nomes de arquivo duplicados (mesmo nome, mesmo parent). Sprint #1042.
+async fn file_stats_duplicate_name(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
+
+    let rows: Vec<(Option<uuid::Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            name, \
+            COUNT(*)::BIGINT AS duplicate_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id, name \
+          HAVING COUNT(*) > 1 \
+          ORDER BY duplicate_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(pid, name, count)| serde_json::json!({
+            "parent_id": pid, "name": name, "duplicate_count": count,
+        }))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

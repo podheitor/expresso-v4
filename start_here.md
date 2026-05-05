@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #1034
+**Último sprint:** #1054
 
 ```
 git log --oneline | head -10
@@ -429,16 +429,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #1032 | calendar | `GET /calendars/:cal_id/events-by-range/priority-by-month` — PRIORITY bucket × mês |
 | #1033 | calendar | `GET /calendars/:cal_id/events-by-range/duration-by-weekday` — avg duração por DOW |
 | #1034 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-count-by-class` — avg attendees por CLASS |
+| #1035 | notifications | `GET /dlq/stats/by-hour-and-second` — 2D hour×second sub-minuto COUNT DESC |
+| #1036 | notifications | `GET /dlq/stats/by-tenant-and-second` — 2D tenant×second COUNT DESC |
+| #1037 | notifications | `GET /dlq/stats/by-kind-and-second` — 2D kind×second COUNT DESC |
+| #1038 | notifications | `GET /dlq/stats/by-user-and-second` — 2D user×second COUNT DESC |
+| #1039 | drive | `GET /drive/files/stats/name-length-by-ext` — avg/max LENGTH(name) por ext |
+| #1040 | drive | `GET /drive/files/stats/ext-size-percentile` — P25/P50/P75/P90 size_bytes por ext (PERCENTILE_CONT) |
+| #1041 | drive | `GET /drive/files/stats/orphan-files` — raiz (parent_id IS NULL): total/files/folders/bytes |
+| #1042 | drive | `GET /drive/files/stats/duplicate-name` — nome duplicado no mesmo folder (HAVING COUNT > 1) |
+| #1043 | mail | `GET /mail/messages/stats/unread-by-weekday` — COUNT unread por DOW |
+| #1044 | mail | `GET /mail/messages/stats/flagged-by-folder` — COUNT flagged (\\Flagged) por folder |
+| #1045 | mail | `GET /mail/messages/stats/size-percentile` — P25/P50/P75/P90 de size_bytes globais |
+| #1046 | mail | `GET /mail/messages/stats/date-range-by-folder` — MIN/MAX received_at por folder |
+| #1047 | search | `GET /search/index/segments/bytes-iqr` — IQR disk_bytes (Q3−Q1) |
+| #1048 | search | `GET /search/index/segments/docs-iqr` — IQR num_docs (Q3−Q1) |
+| #1049 | search | `GET /search/index/segments/top-n-by-docs` — top-N por num_docs (StatsLimitQuery) |
+| #1050 | search | `GET /search/index/segments/bottom-n-by-bytes` — bottom-N por disk_bytes ASC |
+| #1051 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-by-weekday` — organizer × DOW |
+| #1052 | calendar | `GET /calendars/:cal_id/events-by-range/summary-length-by-class` — avg/max LENGTH(summary) por CLASS |
+| #1053 | calendar | `GET /calendars/:cal_id/events-by-range/has-attendees-by-month` — with/without attendees × mês |
+| #1054 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-hour-by-weekday` — hora de início × DOW |
 
 ---
 
-## Próximos candidatos (#1035+)
+## Próximos candidatos (#1055+)
 
-1. **notifications** — `GET /dlq/stats/by-hour-and-second` — 2D hour×second granularidade sub-minuto
-2. **drive** — `GET /drive/files/stats/name-length-by-ext` — avg/max comprimento do nome por extensão
-3. **mail** — `GET /mail/messages/stats/unread-by-weekday` — COUNT unread por DOW
-4. **search** — `GET /search/index/segments/bytes-iqr` — IQR de disk_bytes (Q3−Q1)
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-by-weekday` — organizador × DOW
+1. **notifications** — `GET /dlq/stats/by-minute-and-user` — 2D minute×user_id COUNT DESC
+2. **drive** — `GET /drive/files/stats/locked-by-user` — COUNT locked files por owner_user_id
+3. **mail** — `GET /mail/messages/stats/received-by-hour` — COUNT por hora do dia (DOH)
+4. **search** — `GET /search/index/segments/bytes-variance` — variância população de disk_bytes
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/description-length-by-class` — avg/max LENGTH(description) por CLASS
 
 ---
 
