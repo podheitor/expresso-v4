@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #744 — (commit pendente)
+**Último sprint:** #754 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -129,16 +129,26 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #742 | mail | `GET /mail/messages/stats/message-id-coverage` — with/without message_id; LEFT JOIN pastas vazias |
 | #743 | search | `GET /search/index/segments/cv` — coeficiente de variação (stdev/mean) de num_docs e disk_bytes |
 | #744 | calendar | `GET /calendars/:cal_id/events-by-range/overlap-count` — pares com dtstart/dtend sobrepostos via self-join |
+| #745 | notifications | `GET /dlq/stats/by-kind-and-hour?since=&until=` — GROUP BY (kind, hour) ASC |
+| #746 | drive | `GET /drive/files/stats/deleted-by-day?since=&until=` — DATE_TRUNC('day', deleted_at); kind='file' |
+| #747 | mail | `GET /mail/messages/stats/body-size-by-folder` — avg/max size_bytes; LEFT JOIN pastas vazias |
+| #748 | search | `GET /search/index/segments/skewness` — g1 sample skewness de num_docs e disk_bytes |
+| #749 | calendar | `GET /calendars/:cal_id/events-by-range/sequence-stats` — avg/max sequence (revisões RFC 5545) |
+| #750 | notifications | `GET /dlq/stats/by-error-prefix?limit=N` — top-N LEFT(last_error,60) por contagem |
+| #751 | drive | `GET /drive/files/stats/name-length` — avg/max LENGTH(name) global; kind='file' não-deletados |
+| #752 | mail | `GET /mail/messages/stats/reply-to-by-folder` — with/without reply_to; LEFT JOIN pastas vazias |
+| #753 | search | `GET /search/index/segments/mad` — MAD (median absolute deviation) de num_docs e disk_bytes |
+| #754 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-domain-stats` — top-20 domínios de organizer_email (SQL SPLIT_PART) |
 
 ---
 
-## Próximos candidatos (#745+)
+## Próximos candidatos (#755+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-hour?since=&until=` — GROUP BY (kind, hour) ASC; complementa by-hour-and-kind (#720)
-2. **drive** — `GET /drive/files/stats/shared-count` — arquivos com `shared_at IS NOT NULL` (se coluna existir); total + by_user
-3. **mail** — `GET /mail/messages/stats/body-size-by-folder` — avg/max size_bytes por pasta
-4. **search** — `GET /search/index/segments/skewness` — assimetria de num_docs e disk_bytes (g1 sample)
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/sequence-stats` — avg/max sequence por calendário
+1. **notifications** — `GET /dlq/stats/summary` — rollup global: total + by_kind counts num; snapshot de saúde DLQ
+2. **drive** — `GET /drive/files/stats/ext-top-n?limit=N` — top-N extensões globais por file_count; complementa mime-top-n (#731)
+3. **mail** — `GET /mail/messages/stats/thread-depth-by-folder` — avg/max thread size (msgs por thread_id) por pasta
+4. **search** — `GET /search/index/segments/kurtosis` — curtose (g2 excess) de num_docs; distribuição de caudas
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/created-by-day` — DATE_TRUNC('day', created_at) COUNT
 
 ---
 

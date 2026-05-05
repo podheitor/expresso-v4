@@ -80,6 +80,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-top-n",       get(file_stats_mime_top_n))
         .route("/api/v1/drive/files/stats/orphan-versions",  get(file_stats_orphan_versions))
         .route("/api/v1/drive/files/stats/empty-files",      get(file_stats_empty_files))
+        .route("/api/v1/drive/files/stats/deleted-by-day",   get(file_stats_deleted_by_day))
+        .route("/api/v1/drive/files/stats/name-length",       get(file_stats_name_length))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2777,6 +2779,87 @@ async fn file_stats_empty_files(
         "total_empty": total_empty,
         "null_size":   null_size,
         "zero_size":   zero_size,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-by-day?since=&until= — arquivos deletados por dia.
+///
+/// DATE_TRUNC('day', deleted_at); kind='file'; bounds opcionais. Análogo a created-by-day (#682).
+/// Retorna `{rows:[{day,count}]}` day ASC. Sprint #746.
+#[derive(Debug, Deserialize)]
+struct StatsByDayQuery {
+    since: Option<String>,
+    until: Option<String>,
+}
+
+async fn file_stats_deleted_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsByDayQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let since_dt: Option<time::OffsetDateTime> = q.since.as_deref()
+        .map(|s| time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|_| crate::error::DriveError::BadRequest("since must be RFC3339".into()))?;
+    let until_dt: Option<time::OffsetDateTime> = q.until.as_deref()
+        .map(|s| time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339))
+        .transpose()
+        .map_err(|_| crate::error::DriveError::BadRequest("until must be RFC3339".into()))?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('day', deleted_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND kind       = 'file' \
+            AND deleted_at IS NOT NULL \
+            AND ($2::timestamptz IS NULL OR deleted_at >= $2) \
+            AND ($3::timestamptz IS NULL OR deleted_at <  $3) \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool)
+    .await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length — avg/max LENGTH(name) global (kind='file', não-deletados).
+///
+/// Indicador de verbosidade nos nomes de arquivo do tenant.
+/// Retorna `{file_count,avg_name_length,max_name_length}`. Sprint #751.
+async fn file_stats_name_length(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (file_count, avg_name_length, max_name_length): (i64, Option<f64>, Option<i64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS file_count, \
+            AVG(LENGTH(name)), \
+            MAX(LENGTH(name))::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file'",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "file_count":       file_count,
+        "avg_name_length":  avg_name_length,
+        "max_name_length":  max_name_length,
     })))
 }
 

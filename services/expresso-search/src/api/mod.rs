@@ -1200,6 +1200,93 @@ pub async fn segment_cv(
     }))
 }
 
+/// GET /api/v1/search/index/segments/skewness — assimetria amostral g1 de num_docs e disk_bytes.
+///
+/// g1 = (n/((n-1)(n-2))) * Σ((xi-mean)³/stdev³) — fórmula Fisher sample skewness.
+/// Null quando n < 3. Positivo = cauda direita (muitos segmentos pequenos, alguns grandes).
+/// Retorna `{segment_count,num_docs_skewness,disk_bytes_skewness}`. Sprint #748.
+pub async fn segment_skewness(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n < 3 {
+        return Json(serde_json::json!({
+            "segment_count":      n,
+            "num_docs_skewness":  serde_json::Value::Null,
+            "disk_bytes_skewness": serde_json::Value::Null,
+        }));
+    }
+
+    fn skewness(vals: &[f64]) -> Option<f64> {
+        let n = vals.len() as f64;
+        let mean = vals.iter().sum::<f64>() / n;
+        let var  = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        let std  = var.sqrt();
+        if std == 0.0 { return Some(0.0); }
+        let m3: f64 = vals.iter().map(|x| ((x - mean) / std).powi(3)).sum();
+        Some((n / ((n - 1.0) * (n - 2.0))) * m3)
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":       n,
+        "num_docs_skewness":   skewness(&docs),
+        "disk_bytes_skewness": skewness(&bytes),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/mad — Median Absolute Deviation de num_docs.
+///
+/// MAD = median(|xi - median(x)|) — robusto a outliers. Null quando n=0.
+/// Retorna `{segment_count,num_docs_median,num_docs_mad,disk_bytes_median,disk_bytes_mad}`. Sprint #753.
+pub async fn segment_mad(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":   0,
+            "num_docs_median": serde_json::Value::Null,
+            "num_docs_mad":    serde_json::Value::Null,
+            "disk_bytes_median": serde_json::Value::Null,
+            "disk_bytes_mad":  serde_json::Value::Null,
+        }));
+    }
+
+    fn median_sorted(sorted: &mut Vec<f64>) -> f64 {
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let m = sorted.len();
+        if m % 2 == 1 { sorted[m / 2] } else { (sorted[m / 2 - 1] + sorted[m / 2]) / 2.0 }
+    }
+
+    fn mad(vals: &[f64]) -> (f64, f64) {
+        let mut v = vals.to_vec();
+        let med = median_sorted(&mut v);
+        let mut deviations: Vec<f64> = vals.iter().map(|x| (x - med).abs()).collect();
+        let mad_val = median_sorted(&mut deviations);
+        (med, mad_val)
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let (dm, dmad) = mad(&docs);
+    let (bm, bmad) = mad(&bytes);
+
+    Json(serde_json::json!({
+        "segment_count":     n,
+        "num_docs_median":   dm,
+        "num_docs_mad":      dmad,
+        "disk_bytes_median": bm,
+        "disk_bytes_mad":    bmad,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

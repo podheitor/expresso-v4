@@ -257,6 +257,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_overlap_count),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/sequence-stats",
+            get(events_by_range_sequence_stats),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/organizer-domain-stats",
+            get(events_by_range_organizer_domain_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -2175,6 +2183,94 @@ async fn events_by_range_overlap_count(
     Ok(Json(serde_json::json!({
         "calendar_id":        cal_id,
         "overlap_pair_count": overlap_pair_count,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/sequence-stats?after=&before=
+///
+/// avg/max do campo `sequence` (contador de revisão RFC 5545) no intervalo.
+/// sequence alto indica eventos muito editados. Retorna `{calendar_id,total,avg_sequence,max_sequence}`. Sprint #749.
+async fn events_by_range_sequence_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, avg_sequence, max_sequence): (i64, Option<f64>, Option<i64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT   AS total, \
+            AVG(sequence::BIGINT), \
+            MAX(sequence)::BIGINT \
+          FROM calendar_events \
+         WHERE tenant_id   = $1 \
+           AND calendar_id = $2 \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":   cal_id,
+        "total":         total,
+        "avg_sequence":  avg_sequence,
+        "max_sequence":  max_sequence,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/organizer-domain-stats?after=&before=&limit=N
+///
+/// Top-20 domínios de `organizer_email` (SPLIT_PART('@',2)) — SQL nativo, sem parse in-app.
+/// Retorna `{calendar_id,rows:[{domain,count}]}` count DESC. Sprint #754.
+async fn events_by_range_organizer_domain_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(SPLIT_PART(organizer_email, '@', 2)) AS domain, \
+            COUNT(*)::BIGINT AS count \
+          FROM calendar_events \
+         WHERE tenant_id         = $1 \
+           AND calendar_id       = $2 \
+           AND organizer_email   IS NOT NULL \
+           AND organizer_email   LIKE '%@%' \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+         GROUP BY domain \
+         ORDER BY count DESC \
+         LIMIT 20",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, count)| serde_json::json!({"domain": domain, "count": count}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id": cal_id,
+        "rows":        out,
     })))
 }
 

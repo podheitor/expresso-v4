@@ -1425,6 +1425,85 @@ async fn dlq_stats_by_tenant_and_hour(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-and-hour?since=&until= — DLQ COUNT GROUP BY (kind, hour).
+///
+/// Complementa by-hour-and-kind (#720) com ordem invertida (kind primeiro).
+/// Retorna `{rows:[{kind,hour,count}]}` ordenado por kind ASC, hour ASC. Sprint #745.
+async fn dlq_stats_by_kind_and_hour(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            kind, \
+            to_char(date_trunc('hour', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') AS hour, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY kind, hour \
+         ORDER BY kind ASC, hour ASC",
+    )
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, hour, count)| json!({"kind": kind, "hour": hour, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-error-prefix?limit=N — top-N prefixos de last_error.
+///
+/// Trunca `last_error` nos primeiros 60 chars e agrupa para revelar classes de erro repetidas.
+/// `limit` default 20 max 200. Retorna `{rows:[{error_prefix,count}]}` count DESC. Sprint #750.
+async fn dlq_stats_by_error_prefix(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let limit = q.limit.unwrap_or(20).clamp(1, 200) as i64;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT LEFT(last_error, 60) AS error_prefix, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          WHERE last_error IS NOT NULL AND last_error <> '' \
+          GROUP BY error_prefix \
+          ORDER BY count DESC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(error_prefix, count)| json!({"error_prefix": error_prefix, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -2391,6 +2470,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-minute-and-kind",     get(dlq_stats_by_minute_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-kind-and-tenant",     get(dlq_stats_by_kind_and_tenant))
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-hour",     get(dlq_stats_by_tenant_and_hour))
+        .route("/api/v1/notifications/dlq/stats/by-kind-and-hour",       get(dlq_stats_by_kind_and_hour))
+        .route("/api/v1/notifications/dlq/stats/by-error-prefix",        get(dlq_stats_by_error_prefix))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
