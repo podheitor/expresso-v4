@@ -105,6 +105,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folder-mime-entropy",    get(file_stats_folder_mime_entropy))
         .route("/api/v1/drive/files/stats/size-entropy",           get(file_stats_size_entropy))
         .route("/api/v1/drive/files/stats/version-count-by-ext",   get(file_stats_version_count_by_ext))
+        .route("/api/v1/drive/files/stats/tag-frequency-by-folder",    get(file_stats_tag_frequency_by_folder))
+        .route("/api/v1/drive/files/stats/size-trend-by-folder",      get(file_stats_size_trend_by_folder))
+        .route("/api/v1/drive/files/stats/folder-count-by-user",      get(file_stats_folder_count_by_user))
+        .route("/api/v1/drive/files/stats/file-age-by-folder",        get(file_stats_file_age_by_folder))
         .route("/api/v1/drive/files/stats/ext-version-age",           get(file_stats_ext_version_age))
         .route("/api/v1/drive/files/stats/storage-by-folder",        get(file_stats_storage_by_folder))
         .route("/api/v1/drive/files/stats/avg-file-size-by-folder", get(file_stats_avg_file_size_by_folder))
@@ -3764,6 +3768,137 @@ async fn file_stats_version_count_by_ext(
             "ext":          ext,
             "avg_versions": avg,
             "max_versions": max,
+            "file_count":   fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-frequency-by-folder?limit=N — top tags por pasta (parent_id).
+///
+/// JOIN drive_file_tags; GROUP BY (parent_id, tag). Ordena por count DESC. Sprint #896.
+async fn file_stats_tag_frequency_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT f.parent_id, t.tag, COUNT(*)::BIGINT AS count \
+           FROM drive_files f \
+           JOIN drive_file_tags t ON t.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY f.parent_id, t.tag \
+          ORDER BY count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, tag, count)| serde_json::json!({"folder_id": folder_id, "tag": tag, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-count-by-user?limit=N — COUNT pastas por owner_user_id.
+///
+/// kind='folder', não-deletadas. GROUP BY owner_user_id ORDER BY folder_count DESC. Sprint #906.
+async fn file_stats_folder_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT AS folder_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL \
+          GROUP BY owner_user_id \
+          ORDER BY folder_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(user_id, fc)| serde_json::json!({"owner_user_id": user_id, "folder_count": fc}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trend-by-folder?limit=N — SUM(size_bytes) + file_count por (folder, dia).
+///
+/// GROUP BY (parent_id, DATE_TRUNC('day', created_at)); útil para ver crescimento por pasta. Sprint #901.
+async fn file_stats_size_trend_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(200).min(2000).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            to_char(date_trunc('day', created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id, day \
+          ORDER BY day DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, day, bytes, fc)| serde_json::json!({
+            "folder_id":   folder_id,
+            "day":         day,
+            "total_bytes": bytes,
+            "file_count":  fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/file-age-by-folder?limit=N — avg/max age em dias por folder.
+///
+/// EXTRACT(EPOCH FROM (NOW()-created_at))/86400 → days; GROUP BY parent_id. Sprint #911.
+async fn file_stats_file_age_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, f64, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0)::FLOAT8 AS avg_age_days, \
+            MAX(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400.0)::FLOAT8 AS max_age_days, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id \
+          ORDER BY avg_age_days DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, avg, max, fc)| serde_json::json!({
+            "folder_id":    folder_id,
+            "avg_age_days": avg,
+            "max_age_days": max,
             "file_count":   fc,
         }))
         .collect();

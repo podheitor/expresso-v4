@@ -2067,6 +2067,75 @@ pub async fn segment_utilization(
     Json(serde_json::json!({"max_docs_per_segment": max_docs, "rows": rows}))
 }
 
+/// GET /api/v1/search/index/segments/bottom-by-docs — id+num_docs do segmento com menos docs.
+///
+/// Retorna `{segment: {id,num_docs,disk_bytes} | null}`. Sprint #898.
+pub async fn segment_bottom_by_docs(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let bottom = segs.into_iter().min_by_key(|(_, nd, _)| *nd);
+    let segment = bottom.map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}));
+    Json(serde_json::json!({"segment": segment}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-median — COUNT segmentos acima da mediana de num_docs.
+///
+/// Retorna `{above_median,at_or_below_median,median_docs,segment_count}`. Sprint #908.
+pub async fn segment_docs_above_median(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"above_median": 0, "at_or_below_median": 0, "median_docs": null, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let median = if n % 2 == 1 { docs[n / 2] as f64 } else { (docs[n / 2 - 1] + docs[n / 2]) as f64 / 2.0 };
+    let above = docs.iter().filter(|&&d| d as f64 > median).count();
+    Json(serde_json::json!({
+        "above_median":      above,
+        "at_or_below_median": n - above,
+        "median_docs":       median,
+        "segment_count":     n,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/median-docs — mediana de num_docs.
+///
+/// Retorna `{median_docs,segment_count}`. Sprint #913.
+pub async fn segment_median_docs(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"median_docs": null, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let median = if n % 2 == 1 { docs[n / 2] as f64 } else { (docs[n / 2 - 1] + docs[n / 2]) as f64 / 2.0 };
+    Json(serde_json::json!({"median_docs": median, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/segment-age-rank — rank segmentos por id lexicográfico como proxy de criação.
+///
+/// Retorna `{rows:[{rank,id,num_docs,disk_bytes}]}` id ASC. Sprint #903.
+pub async fn segment_age_rank(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs;
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+    let rows: Vec<serde_json::Value> = sorted.into_iter().enumerate()
+        .map(|(i, (id, nd, db))| serde_json::json!({
+            "rank": i + 1, "id": id, "num_docs": nd, "disk_bytes": db
+        }))
+        .collect();
+    Json(serde_json::json!({"rows": rows}))
+}
+
 /// GET /api/v1/search/index/segments/top-by-docs — id+num_docs do segmento com mais docs.
 ///
 /// Retorna `{segment: {id,num_docs,disk_bytes} | null}`. Sprint #893.

@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #894
+**Último sprint:** #914
 
 ```
 git log --oneline | head -10
@@ -285,15 +285,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #893 | search | `GET /search/index/segments/top-by-docs` — segmento com maior num_docs |
 | #894 | calendar | `GET /calendars/:cal_id/events-by-range/location-word-count` — avg/max palavras em location |
 
+| #895 | notifications | `GET /dlq/stats/by-user-and-tenant` — GROUP BY (user_id, tenant_id) COUNT DESC |
+| #896 | drive | `GET /drive/files/stats/tag-frequency-by-folder` — top (folder, tag) COUNT DESC |
+| #897 | mail | `GET /mail/messages/stats/has-preview-by-folder` — with/without preview_text por pasta |
+| #898 | search | `GET /search/index/segments/bottom-by-docs` — segmento com menor num_docs |
+| #899 | calendar | `GET /calendars/:cal_id/events-by-range/summary-word-count-by-weekday` — avg palavras × DOW |
+| #900 | notifications | `GET /dlq/stats/by-kind-and-day-and-tenant` — 3D kind×day×tenant |
+| #901 | drive | `GET /drive/files/stats/size-trend-by-folder` — SUM(size_bytes) por (folder, dia) |
+| #902 | mail | `GET /mail/messages/stats/attachment-count-distribution` — with/without attachments cross-folder |
+| #903 | search | `GET /search/index/segments/segment-age-rank` — rank por id lexicográfico |
+| #904 | calendar | `GET /calendars/:cal_id/events-by-range/created-vs-updated-by-day` — criados+atualizados por dia |
+| #905 | notifications | `GET /dlq/stats/error-length-by-kind` — avg/max LENGTH(last_error) por kind |
+| #906 | drive | `GET /drive/files/stats/folder-count-by-user` — COUNT pastas por owner |
+| #907 | mail | `GET /mail/messages/stats/thread-age-by-folder` — avg age por thread por pasta |
+| #908 | search | `GET /search/index/segments/docs-above-median` — segmentos acima da mediana |
+| #909 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-month-by-year` — COUNT por (year, month) |
+| #910 | notifications | `GET /dlq/stats/tenant-coverage` — DISTINCT tenant_id + user_id |
+| #911 | drive | `GET /drive/files/stats/file-age-by-folder` — avg/max age dias por folder |
+| #912 | mail | `GET /mail/messages/stats/size-entropy` — Shannon H 5 buckets cross-folder |
+| #913 | search | `GET /search/index/segments/median-docs` — mediana de num_docs |
+| #914 | calendar | `GET /calendars/:cal_id/events-by-range/has-description-by-weekday` — with/without description × DOW |
+
 ---
 
-## Próximos candidatos (#895+)
+## Próximos candidatos (#915+)
 
-1. **notifications** — `GET /dlq/stats/by-user-and-tenant?limit=N` — GROUP BY (user_id, tenant_id) COUNT DESC
-2. **drive** — `GET /drive/files/stats/tag-frequency-by-folder` — top tags por pasta
-3. **mail** — `GET /mail/messages/stats/has-preview-by-folder` — with/without preview_text por pasta
-4. **search** — `GET /search/index/segments/bottom-by-docs` — segmento com menor num_docs
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/summary-word-count-by-weekday` — avg palavras summary × DOW
+1. **notifications** — `GET /dlq/stats/by-hour-and-day` — GROUP BY (day, hour) 2D granularidade
+2. **drive** — `GET /drive/files/stats/starred-by-folder` — COUNT starred por pasta
+3. **mail** — `GET /mail/messages/stats/unread-rate-by-folder` — unread/total ratio por pasta
+4. **search** — `GET /search/index/segments/variance` — variância amostral de num_docs e disk_bytes
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-count-by-day` — COUNT distinct organizers por dia
 
 ---
 

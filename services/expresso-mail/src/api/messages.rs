@@ -95,6 +95,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/from-addr-length-by-folder",  get(from_addr_length_by_folder_stats))
         .route("/mail/messages/stats/subject-entropy",             get(subject_entropy_stats))
         .route("/mail/messages/stats/from-domain-entropy",        get(from_domain_entropy_stats))
+        .route("/mail/messages/stats/has-preview-by-folder",      get(has_preview_by_folder_stats))
+        .route("/mail/messages/stats/thread-age-by-folder",       get(thread_age_by_folder_stats))
+        .route("/mail/messages/stats/size-entropy",                get(size_entropy_stats))
+        .route("/mail/messages/stats/attachment-count-distribution", get(attachment_count_distribution_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4054,4 +4058,150 @@ async fn disposition_by_folder_stats(
         .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/has-preview-by-folder — with/without preview_text por pasta.
+///
+/// LEFT JOIN; count with/without per mailbox. Retorna `{folders:[{folder,with_preview,without_preview}]}`. Sprint #897.
+async fn has_preview_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id) FILTER (WHERE m.preview_text IS NOT NULL AND m.preview_text <> '')::BIGINT AS with_preview, \
+            COUNT(m.id) FILTER (WHERE m.preview_text IS NULL OR m.preview_text = '')::BIGINT        AS without_preview \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY mb.name ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, with_p, without_p)| serde_json::json!({
+            "folder":          folder,
+            "with_preview":    with_p,
+            "without_preview": without_p,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/thread-age-by-folder — avg age em dias por thread por pasta.
+///
+/// AVG(EXTRACT(EPOCH FROM (NOW()-MIN(received_at)))/86400) per thread_id per folder. Sprint #907.
+async fn thread_age_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            AVG(thread_age_days)::FLOAT8 AS avg_thread_age_days, \
+            MAX(thread_age_days)::FLOAT8 AS max_thread_age_days, \
+            COUNT(DISTINCT thread_id)::BIGINT AS thread_count \
+           FROM ( \
+               SELECT m.mailbox_id, m.thread_id, \
+                      EXTRACT(EPOCH FROM (NOW() - MIN(m.received_at))) / 86400.0 AS thread_age_days \
+                 FROM messages m \
+                WHERE m.tenant_id = $1 AND m.thread_id IS NOT NULL \
+                GROUP BY m.mailbox_id, m.thread_id \
+           ) t \
+           JOIN mailboxes mb ON mb.id = t.mailbox_id \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY mb.name ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, avg, max, tc)| serde_json::json!({
+            "folder":               folder,
+            "avg_thread_age_days":  avg,
+            "max_thread_age_days":  max,
+            "thread_count":         tc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/size-entropy — Shannon H sobre 5 size buckets cross-folder.
+///
+/// Buckets <1KB/1-10KB/10-100KB/100KB-1MB/>1MB; H=-Σp*log2(p). Retorna `{entropy,total_messages,buckets:[]}`. Sprint #912.
+async fn size_entropy_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (c0, c1, c2, c3, c4): (i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE size_bytes < 1024)::BIGINT               AS lt_1kb, \
+            COUNT(*) FILTER (WHERE size_bytes BETWEEN 1024 AND 10239)::BIGINT AS b_1_10kb, \
+            COUNT(*) FILTER (WHERE size_bytes BETWEEN 10240 AND 102399)::BIGINT AS b_10_100kb, \
+            COUNT(*) FILTER (WHERE size_bytes BETWEEN 102400 AND 1048575)::BIGINT AS b_100kb_1mb, \
+            COUNT(*) FILTER (WHERE size_bytes >= 1048576)::BIGINT           AS gte_1mb \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let counts = [c0, c1, c2, c3, c4];
+    let total: i64 = counts.iter().sum();
+    let labels = ["<1KB", "1-10KB", "10-100KB", "100KB-1MB", ">=1MB"];
+    let buckets: Vec<serde_json::Value> = labels.iter().zip(counts.iter())
+        .map(|(l, c)| serde_json::json!({"range": l, "count": c}))
+        .collect();
+    let entropy = if total < 2 { None } else {
+        Some(counts.iter().filter(|&&c| c > 0).fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / total as f64;
+            acc - p * p.log2()
+        }))
+    };
+    Ok(Json(serde_json::json!({"entropy": entropy, "total_messages": total, "buckets": buckets})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-count-distribution — histograma com/sem anexos cross-folder.
+///
+/// with_attachments, without_attachments, pct_with. Sprint #902.
+async fn attachment_count_distribution_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (with_att, without_att): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE has_attachments = true)::BIGINT  AS with_attachments, \
+            COUNT(*) FILTER (WHERE has_attachments = false)::BIGINT AS without_attachments \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total = with_att + without_att;
+    let pct = if total == 0 { 0.0 } else { with_att as f64 / total as f64 * 100.0 };
+    Ok(Json(serde_json::json!({
+        "with_attachments":    with_att,
+        "without_attachments": without_att,
+        "total_messages":      total,
+        "pct_with_attachments": pct,
+    })))
 }

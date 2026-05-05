@@ -345,6 +345,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_location_word_count),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-word-count-by-weekday",
+            get(events_by_range_summary_word_count_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/created-vs-updated-by-day",
+            get(events_by_range_created_vs_updated_by_day),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/dtstart-month-by-year",
+            get(events_by_range_dtstart_month_by_year),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-description-by-weekday",
+            get(events_by_range_has_description_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/rrule-interval-stats",
             get(events_by_range_rrule_interval_stats),
         )
@@ -3035,6 +3051,174 @@ async fn events_by_range_location_word_count(
         "with_location":    with_loc,
         "without_location": without_loc,
     })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-word-count-by-weekday?after=&before= — avg palavras summary × DOW.
+///
+/// array_length(regexp_split_to_array(TRIM(summary),'\s+'),1) × DOW. Retorna `{calendar_id,rows:[{dow,day_name,avg_words,count}]}`. Sprint #899.
+async fn events_by_range_summary_word_count_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(array_length(regexp_split_to_array(TRIM(COALESCE(summary,'')), '\\s+'), 1))::FLOAT8 AS avg_words, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, avg, count)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "avg_words": avg, "count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/created-vs-updated-by-day?after=&before= — criados e atualizados por dia.
+///
+/// COUNT por DATE_TRUNC('day', created_at) e updated_at. UNION ALL approach. Retorna `{calendar_id,rows:[{day,created,updated}]}`. Sprint #904.
+async fn events_by_range_created_vs_updated_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', d) AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, \
+            COALESCE(SUM(created_cnt), 0)::BIGINT  AS created, \
+            COALESCE(SUM(updated_cnt), 0)::BIGINT  AS updated \
+           FROM ( \
+               SELECT date_trunc('day', created_at) AS d, 1 AS created_cnt, 0 AS updated_cnt \
+                 FROM calendar_events \
+                WHERE tenant_id = $1 AND calendar_id = $2 \
+                  AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+                  AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+               UNION ALL \
+               SELECT date_trunc('day', updated_at), 0, 1 \
+                 FROM calendar_events \
+                WHERE tenant_id = $1 AND calendar_id = $2 \
+                  AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+                  AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+           ) sub \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, created, updated)| serde_json::json!({"day": day, "created": created, "updated": updated}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/dtstart-month-by-year?after=&before= — COUNT por (year, month).
+///
+/// GROUP BY (EXTRACT(YEAR), EXTRACT(MONTH)) ORDER BY year, month ASC. Retorna `{calendar_id,rows:[{year,month,count}]}`. Sprint #909.
+async fn events_by_range_dtstart_month_by_year(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(YEAR  FROM dtstart AT TIME ZONE 'UTC')::INT  AS year, \
+            EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT  AS month, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY year, month \
+          ORDER BY year ASC, month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(year, month, count)| serde_json::json!({"year": year, "month": month, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-description-by-weekday?after=&before= — with/without description × DOW.
+///
+/// COUNT FILTER WHERE description IS NOT NULL AND <> '' × DOW. Retorna `{calendar_id,rows:[{dow,day_name,with_description,without_description}]}`. Sprint #914.
+async fn events_by_range_has_description_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE description IS NOT NULL AND description <> '')::BIGINT AS with_description, \
+            COUNT(*) FILTER (WHERE description IS NULL OR description = '')::BIGINT        AS without_description \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, with_d, without_d)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "with_description": with_d, "without_description": without_d})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/rrule-interval-stats?after=&before= — extrai INTERVAL= do rrule.
