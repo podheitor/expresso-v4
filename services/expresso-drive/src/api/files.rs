@@ -76,6 +76,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/ext-by-folder",    get(file_stats_ext_by_folder))
         .route("/api/v1/drive/files/stats/lock-count",       get(file_stats_lock_count))
         .route("/api/v1/drive/files/stats/starred-count",    get(file_stats_starred_count))
+        .route("/api/v1/drive/files/stats/expiry-count",    get(file_stats_expiry_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2654,6 +2655,34 @@ async fn file_stats_starred_count(
     Ok(Json(serde_json::json!({
         "total_starred": total_starred,
         "by_user":       by_user_out,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/expiry-count — arquivos com expires_at definido.
+///
+/// Retorna total com expiry + já expirados (expires_at < NOW()). Apenas não-deletados.
+/// Retorna `{total_with_expiry,already_expired,not_yet_expired}`. Sprint #726.
+async fn file_stats_expiry_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_with_expiry, already_expired): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE expires_at IS NOT NULL)::BIGINT AS total_with_expiry, \
+            COUNT(*) FILTER (WHERE expires_at IS NOT NULL AND expires_at < NOW())::BIGINT AS already_expired \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "total_with_expiry": total_with_expiry,
+        "already_expired":   already_expired,
+        "not_yet_expired":   total_with_expiry - already_expired,
     })))
 }
 

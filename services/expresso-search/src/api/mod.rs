@@ -998,6 +998,46 @@ pub async fn segment_stdev(
     }))
 }
 
+/// GET /api/v1/search/index/segments/entropy — entropia de Shannon da distribuição de num_docs.
+///
+/// H = -sum(p_i * log2(p_i)) onde p_i = num_docs_i / total_docs.
+/// H=0 quando há um único segmento; H=log2(n) quando todos têm o mesmo tamanho.
+/// Retorna `{segment_count,total_docs,entropy_bits}`. Null quando índice vazio. Sprint #723.
+pub async fn segment_entropy(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count": 0,
+            "total_docs":    0,
+            "entropy_bits":  serde_json::Value::Null,
+        }));
+    }
+
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+
+    let entropy = if total_docs == 0 {
+        0.0_f64
+    } else {
+        segs.iter()
+            .filter(|(_, d, _)| *d > 0)
+            .map(|(_, d, _)| {
+                let p = *d as f64 / total_docs as f64;
+                -p * p.log2()
+            })
+            .sum::<f64>()
+    };
+
+    Json(serde_json::json!({
+        "segment_count": n,
+        "total_docs":    total_docs,
+        "entropy_bits":  entropy,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

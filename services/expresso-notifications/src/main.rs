@@ -1207,6 +1207,52 @@ async fn dlq_stats_retention(
     })))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-minute?since=&until= — DLQ por minuto.
+///
+/// DATE_TRUNC('minute') GROUP BY ORDER BY minute ASC. Granularidade fina para identificar
+/// picos em janelas de tempo estreitas. Temporal bounds opcionais.
+/// Retorna `{rows:[{minute,count}]}`. Sprint #725.
+async fn dlq_stats_by_minute(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('minute', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD\"T\"HH24:MI:00\"Z\"') AS minute, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY minute \
+         ORDER BY minute ASC",
+    )
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(minute, count)| json!({"minute": minute, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-day-and-kind?since=&until= — DLQ por (day, kind).
 ///
 /// GROUP BY (DATE_TRUNC('day', failed_at), kind) ORDER BY day ASC, kind ASC.
@@ -2216,6 +2262,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/retention",             get(dlq_stats_retention))
         .route("/api/v1/notifications/dlq/stats/by-day-and-kind",        get(dlq_stats_by_day_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-hour-and-kind",       get(dlq_stats_by_hour_and_kind))
+        .route("/api/v1/notifications/dlq/stats/by-minute",              get(dlq_stats_by_minute))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

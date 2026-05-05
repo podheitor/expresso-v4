@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #722 — (commit pendente)
+**Último sprint:** #726 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -107,15 +107,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #720 | notifications | `GET /dlq/stats/by-hour-and-kind?since=&until=` — GROUP BY (hour, kind) ASC; granularidade intra-dia por tipo |
 | #721 | drive | `GET /drive/files/stats/starred-count` — COUNT starred_at IS NOT NULL; total + by_user DESC |
 | #722 | mail | `GET /mail/messages/stats/preview-length-by-folder` — avg/max LENGTH(preview_text) por pasta |
+| #723 | search | `GET /search/index/segments/entropy` — entropia de Shannon H=-sum(p*log2(p)) sobre num_docs |
+| #724 | calendar | `GET /calendars/:cal_id/events-by-range/summary-length-stats` — with/without + avg/max LENGTH(summary) |
+| #725 | notifications | `GET /dlq/stats/by-minute?since=&until=` — DATE_TRUNC('minute') GROUP BY; granularidade fina |
+| #726 | drive | `GET /drive/files/stats/expiry-count` — total_with_expiry + already_expired (expires_at < NOW()) |
 
 ---
 
-## Próximos candidatos (#723+)
+## Próximos candidatos (#727+)
 
-1. **search** — `GET /search/index/segments/entropy` — entropia de Shannon sobre distribuição normalizada de num_docs; medida de desequilíbrio
-2. **calendar** — `GET /calendars/:cal_id/events-by-range/summary-length-stats` — avg/max LENGTH(summary) por calendário
-3. **notifications** — `GET /dlq/stats/by-minute?since=&until=` — DATE_TRUNC('minute') GROUP BY; granularidade fina de picos
-4. **drive** — `GET /drive/files/stats/expiry-count` — COUNT arquivos com expires_at IS NOT NULL; total + expirados (expires_at < NOW())
+1. **mail** — `GET /mail/messages/stats/has-date-by-folder` — COUNT with_date/without_date (date IS NOT NULL) por pasta
+2. **search** — `GET /search/index/segments/gini` — coeficiente de Gini da distribuição num_docs; 0=uniforme, 1=concentrado
+3. **calendar** — `GET /calendars/:cal_id/events-by-range/location-length-stats` — avg/max LENGTH(location) por calendário
+4. **notifications** — `GET /dlq/stats/by-minute-and-kind?since=&until=` — GROUP BY (minute, kind) ASC
 
 ---
 
