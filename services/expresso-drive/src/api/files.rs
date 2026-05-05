@@ -105,6 +105,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folder-mime-entropy",    get(file_stats_folder_mime_entropy))
         .route("/api/v1/drive/files/stats/size-entropy",           get(file_stats_size_entropy))
         .route("/api/v1/drive/files/stats/version-count-by-ext",   get(file_stats_version_count_by_ext))
+        .route("/api/v1/drive/files/stats/ext-version-age",           get(file_stats_ext_version_age))
+        .route("/api/v1/drive/files/stats/storage-by-folder",        get(file_stats_storage_by_folder))
+        .route("/api/v1/drive/files/stats/avg-file-size-by-folder", get(file_stats_avg_file_size_by_folder))
+        .route("/api/v1/drive/files/stats/folder-size-entropy",   get(file_stats_folder_size_entropy))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -3764,6 +3768,154 @@ async fn file_stats_version_count_by_ext(
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-version-age?limit=N — MIN/MAX created_at de versões por extensão.
+///
+/// JOIN drive_file_versions; GROUP BY ext; age = NOW()-MIN(v.created_at) days. Sprint #891.
+async fn file_stats_ext_version_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(SUBSTRING(f.name FROM '\\.[^.]*$')) AS ext, \
+            to_char(MIN(v.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS oldest_version_at, \
+            to_char(MAX(v.created_at) AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS newest_version_at, \
+            COUNT(v.id)::BIGINT AS version_count \
+           FROM drive_files f \
+           JOIN drive_file_versions v ON v.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.kind = 'file' AND f.deleted_at IS NULL \
+          GROUP BY ext \
+          ORDER BY oldest_version_at ASC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, oldest, newest, vc)| serde_json::json!({
+            "ext":               ext,
+            "oldest_version_at": oldest,
+            "newest_version_at": newest,
+            "version_count":     vc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/storage-by-folder?limit=N — total_bytes + file_count por folder top-N.
+///
+/// GROUP BY parent_id; NULL = raiz. Ordena por total_bytes DESC. Sprint #886.
+async fn file_stats_storage_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
+        "SELECT parent_id, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes, \
+                COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id \
+          ORDER BY total_bytes DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, total, fc)| serde_json::json!({
+            "folder_id":   folder_id,
+            "total_bytes": total,
+            "file_count":  fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/avg-file-size-by-folder?limit=N — AVG/MAX size_bytes por folder.
+///
+/// GROUP BY parent_id; inclui NULL (raiz). Ordena por avg_bytes DESC. Sprint #881.
+async fn file_stats_avg_file_size_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, f64, i64, i64)> = sqlx::query_as(
+        "SELECT parent_id, \
+                AVG(size_bytes)::FLOAT8  AS avg_bytes, \
+                MAX(size_bytes)::BIGINT  AS max_bytes, \
+                COUNT(*)::BIGINT         AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id \
+          ORDER BY avg_bytes DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, avg, max, fc)| serde_json::json!({
+            "folder_id":  folder_id,
+            "avg_bytes":  avg,
+            "max_bytes":  max,
+            "file_count": fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-size-entropy — Shannon H sobre total_bytes por folder.
+///
+/// H = -Σ p*log2(p) onde p = folder_bytes / total_bytes global. Retorna `{entropy,total_bytes,folder_count}`. Sprint #876.
+async fn file_stats_folder_size_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT parent_id, COALESCE(SUM(size_bytes), 0)::BIGINT AS folder_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, b)| b).sum();
+    let folder_count = rows.len();
+    if total == 0 || folder_count < 2 {
+        return Ok(Json(serde_json::json!({
+            "entropy": serde_json::Value::Null,
+            "total_bytes": total,
+            "folder_count": folder_count,
+        })));
+    }
+    let entropy: f64 = rows.iter()
+        .filter(|(_, b)| *b > 0)
+        .fold(0.0_f64, |acc, (_, b)| {
+            let p = *b as f64 / total as f64;
+            acc - p * p.log2()
+        });
+    Ok(Json(serde_json::json!({
+        "entropy": entropy,
+        "total_bytes": total,
+        "folder_count": folder_count,
+    })))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

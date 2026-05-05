@@ -91,6 +91,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/x-mailer-by-folder",          get(x_mailer_by_folder_stats))
         .route("/mail/messages/stats/content-type-by-folder",      get(content_type_by_folder_stats))
         .route("/mail/messages/stats/disposition-by-folder",       get(disposition_by_folder_stats))
+        .route("/mail/messages/stats/organization-by-folder",      get(organization_by_folder_stats))
+        .route("/mail/messages/stats/from-addr-length-by-folder",  get(from_addr_length_by_folder_stats))
+        .route("/mail/messages/stats/subject-entropy",             get(subject_entropy_stats))
+        .route("/mail/messages/stats/from-domain-entropy",        get(from_domain_entropy_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -3857,6 +3861,159 @@ async fn content_type_by_folder_stats(
     for (folder, content_type, count) in rows {
         folder_map.entry(folder).or_default()
             .push(serde_json::json!({"content_type": content_type, "count": count}));
+    }
+    let folders: Vec<serde_json::Value> = folder_map.into_iter()
+        .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/from-domain-entropy — Shannon H sobre domínios de remetente.
+///
+/// SPLIT_PART(from_addr,'@',2) → domínio; H=-Σp*log2(p). Retorna `{entropy,total_messages,distinct_domains}`. Sprint #892.
+async fn from_domain_entropy_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 AND m.from_addr IS NOT NULL \
+          GROUP BY NULLIF(SPLIT_PART(m.from_addr, '@', 2), '')",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total: i64 = rows.iter().map(|(c,)| c).sum();
+    let distinct = rows.len() as i64;
+    if total == 0 || distinct < 2 {
+        return Ok(Json(serde_json::json!({
+            "entropy": serde_json::Value::Null,
+            "total_messages": total,
+            "distinct_domains": distinct,
+        })));
+    }
+    let entropy: f64 = rows.iter().fold(0.0_f64, |acc, (c,)| {
+        let p = *c as f64 / total as f64;
+        acc - p * p.log2()
+    });
+    Ok(Json(serde_json::json!({
+        "entropy": entropy,
+        "total_messages": total,
+        "distinct_domains": distinct,
+    })))
+}
+
+/// GET /api/v1/mail/messages/stats/subject-entropy — Shannon H sobre subjects únicos.
+///
+/// Agrupa subject normalizado (LOWER+TRIM), calcula H=-Σp*log2(p). Retorna `{entropy,total_messages,distinct_subjects}`. Sprint #887.
+async fn subject_entropy_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY LOWER(TRIM(COALESCE(m.subject, '')))",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total: i64 = rows.iter().map(|(c,)| c).sum();
+    let distinct = rows.len() as i64;
+    if total == 0 || distinct < 2 {
+        return Ok(Json(serde_json::json!({
+            "entropy": serde_json::Value::Null,
+            "total_messages": total,
+            "distinct_subjects": distinct,
+        })));
+    }
+    let entropy: f64 = rows.iter().fold(0.0_f64, |acc, (c,)| {
+        let p = *c as f64 / total as f64;
+        acc - p * p.log2()
+    });
+    Ok(Json(serde_json::json!({
+        "entropy": entropy,
+        "total_messages": total,
+        "distinct_subjects": distinct,
+    })))
+}
+
+/// GET /api/v1/mail/messages/stats/from-addr-length-by-folder — avg/max LENGTH(from_addr) por pasta.
+///
+/// Mede verbosidade dos remetentes. Retorna `{folders:[{folder,avg_length,max_length,with_from,without_from}]}`. Sprint #882.
+async fn from_addr_length_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<f64>, Option<i64>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            AVG(LENGTH(m.from_addr))::FLOAT8  AS avg_length, \
+            MAX(LENGTH(m.from_addr))::BIGINT  AS max_length, \
+            COUNT(m.id) FILTER (WHERE m.from_addr IS NOT NULL)::BIGINT AS with_from, \
+            COUNT(m.id) FILTER (WHERE m.from_addr IS NULL)::BIGINT     AS without_from \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY mb.name ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, avg, max, with_f, without_f)| serde_json::json!({
+            "folder":       folder,
+            "avg_length":   avg,
+            "max_length":   max,
+            "with_from":    with_f,
+            "without_from": without_f,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/organization-by-folder — Organization header por pasta.
+///
+/// GROUP BY (folder, organization) count DESC. Sprint #877.
+async fn organization_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            m.organization, \
+            COUNT(*)::BIGINT AS count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, m.organization \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut folder_map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (folder, organization, count) in rows {
+        folder_map.entry(folder).or_default()
+            .push(serde_json::json!({"organization": organization, "count": count}));
     }
     let folders: Vec<serde_json::Value> = folder_map.into_iter()
         .map(|(folder, rows)| serde_json::json!({"folder": folder, "rows": rows}))

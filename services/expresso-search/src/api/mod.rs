@@ -2067,6 +2067,117 @@ pub async fn segment_utilization(
     Json(serde_json::json!({"max_docs_per_segment": max_docs, "rows": rows}))
 }
 
+/// GET /api/v1/search/index/segments/top-by-docs — id+num_docs do segmento com mais docs.
+///
+/// Retorna `{segment: {id,num_docs,disk_bytes} | null}`. Sprint #893.
+pub async fn segment_top_by_docs(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let top = segs.into_iter().max_by_key(|(_, nd, _)| *nd);
+    let segment = top.map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}));
+    Json(serde_json::json!({"segment": segment}))
+}
+
+/// GET /api/v1/search/index/segments/size-percentile — percentis 25/50/75/90/95 de disk_bytes.
+///
+/// Interpolação linear por rank em memória. Retorna `{p25,p50,p75,p90,p95,segment_count}`. Sprint #888.
+pub async fn segment_size_percentile(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25": null, "p50": null, "p75": null, "p90": null, "p95": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+
+    let percentile = |p: f64| -> f64 {
+        let idx = p / 100.0 * (n - 1) as f64;
+        let lo = idx.floor() as usize;
+        let hi = idx.ceil() as usize;
+        let frac = idx - lo as f64;
+        sizes[lo] as f64 * (1.0 - frac) + sizes[hi.min(n - 1)] as f64 * frac
+    };
+
+    Json(serde_json::json!({
+        "p25": percentile(25.0),
+        "p50": percentile(50.0),
+        "p75": percentile(75.0),
+        "p90": percentile(90.0),
+        "p95": percentile(95.0),
+        "segment_count": n,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/docs-size-correlation — correlação Pearson entre num_docs e disk_bytes.
+///
+/// r = (Σxy - n*x̄*ȳ) / (√(Σx² - n*x̄²) * √(Σy² - n*ȳ²)). Retorna `{pearson_r,segment_count}`. Sprint #883.
+pub async fn segment_docs_size_correlation(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"pearson_r": serde_json::Value::Null, "segment_count": n}));
+    }
+    let xs: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let ys: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let nf = n as f64;
+    let mean_x = xs.iter().sum::<f64>() / nf;
+    let mean_y = ys.iter().sum::<f64>() / nf;
+    let sum_xy: f64 = xs.iter().zip(ys.iter()).map(|(x, y)| x * y).sum();
+    let sum_x2: f64 = xs.iter().map(|x| x * x).sum();
+    let sum_y2: f64 = ys.iter().map(|y| y * y).sum();
+    let denom = ((sum_x2 - nf * mean_x * mean_x) * (sum_y2 - nf * mean_y * mean_y)).sqrt();
+    let pearson_r = if denom == 0.0 { None } else {
+        Some((sum_xy - nf * mean_x * mean_y) / denom)
+    };
+    Json(serde_json::json!({"pearson_r": pearson_r, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-percentile-band — conta segmentos por faixa percentil de num_docs.
+///
+/// Divide os segmentos em 4 bandas (p0-p25, p25-p50, p50-p75, p75-p100) e conta quantos caem em cada.
+/// Retorna `{segment_count,bands:[{band,min,max,count}]}`. Sprint #878.
+pub async fn segment_docs_percentile_band(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segment_count": 0, "bands": []}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+
+    let p25 = docs[n * 25 / 100];
+    let p50 = docs[n * 50 / 100];
+    let p75 = docs[n * 75 / 100];
+    let max  = *docs.last().unwrap();
+    let min  = docs[0];
+
+    let (mut b0, mut b1, mut b2, mut b3) = (0u64, 0u64, 0u64, 0u64);
+    for &d in &docs {
+        if d <= p25      { b0 += 1; }
+        else if d <= p50 { b1 += 1; }
+        else if d <= p75 { b2 += 1; }
+        else             { b3 += 1; }
+    }
+    Json(serde_json::json!({
+        "segment_count": n,
+        "bands": [
+            {"band": "p0-p25",   "threshold_docs": p25, "count": b0},
+            {"band": "p25-p50",  "threshold_docs": p50, "count": b1},
+            {"band": "p50-p75",  "threshold_docs": p75, "count": b2},
+            {"band": "p75-p100", "threshold_docs": max,  "count": b3},
+        ],
+        "global_min_docs": min,
+        "global_max_docs": max,
+    }))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

@@ -2435,6 +2435,131 @@ async fn dlq_stats_by_minute_and_kind_and_user(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-attempts-and-tenant?limit=N — histograma attempts × tenant.
+///
+/// GROUP BY (attempts, tenant_id) COUNT DESC; default limit 50. Sprint #890.
+async fn dlq_stats_by_attempts_and_tenant(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+
+    let rows: Vec<(i32, Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT attempts, tenant_id, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY attempts, tenant_id \
+          ORDER BY count DESC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(a, t, c)| json!({"attempts": a, "tenant_id": t, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/failed-at-hour-distribution — histograma de hora do dia (0-23).
+///
+/// COUNT(*) GROUP BY EXTRACT(HOUR FROM failed_at). Retorna `{rows:[{hour_of_day,count}]}` hour ASC. Sprint #885.
+async fn dlq_stats_failed_at_hour_distribution(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM failed_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+                COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, c)| json!({"hour_of_day": h, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-rate-by-kind — AVG/MAX attempts por kind.
+///
+/// GROUP BY kind; retorna `{rows:[{kind,avg_attempts,max_attempts,count}]}` avg DESC. Sprint #880.
+async fn dlq_stats_retry_rate_by_kind(
+    State(st): State<AppState>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let rows: Vec<(String, f64, i64, i64)> = sqlx::query_as(
+        "SELECT kind, AVG(attempts)::FLOAT8 AS avg_attempts, MAX(attempts)::BIGINT AS max_attempts, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY kind \
+          ORDER BY avg_attempts DESC",
+    )
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(k, avg, max, c)| json!({"kind": k, "avg_attempts": avg, "max_attempts": max, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-hour-and-user-and-kind?since=&until= — 3D GROUP BY (hour, user_id, kind).
+///
+/// Granularidade de hora cruzada com user_id e kind. Retorna `{rows:[{hour,user_id,kind,count}]}`. Sprint #875.
+async fn dlq_stats_by_hour_and_user_and_kind(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, Option<uuid::Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('hour', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') AS hour, \
+            user_id, \
+            kind, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY hour, user_id, kind \
+         ORDER BY hour ASC, user_id ASC, kind ASC",
+    )
+    .bind(since_dt).bind(until_dt)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, u, k, c)| json!({"hour": h, "user_id": u, "kind": k, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-hour-and-kind-and-user?since=&until= — 3D GROUP BY (hour, kind, user_id).
 ///
 /// Granularidade de hora cruzada com kind e user_id. Retorna `{rows:[{hour,kind,user_id,count}]}`. Sprint #870.
@@ -3468,6 +3593,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-second-and-user",    get(dlq_stats_by_second_and_user))
         .route("/api/v1/notifications/dlq/stats/by-second-and-kind-and-tenant", get(dlq_stats_by_second_and_kind_and_tenant))
         .route("/api/v1/notifications/dlq/stats/by-minute-and-kind-and-user", get(dlq_stats_by_minute_and_kind_and_user))
+        .route("/api/v1/notifications/dlq/stats/by-attempts-and-tenant",       get(dlq_stats_by_attempts_and_tenant))
+        .route("/api/v1/notifications/dlq/stats/failed-at-hour-distribution",  get(dlq_stats_failed_at_hour_distribution))
+        .route("/api/v1/notifications/dlq/stats/retry-rate-by-kind",          get(dlq_stats_retry_rate_by_kind))
+        .route("/api/v1/notifications/dlq/stats/by-hour-and-user-and-kind",   get(dlq_stats_by_hour_and_user_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-hour-and-kind-and-user",   get(dlq_stats_by_hour_and_kind_and_user))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))

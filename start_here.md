@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #874
+**Último sprint:** #894
 
 ```
 git log --oneline | head -10
@@ -264,15 +264,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #873 | search | `GET /search/index/segments/utilization?max_docs=N` — num_docs/max_docs ratio |
 | #874 | calendar | `GET /calendars/:cal_id/events-by-range/priority-by-weekday` — PRIORITY bucket × DOW |
 
+| #875 | notifications | `GET /dlq/stats/by-hour-and-user-and-kind` — 3D hour×user×kind |
+| #876 | drive | `GET /drive/files/stats/folder-size-entropy` — Shannon H sobre total_bytes por folder |
+| #877 | mail | `GET /mail/messages/stats/organization-by-folder` — Organization header por pasta |
+| #878 | search | `GET /search/index/segments/docs-percentile-band` — 4 bandas percentil de num_docs |
+| #879 | calendar | `GET /calendars/:cal_id/events-by-range/transparency-by-weekday` — TRANSP × DOW |
+| #880 | notifications | `GET /dlq/stats/retry-rate-by-kind` — AVG/MAX attempts por kind |
+| #881 | drive | `GET /drive/files/stats/avg-file-size-by-folder` — AVG/MAX size_bytes por folder |
+| #882 | mail | `GET /mail/messages/stats/from-addr-length-by-folder` — avg/max LENGTH(from_addr) por pasta |
+| #883 | search | `GET /search/index/segments/docs-size-correlation` — Pearson r entre num_docs e disk_bytes |
+| #884 | calendar | `GET /calendars/:cal_id/events-by-range/duration-by-weekday` — avg minutos por DOW |
+| #885 | notifications | `GET /dlq/stats/failed-at-hour-distribution` — histograma hora do dia (0-23) |
+| #886 | drive | `GET /drive/files/stats/storage-by-folder` — total_bytes + file_count por folder top-N |
+| #887 | mail | `GET /mail/messages/stats/subject-entropy` — Shannon H sobre subjects únicos |
+| #888 | search | `GET /search/index/segments/size-percentile` — p25/p50/p75/p90/p95 de disk_bytes |
+| #889 | calendar | `GET /calendars/:cal_id/events-by-range/rrule-interval-stats` — INTERVAL= do rrule |
+| #890 | notifications | `GET /dlq/stats/by-attempts-and-tenant` — attempts × tenant COUNT |
+| #891 | drive | `GET /drive/files/stats/ext-version-age` — MIN/MAX created_at versões por ext |
+| #892 | mail | `GET /mail/messages/stats/from-domain-entropy` — Shannon H sobre domínios de remetente |
+| #893 | search | `GET /search/index/segments/top-by-docs` — segmento com maior num_docs |
+| #894 | calendar | `GET /calendars/:cal_id/events-by-range/location-word-count` — avg/max palavras em location |
+
 ---
 
-## Próximos candidatos (#875+)
+## Próximos candidatos (#895+)
 
-1. **notifications** — `GET /dlq/stats/by-hour-and-user-and-kind` — 3D hour×user×kind
-2. **drive** — `GET /drive/files/stats/folder-size-entropy` — Shannon H sobre total_bytes por folder
-3. **mail** — `GET /mail/messages/stats/organization-by-folder` — Organization header por pasta
-4. **search** — `GET /search/index/segments/docs-percentile-band` — conta segmentos por faixa percentil
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/transparency-by-weekday` — TRANSP × DOW
+1. **notifications** — `GET /dlq/stats/by-user-and-tenant?limit=N` — GROUP BY (user_id, tenant_id) COUNT DESC
+2. **drive** — `GET /drive/files/stats/tag-frequency-by-folder` — top tags por pasta
+3. **mail** — `GET /mail/messages/stats/has-preview-by-folder` — with/without preview_text por pasta
+4. **search** — `GET /search/index/segments/bottom-by-docs` — segmento com menor num_docs
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/summary-word-count-by-weekday` — avg palavras summary × DOW
 
 ---
 
