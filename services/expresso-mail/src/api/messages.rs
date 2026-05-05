@@ -127,6 +127,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flagged-by-folder",    get(flagged_by_folder_stats))
         .route("/mail/messages/stats/size-percentile",      get(size_percentile_stats))
         .route("/mail/messages/stats/date-range-by-folder", get(date_range_by_folder_stats))
+        .route("/mail/messages/stats/received-by-hour",     get(received_by_hour_stats))
+        .route("/mail/messages/stats/to-domain",             get(to_domain_stats))
+        .route("/mail/messages/stats/age-by-folder",         get(age_by_folder_stats))
+        .route("/mail/messages/stats/flagged-rate-by-folder", get(flagged_rate_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5174,6 +5178,134 @@ async fn date_range_by_folder_stats(
             "oldest_message": oldest,
             "newest_message": newest,
         }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/received-by-hour — COUNT mensagens por hora do dia (0-23). Sprint #1063.
+async fn received_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(m.id)::BIGINT AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 AND m.received_at IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, c)| serde_json::json!({"hour_of_day": h, "message_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/to-domain — top domínios em to_addrs jsonb (SPLIT_PART '@'). Sprint #1064.
+async fn to_domain_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(SPLIT_PART(addr.val #>> '{}', '@', 2)) AS domain, \
+            COUNT(*)::BIGINT AS address_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+           JOIN LATERAL jsonb_array_elements(m.to_addrs) AS addr(val) ON true \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.to_addrs IS NOT NULL AND jsonb_array_length(m.to_addrs) > 0 \
+          GROUP BY domain \
+          HAVING LOWER(SPLIT_PART(addr.val #>> '{}', '@', 2)) <> '' \
+          ORDER BY address_count DESC \
+          LIMIT 30",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, count)| serde_json::json!({"domain": domain, "address_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/age-by-folder — avg age em dias (NOW() - received_at) por pasta. Sprint #1065.
+async fn age_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            AVG(EXTRACT(EPOCH FROM (NOW() - m.received_at)) / 86400.0) AS avg_age_days, \
+            MAX(EXTRACT(EPOCH FROM (NOW() - m.received_at)) / 86400.0) AS max_age_days \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 AND m.received_at IS NOT NULL \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY avg_age_days DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, avg_age, max_age)| serde_json::json!({
+            "folder": folder,
+            "total_messages": total,
+            "avg_age_days": avg_age,
+            "max_age_days": max_age,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-folder — ratio flagged/total por pasta. Sprint #1066.
+async fn flagged_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            COUNT(m.id) FILTER (WHERE m.flags @> '[\"\\\\Flagged\"]'::jsonb)::BIGINT AS flagged_count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY flagged_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, flagged)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({
+                "folder": folder,
+                "total_messages": total,
+                "flagged_count": flagged,
+                "flagged_rate": rate,
+            })
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

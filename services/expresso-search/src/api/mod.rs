@@ -2723,6 +2723,84 @@ pub async fn segment_top_n_by_docs(
     Json(serde_json::json!({"rows": rows, "limit": limit}))
 }
 
+/// GET /api/v1/search/index/segments/total-size — SUM total disk_bytes + total num_docs do índice. Sprint #1067.
+pub async fn segment_total_size(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let total_docs:  u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    Json(serde_json::json!({
+        "segment_count": n,
+        "total_docs":    total_docs,
+        "total_bytes":   total_bytes,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/bytes-above-p90 — segmentos com disk_bytes > P90. Sprint #1068.
+pub async fn segment_bytes_above_p90(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p90_bytes": null, "above_p90": [], "segment_count": n}));
+    }
+    let mut sorted_bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sorted_bytes.sort_unstable();
+    let p90_idx = ((n as f64 - 1.0) * 0.90) as usize;
+    let p90 = sorted_bytes[p90_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db > p90)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p90_bytes": p90, "above_p90": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-p90 — segmentos com num_docs > P90. Sprint #1069.
+pub async fn segment_docs_above_p90(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p90_docs": null, "above_p90": [], "segment_count": n}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p90_idx = ((n as f64 - 1.0) * 0.90) as usize;
+    let p90 = sorted_docs[p90_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd > p90)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p90_docs": p90, "above_p90": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/large-ratio — ratio segmentos > mediana disk_bytes / total. Sprint #1070.
+pub async fn segment_large_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"large_ratio": null, "segment_count": 0}));
+    }
+    let mut sorted_bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sorted_bytes.sort_unstable();
+    let median_idx = (n - 1) / 2;
+    let median = sorted_bytes[median_idx];
+    let large_count = segs.iter().filter(|(_, _, db)| *db > median).count();
+    let ratio = large_count as f64 / n as f64;
+    Json(serde_json::json!({
+        "median_bytes":  median,
+        "large_count":   large_count,
+        "total_count":   n,
+        "large_ratio":   ratio,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/bottom-n-by-bytes — bottom-N segmentos por disk_bytes. Sprint #1050.
 pub async fn segment_bottom_n_by_bytes(
     State(store): State<IndexStore>,

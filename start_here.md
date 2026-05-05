@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #1054
+**Último sprint:** #1074
 
 ```
 git log --oneline | head -10
@@ -449,16 +449,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #1052 | calendar | `GET /calendars/:cal_id/events-by-range/summary-length-by-class` — avg/max LENGTH(summary) por CLASS |
 | #1053 | calendar | `GET /calendars/:cal_id/events-by-range/has-attendees-by-month` — with/without attendees × mês |
 | #1054 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-hour-by-weekday` — hora de início × DOW |
+| #1055 | notifications | `GET /dlq/stats/by-second-and-minute` — 2D second×minute micro-burst matrix COUNT DESC |
+| #1056 | notifications | `GET /dlq/stats/by-day-and-minute-and-user` — 3D day×minute×user COUNT ASC |
+| #1057 | notifications | `GET /dlq/stats/by-hour-and-minute` — 2D hour×minute intra-hora COUNT DESC |
+| #1058 | notifications | `GET /dlq/stats/by-second-and-user-and-kind` — 3D second×user×kind COUNT DESC |
+| #1059 | drive | `GET /drive/files/stats/deleted-size` — SUM/COUNT arquivos soft-deleted total_bytes |
+| #1060 | drive | `GET /drive/files/stats/created-by-weekday-and-ext` — COUNT por (DOW, ext) de created_at |
+| #1061 | drive | `GET /drive/files/stats/avg-version-size` — AVG/MAX size_bytes de versões por arquivo |
+| #1062 | drive | `GET /drive/files/stats/folder-count` — COUNT total pastas + by_user top-N |
+| #1063 | mail | `GET /mail/messages/stats/received-by-hour` — COUNT por hora do dia (0-23) |
+| #1064 | mail | `GET /mail/messages/stats/to-domain` — top domínios em to_addrs jsonb |
+| #1065 | mail | `GET /mail/messages/stats/age-by-folder` — avg/max age em dias por pasta |
+| #1066 | mail | `GET /mail/messages/stats/flagged-rate-by-folder` — flagged/total ratio por pasta |
+| #1067 | search | `GET /search/index/segments/total-size` — SUM total disk_bytes + total num_docs |
+| #1068 | search | `GET /search/index/segments/bytes-above-p90` — segmentos com disk_bytes > P90 |
+| #1069 | search | `GET /search/index/segments/docs-above-p90` — segmentos com num_docs > P90 |
+| #1070 | search | `GET /search/index/segments/large-ratio` — ratio segmentos > mediana disk_bytes / total |
+| #1071 | calendar | `GET /calendars/:cal_id/events-by-range/description-length-by-class` — avg/max LENGTH(description) por CLASS |
+| #1072 | calendar | `GET /calendars/:cal_id/events-by-range/dtend-by-month` — COUNT por mês de dtend |
+| #1073 | calendar | `GET /calendars/:cal_id/events-by-range/status-by-class` — STATUS × CLASS 2D COUNT |
+| #1074 | calendar | `GET /calendars/:cal_id/events-by-range/location-by-month` — top locations por mês |
 
 ---
 
-## Próximos candidatos (#1055+)
+## Próximos candidatos (#1075+)
 
-1. **notifications** — `GET /dlq/stats/by-minute-and-user` — 2D minute×user_id COUNT DESC
-2. **drive** — `GET /drive/files/stats/locked-by-user` — COUNT locked files por owner_user_id
-3. **mail** — `GET /mail/messages/stats/received-by-hour` — COUNT por hora do dia (DOH)
-4. **search** — `GET /search/index/segments/bytes-variance` — variância população de disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/description-length-by-class` — avg/max LENGTH(description) por CLASS
+1. **notifications** — `GET /dlq/stats/by-minute-and-second-and-kind` — 3D minute×second×kind COUNT
+2. **drive** — `GET /drive/files/stats/mime-by-weekday` — top mime_type × DOW de created_at
+3. **mail** — `GET /mail/messages/stats/bcc-domain` — top domínios em bcc_addrs jsonb (análogo to-domain #1064)
+4. **search** — `GET /search/index/segments/docs-min` — segmento com menor num_docs (alias semântico bytes-floor)
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/class-by-hour` — CLASS × hora-do-dia
 
 ---
 

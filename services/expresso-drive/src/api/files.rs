@@ -141,6 +141,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/ext-size-percentile", get(file_stats_ext_size_percentile))
         .route("/api/v1/drive/files/stats/orphan-files",        get(file_stats_orphan_files))
         .route("/api/v1/drive/files/stats/duplicate-name",      get(file_stats_duplicate_name))
+        .route("/api/v1/drive/files/stats/deleted-size",                get(file_stats_deleted_size))
+        .route("/api/v1/drive/files/stats/created-by-weekday-and-ext",  get(file_stats_created_by_weekday_and_ext))
+        .route("/api/v1/drive/files/stats/avg-version-size",            get(file_stats_avg_version_size))
+        .route("/api/v1/drive/files/stats/folder-count",                get(file_stats_folder_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -4960,6 +4964,137 @@ async fn file_stats_duplicate_name(
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size — total bytes + count de arquivos soft-deleted. Sprint #1059.
+async fn file_stats_deleted_size(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_deleted, total_bytes): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS total_deleted, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes IS NOT NULL), 0)::BIGINT AS total_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "total_deleted_files": total_deleted,
+        "total_deleted_bytes": total_bytes,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/created-by-weekday-and-ext — COUNT por (DOW, ext) de created_at. Sprint #1060.
+async fn file_stats_created_by_weekday_and_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+
+    let rows: Vec<(i32, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY dow, ext \
+          ORDER BY dow ASC, file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, ext, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "ext": ext, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/avg-version-size — AVG/MAX size_bytes de versões por arquivo. Sprint #1061.
+async fn file_stats_avg_version_size(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
+
+    let rows: Vec<(uuid::Uuid, Option<String>, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            f.id AS file_id, \
+            f.name, \
+            COUNT(v.id)::BIGINT AS version_count, \
+            COALESCE(AVG(v.size_bytes)::BIGINT, 0) AS avg_version_bytes, \
+            COALESCE(MAX(v.size_bytes), 0)::BIGINT AS max_version_bytes \
+           FROM drive_files f \
+           JOIN drive_file_versions v ON v.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.kind = 'file' AND f.deleted_at IS NULL \
+            AND v.size_bytes IS NOT NULL \
+          GROUP BY f.id, f.name \
+          ORDER BY avg_version_bytes DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(fid, name, vc, avg_b, max_b)| serde_json::json!({
+            "file_id": fid,
+            "name": name,
+            "version_count": vc,
+            "avg_version_bytes": avg_b,
+            "max_version_bytes": max_b,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-count — COUNT total pastas + by_user top-N. Sprint #1062.
+async fn file_stats_folder_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 100);
+
+    let (total_folders,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT FROM drive_files WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let by_user: Vec<(Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT AS folder_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL \
+          GROUP BY owner_user_id \
+          ORDER BY folder_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let by_user_json: Vec<serde_json::Value> = by_user.into_iter()
+        .map(|(u, c)| serde_json::json!({"owner_user_id": u, "folder_count": c}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "total_folders": total_folders,
+        "by_user": by_user_json,
+    })))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
