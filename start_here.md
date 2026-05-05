@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #730 — (commit pendente)
+**Último sprint:** #734 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -115,15 +115,20 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #728 | search | `GET /search/index/segments/gini` — coeficiente de Gini da distribuição num_docs |
 | #729 | calendar | `GET /calendars/:cal_id/events-by-range/location-length-stats` — with/without + avg/max LENGTH(location) |
 | #730 | notifications | `GET /dlq/stats/by-minute-and-kind?since=&until=` — GROUP BY (minute, kind) ASC |
+| #731 | drive | `GET /drive/files/stats/mime-top-n?limit=N` — top-N mime_types por file_count global; default 20 max 100 |
+| #732 | mail | `GET /mail/messages/stats/from-domain-by-folder` — top-20 domínios de remetente (SPLIT_PART('@')) por pasta |
+| #733 | search | `GET /search/index/segments/iqr` — IQR Q1/Q3 de num_docs e disk_bytes; interpolação linear |
+| #734 | calendar | `GET /calendars/:cal_id/events-by-range/uid-uniqueness` — total vs COUNT(DISTINCT uid); duplicate_entries |
 
 ---
 
-## Próximos candidatos (#731+)
+## Próximos candidatos (#735+)
 
-1. **drive** — `GET /drive/files/stats/mime-top-n?limit=N` — top-N mime_types por file_count cross-folder; análogo a ext-by-folder mas global
-2. **mail** — `GET /mail/messages/stats/from-domain-by-folder` — top-20 domínios de remetente (split('@')[1]) por pasta
-3. **search** — `GET /search/index/segments/iqr` — IQR (Q3-Q1) de num_docs e disk_bytes; robusto a outliers vs stdev
-4. **calendar** — `GET /calendars/:cal_id/events-by-range/uid-uniqueness` — total vs COUNT(DISTINCT uid); detecta UIDs duplicados
+1. **notifications** — `GET /dlq/stats/by-kind-and-tenant?limit=N` — GROUP BY (kind, tenant_id) COUNT DESC; análogo a by-tenant-and-kind (#710) com ordem invertida
+2. **drive** — `GET /drive/files/stats/orphan-versions?limit=N` — versões sem arquivo pai (drive_file_versions sem drive_files correspondente)
+3. **mail** — `GET /mail/messages/stats/in-reply-to-by-folder` — COUNT com/sem in_reply_to por pasta; complementa reply-rate-by-folder (#707)
+4. **search** — `GET /search/index/segments/range` — min/max/range (max-min) de num_docs e disk_bytes
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/attendee-domain-stats` — top-N domínios (@) nos attendees
 
 ---
 

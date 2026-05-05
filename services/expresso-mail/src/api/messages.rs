@@ -62,6 +62,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/subject-length-by-folder",  get(subject_length_by_folder_stats))
         .route("/mail/messages/stats/preview-length-by-folder",  get(preview_length_by_folder_stats))
         .route("/mail/messages/stats/has-date-by-folder",         get(has_date_by_folder_stats))
+        .route("/mail/messages/stats/from-domain-by-folder",      get(from_domain_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2756,6 +2757,49 @@ async fn has_date_by_folder_stats(
             "with_date":    with_date,
             "without_date": without_date,
         }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/from-domain-by-folder — top-20 domínios de remetente por pasta.
+///
+/// Extrai o domínio de `from_addr` (parte após '@') e conta mensagens por (folder, domain).
+/// Retorna `{folders:[{folder,domains:[{domain,count}]}]}` ordenado por folder, count DESC.
+/// Sprint #732.
+async fn from_domain_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            SPLIT_PART(m.from_addr, '@', 2) AS domain, \
+            COUNT(*)::BIGINT AS cnt \
+         FROM mailboxes mb \
+         JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+           AND m.from_addr LIKE '%@%' \
+         GROUP BY mb.name, SPLIT_PART(m.from_addr, '@', 2) \
+         ORDER BY mb.name ASC, cnt DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let mut map: std::collections::BTreeMap<String, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (folder, domain, cnt) in rows {
+        map.entry(folder).or_default().push(serde_json::json!({"domain": domain, "count": cnt}));
+    }
+    for domains in map.values_mut() {
+        domains.truncate(20);
+    }
+
+    let folders: Vec<serde_json::Value> = map.into_iter()
+        .map(|(folder, domains)| serde_json::json!({"folder": folder, "domains": domains}))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }

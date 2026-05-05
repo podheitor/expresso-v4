@@ -245,6 +245,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_location_length_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/uid-uniqueness",
+            get(events_by_range_uid_uniqueness),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -2021,6 +2025,47 @@ async fn events_by_range_location_length_stats(
         "without_location": without_loc,
         "avg_length":     avg_len,
         "max_length":     max_len,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/uid-uniqueness?after=&before=
+///
+/// Compara total de eventos vs COUNT(DISTINCT uid) no intervalo.
+/// Duplicatas = total - unique_uids. Útil pra detectar UIDs repetidos por import redundante.
+/// Retorna `{calendar_id,total,unique_uids,duplicate_entries}`. Sprint #734.
+async fn events_by_range_uid_uniqueness(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, unique_uids): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT              AS total, \
+            COUNT(DISTINCT uid)::BIGINT   AS unique_uids \
+          FROM calendar_events \
+         WHERE tenant_id   = $1 \
+           AND calendar_id = $2 \
+           AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+           AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":       cal_id,
+        "total":             total,
+        "unique_uids":       unique_uids,
+        "duplicate_entries": total - unique_uids,
     })))
 }
 

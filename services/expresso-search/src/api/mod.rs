@@ -1075,6 +1075,57 @@ pub async fn segment_gini(
     }))
 }
 
+/// GET /api/v1/search/index/segments/iqr — IQR (Q3-Q1) de num_docs e disk_bytes.
+///
+/// Calcula Q1 (25°) e Q3 (75°) via interpolação linear sobre valores ordenados.
+/// IQR é robusto a outliers vs stdev (#718). Null quando n < 2.
+/// Retorna `{segment_count,num_docs_q1,num_docs_q3,num_docs_iqr,disk_bytes_q1,disk_bytes_q3,disk_bytes_iqr}`. Sprint #733.
+pub async fn segment_iqr(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({
+            "segment_count":  n,
+            "num_docs_q1":    serde_json::Value::Null,
+            "num_docs_q3":    serde_json::Value::Null,
+            "num_docs_iqr":   serde_json::Value::Null,
+            "disk_bytes_q1":  serde_json::Value::Null,
+            "disk_bytes_q3":  serde_json::Value::Null,
+            "disk_bytes_iqr": serde_json::Value::Null,
+        }));
+    }
+
+    fn quantile(sorted: &[f64], p: f64) -> f64 {
+        let h = p * (sorted.len() - 1) as f64;
+        let lo = h.floor() as usize;
+        let hi = (lo + 1).min(sorted.len() - 1);
+        sorted[lo] + (h - lo as f64) * (sorted[hi] - sorted[lo])
+    }
+
+    let mut docs: Vec<f64>  = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    docs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    bytes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let dq1 = quantile(&docs,  0.25);
+    let dq3 = quantile(&docs,  0.75);
+    let bq1 = quantile(&bytes, 0.25);
+    let bq3 = quantile(&bytes, 0.75);
+
+    Json(serde_json::json!({
+        "segment_count":  n,
+        "num_docs_q1":    dq1,
+        "num_docs_q3":    dq3,
+        "num_docs_iqr":   dq3 - dq1,
+        "disk_bytes_q1":  bq1,
+        "disk_bytes_q3":  bq3,
+        "disk_bytes_iqr": bq3 - bq1,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

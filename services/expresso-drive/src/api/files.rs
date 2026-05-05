@@ -77,6 +77,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/lock-count",       get(file_stats_lock_count))
         .route("/api/v1/drive/files/stats/starred-count",    get(file_stats_starred_count))
         .route("/api/v1/drive/files/stats/expiry-count",    get(file_stats_expiry_count))
+        .route("/api/v1/drive/files/stats/mime-top-n",       get(file_stats_mime_top_n))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2684,6 +2685,41 @@ async fn file_stats_expiry_count(
         "already_expired":   already_expired,
         "not_yet_expired":   total_with_expiry - already_expired,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/mime-top-n?limit=N — top-N mime_types por file_count (global, cross-folder).
+///
+/// Conta arquivos não-deletados agrupados por mime_type e retorna os N mais frequentes.
+/// Análogo a ext-by-folder (#711) mas sem filtro de pasta — visão global do tenant.
+/// `limit` default 20 max 100. Retorna `{rows:[{mime_type,file_count}]}`. Sprint #731.
+async fn file_stats_mime_top_n(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q): Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(100).max(1);
+    let pool  = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT mime_type, COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+            AND mime_type  IS NOT NULL \
+          GROUP BY mime_type \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime_type, file_count)| serde_json::json!({"mime_type": mime_type, "file_count": file_count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
