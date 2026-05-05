@@ -1011,6 +1011,43 @@ async fn dlq_stats_attempts_distribution(
     })))
 }
 
+/// GET /api/v1/notifications/dlq/stats/retention?days=N — entries mais velhas que N dias.
+///
+/// Conta entradas onde `failed_at < NOW() - INTERVAL '$N days'`.
+/// Identifica entries esquecidas que deveriam ter sido resolvidas ou expiradas.
+/// `days` default 7. Retorna `{days,stale_count,oldest_failed_at}`. Sprint #695.
+#[derive(Debug, Deserialize)]
+struct RetentionQuery {
+    days: Option<i64>,
+}
+
+async fn dlq_stats_retention(
+    State(st): State<AppState>,
+    Query(q):  Query<RetentionQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let days = q.days.unwrap_or(7).max(0);
+
+    let (stale_count, oldest_failed_at): (i64, Option<OffsetDateTime>) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT, MIN(failed_at) \
+           FROM notification_dlq \
+          WHERE failed_at < NOW() - ($1 * INTERVAL '1 day')",
+    )
+    .bind(days)
+    .fetch_one(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    Ok(Json(json!({
+        "days":             days,
+        "stale_count":      stale_count,
+        "oldest_failed_at": oldest_failed_at,
+    })))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -1967,6 +2004,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user",                  get(dlq_stats_by_user))
         .route("/api/v1/notifications/dlq/stats/by-day-and-user",           get(dlq_stats_by_day_and_user))
         .route("/api/v1/notifications/dlq/stats/attempts-distribution", get(dlq_stats_attempts_distribution))
+        .route("/api/v1/notifications/dlq/stats/retention",             get(dlq_stats_retention))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

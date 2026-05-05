@@ -55,6 +55,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/threads-by-folder",       get(threads_by_folder_stats))
         .route("/mail/messages/stats/senders-by-folder",       get(senders_by_folder_stats))
         .route("/mail/messages/stats/date-by-folder",           get(date_by_folder_stats))
+        .route("/mail/messages/stats/cc-by-folder",              get(cc_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2470,6 +2471,46 @@ async fn date_by_folder_stats(
             "message_count": message_count,
             "oldest_at":     oldest_at,
             "newest_at":     newest_at,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/cc-by-folder — presença de CC por mailbox.
+///
+/// Conta mensagens com/sem destinatários CC por pasta (LEFT JOIN para incluir pastas
+/// vazias). `has_cc` = `cc_addrs IS NOT NULL AND array_length(cc_addrs, 1) > 0`.
+/// Retorna `{folders:[{folder,total,with_cc,without_cc}]}` ordenado por total DESC. Sprint #697.
+async fn cc_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE m.cc_addrs IS NOT NULL AND array_length(m.cc_addrs, 1) > 0)::BIGINT AS with_cc, \
+            COUNT(m.id) FILTER (WHERE m.cc_addrs IS NULL OR array_length(m.cc_addrs, 1) IS NULL OR array_length(m.cc_addrs, 1) = 0)::BIGINT AS without_cc \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, with_cc, without_cc)| serde_json::json!({
+            "folder":     folder,
+            "total":      total,
+            "with_cc":    with_cc,
+            "without_cc": without_cc,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

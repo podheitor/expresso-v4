@@ -884,6 +884,38 @@ struct StatsByTenantQuery {
     limit: Option<usize>,
 }
 
+/// GET /api/v1/search/index/segments/doc-ratio — densidade de documentos por segmento.
+///
+/// Calcula `num_docs / disk_bytes` (docs per byte) para cada segmento, ordenado
+/// DESC (mais denso primeiro). Segmentos com `disk_bytes = 0` recebem ratio `null`.
+/// Retorna `{segments:[{id,num_docs,disk_bytes,docs_per_byte}]}`. Sprint #698.
+pub async fn segment_doc_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut out: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, num_docs, disk_bytes)| {
+            let ratio = if disk_bytes > 0 {
+                serde_json::json!(num_docs as f64 / disk_bytes as f64)
+            } else {
+                serde_json::Value::Null
+            };
+            serde_json::json!({
+                "id":           id,
+                "num_docs":     num_docs,
+                "disk_bytes":   disk_bytes,
+                "docs_per_byte": ratio,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        let ra = a["docs_per_byte"].as_f64().unwrap_or(-1.0);
+        let rb = b["docs_per_byte"].as_f64().unwrap_or(-1.0);
+        rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Json(serde_json::json!({"segments": out}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

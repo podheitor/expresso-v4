@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #694 — (commit pendente)
+**Último sprint:** #698 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -79,15 +79,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #692 | drive | `GET /drive/files/stats/updated-by-day?since=&until=` — DATE_TRUNC('day', updated_at); complementa created-by-day (#682) |
 | #693 | mail | `GET /mail/messages/stats/date-by-folder` — MIN/MAX received_at + COUNT por folder; envelope temporal |
 | #694 | search | `GET /search/index/segments/size-stats` — min/max/avg disk_bytes; análogo a age-stats (#664) |
+| #695 | notifications | `GET /dlq/stats/retention?days=N` — COUNT entries com `failed_at < NOW() - N days`; oldest_failed_at |
+| #696 | drive | `GET /drive/files/stats/folder-depth` — CTE recursiva histograma depth→count+total_bytes |
+| #697 | mail | `GET /mail/messages/stats/cc-by-folder` — COUNT with_cc/without_cc por folder; LEFT JOIN |
+| #698 | search | `GET /search/index/segments/doc-ratio` — num_docs/disk_bytes por segmento; docs_per_byte DESC |
 
 ---
 
-## Próximos candidatos (#695+)
+## Próximos candidatos (#699+)
 
 1. **calendar** — `GET /calendars/:cal_id/events-by-range/duration-distribution` — histograma de duração: <1h/1-4h/4-8h/1d/>1d; `{calendar_id,total,buckets:[{range,count}]}`
-2. **notifications** — `GET /dlq/stats/retention?days=N` — COUNT de entradas com `failed_at < NOW() - INTERVAL '$N days'`; identifica entries velhas esquecidas
-3. **drive** — `GET /drive/files/stats/folder-depth` — histograma de profundidade de pasta via CTE recursiva; `{buckets:[{depth,count,total_bytes}]}`
-4. **mail** — `GET /mail/messages/stats/cc-by-folder` — COUNT(has_cc) + COUNT(*) por folder; `{folders:[{folder,total,with_cc,without_cc}]}`
+2. **notifications** — `GET /dlq/stats/by-hour?since=&until=` — COUNT GROUP BY DATE_TRUNC('hour', failed_at); granularidade intra-dia
+3. **drive** — `GET /drive/files/stats/version-count?limit=N` — top-N arquivos por número de versões; `{files:[{file_id,name,version_count}]}`
+4. **mail** — `GET /mail/messages/stats/bcc-by-folder` — COUNT with_bcc/without_bcc por folder; análogo a cc-by-folder (#697)
 
 ---
 

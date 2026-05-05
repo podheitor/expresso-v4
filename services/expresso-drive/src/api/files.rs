@@ -70,6 +70,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/created-by-day",  get(file_stats_created_by_day))
         .route("/api/v1/drive/files/stats/by-size-bucket",  get(file_stats_by_size_bucket))
         .route("/api/v1/drive/files/stats/updated-by-day",  get(file_stats_updated_by_day))
+        .route("/api/v1/drive/files/stats/folder-depth",    get(file_stats_folder_depth))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2385,6 +2386,51 @@ async fn file_stats_by_size_bucket(
         serde_json::json!({"range": "100MB-1GB",   "count": row.12, "total_bytes": row.13}),
         serde_json::json!({"range": ">1GB",        "count": row.14, "total_bytes": row.15}),
     ];
+    Ok(Json(serde_json::json!({"buckets": buckets})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-depth — histograma de profundidade de pasta.
+///
+/// CTE recursiva calcula a profundidade de cada pasta (kind='folder', não-deletada)
+/// a partir da raiz (parent_id IS NULL = depth 0). Retorna
+/// `{buckets:[{depth,count,total_bytes}]}` ordenado por depth ASC. `total_bytes`
+/// é a soma de size_bytes dos arquivos diretamente filhos (kind='file'). Sprint #696.
+async fn file_stats_folder_depth(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "WITH RECURSIVE folder_tree AS ( \
+             SELECT id, 0::BIGINT AS depth \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL AND parent_id IS NULL \
+             UNION ALL \
+             SELECT f.id, ft.depth + 1 \
+               FROM drive_files f \
+               JOIN folder_tree ft ON f.parent_id = ft.id \
+              WHERE f.tenant_id = $1 AND f.kind = 'folder' AND f.deleted_at IS NULL \
+         ) \
+         SELECT ft.depth, \
+                COUNT(DISTINCT ft.id)::BIGINT AS folder_count, \
+                COALESCE(SUM(child.size_bytes) FILTER (WHERE child.kind = 'file' AND child.deleted_at IS NULL), 0)::BIGINT AS total_bytes \
+           FROM folder_tree ft \
+           LEFT JOIN drive_files child ON child.parent_id = ft.id AND child.tenant_id = $1 \
+          GROUP BY ft.depth \
+          ORDER BY ft.depth ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    let buckets: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(depth, count, total_bytes)| serde_json::json!({
+            "depth":       depth,
+            "count":       count,
+            "total_bytes": total_bytes,
+        }))
+        .collect();
     Ok(Json(serde_json::json!({"buckets": buckets})))
 }
 
