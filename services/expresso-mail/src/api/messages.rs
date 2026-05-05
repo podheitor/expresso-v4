@@ -119,6 +119,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count",                   get(cc_count_stats))
         .route("/mail/messages/stats/in-reply-to-depth-by-folder", get(in_reply_to_depth_by_folder_stats))
         .route("/mail/messages/stats/subject-word-count",         get(subject_word_count_stats))
+        .route("/mail/messages/stats/to-addrs-count-by-folder",   get(to_addrs_count_by_folder_stats))
+        .route("/mail/messages/stats/from-addr-by-weekday",       get(from_addr_by_weekday_stats))
+        .route("/mail/messages/stats/size-by-weekday",            get(size_by_weekday_stats))
+        .route("/mail/messages/stats/has-attachments-by-weekday", get(has_attachments_by_weekday_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4912,4 +4916,135 @@ async fn subject_word_count_stats(
         "avg_subject_words": avg_words,
         "max_subject_words": max_words,
     })))
+}
+
+/// GET /mail/messages/stats/to-addrs-count-by-folder — avg to_addrs array length por folder. Sprint #1023.
+async fn to_addrs_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            AVG(jsonb_array_length(m.to_addrs)) FILTER (WHERE m.to_addrs IS NOT NULL AND jsonb_array_length(m.to_addrs) > 0) AS avg_to_count, \
+            MAX(jsonb_array_length(m.to_addrs))::BIGINT FILTER (WHERE m.to_addrs IS NOT NULL) AS max_to_count \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY avg_to_count DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, avg, max)| serde_json::json!({
+            "folder": folder,
+            "total_messages": total,
+            "avg_to_count": avg,
+            "max_to_count": max,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/from-addr-by-weekday — top from_addr × DOW. Sprint #1024.
+async fn from_addr_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            m.from_addr, \
+            COUNT(*)::BIGINT AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow, m.from_addr \
+          ORDER BY dow ASC, message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, from_addr, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "from_addr": from_addr, "message_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-by-weekday — avg/total size_bytes por DOW. Sprint #1025.
+async fn size_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS message_count, \
+            COALESCE(SUM(m.size_bytes), 0)::BIGINT AS total_bytes, \
+            AVG(m.size_bytes) AS avg_bytes \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count, total, avg)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "message_count": count, "total_bytes": total, "avg_bytes": avg})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-attachments-by-weekday — with/without attachments por DOW. Sprint #1026.
+async fn has_attachments_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.has_attachments = TRUE)::BIGINT  AS with_attachments, \
+            COUNT(*) FILTER (WHERE m.has_attachments = FALSE OR m.has_attachments IS NULL)::BIGINT AS without_attachments \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, with_att, without_att)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "with_attachments": with_att, "without_attachments": without_att})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }

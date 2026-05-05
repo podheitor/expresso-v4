@@ -405,8 +405,24 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendee_domain_by_month),
         )
         .route(
-            "/api/v1/calendars/:cal_id/events-by-range/location-word-count",
-            get(events_by_range_location_word_count),
+            "/api/v1/calendars/:cal_id/events-by-range/sequence-by-month",
+            get(events_by_range_sequence_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/status-by-month",
+            get(events_by_range_status_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/priority-by-month",
+            get(events_by_range_priority_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-by-weekday",
+            get(events_by_range_duration_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-by-class",
+            get(events_by_range_attendee_count_by_class),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/organizer-top-n",
@@ -4069,8 +4085,8 @@ async fn events_by_range_attendee_domain_by_month(
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }
 
-/// GET /api/v1/calendars/:cal_id/events-by-range/location-word-count — avg/max words in location field. Sprint #1014.
-async fn events_by_range_location_word_count(
+/// GET /api/v1/calendars/:cal_id/events-by-range/sequence-by-month — SEQUENCE médio × mês. Sprint #1014.
+async fn events_by_range_sequence_by_month(
     State(state): State<AppState>,
     ctx:          RequestCtx,
     Path(cal_id): Path<Uuid>,
@@ -4082,31 +4098,195 @@ async fn events_by_range_location_word_count(
     let pool = state.db_or_unavailable()?;
     let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
 
-    let (total, with_location, avg_words, max_words): (i64, i64, Option<f64>, Option<i64>) = sqlx::query_as(
+    let rows: Vec<(i32, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
         "SELECT \
-            COUNT(*)::BIGINT AS total_events, \
-            COUNT(*) FILTER (WHERE location IS NOT NULL AND TRIM(location) <> '')::BIGINT AS with_location, \
-            AVG(array_length(regexp_split_to_array(TRIM(location), '\\s+'), 1)) \
-                FILTER (WHERE location IS NOT NULL AND TRIM(location) <> '') AS avg_words, \
-            MAX(array_length(regexp_split_to_array(TRIM(location), '\\s+'), 1))::BIGINT \
-                FILTER (WHERE location IS NOT NULL AND TRIM(location) <> '') AS max_words \
+            EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE sequence IS NOT NULL)::BIGINT AS with_sequence, \
+            AVG(sequence) FILTER (WHERE sequence IS NOT NULL) AS avg_sequence, \
+            MAX(sequence)::BIGINT FILTER (WHERE sequence IS NOT NULL) AS max_sequence \
            FROM calendar_events \
           WHERE tenant_id = $1 AND calendar_id = $2 \
             AND dtstart IS NOT NULL \
             AND ($3::timestamptz IS NULL OR dtstart >= $3) \
-            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY month \
+          ORDER BY month ASC",
     )
     .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_one(&mut *tx).await?;
+    .fetch_all(&mut *tx).await?;
     tx.commit().await?;
 
-    Ok(Json(serde_json::json!({
-        "calendar_id": cal_id,
-        "total_events": total,
-        "with_location": with_location,
-        "avg_location_words": avg_words,
-        "max_location_words": max_words,
-    })))
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, with_seq, avg_seq, max_seq)| serde_json::json!({
+            "month": month,
+            "with_sequence": with_seq,
+            "avg_sequence": avg_seq,
+            "max_sequence": max_seq,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/status-by-month — STATUS × mês. Sprint #1031.
+async fn events_by_range_status_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+            COALESCE(NULLIF(UPPER(status), ''), 'UNSET') AS status, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY month, status \
+          ORDER BY month ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, status, count)| serde_json::json!({"month": month, "status": status, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/priority-by-month — PRIORITY bucket × mês. Sprint #1032.
+async fn events_by_range_priority_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+            CASE \
+                WHEN priority IS NULL THEN 'unset' \
+                WHEN priority = 0 THEN 'undefined' \
+                WHEN priority BETWEEN 1 AND 4 THEN 'high' \
+                WHEN priority = 5 THEN 'medium' \
+                WHEN priority BETWEEN 6 AND 9 THEN 'low' \
+                ELSE 'other' \
+            END AS priority_label, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY month, priority_label \
+          ORDER BY month ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, priority_label, count)| serde_json::json!({"month": month, "priority_label": priority_label, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-by-weekday — avg duração (segundos) por DOW. Sprint #1033.
+async fn events_by_range_duration_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, Option<f64>, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE dtend IS NOT NULL AND dtend > dtstart)::BIGINT AS with_duration, \
+            AVG(EXTRACT(EPOCH FROM dtend - dtstart)) FILTER (WHERE dtend IS NOT NULL AND dtend > dtstart) AS avg_duration_seconds, \
+            MAX(EXTRACT(EPOCH FROM dtend - dtstart)) FILTER (WHERE dtend IS NOT NULL AND dtend > dtstart) AS max_duration_seconds \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, with_dur, avg_dur, max_dur)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "with_duration": with_dur, "avg_duration_seconds": avg_dur, "max_duration_seconds": max_dur})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-by-class — avg attendees por CLASS. Sprint #1034.
+async fn events_by_range_attendee_count_by_class(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(NULLIF(UPPER(class), ''), 'UNSET') AS class, \
+            COUNT(*)::BIGINT AS event_count, \
+            AVG(jsonb_array_length(attendees)) FILTER (WHERE attendees IS NOT NULL AND jsonb_array_length(attendees) > 0) AS avg_attendees, \
+            MAX(jsonb_array_length(attendees))::BIGINT FILTER (WHERE attendees IS NOT NULL) AS max_attendees \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY class \
+          ORDER BY avg_attendees DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, event_count, avg_att, max_att)| serde_json::json!({
+            "class": class,
+            "event_count": event_count,
+            "avg_attendees": avg_att,
+            "max_attendees": max_att,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/rrule-interval-stats?after=&before= — extrai INTERVAL= do rrule.

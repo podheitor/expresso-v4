@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #1014
+**Último sprint:** #1034
 
 ```
 git log --oneline | head -10
@@ -408,17 +408,37 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #1011 | calendar | `GET /calendars/:cal_id/events-by-range/transparency-by-month` — TRANSP × mês |
 | #1012 | calendar | `GET /calendars/:cal_id/events-by-range/dtend-duration-by-class` — avg/max duração por CLASS |
 | #1013 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-domain-by-month` — domínios de attendees × mês |
-| #1014 | calendar | `GET /calendars/:cal_id/events-by-range/location-word-count` — avg/max palavras em location |
+| #1014 | calendar | `GET /calendars/:cal_id/events-by-range/sequence-by-month` — SEQUENCE médio × mês (substituiu duplicata) |
+| #1015 | notifications | `GET /dlq/stats/by-second-and-kind-and-tenant` — 3D second×kind×tenant COUNT DESC |
+| #1016 | notifications | `GET /dlq/stats/by-hour-and-tenant-and-kind` — 3D hour×tenant×kind COUNT DESC |
+| #1017 | notifications | `GET /dlq/stats/by-minute-and-kind-and-tenant` — 3D minute×kind×tenant ASC |
+| #1018 | notifications | `GET /dlq/stats/by-day-and-tenant-and-kind` — 3D day×tenant×kind ASC |
+| #1019 | drive | `GET /drive/files/stats/version-count-by-user` — COUNT versions por owner (JOIN file_versions) |
+| #1020 | drive | `GET /drive/files/stats/size-cv-by-folder` — CV = stdev/avg size_bytes por folder |
+| #1021 | drive | `GET /drive/files/stats/deleted-by-day` — COUNT soft-deleted por dia (deleted_at) |
+| #1022 | drive | `GET /drive/files/stats/mime-top-by-size` — top MIME por total_bytes |
+| #1023 | mail | `GET /mail/messages/stats/to-addrs-count-by-folder` — avg/max to_addrs length por folder |
+| #1024 | mail | `GET /mail/messages/stats/from-addr-by-weekday` — top from_addr × DOW |
+| #1025 | mail | `GET /mail/messages/stats/size-by-weekday` — avg/total size_bytes por DOW |
+| #1026 | mail | `GET /mail/messages/stats/has-attachments-by-weekday` — with/without attachments por DOW |
+| #1027 | search | `GET /search/index/segments/bytes-stdev` — population stdev de disk_bytes |
+| #1028 | search | `GET /search/index/segments/docs-cv` — CV = stdev/mean de num_docs |
+| #1029 | search | `GET /search/index/segments/bytes-cv` — CV = stdev/mean de disk_bytes |
+| #1030 | search | `GET /search/index/segments/docs-bytes-ratio-stats` — stats do ratio num_docs/disk_bytes |
+| #1031 | calendar | `GET /calendars/:cal_id/events-by-range/status-by-month` — STATUS × mês |
+| #1032 | calendar | `GET /calendars/:cal_id/events-by-range/priority-by-month` — PRIORITY bucket × mês |
+| #1033 | calendar | `GET /calendars/:cal_id/events-by-range/duration-by-weekday` — avg duração por DOW |
+| #1034 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-count-by-class` — avg attendees por CLASS |
 
 ---
 
-## Próximos candidatos (#1015+)
+## Próximos candidatos (#1035+)
 
-1. **notifications** — `GET /dlq/stats/by-second-and-kind-and-tenant` — 3D second×kind×tenant
-2. **drive** — `GET /drive/files/stats/version-count-by-user` — COUNT versions por owner_user_id
-3. **mail** — `GET /mail/messages/stats/to-addrs-count-by-folder` — avg to_addrs array length por folder
-4. **search** — `GET /search/index/segments/bytes-stdev` — population stdev de disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/sequence-by-month` — SEQUENCE médio × mês
+1. **notifications** — `GET /dlq/stats/by-hour-and-second` — 2D hour×second granularidade sub-minuto
+2. **drive** — `GET /drive/files/stats/name-length-by-ext` — avg/max comprimento do nome por extensão
+3. **mail** — `GET /mail/messages/stats/unread-by-weekday` — COUNT unread por DOW
+4. **search** — `GET /search/index/segments/bytes-iqr` — IQR de disk_bytes (Q3−Q1)
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-by-weekday` — organizador × DOW
 
 ---
 

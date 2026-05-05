@@ -2608,6 +2608,74 @@ pub async fn segment_docs_stdev(State(store): State<IndexStore>) -> Json<serde_j
     Json(serde_json::json!({"mean_docs": mean, "docs_stdev": stdev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-stdev — population stdev de disk_bytes. Sprint #1027.
+pub async fn segment_bytes_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"bytes_stdev": null, "segment_count": n}));
+    }
+    let mean = segs.iter().map(|(_, _, db)| *db as f64).sum::<f64>() / n as f64;
+    let variance = segs.iter().map(|(_, _, db)| { let d = *db as f64 - mean; d * d }).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"mean_bytes": mean, "bytes_stdev": variance.sqrt(), "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-cv — coefficient of variation of num_docs (stdev/mean). Sprint #1028.
+pub async fn segment_docs_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"docs_cv": null, "segment_count": n}));
+    }
+    let mean = segs.iter().map(|(_, nd, _)| *nd as f64).sum::<f64>() / n as f64;
+    if mean == 0.0 {
+        return Json(serde_json::json!({"docs_cv": null, "segment_count": n}));
+    }
+    let variance = segs.iter().map(|(_, nd, _)| { let d = *nd as f64 - mean; d * d }).sum::<f64>() / n as f64;
+    let cv = variance.sqrt() / mean;
+    Json(serde_json::json!({"mean_docs": mean, "docs_stdev": variance.sqrt(), "docs_cv": cv, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-cv — coefficient of variation of disk_bytes (stdev/mean). Sprint #1029.
+pub async fn segment_bytes_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"bytes_cv": null, "segment_count": n}));
+    }
+    let mean = segs.iter().map(|(_, _, db)| *db as f64).sum::<f64>() / n as f64;
+    if mean == 0.0 {
+        return Json(serde_json::json!({"bytes_cv": null, "segment_count": n}));
+    }
+    let variance = segs.iter().map(|(_, _, db)| { let d = *db as f64 - mean; d * d }).sum::<f64>() / n as f64;
+    let cv = variance.sqrt() / mean;
+    Json(serde_json::json!({"mean_bytes": mean, "bytes_stdev": variance.sqrt(), "bytes_cv": cv, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-bytes-ratio-stats — stats do ratio num_docs/disk_bytes por segmento. Sprint #1030.
+pub async fn segment_docs_bytes_ratio_stats(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, nd, db)| *nd as f64 / *db as f64)
+        .collect();
+    let n = ratios.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_bytes_ratio_stats": null}));
+    }
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let min = ratios.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = ratios.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let variance = ratios.iter().map(|r| { let d = r - mean; d * d }).sum::<f64>() / n as f64;
+    Json(serde_json::json!({
+        "segment_count": n,
+        "mean_docs_per_byte": mean,
+        "min_docs_per_byte": min,
+        "max_docs_per_byte": max,
+        "stdev_docs_per_byte": variance.sqrt(),
+    }))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,
