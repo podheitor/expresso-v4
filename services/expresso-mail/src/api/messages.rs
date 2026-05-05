@@ -99,6 +99,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/thread-age-by-folder",       get(thread_age_by_folder_stats))
         .route("/mail/messages/stats/size-entropy",                get(size_entropy_stats))
         .route("/mail/messages/stats/attachment-count-distribution", get(attachment_count_distribution_stats))
+        .route("/mail/messages/stats/avg-size-by-weekday",        get(avg_size_by_weekday_stats))
+        .route("/mail/messages/stats/flagged-count-by-folder",    get(flagged_count_by_folder_stats))
+        .route("/mail/messages/stats/recent-by-folder",           get(recent_by_folder_stats))
+        .route("/mail/messages/stats/unread-rate-by-folder",      get(unread_rate_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4132,6 +4136,142 @@ async fn thread_age_by_folder_stats(
             "max_thread_age_days":  max,
             "thread_count":         tc,
         }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/avg-size-by-weekday — AVG size_bytes por dia-da-semana (0=Dom).
+///
+/// EXTRACT(DOW FROM received_at) GROUP BY dow; ORDER BY dow ASC. Sprint #932.
+async fn avg_size_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(m.size_bytes)::FLOAT8 AS avg_size_bytes, \
+            MAX(m.size_bytes)::FLOAT8 AS max_size_bytes, \
+            COUNT(*)::BIGINT          AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.received_at IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let rows_out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, avg, max, count)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "avg_size_bytes": avg, "max_size_bytes": max, "message_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": rows_out})))
+}
+
+/// GET /api/v1/mail/messages/stats/flagged-count-by-folder — Flagged + total + flagged_rate por pasta.
+///
+/// COUNT FILTER WHERE '\\Flagged' = ANY(flags); ORDER BY flagged DESC. Sprint #927.
+async fn flagged_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*) FILTER (WHERE '\\Flagged' = ANY(m.flags))::BIGINT AS flagged_count, \
+            COUNT(*)::BIGINT AS total \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY flagged_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, flagged, total)| {
+            let rate = if total > 0 { (flagged as f64 / total as f64 * 1000.0).round() / 1000.0 } else { 0.0 };
+            serde_json::json!({"folder": folder, "flagged_count": flagged, "total": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/recent-by-folder — COUNT msgs últimas 24h/7d/30d por pasta.
+///
+/// COUNT FILTER por janelas temporais; ORDER BY last_24h DESC. Sprint #922.
+async fn recent_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*) FILTER (WHERE m.received_at >= NOW() - INTERVAL '1 day')::BIGINT   AS last_24h, \
+            COUNT(*) FILTER (WHERE m.received_at >= NOW() - INTERVAL '7 days')::BIGINT  AS last_7d, \
+            COUNT(*) FILTER (WHERE m.received_at >= NOW() - INTERVAL '30 days')::BIGINT AS last_30d, \
+            COUNT(*)::BIGINT AS total \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY last_24h DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, h24, d7, d30, total)| serde_json::json!({
+            "folder": folder, "last_24h": h24, "last_7d": d7, "last_30d": d30, "total": total
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/unread-rate-by-folder — unread/total ratio por pasta.
+///
+/// Retorna `{folders:[{folder,total,unread,unread_rate}]}` ORDER BY unread_rate DESC. Sprint #917.
+async fn unread_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*)::BIGINT AS total, \
+            COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(m.flags)))::BIGINT AS unread \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY (COUNT(*) FILTER (WHERE NOT ('\\Seen' = ANY(m.flags)))::FLOAT8 / NULLIF(COUNT(*), 0)) DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, unread)| {
+            let rate = if total > 0 { (unread as f64 / total as f64 * 1000.0).round() / 1000.0 } else { 0.0 };
+            serde_json::json!({"folder": folder, "total": total, "unread": unread, "unread_rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }

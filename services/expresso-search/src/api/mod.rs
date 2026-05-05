@@ -2102,6 +2102,83 @@ pub async fn segment_docs_above_median(
     }))
 }
 
+/// GET /api/v1/search/index/segments/size-spread — max_bytes - min_bytes; amplitude de disk_bytes.
+///
+/// Retorna `{min_bytes,max_bytes,spread_bytes,segment_count}`. Sprint #933.
+pub async fn segment_size_spread(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_bytes": null, "max_bytes": null, "spread_bytes": null, "segment_count": 0}));
+    }
+    let min_bytes = segs.iter().map(|(_, _, db)| *db).min().unwrap_or(0);
+    let max_bytes = segs.iter().map(|(_, _, db)| *db).max().unwrap_or(0);
+    let spread = max_bytes.saturating_sub(min_bytes);
+    Json(serde_json::json!({"min_bytes": min_bytes, "max_bytes": max_bytes, "spread_bytes": spread, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/compaction-ratio — avg docs/segment (total_docs/segment_count).
+///
+/// Retorna `{compaction_ratio,total_docs,segment_count}`. Sprint #928.
+pub async fn segment_compaction_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"compaction_ratio": null, "total_docs": 0, "segment_count": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let ratio = total_docs as f64 / n as f64;
+    Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/above-p75 — segmentos com disk_bytes acima do 75th percentile.
+///
+/// Retorna `{p75_bytes,rows:[{id,num_docs,disk_bytes}],count_above,segment_count}`. Sprint #923.
+pub async fn segment_above_p75(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_bytes": null, "rows": [], "count_above": 0, "segment_count": 0}));
+    }
+    let mut sorted_bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sorted_bytes.sort_unstable();
+    let p75_idx = ((n as f64 * 0.75) as usize).saturating_sub(1).min(n - 1);
+    let p75 = sorted_bytes[p75_idx];
+    let mut above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db > p75)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    above.sort_by(|a, b| b["disk_bytes"].as_u64().cmp(&a["disk_bytes"].as_u64()));
+    let count_above = above.len();
+    Json(serde_json::json!({"p75_bytes": p75, "rows": above, "count_above": count_above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/variance — variância amostral (n-1) de num_docs e disk_bytes.
+///
+/// Retorna `{docs_variance,bytes_variance,segment_count}`. Sprint #918.
+pub async fn segment_variance(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"docs_variance": null, "bytes_variance": null, "segment_count": n}));
+    }
+    let docs: Vec<f64>  = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean_docs  = docs.iter().sum::<f64>()  / n as f64;
+    let mean_bytes = bytes.iter().sum::<f64>() / n as f64;
+    let var_docs  = docs.iter().map(|x|  (x - mean_docs).powi(2)).sum::<f64>()  / (n - 1) as f64;
+    let var_bytes = bytes.iter().map(|x| (x - mean_bytes).powi(2)).sum::<f64>() / (n - 1) as f64;
+    Json(serde_json::json!({"docs_variance": var_docs, "bytes_variance": var_bytes, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/median-docs — mediana de num_docs.
 ///
 /// Retorna `{median_docs,segment_count}`. Sprint #913.

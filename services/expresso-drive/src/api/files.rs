@@ -109,6 +109,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-trend-by-folder",      get(file_stats_size_trend_by_folder))
         .route("/api/v1/drive/files/stats/folder-count-by-user",      get(file_stats_folder_count_by_user))
         .route("/api/v1/drive/files/stats/file-age-by-folder",        get(file_stats_file_age_by_folder))
+        .route("/api/v1/drive/files/stats/large-files",               get(file_stats_large_files))
+        .route("/api/v1/drive/files/stats/created-by-hour",           get(file_stats_created_by_hour))
+        .route("/api/v1/drive/files/stats/last-modified-by-folder",   get(file_stats_last_modified_by_folder))
+        .route("/api/v1/drive/files/stats/starred-by-folder",         get(file_stats_starred_by_folder))
         .route("/api/v1/drive/files/stats/ext-version-age",           get(file_stats_ext_version_age))
         .route("/api/v1/drive/files/stats/storage-by-folder",        get(file_stats_storage_by_folder))
         .route("/api/v1/drive/files/stats/avg-file-size-by-folder", get(file_stats_avg_file_size_by_folder))
@@ -3864,6 +3868,139 @@ async fn file_stats_size_trend_by_folder(
             "total_bytes": bytes,
             "file_count":  fc,
         }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/large-files?limit=N&threshold_mb=N — arquivos acima de threshold_mb (default 100MB).
+///
+/// ORDER BY size_bytes DESC; total_large_bytes incluso. Sprint #931.
+async fn file_stats_large_files(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit        = q.limit.unwrap_or(20).min(200).max(1);
+    let threshold_mb = 100i64;
+    let threshold_bytes = threshold_mb * 1024 * 1024;
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(
+        "SELECT id, name, size_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND size_bytes >= $2 \
+          ORDER BY size_bytes DESC \
+          LIMIT $3",
+    )
+    .bind(ctx.tenant_id).bind(threshold_bytes).bind(limit)
+    .fetch_all(pool).await?;
+
+    let total_large_bytes: i64 = rows.iter().map(|(_, _, s)| *s).sum();
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(id, name, size)| serde_json::json!({"id": id, "name": name, "size_bytes": size}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "threshold_mb": threshold_mb,
+        "total_large_bytes": total_large_bytes,
+        "rows": out,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/created-by-hour — histograma hora-do-dia de created_at (0-23).
+///
+/// GROUP BY EXTRACT(HOUR) COUNT; ordem 0..23. Sprint #926.
+async fn file_stats_created_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(hour, count)| serde_json::json!({"hour": hour, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/last-modified-by-folder?limit=N — MAX updated_at por pasta.
+///
+/// ORDER BY max_updated_at DESC; pastas com arquivos mais recentemente modificados. Sprint #921.
+async fn file_stats_last_modified_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, Option<time::OffsetDateTime>, Option<time::OffsetDateTime>, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            MAX(updated_at) AS max_updated_at, \
+            MIN(updated_at) AS min_updated_at, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id \
+          ORDER BY max_updated_at DESC NULLS LAST \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, max_upd, min_upd, fc)| serde_json::json!({
+            "folder_id":      folder_id,
+            "max_updated_at": max_upd.map(|t| t.to_string()),
+            "min_updated_at": min_upd.map(|t| t.to_string()),
+            "file_count":     fc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/starred-by-folder?limit=N — COUNT starred_at IS NOT NULL por pasta.
+///
+/// GROUP BY parent_id; ORDER BY starred_count DESC. Sprint #916.
+async fn file_stats_starred_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(30).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            COUNT(*) FILTER (WHERE starred_at IS NOT NULL)::BIGINT AS starred_count, \
+            COUNT(*)::BIGINT AS total_files \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY parent_id \
+          ORDER BY starred_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder_id, starred, total)| {
+            let pct = if total > 0 { (starred as f64 / total as f64 * 100.0 * 10.0).round() / 10.0 } else { 0.0 };
+            serde_json::json!({"folder_id": folder_id, "starred_count": starred, "total_files": total, "pct_starred": pct})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
 }

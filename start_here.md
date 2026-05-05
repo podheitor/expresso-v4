@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #914
+**Último sprint:** #934
 
 ```
 git log --oneline | head -10
@@ -306,15 +306,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #913 | search | `GET /search/index/segments/median-docs` — mediana de num_docs |
 | #914 | calendar | `GET /calendars/:cal_id/events-by-range/has-description-by-weekday` — with/without description × DOW |
 
+| #915 | notifications | `GET /dlq/stats/by-hour-and-day?since=&until=` — 2D (day, hour) GROUP BY ASC |
+| #916 | drive | `GET /drive/files/stats/starred-by-folder?limit=N` — COUNT starred_at IS NOT NULL por pasta |
+| #917 | mail | `GET /mail/messages/stats/unread-rate-by-folder` — unread/total ratio por pasta ORDER BY rate DESC |
+| #918 | search | `GET /search/index/segments/variance` — variância amostral (n-1) de num_docs e disk_bytes |
+| #919 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-count-by-day` — COUNT DISTINCT organizer por dia |
+| #920 | notifications | `GET /dlq/stats/by-day-and-hour-and-kind?since=&until=` — 3D (day, hour, kind) ASC |
+| #921 | drive | `GET /drive/files/stats/last-modified-by-folder?limit=N` — MAX updated_at por pasta |
+| #922 | mail | `GET /mail/messages/stats/recent-by-folder` — COUNT msgs últimas 24h/7d/30d por pasta |
+| #923 | search | `GET /search/index/segments/above-p75` — segmentos com disk_bytes acima do P75 |
+| #924 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-response-stats` — PARTSTAT breakdown global (parse in-app) |
+| #925 | notifications | `GET /dlq/stats/by-hour-and-day-and-tenant?since=&until=` — 3D (day, hour, tenant_id) ASC |
+| #926 | drive | `GET /drive/files/stats/created-by-hour` — histograma hora-do-dia de created_at (0-23) |
+| #927 | mail | `GET /mail/messages/stats/flagged-count-by-folder` — Flagged + total + flagged_rate por pasta |
+| #928 | search | `GET /search/index/segments/compaction-ratio` — avg docs/segment (total_docs/segment_count) |
+| #929 | calendar | `GET /calendars/:cal_id/events-by-range/end-hour-distribution` — histograma 0-23h de dtend |
+| #930 | notifications | `GET /dlq/stats/user-coverage?limit=N` — COUNT DISTINCT user_id por tenant_id ORDER BY DESC |
+| #931 | drive | `GET /drive/files/stats/large-files?limit=N` — arquivos ≥ 100MB ORDER BY size_bytes DESC |
+| #932 | mail | `GET /mail/messages/stats/avg-size-by-weekday` — AVG size_bytes por DOW (0=Dom) |
+| #933 | search | `GET /search/index/segments/size-spread` — max_bytes − min_bytes amplitude de disk_bytes |
+| #934 | calendar | `GET /calendars/:cal_id/events-by-range/organizer-top-n` — top-20 organizers por event_count |
+
 ---
 
-## Próximos candidatos (#915+)
+## Próximos candidatos (#935+)
 
-1. **notifications** — `GET /dlq/stats/by-hour-and-day` — GROUP BY (day, hour) 2D granularidade
-2. **drive** — `GET /drive/files/stats/starred-by-folder` — COUNT starred por pasta
-3. **mail** — `GET /mail/messages/stats/unread-rate-by-folder` — unread/total ratio por pasta
-4. **search** — `GET /search/index/segments/variance` — variância amostral de num_docs e disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-count-by-day` — COUNT distinct organizers por dia
+1. **notifications** — `GET /dlq/stats/by-kind-and-user-and-day` — 3D kind×user×day
+2. **drive** — `GET /drive/files/stats/modified-by-hour` — histograma hora-do-dia de updated_at
+3. **mail** — `GET /mail/messages/stats/sender-domain-by-weekday` — top domínio remetente por DOW
+4. **search** — `GET /search/index/segments/docs-density-rank` — rank docs/byte por segmento
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/class-stats` — CLASS distribution global
 
 ---
 
