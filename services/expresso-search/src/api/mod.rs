@@ -1900,6 +1900,87 @@ pub async fn segment_decay(
     }))
 }
 
+/// GET /api/v1/search/index/segments/balance-score — 1 − (stdev/mean) de num_docs; ∈ (-∞,1].
+///
+/// balance_score próximo de 1 = segmentos uniformes. Retorna `{balance_score,mean,stdev,segment_count}`. Sprint #838.
+pub async fn segment_balance_score(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"balance_score": null, "mean": null, "stdev": null, "segment_count": 0}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let stdev = if n > 1 {
+        let var = docs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+        var.sqrt()
+    } else {
+        0.0
+    };
+    let balance = if mean == 0.0 { 1.0 } else { 1.0 - stdev / mean };
+    Json(serde_json::json!({
+        "balance_score":   balance,
+        "mean":            mean,
+        "stdev":           stdev,
+        "segment_count":   n,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/age-index-ratio — doc_count / disk_bytes_per_segment × count.
+///
+/// Retorna `{total_docs,total_bytes,segment_count,avg_bytes_per_doc}`. Sprint #843.
+pub async fn segment_age_index_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64  = segs.iter().map(|(_, d, _)| d).sum();
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    let segment_count = segs.len() as u64;
+    let avg_bytes_per_doc = if total_docs == 0 { 0.0_f64 } else { total_bytes as f64 / total_docs as f64 };
+    Json(serde_json::json!({
+        "total_docs":        total_docs,
+        "total_bytes":       total_bytes,
+        "segment_count":     segment_count,
+        "avg_bytes_per_doc": avg_bytes_per_doc,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/doc-index-ratio — total_docs / segment_count; media de docs por segmento.
+///
+/// Retorna `{docs_per_segment,total_docs,segment_count}`. Sprint #848.
+pub async fn segment_doc_index_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64  = segs.iter().map(|(_, d, _)| d).sum();
+    let segment_count = segs.len() as u64;
+    let docs_per_segment = if segment_count == 0 { 0.0_f64 } else { total_docs as f64 / segment_count as f64 };
+    Json(serde_json::json!({
+        "docs_per_segment": docs_per_segment,
+        "total_docs":       total_docs,
+        "segment_count":    segment_count,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/fragmentation — segment_count / total_docs; razão de fragmentação.
+///
+/// Valor alto indica muitos segmentos pequenos. Retorna `{fragmentation,segment_count,total_docs}`. Sprint #853.
+pub async fn segment_fragmentation(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64  = segs.iter().map(|(_, d, _)| d).sum();
+    let segment_count = segs.len() as u64;
+    let fragmentation = if total_docs == 0 { 0.0_f64 } else { segment_count as f64 / total_docs as f64 };
+    Json(serde_json::json!({
+        "fragmentation":  fragmentation,
+        "segment_count":  segment_count,
+        "total_docs":     total_docs,
+    }))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

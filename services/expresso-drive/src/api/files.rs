@@ -97,6 +97,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
         .route("/api/v1/drive/files/stats/version-age",             get(file_stats_version_age))
         .route("/api/v1/drive/files/stats/mime-count-by-user",      get(file_stats_mime_count_by_user))
+        .route("/api/v1/drive/files/stats/created-vs-deleted-by-day", get(file_stats_created_vs_deleted_by_day))
+        .route("/api/v1/drive/files/stats/version-size-by-user",   get(file_stats_version_size_by_user))
+        .route("/api/v1/drive/files/stats/ext-size-by-folder",     get(file_stats_ext_size_by_folder))
+        .route("/api/v1/drive/files/stats/tag-by-user",            get(file_stats_tag_by_user))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -3436,6 +3440,164 @@ async fn file_stats_mime_count_by_user(
             "owner_user_id": uid,
             "mime_type":     m,
             "file_count":    c,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/created-vs-deleted-by-day?since=&until= — net criados e deletados por dia.
+///
+/// Retorna `{rows:[{day,created,deleted,net}]}` day ASC. Sprint #836.
+async fn file_stats_created_vs_deleted_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<DateRangeQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(day, 'YYYY-MM-DD') AS day, \
+            COALESCE(SUM(created), 0)::BIGINT AS created, \
+            COALESCE(SUM(deleted), 0)::BIGINT AS deleted \
+           FROM ( \
+                SELECT date_trunc('day', created_at AT TIME ZONE 'UTC') AS day, \
+                       1 AS created, 0 AS deleted \
+                  FROM drive_files \
+                 WHERE tenant_id = $1 AND kind = 'file' \
+                   AND ($2::timestamptz IS NULL OR created_at >= $2) \
+                   AND ($3::timestamptz IS NULL OR created_at <  $3) \
+                UNION ALL \
+                SELECT date_trunc('day', deleted_at AT TIME ZONE 'UTC') AS day, \
+                       0 AS created, 1 AS deleted \
+                  FROM drive_files \
+                 WHERE tenant_id = $1 AND kind = 'file' \
+                   AND deleted_at IS NOT NULL \
+                   AND ($2::timestamptz IS NULL OR deleted_at >= $2) \
+                   AND ($3::timestamptz IS NULL OR deleted_at <  $3) \
+           ) sub \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.since.as_deref().and_then(|s| s.parse::<time::OffsetDateTime>().ok()))
+    .bind(q.until.as_deref().and_then(|s| s.parse::<time::OffsetDateTime>().ok()))
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, created, deleted)| serde_json::json!({
+            "day":     day,
+            "created": created,
+            "deleted": deleted,
+            "net":     created - deleted,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/version-size-by-user?limit=N — total bytes de versões por owner_user_id.
+///
+/// JOIN drive_file_versions + drive_files; GROUP BY owner_user_id total DESC. Sprint #841.
+async fn file_stats_version_size_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            f.owner_user_id, \
+            COUNT(v.id)::BIGINT AS version_count, \
+            COALESCE(SUM(v.size_bytes), 0)::BIGINT AS total_bytes \
+           FROM drive_file_versions v \
+           JOIN drive_files f ON f.id = v.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY f.owner_user_id \
+          ORDER BY total_bytes DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, vc, tb)| serde_json::json!({
+            "owner_user_id":  uid,
+            "version_count":  vc,
+            "total_bytes":    tb,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-size-by-folder?folder_id= — SUM(size_bytes) por (ext, folder).
+///
+/// SUBSTRING(name FROM '\\.[^.]*$') + parent_id GROUP BY. Sprint #846.
+async fn file_stats_ext_size_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsMimeByFolderQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            parent_id, \
+            LOWER(SUBSTRING(name FROM '\\.[^.]*$')) AS ext, \
+            COUNT(*)::BIGINT AS file_count, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND ($2::uuid IS NULL OR parent_id = $2) \
+          GROUP BY parent_id, ext \
+          ORDER BY parent_id ASC, total_bytes DESC",
+    )
+    .bind(ctx.tenant_id).bind(q.folder_id)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(pid, ext, fc, tb)| serde_json::json!({
+            "parent_id":   pid,
+            "ext":         ext,
+            "file_count":  fc,
+            "total_bytes": tb,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-by-user?limit=N — top tags por owner_user_id.
+///
+/// JOIN drive_file_tags; GROUP BY (owner_user_id, tag) COUNT DESC. Sprint #851.
+async fn file_stats_tag_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, String, i64)> = sqlx::query_as(
+        "SELECT \
+            f.owner_user_id, \
+            t.tag, \
+            COUNT(*)::BIGINT AS tag_count \
+           FROM drive_file_tags t \
+           JOIN drive_files f ON f.id = t.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY f.owner_user_id, t.tag \
+          ORDER BY tag_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, tag, tc)| serde_json::json!({
+            "owner_user_id": uid,
+            "tag":           tag,
+            "tag_count":     tc,
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
