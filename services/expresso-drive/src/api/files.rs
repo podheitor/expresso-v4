@@ -93,6 +93,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/checksum-coverage",      get(file_stats_checksum_coverage))
         .route("/api/v1/drive/files/stats/storage-key-coverage",   get(file_stats_storage_key_coverage))
         .route("/api/v1/drive/files/stats/locked-by-user",         get(file_stats_locked_by_user))
+        .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
+        .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
+        .route("/api/v1/drive/files/stats/version-age",             get(file_stats_version_age))
+        .route("/api/v1/drive/files/stats/mime-count-by-user",      get(file_stats_mime_count_by_user))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -3278,6 +3282,163 @@ async fn file_stats_locked_by_user(
         .map(|(uid, fc)| serde_json::json!({"locked_by": uid, "file_count": fc}))
         .collect();
     Ok(Json(serde_json::json!({"total_locked": total_locked, "rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/mime-by-ext?limit=N — top mime_type por extensão.
+///
+/// GROUP BY (ext, mime_type) file_count DESC. Ext via LOWER(SUBSTRING(name)). Limit default 50 max 500.
+/// Retorna `{rows:[{ext,mime_type,file_count}]}`. Sprint #816.
+async fn file_stats_mime_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(LOWER(SUBSTRING(name FROM '\\.[^.]*$')), '(none)') AS ext, \
+            COALESCE(mime_type, 'application/octet-stream')            AS mime_type, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND kind       = 'file' \
+            AND deleted_at IS NULL \
+          GROUP BY ext, mime_type \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(e, m, c)| serde_json::json!({"ext": e, "mime_type": m, "file_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trend-by-day?since=&until= — total_bytes criados por dia.
+///
+/// DATE_TRUNC('day', created_at) SUM(size_bytes) GROUP BY dia ASC. kind='file', não-deletados.
+/// Retorna `{rows:[{day,total_bytes,file_count}]}`. Sprint #821.
+#[derive(Debug, serde::Deserialize)]
+struct DateRangeQuery {
+    since: Option<String>,
+    until: Option<String>,
+}
+
+async fn file_stats_size_trend_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<DateRangeQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let since_dt: Option<OffsetDateTime> = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| crate::error::DriveError::BadRequest("since must be RFC3339".into()))
+    }).transpose()?;
+    let until_dt: Option<OffsetDateTime> = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| crate::error::DriveError::BadRequest("until must be RFC3339".into()))
+    }).transpose()?;
+
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', created_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes, \
+            COUNT(*)::BIGINT                     AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND kind       = 'file' \
+            AND deleted_at IS NULL \
+            AND ($2::timestamptz IS NULL OR created_at >= $2) \
+            AND ($3::timestamptz IS NULL OR created_at <  $3) \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id).bind(since_dt).bind(until_dt)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, b, c)| serde_json::json!({"day": d, "total_bytes": b, "file_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/version-age?limit=N — arquivos com versões mais antigas.
+///
+/// MIN(created_at) por arquivo via drive_file_versions, ordenado ASC.
+/// Retorna `{rows:[{file_id,oldest_version_at,version_count}]}`. Limit default 20 max 200. Sprint #826.
+async fn file_stats_version_age(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, Option<OffsetDateTime>, i64)> = sqlx::query_as(
+        "SELECT v.file_id, \
+                MIN(v.created_at)     AS oldest_version_at, \
+                COUNT(*)::BIGINT      AS version_count \
+           FROM drive_file_versions v \
+           JOIN drive_files f ON f.id = v.file_id \
+          WHERE f.tenant_id  = $1 \
+            AND f.deleted_at IS NULL \
+          GROUP BY v.file_id \
+          ORDER BY oldest_version_at ASC NULLS LAST \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(fid, oldest, vc)| serde_json::json!({
+            "file_id":           fid,
+            "oldest_version_at": oldest,
+            "version_count":     vc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/mime-count-by-user?limit=N — top mime_types por owner_user_id.
+///
+/// GROUP BY (owner_user_id, mime_type) COUNT DESC. Limit default 50 max 500.
+/// Retorna `{rows:[{owner_user_id,mime_type,file_count}]}`. Sprint #831.
+async fn file_stats_mime_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(50).min(500).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<Uuid>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            owner_user_id, \
+            COALESCE(mime_type, 'application/octet-stream') AS mime_type, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND kind       = 'file' \
+            AND deleted_at IS NULL \
+          GROUP BY owner_user_id, mime_type \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, m, c)| serde_json::json!({
+            "owner_user_id": uid,
+            "mime_type":     m,
+            "file_count":    c,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": out})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

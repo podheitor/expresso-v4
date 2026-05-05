@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #814
+**Último sprint:** #834
 
 ```
 git log --oneline | head -10
@@ -201,15 +201,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #813 | search | `GET /search/index/segments/percentile-rank` — percentis 25/50/75/90/95 de num_docs e disk_bytes |
 | #814 | calendar | `GET /calendars/:cal_id/events-by-range/weekday-distribution` — COUNT por DOW (0=Sun..6=Sat) |
 
+| #815 | notifications | `GET /dlq/stats/by-attempts-and-kind` — histograma tentativas × kind (1/2/3/4/5+) |
+| #816 | drive | `GET /drive/files/stats/mime-by-ext` — top mime_type por extensão GROUP BY (ext, mime) |
+| #817 | mail | `GET /mail/messages/stats/flagged-by-folder` — with/without \Flagged por pasta |
+| #818 | search | `GET /search/index/segments/outliers?threshold=N` — segmentos com |z| > threshold |
+| #819 | calendar | `GET /calendars/:cal_id/events-by-range/month-distribution` — COUNT por mês (1-12) |
+| #820 | notifications | `GET /dlq/stats/by-tenant-and-minute` — GROUP BY (minute, tenant_id) ASC |
+| #821 | drive | `GET /drive/files/stats/size-trend-by-day?since=&until=` — SUM(size_bytes) por dia |
+| #822 | mail | `GET /mail/messages/stats/bcc-count-distribution` — histograma 0/1/2/3/4/5+ bcc_addrs |
+| #823 | search | `GET /search/index/segments/size-bands` — histograma tiny/small/medium/large/huge |
+| #824 | calendar | `GET /calendars/:cal_id/events-by-range/calendar-coverage` — days_with_events / total_days |
+| #825 | notifications | `GET /dlq/stats/by-day-and-user-and-kind` — 3D GROUP BY (day, user_id, kind) |
+| #826 | drive | `GET /drive/files/stats/version-age?limit=N` — arquivos com versões mais antigas |
+| #827 | mail | `GET /mail/messages/stats/priority-by-folder` — X-Priority por pasta |
+| #828 | search | `GET /search/index/segments/top-docs-ratio` — pct_docs = num_docs/total DESC |
+| #829 | calendar | `GET /calendars/:cal_id/events-by-range/duration-by-class` — avg/max minutos por class |
+| #830 | notifications | `GET /dlq/stats/by-hour-and-kind-and-tenant` — 3D GROUP BY (hour, kind, tenant_id) |
+| #831 | drive | `GET /drive/files/stats/mime-count-by-user` — top (owner, mime) por file_count |
+| #832 | mail | `GET /mail/messages/stats/importance-by-folder` — Importance header por pasta |
+| #833 | search | `GET /search/index/segments/decay?threshold=N` — razão below_threshold / total |
+| #834 | calendar | `GET /calendars/:cal_id/events-by-range/recurrence-by-weekday` — rrule events por DOW |
+
 ---
 
-## Próximos candidatos (#815+)
+## Próximos candidatos (#835+)
 
-1. **notifications** — `GET /dlq/stats/by-attempts-and-kind` — histograma tentativas cruzado com kind
-2. **drive** — `GET /drive/files/stats/mime-by-ext` — top mime_type por extensão (GROUP BY ext, mime)
-3. **mail** — `GET /mail/messages/stats/flagged-by-folder` — COUNT \Flagged por pasta
-4. **search** — `GET /search/index/segments/outliers` — segmentos com |z| > threshold
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/month-distribution` — COUNT por mês do ano (1-12)
+1. **notifications** — `GET /dlq/stats/by-minute-and-kind-and-tenant` — 3D GROUP BY (minute, kind, tenant_id)
+2. **drive** — `GET /drive/files/stats/created-vs-deleted-by-day` — net criados/deletados por dia
+3. **mail** — `GET /mail/messages/stats/sensitivity-by-folder` — Sensitivity header por pasta
+4. **search** — `GET /search/index/segments/balance-score` — 1 - (stdev/mean) normalizado
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/organizer-by-weekday` — top organizers por DOW
 
 ---
 

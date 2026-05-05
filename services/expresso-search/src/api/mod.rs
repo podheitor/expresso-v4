@@ -1780,6 +1780,126 @@ pub async fn segment_percentile_rank(
     }))
 }
 
+/// GET /api/v1/search/index/segments/outliers?threshold=N — segmentos com |z-score| > threshold.
+///
+/// Usa z-score de num_docs. threshold default 2.0. Retorna `{threshold,outliers:[{id,num_docs,disk_bytes,z}]}`. Sprint #818.
+#[derive(Debug, serde::Deserialize)]
+pub struct OutliersQuery {
+    pub threshold: Option<f64>,
+}
+
+pub async fn segment_outliers(
+    State(store): State<IndexStore>,
+    Query(q):     Query<OutliersQuery>,
+) -> Json<serde_json::Value> {
+    let threshold = q.threshold.unwrap_or(2.0_f64).abs();
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({"threshold": threshold, "outliers": []}));
+    }
+
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let var  = docs.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (n - 1) as f64;
+    let sd   = var.sqrt();
+
+    let outliers: Vec<serde_json::Value> = if sd == 0.0 {
+        vec![]
+    } else {
+        segs.iter()
+            .filter_map(|(id, nd, db)| {
+                let z = (*nd as f64 - mean) / sd;
+                if z.abs() > threshold {
+                    Some(serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "z_score": z}))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    Json(serde_json::json!({"segment_count": n, "threshold": threshold, "outliers": outliers}))
+}
+
+/// GET /api/v1/search/index/segments/size-bands — histograma de num_docs por banda fixa.
+///
+/// Bandas: tiny(<100)/small(100-999)/medium(1000-9999)/large(10000-99999)/huge(≥100000).
+/// Retorna `{bands:{tiny,small,medium,large,huge}}`. Sprint #823.
+pub async fn segment_size_bands(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let (mut tiny, mut small, mut medium, mut large, mut huge) = (0_u64, 0_u64, 0_u64, 0_u64, 0_u64);
+    for (_, nd, _) in &segs {
+        match nd {
+            0..=99        => tiny   += 1,
+            100..=999     => small  += 1,
+            1000..=9999   => medium += 1,
+            10000..=99999 => large  += 1,
+            _             => huge   += 1,
+        }
+    }
+    Json(serde_json::json!({
+        "segment_count": segs.len(),
+        "bands": {"tiny": tiny, "small": small, "medium": medium, "large": large, "huge": huge},
+    }))
+}
+
+/// GET /api/v1/search/index/segments/top-docs-ratio — razão num_docs/total_docs por segmento.
+///
+/// pct_docs = num_docs / total_docs * 100. Ordenado pct_docs DESC. Sprint #828.
+pub async fn segment_top_docs_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs  = store.list_segments().unwrap_or_default();
+    let total: u64 = segs.iter().map(|(_, d, _)| d).sum();
+
+    if total == 0 {
+        return Json(serde_json::json!({"total_docs": 0, "segments": []}));
+    }
+
+    let mut out: Vec<serde_json::Value> = segs.iter()
+        .map(|(id, nd, db)| {
+            let pct = *nd as f64 / total as f64 * 100.0;
+            serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "pct_docs": pct})
+        })
+        .collect();
+    out.sort_by(|a, b| b["pct_docs"].as_f64().unwrap_or(0.0)
+        .partial_cmp(&a["pct_docs"].as_f64().unwrap_or(0.0))
+        .unwrap_or(std::cmp::Ordering::Equal));
+
+    Json(serde_json::json!({"total_docs": total, "segment_count": segs.len(), "segments": out}))
+}
+
+/// GET /api/v1/search/index/segments/decay — razão de segmentos com num_docs < threshold.
+///
+/// threshold default 1000. decay_ratio = tiny_count / total_count.
+/// Retorna `{threshold,total,below_threshold,decay_ratio}`. Sprint #833.
+#[derive(Debug, serde::Deserialize)]
+pub struct DecayQuery {
+    pub threshold: Option<u64>,
+}
+
+pub async fn segment_decay(
+    State(store): State<IndexStore>,
+    Query(q):     Query<DecayQuery>,
+) -> Json<serde_json::Value> {
+    let threshold = q.threshold.unwrap_or(1000);
+    let segs  = store.list_segments().unwrap_or_default();
+    let total = segs.len() as u64;
+    let below = segs.iter().filter(|(_, d, _)| *d < threshold).count() as u64;
+    let ratio = if total == 0 { 0.0_f64 } else { below as f64 / total as f64 };
+
+    Json(serde_json::json!({
+        "segment_count":    total,
+        "threshold":        threshold,
+        "below_threshold":  below,
+        "decay_ratio":      ratio,
+    }))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,
