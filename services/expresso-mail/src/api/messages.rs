@@ -63,6 +63,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/preview-length-by-folder",  get(preview_length_by_folder_stats))
         .route("/mail/messages/stats/has-date-by-folder",         get(has_date_by_folder_stats))
         .route("/mail/messages/stats/from-domain-by-folder",      get(from_domain_by_folder_stats))
+        .route("/mail/messages/stats/in-reply-to-by-folder",      get(in_reply_to_by_folder_stats))
+        .route("/mail/messages/stats/message-id-coverage",         get(message_id_coverage_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2800,6 +2802,84 @@ async fn from_domain_by_folder_stats(
 
     let folders: Vec<serde_json::Value> = map.into_iter()
         .map(|(folder, domains)| serde_json::json!({"folder": folder, "domains": domains}))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/in-reply-to-by-folder — mensagens com/sem in_reply_to por pasta.
+///
+/// Complementa reply-rate-by-folder (#707) com LEFT JOIN para incluir pastas vazias.
+/// Retorna `{folders:[{folder,total,with_in_reply_to,without_in_reply_to}]}` total DESC. Sprint #737.
+async fn in_reply_to_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE m.in_reply_to IS NOT NULL)::BIGINT AS with_in_reply_to, \
+            COUNT(m.id) FILTER (WHERE m.in_reply_to IS NULL)::BIGINT     AS without_in_reply_to \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, with_irt, without_irt)| serde_json::json!({
+            "folder":             folder,
+            "total":              total,
+            "with_in_reply_to":   with_irt,
+            "without_in_reply_to": without_irt,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/message-id-coverage — mensagens com/sem message_id por pasta.
+///
+/// Cobertura do campo `message_id` (mensagens bem-formadas têm Message-ID). LEFT JOIN para pastas vazias.
+/// Retorna `{folders:[{folder,total,with_message_id,without_message_id}]}` total DESC. Sprint #742.
+async fn message_id_coverage_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE m.message_id IS NOT NULL AND m.message_id <> '')::BIGINT AS with_message_id, \
+            COUNT(m.id) FILTER (WHERE m.message_id IS NULL OR m.message_id = '')::BIGINT       AS without_message_id \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, with_mid, without_mid)| serde_json::json!({
+            "folder":            folder,
+            "total":             total,
+            "with_message_id":   with_mid,
+            "without_message_id": without_mid,
+        }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
 }

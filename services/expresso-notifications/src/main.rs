@@ -1347,6 +1347,84 @@ async fn dlq_stats_by_day_and_kind(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-and-tenant?limit=N — DLQ COUNT GROUP BY (kind, tenant_id).
+///
+/// Análogo a by-tenant-and-kind (#710) com ordem (kind, tenant_id). `limit` default 50 max 500.
+/// Retorna `{rows:[{kind,tenant_id,count}]}` ordenado por count DESC. Sprint #735.
+async fn dlq_stats_by_kind_and_tenant(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let raw_limit = q.limit.unwrap_or(50).clamp(1, 500) as i64;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT kind, tenant_id::TEXT, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY kind, tenant_id \
+          ORDER BY count DESC \
+          LIMIT $1",
+    )
+    .bind(raw_limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, tenant_id, count)| json!({"kind": kind, "tenant_id": tenant_id, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-hour?since=&until= — DLQ COUNT GROUP BY (tenant_id, hour).
+///
+/// DATE_TRUNC('hour') no eixo temporal, agrupa por tenant_id. Granularidade intra-dia cross-tenant.
+/// Retorna `{rows:[{hour,tenant_id,count}]}` ordenado por hour ASC, tenant_id ASC. Sprint #740.
+async fn dlq_stats_by_tenant_and_hour(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('hour', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"') AS hour, \
+            tenant_id::TEXT, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY hour, tenant_id \
+         ORDER BY hour ASC, tenant_id ASC",
+    )
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(hour, tenant_id, count)| json!({"hour": hour, "tenant_id": tenant_id, "count": count}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/count — fast count of DLQ entries.
 async fn count_dlq(
     State(st): State<AppState>,
@@ -2311,6 +2389,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-hour-and-kind",       get(dlq_stats_by_hour_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-minute",              get(dlq_stats_by_minute))
         .route("/api/v1/notifications/dlq/stats/by-minute-and-kind",     get(dlq_stats_by_minute_and_kind))
+        .route("/api/v1/notifications/dlq/stats/by-kind-and-tenant",     get(dlq_stats_by_kind_and_tenant))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-hour",     get(dlq_stats_by_tenant_and_hour))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))

@@ -249,6 +249,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_uid_uniqueness),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-domain-stats",
+            get(events_by_range_attendee_domain_stats),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/overlap-count",
+            get(events_by_range_overlap_count),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -2066,6 +2074,107 @@ async fn events_by_range_uid_uniqueness(
         "total":             total,
         "unique_uids":       unique_uids,
         "duplicate_entries": total - unique_uids,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-domain-stats?after=&before=&limit=N
+///
+/// Extrai domínios de email dos attendees (parse in-app de ical_raw) e conta por domínio.
+/// Top-N domínios mais presentes; default 20. Retorna `{calendar_id,events_scanned,rows:[{domain,count}]}`. Sprint #739.
+async fn events_by_range_attendee_domain_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    use crate::domain::itip;
+    use std::collections::HashMap;
+
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let raws: Vec<(String,)> = sqlx::query_as(
+        "SELECT ical_raw FROM calendar_events \
+          WHERE tenant_id   = $1 \
+            AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let events_scanned = raws.len();
+    let mut domain_counts: HashMap<String, u64> = HashMap::new();
+    for (raw,) in &raws {
+        for att in itip::parse_attendees(raw) {
+            if let Some(domain) = att.email.split('@').nth(1) {
+                *domain_counts.entry(domain.to_ascii_lowercase()).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let mut rows: Vec<(String, u64)> = domain_counts.into_iter().collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    rows.truncate(20);
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, count)| serde_json::json!({"domain": domain, "count": count}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":     cal_id,
+        "events_scanned":  events_scanned,
+        "rows":            out,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/overlap-count?after=&before=
+///
+/// Conta pares de eventos com dtstart/dtend sobrepostos: A.dtstart < B.dtend AND A.dtend > B.dtstart.
+/// Self-join com id < id2 para evitar duplicatas. Retorna `{calendar_id,overlap_pair_count}`. Sprint #744.
+async fn events_by_range_overlap_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (overlap_pair_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM calendar_events a \
+           JOIN calendar_events b ON b.tenant_id = a.tenant_id \
+                                 AND b.calendar_id = a.calendar_id \
+                                 AND b.id > a.id \
+          WHERE a.tenant_id   = $1 \
+            AND a.calendar_id = $2 \
+            AND a.dtstart IS NOT NULL AND a.dtend IS NOT NULL \
+            AND b.dtstart IS NOT NULL AND b.dtend IS NOT NULL \
+            AND a.dtstart < b.dtend \
+            AND a.dtend   > b.dtstart \
+            AND ($3::timestamptz IS NULL OR a.dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR a.dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":        cal_id,
+        "overlap_pair_count": overlap_pair_count,
     })))
 }
 

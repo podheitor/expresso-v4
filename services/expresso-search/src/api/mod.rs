@@ -1126,6 +1126,80 @@ pub async fn segment_iqr(
     }))
 }
 
+/// GET /api/v1/search/index/segments/range — min, max e range (max-min) de num_docs e disk_bytes.
+///
+/// Medida simples de spread. Null quando n=0. Complementa stdev (#718) e IQR (#733).
+/// Retorna `{segment_count,num_docs_min,num_docs_max,num_docs_range,disk_bytes_min,disk_bytes_max,disk_bytes_range}`. Sprint #738.
+pub async fn segment_range(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":    0,
+            "num_docs_min":     serde_json::Value::Null,
+            "num_docs_max":     serde_json::Value::Null,
+            "num_docs_range":   serde_json::Value::Null,
+            "disk_bytes_min":   serde_json::Value::Null,
+            "disk_bytes_max":   serde_json::Value::Null,
+            "disk_bytes_range": serde_json::Value::Null,
+        }));
+    }
+
+    let dmin = segs.iter().map(|(_, d, _)| *d).min().unwrap();
+    let dmax = segs.iter().map(|(_, d, _)| *d).max().unwrap();
+    let bmin = segs.iter().map(|(_, _, b)| *b).min().unwrap();
+    let bmax = segs.iter().map(|(_, _, b)| *b).max().unwrap();
+
+    Json(serde_json::json!({
+        "segment_count":    n,
+        "num_docs_min":     dmin,
+        "num_docs_max":     dmax,
+        "num_docs_range":   dmax - dmin,
+        "disk_bytes_min":   bmin,
+        "disk_bytes_max":   bmax,
+        "disk_bytes_range": bmax - bmin,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/cv — coeficiente de variação (stdev/mean) de num_docs e disk_bytes.
+///
+/// CV = stdev / mean — normaliza dispersão pela escala. Null quando n<2 ou mean=0.
+/// Retorna `{segment_count,num_docs_cv,disk_bytes_cv}`. Sprint #743.
+pub async fn segment_cv(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({
+            "segment_count": n,
+            "num_docs_cv":   serde_json::Value::Null,
+            "disk_bytes_cv": serde_json::Value::Null,
+        }));
+    }
+
+    fn cv(vals: &[f64]) -> Option<f64> {
+        let n = vals.len() as f64;
+        let mean = vals.iter().sum::<f64>() / n;
+        if mean == 0.0 { return None; }
+        let var = vals.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+        Some(var.sqrt() / mean)
+    }
+
+    let docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count": n,
+        "num_docs_cv":   cv(&docs),
+        "disk_bytes_cv": cv(&bytes),
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

@@ -78,6 +78,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/starred-count",    get(file_stats_starred_count))
         .route("/api/v1/drive/files/stats/expiry-count",    get(file_stats_expiry_count))
         .route("/api/v1/drive/files/stats/mime-top-n",       get(file_stats_mime_top_n))
+        .route("/api/v1/drive/files/stats/orphan-versions",  get(file_stats_orphan_versions))
+        .route("/api/v1/drive/files/stats/empty-files",      get(file_stats_empty_files))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2720,6 +2722,62 @@ async fn file_stats_mime_top_n(
         .map(|(mime_type, file_count)| serde_json::json!({"mime_type": mime_type, "file_count": file_count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/orphan-versions — versões sem arquivo pai.
+///
+/// Conta entradas em `drive_file_versions` cujo `file_id` não existe em `drive_files` (LEFT JOIN IS NULL).
+/// Indica inconsistência de storage — versões órfãs não têm dono válido.
+/// Retorna `{orphan_version_count}`. Sprint #736.
+async fn file_stats_orphan_versions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (orphan_version_count,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(v.id)::BIGINT \
+           FROM drive_file_versions v \
+           LEFT JOIN drive_files f ON f.id = v.file_id AND f.tenant_id = $1 \
+          WHERE v.tenant_id = $1 \
+            AND f.id IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({"orphan_version_count": orphan_version_count})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-files — arquivos com tamanho zero ou indefinido.
+///
+/// Conta arquivos não-deletados com `size_bytes IS NULL OR size_bytes = 0` (kind='file').
+/// Útil pra detectar uploads incompletos. Retorna `{total_empty,null_size,zero_size}`. Sprint #741.
+async fn file_stats_empty_files(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_empty, null_size, zero_size): (i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE size_bytes IS NULL OR size_bytes = 0)::BIGINT AS total_empty, \
+            COUNT(*) FILTER (WHERE size_bytes IS NULL)::BIGINT                   AS null_size, \
+            COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT                      AS zero_size \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file'",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Json(serde_json::json!({
+        "total_empty": total_empty,
+        "null_size":   null_size,
+        "zero_size":   zero_size,
+    })))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

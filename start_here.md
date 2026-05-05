@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #734 — (commit pendente)
+**Último sprint:** #744 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -119,16 +119,26 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #732 | mail | `GET /mail/messages/stats/from-domain-by-folder` — top-20 domínios de remetente (SPLIT_PART('@')) por pasta |
 | #733 | search | `GET /search/index/segments/iqr` — IQR Q1/Q3 de num_docs e disk_bytes; interpolação linear |
 | #734 | calendar | `GET /calendars/:cal_id/events-by-range/uid-uniqueness` — total vs COUNT(DISTINCT uid); duplicate_entries |
+| #735 | notifications | `GET /dlq/stats/by-kind-and-tenant?limit=N` — GROUP BY (kind, tenant_id) COUNT DESC; default 50 max 500 |
+| #736 | drive | `GET /drive/files/stats/orphan-versions` — LEFT JOIN IS NULL; versões sem drive_files pai |
+| #737 | mail | `GET /mail/messages/stats/in-reply-to-by-folder` — with/without in_reply_to; LEFT JOIN pastas vazias |
+| #738 | search | `GET /search/index/segments/range` — min/max/range de num_docs e disk_bytes |
+| #739 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-domain-stats` — top-20 domínios de email dos attendees (parse in-app) |
+| #740 | notifications | `GET /dlq/stats/by-tenant-and-hour?since=&until=` — GROUP BY (tenant_id, hour); granularidade intra-dia cross-tenant |
+| #741 | drive | `GET /drive/files/stats/empty-files` — COUNT total_empty + null_size + zero_size (kind='file', não-deletados) |
+| #742 | mail | `GET /mail/messages/stats/message-id-coverage` — with/without message_id; LEFT JOIN pastas vazias |
+| #743 | search | `GET /search/index/segments/cv` — coeficiente de variação (stdev/mean) de num_docs e disk_bytes |
+| #744 | calendar | `GET /calendars/:cal_id/events-by-range/overlap-count` — pares com dtstart/dtend sobrepostos via self-join |
 
 ---
 
-## Próximos candidatos (#735+)
+## Próximos candidatos (#745+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-tenant?limit=N` — GROUP BY (kind, tenant_id) COUNT DESC; análogo a by-tenant-and-kind (#710) com ordem invertida
-2. **drive** — `GET /drive/files/stats/orphan-versions?limit=N` — versões sem arquivo pai (drive_file_versions sem drive_files correspondente)
-3. **mail** — `GET /mail/messages/stats/in-reply-to-by-folder` — COUNT com/sem in_reply_to por pasta; complementa reply-rate-by-folder (#707)
-4. **search** — `GET /search/index/segments/range` — min/max/range (max-min) de num_docs e disk_bytes
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/attendee-domain-stats` — top-N domínios (@) nos attendees
+1. **notifications** — `GET /dlq/stats/by-kind-and-hour?since=&until=` — GROUP BY (kind, hour) ASC; complementa by-hour-and-kind (#720)
+2. **drive** — `GET /drive/files/stats/shared-count` — arquivos com `shared_at IS NOT NULL` (se coluna existir); total + by_user
+3. **mail** — `GET /mail/messages/stats/body-size-by-folder` — avg/max size_bytes por pasta
+4. **search** — `GET /search/index/segments/skewness` — assimetria de num_docs e disk_bytes (g1 sample)
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/sequence-stats` — avg/max sequence por calendário
 
 ---
 
