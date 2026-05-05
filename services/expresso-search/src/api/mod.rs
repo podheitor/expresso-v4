@@ -805,6 +805,45 @@ pub async fn writer_stats(
     }))
 }
 
+/// GET /api/v1/search/index/segments/merge-candidates?min_docs=N&max_docs=N
+///
+/// Filtra segmentos por faixa de `num_docs`: retorna apenas aqueles com
+/// `num_docs >= min_docs` (default 0) e `num_docs <= max_docs` (default u64::MAX).
+/// Ordenados por `num_docs ASC`. Útil pra automação de merge seletivo — identifica
+/// segmentos pequenos acima de um threshold mínimo. Sprint #689.
+#[derive(Debug, serde::Deserialize)]
+struct MergeCandidatesQuery {
+    min_docs: Option<u64>,
+    max_docs: Option<u64>,
+}
+
+pub async fn segments_merge_candidates(
+    State(store): State<IndexStore>,
+    Query(q):     Query<MergeCandidatesQuery>,
+) -> Json<serde_json::Value> {
+    let min_docs = q.min_docs.unwrap_or(0);
+    let max_docs = q.max_docs.unwrap_or(u64::MAX);
+
+    let segs = store.list_segments().unwrap_or_default();
+    let mut candidates: Vec<serde_json::Value> = segs.into_iter()
+        .filter(|(_, num_docs, _)| *num_docs >= min_docs && *num_docs <= max_docs)
+        .map(|(id, num_docs, disk_bytes)| serde_json::json!({
+            "id":         id,
+            "num_docs":   num_docs,
+            "disk_bytes": disk_bytes,
+        }))
+        .collect();
+    candidates.sort_by(|a, b| {
+        a["num_docs"].as_u64().unwrap_or(0)
+            .cmp(&b["num_docs"].as_u64().unwrap_or(0))
+    });
+    Json(serde_json::json!({
+        "count":      candidates.len(),
+        "segments":   candidates,
+        "filter":     {"min_docs": min_docs, "max_docs": if max_docs == u64::MAX { serde_json::Value::Null } else { serde_json::json!(max_docs) }},
+    }))
+}
+
 /// GET /api/v1/search/stats/by-tenant?limit=N — doc count por tenant_id.
 ///
 /// Varre todos os documentos do índice e agrupa por `tenant_id`. Retorna

@@ -68,6 +68,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-by-folder",  get(file_stats_mime_by_folder))
         .route("/api/v1/drive/files/stats/top-files",        get(file_stats_top_files))
         .route("/api/v1/drive/files/stats/created-by-day",  get(file_stats_created_by_day))
+        .route("/api/v1/drive/files/stats/by-size-bucket",  get(file_stats_by_size_bucket))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2283,6 +2284,72 @@ async fn set_folder_quota(
         event = "drive.folder.quota_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id, max_bytes = body.max_bytes);
     Ok(Json(fq))
+}
+
+/// GET /api/v1/drive/files/stats/by-size-bucket?folder_id= — distribuição de tamanho em 8 faixas.
+///
+/// Conta arquivos (kind='file', não-deletados) por faixa de `size_bytes`:
+/// <1KB / 1-10KB / 10-100KB / 100KB-1MB / 1-10MB / 10-100MB / 100MB-1GB / >1GB.
+/// `folder_id` (UUID) filtra por `parent_id`; omitido = tenant inteiro.
+/// Retorna `{buckets:[{range,count,total_bytes}]}`. Sprint #687.
+#[derive(Debug, Deserialize)]
+struct StatsSizeBucketQuery {
+    folder_id: Option<Uuid>,
+}
+
+async fn file_stats_by_size_bucket(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsSizeBucketQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let folder_filter = if q.folder_id.is_some() {
+        "AND parent_id = $2"
+    } else {
+        "AND ($2::uuid IS NULL OR parent_id = $2)"
+    };
+
+    let sql = format!(
+        "SELECT \
+            COUNT(*) FILTER (WHERE size_bytes < 1024)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes < 1024), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 1024        AND size_bytes < 10240)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 1024        AND size_bytes < 10240), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 10240       AND size_bytes < 102400)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 10240       AND size_bytes < 102400), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 102400      AND size_bytes < 1048576)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 102400      AND size_bytes < 1048576), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 1048576     AND size_bytes < 10485760)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 1048576     AND size_bytes < 10485760), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 10485760    AND size_bytes < 104857600)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 10485760    AND size_bytes < 104857600), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 104857600   AND size_bytes < 1073741824)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 104857600   AND size_bytes < 1073741824), 0)::BIGINT, \
+            COUNT(*) FILTER (WHERE size_bytes >= 1073741824)::BIGINT, \
+            COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes >= 1073741824), 0)::BIGINT \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' {folder_filter}"
+    );
+
+    let row: (i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64, i64,i64) =
+        sqlx::query_as(&sql)
+            .bind(ctx.tenant_id)
+            .bind(q.folder_id)
+            .fetch_one(pool)
+            .await?;
+
+    let buckets = vec![
+        serde_json::json!({"range": "<1KB",        "count": row.0,  "total_bytes": row.1}),
+        serde_json::json!({"range": "1-10KB",      "count": row.2,  "total_bytes": row.3}),
+        serde_json::json!({"range": "10-100KB",    "count": row.4,  "total_bytes": row.5}),
+        serde_json::json!({"range": "100KB-1MB",   "count": row.6,  "total_bytes": row.7}),
+        serde_json::json!({"range": "1-10MB",      "count": row.8,  "total_bytes": row.9}),
+        serde_json::json!({"range": "10-100MB",    "count": row.10, "total_bytes": row.11}),
+        serde_json::json!({"range": "100MB-1GB",   "count": row.12, "total_bytes": row.13}),
+        serde_json::json!({"range": ">1GB",        "count": row.14, "total_bytes": row.15}),
+    ];
+    Ok(Json(serde_json::json!({"buckets": buckets})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

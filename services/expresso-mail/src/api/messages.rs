@@ -53,6 +53,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flags-by-folder",        get(flags_by_folder_stats))
         .route("/mail/messages/stats/received-by-folder",      get(received_by_folder_stats))
         .route("/mail/messages/stats/threads-by-folder",       get(threads_by_folder_stats))
+        .route("/mail/messages/stats/senders-by-folder",       get(senders_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2383,6 +2384,50 @@ async fn threads_by_folder_stats(
             "folder":               folder,
             "thread_count":         thread_count,
             "unread_thread_count":  unread_thread_count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/senders-by-folder — top-20 from_addr por mailbox.
+///
+/// GROUP BY (mb.name, from_addr) ORDER BY count DESC; retorna os 20 maiores remetentes
+/// por pasta como `{folders:[{folder,top_senders:[{from_addr,count}]}]}`.
+/// Complementa `stats/senders` com breakdown por folder. Sprint #688.
+async fn senders_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, m.from_addr, COUNT(*)::BIGINT AS count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name, m.from_addr \
+          ORDER BY mb.name ASC, count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    // Group rows by folder, keep top-20 per folder (SQL already orders by count DESC within folder).
+    let mut map: std::collections::BTreeMap<String, Vec<serde_json::Value>> =
+        std::collections::BTreeMap::new();
+    for (folder, from_addr, count) in rows {
+        let entry = map.entry(folder).or_default();
+        if entry.len() < 20 {
+            entry.push(serde_json::json!({"from_addr": from_addr, "count": count}));
+        }
+    }
+
+    let folders: Vec<serde_json::Value> = map.into_iter()
+        .map(|(folder, top_senders)| serde_json::json!({
+            "folder":      folder,
+            "top_senders": top_senders,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

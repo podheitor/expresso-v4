@@ -221,6 +221,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_priority_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events/class-distribution",
+            get(events_class_distribution),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/:id",
             get(get_one).put(update).patch(patch_event).delete(delete),
         )
@@ -1707,6 +1711,44 @@ async fn events_by_range_status_stats(
         "cancelled":   cancelled,
         "other":       other,
         "unset":       unset,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events/class-distribution — breakdown CLASS sem filtro temporal.
+///
+/// Conta todos os eventos do calendário por CLASS (PUBLIC/PRIVATE/CONFIDENTIAL/unset).
+/// Rollup total — sem `after`/`before`. Complementa `events-by-range/class-stats` (#652)
+/// com visão acumulada sem escopo temporal. Sprint #690.
+async fn events_class_distribution(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, public, private, confidential, unset): (i64, i64, i64, i64, i64) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT                                        AS total, \
+                COUNT(*) FILTER (WHERE class = 'PUBLIC')::BIGINT       AS public, \
+                COUNT(*) FILTER (WHERE class = 'PRIVATE')::BIGINT      AS private, \
+                COUNT(*) FILTER (WHERE class = 'CONFIDENTIAL')::BIGINT AS confidential, \
+                COUNT(*) FILTER (WHERE class IS NULL)::BIGINT          AS unset \
+             FROM calendar_events \
+             WHERE tenant_id = $1 AND calendar_id = $2",
+        )
+        .bind(ctx.tenant_id).bind(cal_id)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":  cal_id,
+        "total":        total,
+        "public":       public,
+        "private":      private,
+        "confidential": confidential,
+        "unset":        unset,
     })))
 }
 
