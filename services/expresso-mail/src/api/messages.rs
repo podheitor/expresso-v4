@@ -57,6 +57,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/date-by-folder",           get(date_by_folder_stats))
         .route("/mail/messages/stats/cc-by-folder",              get(cc_by_folder_stats))
         .route("/mail/messages/stats/bcc-by-folder",             get(bcc_by_folder_stats))
+        .route("/mail/messages/stats/reply-rate-by-folder",      get(reply_rate_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2552,6 +2553,45 @@ async fn bcc_by_folder_stats(
             "total":       total,
             "with_bcc":    with_bcc,
             "without_bcc": without_bcc,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/reply-rate-by-folder — taxa de respostas por mailbox.
+///
+/// `is_reply` = `in_reply_to IS NOT NULL`. LEFT JOIN para incluir pastas vazias.
+/// Retorna `{folders:[{folder,total,replies,non_replies}]}` ordenado por total DESC. Sprint #707.
+async fn reply_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE m.in_reply_to IS NOT NULL)::BIGINT AS replies, \
+            COUNT(m.id) FILTER (WHERE m.in_reply_to IS NULL)::BIGINT     AS non_replies \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, replies, non_replies)| serde_json::json!({
+            "folder":      folder,
+            "total":       total,
+            "replies":     replies,
+            "non_replies": non_replies,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

@@ -18,7 +18,8 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/v1/calendars/stats/by-tenant", get(stats_by_tenant))
+        .route("/api/v1/calendars/stats/by-tenant",       get(stats_by_tenant))
+        .route("/api/v1/calendars/stats/event-density",   get(stats_event_density))
         .route("/api/v1/calendars",       post(create).get(list))
         .route("/api/v1/calendars/:id",   get(get_one).delete(delete).patch(update))
         .route("/api/v1/calendars/:id/ctag", get(ctag_one))
@@ -174,4 +175,48 @@ async fn stats_by_tenant(
         }))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/calendars/stats/event-density?bucket=day|week|month — eventos por bucket temporal.
+///
+/// Cross-tenant: total de eventos em `calendar_events` agrupados por DATE_TRUNC(bucket, dtstart).
+/// `bucket` aceita "day" (default), "week", "month". Retorna `{bucket,rows:[{period,count}]}` ASC.
+/// Sprint #709.
+#[derive(Debug, Deserialize)]
+struct EventDensityQuery {
+    bucket: Option<String>,
+}
+
+async fn stats_event_density(
+    State(state): State<AppState>,
+    Query(q):     Query<EventDensityQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let bucket = match q.bucket.as_deref().unwrap_or("day") {
+        "week"  => "week",
+        "month" => "month",
+        _       => "day",
+    };
+    let fmt = match bucket {
+        "week"  => "IYYY-\"W\"IW",
+        "month" => "YYYY-MM",
+        _       => "YYYY-MM-DD",
+    };
+    let sql = format!(
+        "SELECT to_char(date_trunc('{bucket}', dtstart), '{fmt}') AS period, \
+                COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE dtstart IS NOT NULL \
+          GROUP BY period \
+          ORDER BY period ASC"
+    );
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(&sql)
+        .fetch_all(pool)
+        .await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(period, count)| serde_json::json!({"period": period, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"bucket": bucket, "rows": out})))
 }

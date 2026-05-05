@@ -905,6 +905,39 @@ async fn dlq_stats_by_tenant(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-kind?limit=N — DLQ por (tenant_id, kind).
+///
+/// GROUP BY (tenant_id, kind) ORDER BY count DESC. Análogo a by-kind-and-user (#705) mas
+/// escopado por tenant. `limit` default 20 max 200. Retorna `{rows:[{tenant_id,kind,count}]}`. Sprint #710.
+async fn dlq_stats_by_tenant_and_kind(
+    State(st): State<AppState>,
+    Query(q):  Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(uuid::Uuid, String, i64)> = sqlx::query_as(
+        "SELECT tenant_id, kind, COUNT(*)::BIGINT AS count \
+           FROM notification_dlq \
+          GROUP BY tenant_id, kind \
+          ORDER BY count DESC, tenant_id ASC, kind ASC \
+          LIMIT $1",
+    )
+    .bind(limit)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tid, kind, count)| json!({"tenant_id": tid, "kind": kind, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind?limit=N — DLQ por kind agregado.
 ///
 /// GROUP BY kind ORDER BY count DESC sem breakdown temporal. `limit` default 20 max 200.
@@ -2081,6 +2114,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
         .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
         .route("/api/v1/notifications/dlq/stats/by-kind",             get(dlq_stats_by_kind))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-kind",  get(dlq_stats_by_tenant_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-user",                  get(dlq_stats_by_user))
         .route("/api/v1/notifications/dlq/stats/by-kind-and-user",          get(dlq_stats_by_kind_and_user))
         .route("/api/v1/notifications/dlq/stats/by-day-and-user",           get(dlq_stats_by_day_and_user))

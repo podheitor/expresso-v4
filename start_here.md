@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #706 — (commit pendente)
+**Último sprint:** #710 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -91,15 +91,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #704 | calendar | `GET /calendars/:cal_id/events-by-range/recurrence-duration-stats` — avg/min/max/total minutos só rrule |
 | #705 | notifications | `GET /dlq/stats/by-kind-and-user?limit=N` — GROUP BY (kind, user_id) COUNT DESC |
 | #706 | drive | `GET /drive/files/stats/tag-count?limit=N` — top-N tags por file_count; GROUP BY drive_file_tags.tag |
+| #707 | mail | `GET /mail/messages/stats/reply-rate-by-folder` — replies(in_reply_to IS NOT NULL)/non_replies por folder |
+| #708 | search | `GET /search/index/segments/cumulative` — cumsum num_docs+disk_bytes por segmento ASC |
+| #709 | calendar | `GET /calendars/stats/event-density?bucket=day|week|month` — cross-tenant DATE_TRUNC GROUP BY |
+| #710 | notifications | `GET /dlq/stats/by-tenant-and-kind?limit=N` — GROUP BY (tenant_id, kind) COUNT DESC |
 
 ---
 
-## Próximos candidatos (#707+)
+## Próximos candidatos (#711+)
 
-1. **mail** — `GET /mail/messages/stats/reply-rate-by-folder` — COUNT(in_reply_to IS NOT NULL)/total por folder; taxa de respostas
-2. **search** — `GET /search/index/segments/cumulative` — acumulado de num_docs e disk_bytes por segmento (ordenado por num_docs ASC, cumsum)
-3. **calendar** — `GET /calendars/stats/event-density?bucket=day|week|month` — cross-tenant: total de eventos por bucket temporal via DATE_TRUNC
-4. **notifications** — `GET /dlq/stats/by-tenant-and-kind?limit=N` — GROUP BY (tenant_id, kind) COUNT DESC; análogo a by-kind-and-user
+1. **drive** — `GET /drive/files/stats/ext-by-folder?folder_id=` — breakdown de extensão por pasta (parent_id ou raiz); análogo a mime-by-folder (#672) mas por extensão
+2. **mail** — `GET /mail/messages/stats/to-count-by-folder` — avg/max to_addrs por pasta; mede "fan-out" de mensagens
+3. **search** — `GET /search/index/segments/percentile?p=N` — num_docs e disk_bytes no percentil N (0-100) via rank em memória
+4. **calendar** — `GET /calendars/:cal_id/events-by-range/all-day-stats` — COUNT all-day events (dtstart sem hora = DATE type) vs timed
 
 ---
 

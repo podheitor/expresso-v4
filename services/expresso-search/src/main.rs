@@ -135,6 +135,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/size-stats",       get(api::segment_size_stats))
         .route("/api/v1/search/index/segments/doc-ratio",        get(api::segment_doc_ratio))
         .route("/api/v1/search/index/segments/overlap",          get(api::segments_overlap))
+        .route("/api/v1/search/index/segments/cumulative",       get(api::segments_cumulative))
         .route("/api/v1/search/index/segments/reload",   post(api::reload_index))
         .route("/api/v1/search/index/segments/merge",    post(api::merge_segments))
         .route("/api/v1/search/index/segments/{id}",     get(api::get_segment))

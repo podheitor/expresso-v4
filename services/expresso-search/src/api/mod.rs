@@ -916,6 +916,35 @@ pub async fn segment_doc_ratio(
     Json(serde_json::json!({"segments": out}))
 }
 
+/// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
+///
+/// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.
+/// Útil pra visualizar distribuição acumulada — quantos docs/bytes cobrem os N menores segmentos.
+/// Retorna `{segments:[{id,num_docs,disk_bytes,cum_docs,cum_bytes}]}`. Sprint #708.
+pub async fn segments_cumulative(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_by_key(|(_, num_docs, _)| *num_docs);
+
+    let mut cum_docs: u64 = 0;
+    let mut cum_bytes: u64 = 0;
+    let out: Vec<serde_json::Value> = segs.into_iter()
+        .map(|(id, num_docs, disk_bytes)| {
+            cum_docs  += num_docs;
+            cum_bytes += disk_bytes;
+            serde_json::json!({
+                "id":        id,
+                "num_docs":  num_docs,
+                "disk_bytes": disk_bytes,
+                "cum_docs":  cum_docs,
+                "cum_bytes": cum_bytes,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({"segments": out}))
+}
+
 /// GET /api/v1/search/index/segments/overlap — pares de segmentos com faixas de num_docs sobrepostas.
 ///
 /// Dois segmentos "sobrepõem" quando max(min_a, min_b) <= min(max_a, max_b) usando
