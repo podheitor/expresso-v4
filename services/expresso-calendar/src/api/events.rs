@@ -241,6 +241,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summary_length_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/location-length-stats",
+            get(events_by_range_location_length_stats),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events/class-distribution",
             get(events_class_distribution),
         )
@@ -1967,6 +1971,54 @@ async fn events_by_range_summary_length_stats(
         "total":          total,
         "with_summary":   with_sum,
         "without_summary": without_sum,
+        "avg_length":     avg_len,
+        "max_length":     max_len,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/location-length-stats?after=&before=
+///
+/// with_location / without_location + avg/max LENGTH(location) para eventos no intervalo.
+/// Complementa location-stats (#665) com métricas de comprimento do texto de local.
+/// Retorna `{calendar_id,total,with_location,without_location,avg_length,max_length}`. Sprint #729.
+async fn events_by_range_location_length_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b {
+            return Err(CalendarError::BadRequest("after must be < before".into()));
+        }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, with_loc, without_loc, avg_len, max_len): (i64, i64, i64, Option<f64>, Option<i64>) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(*)::BIGINT AS total, \
+                COUNT(*) FILTER (WHERE location IS NOT NULL AND location <> '')::BIGINT AS with_location, \
+                COUNT(*) FILTER (WHERE location IS NULL OR location = '')::BIGINT AS without_location, \
+                AVG(LENGTH(location)) FILTER (WHERE location IS NOT NULL AND location <> '') AS avg_length, \
+                MAX(LENGTH(location))::BIGINT FILTER (WHERE location IS NOT NULL AND location <> '') AS max_length \
+             FROM calendar_events \
+             WHERE tenant_id   = $1 \
+               AND calendar_id = $2 \
+               AND dtstart IS NOT NULL \
+               AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+               AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+        )
+        .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+        .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "total":          total,
+        "with_location":  with_loc,
+        "without_location": without_loc,
         "avg_length":     avg_len,
         "max_length":     max_len,
     })))

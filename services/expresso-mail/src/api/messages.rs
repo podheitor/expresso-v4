@@ -61,6 +61,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-count-by-folder",        get(to_count_by_folder_stats))
         .route("/mail/messages/stats/subject-length-by-folder",  get(subject_length_by_folder_stats))
         .route("/mail/messages/stats/preview-length-by-folder",  get(preview_length_by_folder_stats))
+        .route("/mail/messages/stats/has-date-by-folder",         get(has_date_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2715,6 +2716,45 @@ async fn preview_length_by_folder_stats(
             "message_count":       message_count,
             "avg_preview_length":  avg_len,
             "max_preview_length":  max_len,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/has-date-by-folder — COUNT with_date/without_date por pasta.
+///
+/// `date` = campo Date: do envelope (pode ser NULL se ausente/inválido na ingestão).
+/// LEFT JOIN para incluir pastas vazias. Sprint #727.
+async fn has_date_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE m.date IS NOT NULL)::BIGINT AS with_date, \
+            COUNT(m.id) FILTER (WHERE m.date IS NULL)::BIGINT AS without_date \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, with_date, without_date)| serde_json::json!({
+            "folder":       folder,
+            "total":        total,
+            "with_date":    with_date,
+            "without_date": without_date,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

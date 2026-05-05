@@ -1038,6 +1038,43 @@ pub async fn segment_entropy(
     }))
 }
 
+/// GET /api/v1/search/index/segments/gini — coeficiente de Gini da distribuição de num_docs.
+///
+/// G = (2 * sum(i * x_i) / (n * sum(x_i))) - (n+1)/n  onde x_i é num_docs ordenado ASC.
+/// 0 = distribuição perfeitamente uniforme; 1 = toda concentração num único segmento.
+/// Retorna `{segment_count,gini}`. Null quando índice vazio ou 1 segmento. Sprint #728.
+pub async fn segment_gini(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let mut segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({
+            "segment_count": n,
+            "gini": serde_json::Value::Null,
+        }));
+    }
+
+    segs.sort_by_key(|(_, d, _)| *d);
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let sum: f64 = vals.iter().sum();
+
+    let gini = if sum == 0.0 {
+        0.0
+    } else {
+        let weighted_sum: f64 = vals.iter().enumerate()
+            .map(|(i, x)| (i + 1) as f64 * x)
+            .sum();
+        (2.0 * weighted_sum / (n as f64 * sum)) - (n as f64 + 1.0) / n as f64
+    };
+
+    Json(serde_json::json!({
+        "segment_count": n,
+        "gini": gini,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

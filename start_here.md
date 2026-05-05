@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #726 — (commit pendente)
+**Último sprint:** #730 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -111,15 +111,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #724 | calendar | `GET /calendars/:cal_id/events-by-range/summary-length-stats` — with/without + avg/max LENGTH(summary) |
 | #725 | notifications | `GET /dlq/stats/by-minute?since=&until=` — DATE_TRUNC('minute') GROUP BY; granularidade fina |
 | #726 | drive | `GET /drive/files/stats/expiry-count` — total_with_expiry + already_expired (expires_at < NOW()) |
+| #727 | mail | `GET /mail/messages/stats/has-date-by-folder` — with_date/without_date (date IS NOT NULL) por pasta |
+| #728 | search | `GET /search/index/segments/gini` — coeficiente de Gini da distribuição num_docs |
+| #729 | calendar | `GET /calendars/:cal_id/events-by-range/location-length-stats` — with/without + avg/max LENGTH(location) |
+| #730 | notifications | `GET /dlq/stats/by-minute-and-kind?since=&until=` — GROUP BY (minute, kind) ASC |
 
 ---
 
-## Próximos candidatos (#727+)
+## Próximos candidatos (#731+)
 
-1. **mail** — `GET /mail/messages/stats/has-date-by-folder` — COUNT with_date/without_date (date IS NOT NULL) por pasta
-2. **search** — `GET /search/index/segments/gini` — coeficiente de Gini da distribuição num_docs; 0=uniforme, 1=concentrado
-3. **calendar** — `GET /calendars/:cal_id/events-by-range/location-length-stats` — avg/max LENGTH(location) por calendário
-4. **notifications** — `GET /dlq/stats/by-minute-and-kind?since=&until=` — GROUP BY (minute, kind) ASC
+1. **drive** — `GET /drive/files/stats/mime-top-n?limit=N` — top-N mime_types por file_count cross-folder; análogo a ext-by-folder mas global
+2. **mail** — `GET /mail/messages/stats/from-domain-by-folder` — top-20 domínios de remetente (split('@')[1]) por pasta
+3. **search** — `GET /search/index/segments/iqr` — IQR (Q3-Q1) de num_docs e disk_bytes; robusto a outliers vs stdev
+4. **calendar** — `GET /calendars/:cal_id/events-by-range/uid-uniqueness` — total vs COUNT(DISTINCT uid); detecta UIDs duplicados
 
 ---
 
