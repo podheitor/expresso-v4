@@ -69,6 +69,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/top-files",        get(file_stats_top_files))
         .route("/api/v1/drive/files/stats/created-by-day",  get(file_stats_created_by_day))
         .route("/api/v1/drive/files/stats/by-size-bucket",  get(file_stats_by_size_bucket))
+        .route("/api/v1/drive/files/stats/updated-by-day",  get(file_stats_updated_by_day))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2284,6 +2285,41 @@ async fn set_folder_quota(
         event = "drive.folder.quota_set",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id, max_bytes = body.max_bytes);
     Ok(Json(fq))
+}
+
+/// GET /api/v1/drive/files/stats/updated-by-day?since=&until= — arquivos modificados por dia.
+///
+/// DATE_TRUNC('day', updated_at) COUNT sobre `drive_files` (kind='file', não-deletados).
+/// `since`/`until` RFC3339 opcionais via `$N::timestamptz IS NULL OR`. Retorna
+/// `{days:[{day,count}]}` ordenado dia ASC. Complementa `created-by-day` (#682) focando
+/// em modificações vs criações. Sprint #692.
+async fn file_stats_updated_by_day(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsActivityQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT to_char(date_trunc('day', updated_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+                COUNT(*)::BIGINT AS count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' \
+            AND ($2::timestamptz IS NULL OR updated_at >= $2) \
+            AND ($3::timestamptz IS NULL OR updated_at <  $3) \
+          GROUP BY day \
+          ORDER BY day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(q.since)
+    .bind(q.until)
+    .fetch_all(pool)
+    .await?;
+
+    let days: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, count)| serde_json::json!({"day": day, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"days": days})))
 }
 
 /// GET /api/v1/drive/files/stats/by-size-bucket?folder_id= — distribuição de tamanho em 8 faixas.

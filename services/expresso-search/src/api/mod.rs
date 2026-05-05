@@ -805,6 +805,36 @@ pub async fn writer_stats(
     }))
 }
 
+/// GET /api/v1/search/index/segments/size-stats — distribuição de disk_bytes por segmento.
+///
+/// Retorna `{segment_count, min_disk_bytes, max_disk_bytes, avg_disk_bytes}` com
+/// `null` quando o índice está vazio. Análogo a `age-stats` (#664) mas para bytes
+/// em vez de num_docs. Útil pra medir dispersão de tamanho de segmentos. Sprint #694.
+pub async fn segment_size_stats(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let (segment_count, min_disk_bytes, max_disk_bytes, avg_disk_bytes) = store
+        .list_segments()
+        .map(|segs| {
+            if segs.is_empty() {
+                return (0usize, None::<u64>, None::<u64>, None::<f64>);
+            }
+            let bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+            let min = bytes.iter().copied().min();
+            let max = bytes.iter().copied().max();
+            let avg = Some(bytes.iter().sum::<u64>() as f64 / bytes.len() as f64);
+            (segs.len(), min, max, avg)
+        })
+        .unwrap_or((0, None, None, None));
+
+    Json(serde_json::json!({
+        "segment_count":    segment_count,
+        "min_disk_bytes":   min_disk_bytes,
+        "max_disk_bytes":   max_disk_bytes,
+        "avg_disk_bytes":   avg_disk_bytes,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/merge-candidates?min_docs=N&max_docs=N
 ///
 /// Filtra segmentos por faixa de `num_docs`: retorna apenas aqueles com

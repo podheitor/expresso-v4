@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #686 — (commit pendente)
+**Último sprint:** #694 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -71,15 +71,23 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #684 | search | `GET /search/stats/by-tenant?limit=N` — docs_count_by_tenant (AllQuery scan); `{rows:[{tenant_id,doc_count}]}`; ops cross-tenant |
 | #685 | calendar | `GET /calendars/:cal_id/events-by-range/priority-stats?after=&before=` — COUNT FILTER PRIORITY 0=undefined/1-4=high/5=medium/6-9=low |
 | #686 | notifications | `GET /dlq/stats/by-user?limit=N` — COUNT GROUP BY user_id ORDER BY count DESC; análogo a by-tenant (#671) |
+| #687 | drive | `GET /drive/files/stats/by-size-bucket?folder_id=` — 8 faixas <1KB…>1GB; COUNT + SUM FILTER; `folder_id` opcional |
+| #688 | mail | `GET /mail/messages/stats/senders-by-folder` — top-20 from_addr por pasta; GROUP BY (folder, from_addr); BTreeMap truncate |
+| #689 | search | `GET /search/index/segments/merge-candidates?min_docs=&max_docs=` — filtra segmentos por faixa num_docs ASC |
+| #690 | calendar | `GET /calendars/:cal_id/events/class-distribution` — rollup total CLASS sem filtro temporal |
+| #691 | notifications | `GET /dlq/stats/by-day-and-user?since=&until=` — GROUP BY (day, user_id) ASC; análogo a by-tenant-and-day (#661) |
+| #692 | drive | `GET /drive/files/stats/updated-by-day?since=&until=` — DATE_TRUNC('day', updated_at); complementa created-by-day (#682) |
+| #693 | mail | `GET /mail/messages/stats/date-by-folder` — MIN/MAX received_at + COUNT por folder; envelope temporal |
+| #694 | search | `GET /search/index/segments/size-stats` — min/max/avg disk_bytes; análogo a age-stats (#664) |
 
 ---
 
-## Próximos candidatos (#687+)
+## Próximos candidatos (#695+)
 
-1. **drive** — `GET /drive/files/stats/by-size-bucket?folder_id=` — 8-FILTER size buckets: <1KB/1-10KB/10-100KB/100KB-1MB/1-10MB/10-100MB/100MB-1GB/>1GB; `{buckets:[{range,count,total_bytes}]}`
-2. **mail** — `GET /mail/messages/stats/senders-by-folder` — top-20 from_addr por mailbox; GROUP BY (folder, from_addr) ORDER BY count DESC; `{folders:[{folder,top_senders:[{from_addr,count}]}]}`
-3. **search** — `GET /search/index/segments/merge-candidates?min_docs=N&max_docs=N` — filtra segmentos por faixa de num_docs; `{segments:[{id,num_docs,disk_bytes}]}`; útil pra automação de merge seletivo
-4. **calendar** — `GET /calendars/:cal_id/events-by-range/class-distribution` — breakdown PUBLIC/PRIVATE/CONFIDENTIAL + unset; `{calendar_id,total,public,private,confidential,unset}`
+1. **calendar** — `GET /calendars/:cal_id/events-by-range/duration-distribution` — histograma de duração: <1h/1-4h/4-8h/1d/>1d; `{calendar_id,total,buckets:[{range,count}]}`
+2. **notifications** — `GET /dlq/stats/retention?days=N` — COUNT de entradas com `failed_at < NOW() - INTERVAL '$N days'`; identifica entries velhas esquecidas
+3. **drive** — `GET /drive/files/stats/folder-depth` — histograma de profundidade de pasta via CTE recursiva; `{buckets:[{depth,count,total_bytes}]}`
+4. **mail** — `GET /mail/messages/stats/cc-by-folder` — COUNT(has_cc) + COUNT(*) por folder; `{folders:[{folder,total,with_cc,without_cc}]}`
 
 ---
 

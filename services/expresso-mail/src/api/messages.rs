@@ -54,6 +54,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/received-by-folder",      get(received_by_folder_stats))
         .route("/mail/messages/stats/threads-by-folder",       get(threads_by_folder_stats))
         .route("/mail/messages/stats/senders-by-folder",       get(senders_by_folder_stats))
+        .route("/mail/messages/stats/date-by-folder",           get(date_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2428,6 +2429,47 @@ async fn senders_by_folder_stats(
         .map(|(folder, top_senders)| serde_json::json!({
             "folder":      folder,
             "top_senders": top_senders,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/date-by-folder — envelope temporal por mailbox.
+///
+/// Retorna `{folders:[{folder,message_count,oldest_at,newest_at}]}` ordenado por
+/// `message_count DESC`. MIN/MAX received_at por pasta. Útil pra saber o range temporal
+/// de cada mailbox sem listar mensagens. Sprint #693.
+async fn date_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<OffsetDateTime>, Option<OffsetDateTime>)> =
+        sqlx::query_as(
+            "SELECT \
+                mb.name AS folder, \
+                COUNT(m.id)::BIGINT AS message_count, \
+                MIN(m.received_at) AS oldest_at, \
+                MAX(m.received_at) AS newest_at \
+             FROM mailboxes mb \
+             LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+             WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+             GROUP BY mb.name \
+             ORDER BY message_count DESC, mb.name ASC",
+        )
+        .bind(ctx.tenant_id)
+        .bind(ctx.user_id)
+        .fetch_all(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, message_count, oldest_at, newest_at)| serde_json::json!({
+            "folder":        folder,
+            "message_count": message_count,
+            "oldest_at":     oldest_at,
+            "newest_at":     newest_at,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

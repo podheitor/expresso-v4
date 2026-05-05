@@ -892,6 +892,54 @@ async fn dlq_stats_by_kind(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-day-and-user?since=&until= — DLQ por dia e user_id.
+///
+/// GROUP BY (DATE_TRUNC('day', failed_at), user_id) retorna
+/// `{rows:[{day,user_id,count}]}` ordenado `(day ASC, user_id ASC)`.
+/// `since`/`until` RFC3339 opcionais. Análogo a `by-tenant-and-day` (#661) escopado
+/// por usuário. Sprint #691.
+async fn dlq_stats_by_day_and_user(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(String, Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT \
+            to_char(date_trunc('day', failed_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day, \
+            user_id, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY day, user_id \
+         ORDER BY day ASC, user_id ASC NULLS LAST",
+    )
+    .bind(since_dt)
+    .bind(until_dt)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(day, user_id, count)| json!({"day": day, "user_id": user_id, "count": count}))
+        .collect();
+
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-user?limit=N — DLQ por user_id agregado.
 ///
 /// Agrupa `notification_dlq` por `user_id` e retorna
@@ -1916,7 +1964,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-error-kind",     get(dlq_stats_by_error_kind))
         .route("/api/v1/notifications/dlq/stats/by-tenant",         get(dlq_stats_by_tenant))
         .route("/api/v1/notifications/dlq/stats/by-kind",             get(dlq_stats_by_kind))
-        .route("/api/v1/notifications/dlq/stats/by-user",               get(dlq_stats_by_user))
+        .route("/api/v1/notifications/dlq/stats/by-user",                  get(dlq_stats_by_user))
+        .route("/api/v1/notifications/dlq/stats/by-day-and-user",           get(dlq_stats_by_day_and_user))
         .route("/api/v1/notifications/dlq/stats/attempts-distribution", get(dlq_stats_attempts_distribution))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
