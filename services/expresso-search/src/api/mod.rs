@@ -1510,6 +1510,140 @@ pub async fn segments_overlap(
     Json(serde_json::json!({"band": band, "pair_count": pairs.len(), "pairs": pairs}))
 }
 
+/// GET /api/v1/search/index/segments/winsorized-mean?pct=N — média Winsorizada de num_docs e disk_bytes.
+///
+/// Clamp (não descarta) os top/bottom N% ao valor do percentil correspondente, depois tira média.
+/// `pct` default 10, max 40. Retorna `{segment_count,pct,num_docs_winsorized_mean,disk_bytes_winsorized_mean}`. Sprint #778.
+#[derive(Debug, serde::Deserialize)]
+pub struct WinsorizedMeanQuery {
+    pub pct: Option<usize>,
+}
+
+pub async fn segment_winsorized_mean(
+    State(store): State<IndexStore>,
+    Query(q):     Query<WinsorizedMeanQuery>,
+) -> Json<serde_json::Value> {
+    let pct  = q.pct.unwrap_or(10).min(40);
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":              0,
+            "pct":                        pct,
+            "num_docs_winsorized_mean":   serde_json::Value::Null,
+            "disk_bytes_winsorized_mean": serde_json::Value::Null,
+        }));
+    }
+
+    fn winsorized(vals: &mut Vec<f64>, pct: usize) -> f64 {
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let n = vals.len();
+        let trim = (n * pct / 100).min(n / 2);
+        let lo = vals[trim];
+        let hi = vals[n - 1 - trim];
+        let clamped: Vec<f64> = vals.iter().map(|&x| x.clamp(lo, hi)).collect();
+        clamped.iter().sum::<f64>() / n as f64
+    }
+
+    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    Json(serde_json::json!({
+        "segment_count":              n,
+        "pct":                        pct,
+        "num_docs_winsorized_mean":   winsorized(&mut docs,  pct),
+        "disk_bytes_winsorized_mean": winsorized(&mut bytes, pct),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/normalized-entropy — entropia normalizada H/log2(n) de num_docs.
+///
+/// H normalizada ∈ [0,1]; 0 = todos os docs num único segmento, 1 = distribuição perfeitamente uniforme.
+/// Retorna `{segment_count,raw_entropy_bits,normalized_entropy,disk_bytes_entropy,disk_bytes_normalized}`. Sprint #783.
+pub async fn segment_normalized_entropy(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({
+            "segment_count":          n,
+            "raw_entropy_bits":       serde_json::Value::Null,
+            "normalized_entropy":     serde_json::Value::Null,
+            "disk_bytes_entropy":     serde_json::Value::Null,
+            "disk_bytes_normalized":  serde_json::Value::Null,
+        }));
+    }
+
+    fn entropy_and_norm(vals: &[u64]) -> (f64, f64) {
+        let total: f64 = vals.iter().map(|&x| x as f64).sum();
+        if total == 0.0 { return (0.0, 0.0); }
+        let h: f64 = vals.iter().filter(|&&x| x > 0).map(|&x| {
+            let p = x as f64 / total;
+            -p * p.log2()
+        }).sum();
+        let max_h = (vals.len() as f64).log2();
+        (h, if max_h > 0.0 { h / max_h } else { 0.0 })
+    }
+
+    let docs:  Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    let bytes: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+
+    let (h_docs,  hn_docs)  = entropy_and_norm(&docs);
+    let (h_bytes, hn_bytes) = entropy_and_norm(&bytes);
+
+    Json(serde_json::json!({
+        "segment_count":         n,
+        "raw_entropy_bits":      h_docs,
+        "normalized_entropy":    hn_docs,
+        "disk_bytes_entropy":    h_bytes,
+        "disk_bytes_normalized": hn_bytes,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/relative-sizes — cada segmento como % do total de disk_bytes.
+///
+/// Retorna `{total_bytes,segments:[{id,num_docs,disk_bytes,pct_bytes}]}` ordenado por disk_bytes DESC.
+/// Útil pra visualizar quais segmentos dominam o storage. Sprint #788.
+pub async fn segment_relative_sizes(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    let out: Vec<serde_json::Value> = segs.iter().map(|(id, docs, bytes)| {
+        let pct = if total_bytes > 0 { *bytes as f64 / total_bytes as f64 * 100.0 } else { 0.0 };
+        serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "pct_bytes": pct})
+    }).collect();
+
+    Json(serde_json::json!({"total_bytes": total_bytes, "segments": out}))
+}
+
+/// GET /api/v1/search/index/segments/size-ratio — bytes por doc em cada segmento.
+///
+/// disk_bytes / num_docs por segmento — indica densidade de indexação.
+/// Segmentos com num_docs=0 têm size_ratio=null. Ordenado por size_ratio DESC. Sprint #793.
+pub async fn segment_size_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_by(|a, b| {
+        let ra = if a.1 > 0 { a.2 as f64 / a.1 as f64 } else { 0.0 };
+        let rb = if b.1 > 0 { b.2 as f64 / b.1 as f64 } else { 0.0 };
+        rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let out: Vec<serde_json::Value> = segs.iter().map(|(id, docs, bytes)| {
+        let ratio: Option<f64> = if *docs > 0 { Some(*bytes as f64 / *docs as f64) } else { None };
+        serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "bytes_per_doc": ratio})
+    }).collect();
+
+    Json(serde_json::json!({"segments": out}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

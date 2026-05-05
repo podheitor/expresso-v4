@@ -86,6 +86,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/storage-by-user",   get(file_stats_storage_by_user))
         .route("/api/v1/drive/files/stats/quota-usage",        get(file_stats_quota_usage))
         .route("/api/v1/drive/files/stats/folder-file-count",  get(file_stats_folder_file_count))
+        .route("/api/v1/drive/files/stats/deep-files",         get(file_stats_deep_files))
+        .route("/api/v1/drive/files/stats/mime-entropy",        get(file_stats_mime_entropy))
+        .route("/api/v1/drive/files/stats/avg-versions",        get(file_stats_avg_versions))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2995,6 +2998,137 @@ async fn file_stats_folder_file_count(
         .map(|(pid, fc, tb)| serde_json::json!({"folder_id": pid, "file_count": fc, "total_bytes": tb}))
         .collect();
     Ok(Json(serde_json::json!({"rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/deep-files?min_depth=N — arquivos em pastas com profundidade >= N.
+///
+/// CTE recursiva calcula depth de cada file/folder desde a raiz.
+/// Agrupa arquivos (kind='file', não-deletados) por depth >= min_depth (default 3).
+/// Retorna `{min_depth,total_files,total_bytes,by_depth:[{depth,file_count,total_bytes}]}`. Sprint #776.
+async fn file_stats_deep_files(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<DeepFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let min_depth = q.min_depth.unwrap_or(3).max(1) as i64;
+    let pool      = state.db_or_unavailable()?;
+
+    let rows: Vec<(i64, i64, i64)> = sqlx::query_as(
+        "WITH RECURSIVE tree AS ( \
+            SELECT id, parent_id, kind, size_bytes, deleted_at, 0 AS depth \
+              FROM drive_files \
+             WHERE tenant_id = $1 AND parent_id IS NULL \
+            UNION ALL \
+            SELECT f.id, f.parent_id, f.kind, f.size_bytes, f.deleted_at, t.depth + 1 \
+              FROM drive_files f \
+              JOIN tree t ON f.parent_id = t.id \
+             WHERE f.tenant_id = $1 \
+         ) \
+         SELECT depth, COUNT(*)::BIGINT AS file_count, COALESCE(SUM(size_bytes),0)::BIGINT AS total_bytes \
+           FROM tree \
+          WHERE kind = 'file' AND deleted_at IS NULL AND depth >= $2 \
+          GROUP BY depth \
+          ORDER BY depth ASC",
+    )
+    .bind(ctx.tenant_id).bind(min_depth)
+    .fetch_all(pool).await?;
+
+    let total_files: i64  = rows.iter().map(|(_, fc, _)| fc).sum();
+    let total_bytes: i64  = rows.iter().map(|(_, _, tb)| tb).sum();
+    let by_depth: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(depth, fc, tb)| serde_json::json!({"depth": depth, "file_count": fc, "total_bytes": tb}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "min_depth":   min_depth,
+        "total_files": total_files,
+        "total_bytes": total_bytes,
+        "by_depth":    by_depth,
+    })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct DeepFilesQuery {
+    min_depth: Option<u32>,
+}
+
+/// GET /api/v1/drive/files/stats/mime-entropy — entropia de Shannon sobre distribuição mime_type.
+///
+/// H = -Σ p_i * log2(p_i) onde p_i = count_i / total.
+/// mime_type NULL agrupado como "application/octet-stream". kind='file', não-deletados.
+/// Retorna `{mime_count,total_files,entropy_bits,top:[{mime_type,file_count}]}`. Sprint #781.
+async fn file_stats_mime_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type,'application/octet-stream') AS mime, COUNT(*)::BIGINT AS cnt \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+          GROUP BY mime \
+          ORDER BY cnt DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let entropy: f64 = if total == 0 {
+        0.0
+    } else {
+        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
+            let p = *c as f64 / total as f64;
+            -p * p.log2()
+        }).sum()
+    };
+    let top: Vec<serde_json::Value> = rows.iter().take(20)
+        .map(|(m, c)| serde_json::json!({"mime_type": m, "file_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "mime_count":   rows.len(),
+        "total_files":  total,
+        "entropy_bits": entropy,
+        "top":          top,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/avg-versions — AVG e MAX versões por arquivo.
+///
+/// JOIN drive_file_versions GROUP BY file_id → avg/max version_count.
+/// Apenas arquivos com ao menos 1 versão (kind='file', não-deletados no drive_files).
+/// Retorna `{files_with_versions,avg_versions,max_versions}`. Sprint #791.
+async fn file_stats_avg_versions(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (files_with_versions, avg_versions, max_versions): (i64, Option<f64>, Option<i64>) =
+        sqlx::query_as(
+            "SELECT \
+                COUNT(DISTINCT v.file_id)::BIGINT, \
+                AVG(vc.cnt), \
+                MAX(vc.cnt)::BIGINT \
+               FROM ( \
+                 SELECT file_id, COUNT(*)::BIGINT AS cnt \
+                   FROM drive_file_versions \
+                  WHERE tenant_id = $1 \
+                  GROUP BY file_id \
+               ) vc \
+               JOIN drive_file_versions v ON v.file_id = vc.file_id AND v.tenant_id = $1 \
+               JOIN drive_files f ON f.id = v.file_id AND f.tenant_id = $1 \
+                                  AND f.deleted_at IS NULL AND f.kind = 'file'",
+        )
+        .bind(ctx.tenant_id)
+        .fetch_one(pool).await?;
+
+    Ok(Json(serde_json::json!({
+        "files_with_versions": files_with_versions,
+        "avg_versions":        avg_versions,
+        "max_versions":        max_versions,
+    })))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #774 — (commit pendente)
+**Último sprint:** #794
 
 ```
 git log --oneline | head -10
@@ -159,16 +159,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #772 | mail | `GET /mail/messages/stats/oldest-newest-by-folder` — MIN/MAX received_at por pasta |
 | #773 | search | `GET /search/index/segments/geometric-mean` — média geométrica de num_docs e disk_bytes |
 | #774 | calendar | `GET /calendars/:cal_id/events-by-range/no-end-count` — COUNT eventos sem dtend |
+| #775 | notifications | `GET /dlq/stats/by-hour-and-tenant?since=&until=` — GROUP BY (hour, tenant_id) ASC |
+| #776 | drive | `GET /drive/files/stats/deep-files?min_depth=N` — CTE recursiva depth >= min_depth; by_depth breakdown |
+| #777 | mail | `GET /mail/messages/stats/references-count-by-folder` — with/without references_ array |
+| #778 | search | `GET /search/index/segments/winsorized-mean?pct=N` — clamp top/bottom N% antes da média |
+| #779 | calendar | `GET /calendars/:cal_id/events-by-range/rrule-freq-stats` — GROUP BY FREQ= extraído do rrule |
+| #780 | notifications | `GET /dlq/stats/by-user-and-kind?limit=N` — GROUP BY (user_id, kind) COUNT DESC |
+| #781 | drive | `GET /drive/files/stats/mime-entropy` — Shannon H=-Σp*log2(p) sobre mime_type; null→octet-stream |
+| #782 | mail | `GET /mail/messages/stats/to-count-distribution` — histograma 0/1/2/3/4/5+ destinatários |
+| #783 | search | `GET /search/index/segments/normalized-entropy` — H/log2(n) ∈ [0,1] para num_docs e disk_bytes |
+| #784 | calendar | `GET /calendars/:cal_id/events-by-range/transparency-stats` — OPAQUE/TRANSPARENT/unset COUNT |
+| #785 | notifications | `GET /dlq/stats/by-day-and-kind-and-tenant` — 3D GROUP BY (day, kind, tenant_id) ASC |
+| #786 | drive | (incorporado no #781 como mime-entropy) |
+| #787 | mail | `GET /mail/messages/stats/avg-recipients-by-folder` — AVG(to+cc+bcc) jsonb_array_length |
+| #788 | search | `GET /search/index/segments/relative-sizes` — pct_bytes por segmento; disk_bytes DESC |
+| #789 | calendar | `GET /calendars/:cal_id/events-by-range/class-by-day` — GROUP BY (day, class) |
+| #790 | notifications | `GET /dlq/stats/by-hour-and-user?since=&until=` — GROUP BY (hour, user_id) ASC |
+| #791 | drive | `GET /drive/files/stats/avg-versions` — AVG/MAX versões por arquivo via drive_file_versions |
+| #792 | mail | `GET /mail/messages/stats/first-message-by-folder` — MIN received_at por pasta |
+| #793 | search | `GET /search/index/segments/size-ratio` — disk_bytes/num_docs (bytes per doc) DESC |
+| #794 | calendar | `GET /calendars/:cal_id/events-by-range/title-word-count` — avg/max palavras em summary |
 
 ---
 
-## Próximos candidatos (#775+)
+## Próximos candidatos (#795+)
 
-1. **notifications** — `GET /dlq/stats/by-hour-and-tenant?since=&until=` — GROUP BY (hour, tenant_id); simetria com by-tenant-and-hour (#740)
-2. **drive** — `GET /drive/files/stats/deep-files?min_depth=N` — arquivos em pastas com profundidade >= N (CTE recursiva)
-3. **mail** — `GET /mail/messages/stats/encoding-by-folder` — COUNT por charset/encoding via JSONB metadata (se disponível)
-4. **search** — `GET /search/index/segments/winsorized-mean?pct=N` — mean após clamp top/bottom N% (não descarta, limita)
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/rrule-freq-stats` — GROUP BY frequência RRULE extraída (DAILY/WEEKLY/etc)
+1. **notifications** — `GET /dlq/stats/by-minute-and-tenant` — GROUP BY (minute, tenant_id) granularidade fina
+2. **drive** — `GET /drive/files/stats/ext-entropy` — Shannon H sobre extensões de arquivo
+3. **mail** — `GET /mail/messages/stats/attachment-size-by-folder` — avg/max attachment bytes por pasta
+4. **search** — `GET /search/index/segments/z-scores` — z-score de num_docs e disk_bytes por segmento
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/location-entropy` — Shannon H sobre top locations
 
 ---
 

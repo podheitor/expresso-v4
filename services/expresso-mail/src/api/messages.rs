@@ -71,6 +71,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flags-summary",                  get(flags_summary_stats))
         .route("/mail/messages/stats/size-distribution",              get(size_distribution_stats))
         .route("/mail/messages/stats/oldest-newest-by-folder",        get(oldest_newest_by_folder_stats))
+        .route("/mail/messages/stats/references-count-by-folder",  get(references_count_by_folder_stats))
+        .route("/mail/messages/stats/to-count-distribution",        get(to_count_distribution_stats))
+        .route("/mail/messages/stats/avg-recipients-by-folder",    get(avg_recipients_by_folder_stats))
+        .route("/mail/messages/stats/first-message-by-folder",     get(first_message_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -3119,6 +3123,168 @@ async fn oldest_newest_by_folder_stats(
             "message_count": message_count,
             "oldest":        oldest.map(|t| t.to_string()),
             "newest":        newest.map(|t| t.to_string()),
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/references-count-by-folder — with/without references por pasta.
+///
+/// COUNT mensagens com references_ array não-vazio vs vazio/null.
+/// LEFT JOIN mailboxes para incluir pastas vazias.
+/// Retorna `{folders:[{folder,message_count,with_references,without_references}]}`. Sprint #777.
+async fn references_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS message_count, \
+            COUNT(m.id) FILTER (WHERE m.references_ IS NOT NULL AND array_length(m.references_, 1) > 0)::BIGINT AS with_references, \
+            COUNT(m.id) FILTER (WHERE m.references_ IS NULL     OR  array_length(m.references_, 1) IS NULL)::BIGINT AS without_references \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY message_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, mc, wr, wor)| serde_json::json!({
+            "folder":             folder,
+            "message_count":      mc,
+            "with_references":    wr,
+            "without_references": wor,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/to-count-distribution — histograma de destinatários (to_addrs).
+///
+/// Buckets: 0/1/2/3/4/5+ destinatários por jsonb_array_length(to_addrs).
+/// Escopo: todas as mensagens do user (cross-folder). Sprint #782.
+async fn to_count_distribution_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (b0, b1, b2, b3, b4, b5p): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE COALESCE(jsonb_array_length(to_addrs), 0) = 0)::BIGINT AS b0, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(to_addrs) = 1)::BIGINT              AS b1, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(to_addrs) = 2)::BIGINT              AS b2, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(to_addrs) = 3)::BIGINT              AS b3, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(to_addrs) = 4)::BIGINT              AS b4, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(to_addrs) >= 5)::BIGINT             AS b5p \
+         FROM messages m \
+         WHERE m.tenant_id = $1 \
+           AND EXISTS ( \
+               SELECT 1 FROM mailboxes mb \
+                WHERE mb.id = m.mailbox_id AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "recipients_0":   b0,
+        "recipients_1":   b1,
+        "recipients_2":   b2,
+        "recipients_3":   b3,
+        "recipients_4":   b4,
+        "recipients_5p":  b5p,
+    })))
+}
+
+/// GET /api/v1/mail/messages/stats/avg-recipients-by-folder — AVG total de destinatários (to+cc+bcc) por pasta.
+///
+/// AVG(to_addrs + cc_addrs + bcc_addrs) via jsonb_array_length, NULL = 0.
+/// LEFT JOIN mailboxes para pastas vazias.
+/// Retorna `{folders:[{folder,message_count,avg_recipients,max_recipients}]}`. Sprint #787.
+async fn avg_recipients_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS message_count, \
+            AVG( \
+                COALESCE(jsonb_array_length(m.to_addrs),  0) + \
+                COALESCE(jsonb_array_length(m.cc_addrs),  0) + \
+                COALESCE(jsonb_array_length(m.bcc_addrs), 0) \
+            ) AS avg_recipients, \
+            MAX( \
+                COALESCE(jsonb_array_length(m.to_addrs),  0) + \
+                COALESCE(jsonb_array_length(m.cc_addrs),  0) + \
+                COALESCE(jsonb_array_length(m.bcc_addrs), 0) \
+            )::BIGINT AS max_recipients \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY message_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, mc, avg, max)| serde_json::json!({
+            "folder":          folder,
+            "message_count":   mc,
+            "avg_recipients":  avg,
+            "max_recipients":  max,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/first-message-by-folder — MIN received_at por pasta.
+///
+/// Timestamp mais antigo de cada pasta para auditoria de criação/importação.
+/// LEFT JOIN mailboxes para pastas vazias. Sprint #792.
+async fn first_message_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, Option<time::OffsetDateTime>)> = sqlx::query_as(
+        "SELECT mb.name AS folder, MIN(m.received_at) AS first_received \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY first_received ASC NULLS LAST, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, first)| serde_json::json!({
+            "folder":         folder,
+            "first_received": first.map(|t| t.to_string()),
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
