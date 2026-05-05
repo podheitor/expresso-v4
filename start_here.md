@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #994
+**Último sprint:** #1014
 
 ```
 git log --oneline | head -10
@@ -389,16 +389,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #992 | mail | `GET /mail/messages/stats/bcc-domain` — top domínios em bcc_addrs jsonb |
 | #993 | search | `GET /search/index/segments/top-n-by-bytes?limit=N` — top-N segmentos por disk_bytes |
 | #994 | calendar | `GET /calendars/:cal_id/events-by-range/has-location-by-month` — with/without location × mês |
+| #995 | notifications | `GET /dlq/stats/by-kind-and-day-and-hour` — 3D kind×day×hour COUNT DESC |
+| #996 | notifications | `GET /dlq/stats/by-second-and-day` — COUNT per (day, second) micro-burst |
+| #997 | notifications | `GET /dlq/stats/by-minute-and-tenant-and-day` — 3D minute×tenant×day |
+| #998 | notifications | `GET /dlq/stats/by-day-and-second-and-kind` — 3D day×second×kind COUNT DESC |
+| #999 | drive | `GET /drive/files/stats/ext-count-by-user` — top (owner, ext) por file_count |
+| #1000 | drive | `GET /drive/files/stats/size-stdev-by-ext` — STDDEV_POP size_bytes por ext |
+| #1001 | drive | `GET /drive/files/stats/quota-utilization-by-folder` — used vs quota por folder |
+| #1002 | drive | `GET /drive/files/stats/file-count-by-weekday` — COUNT files por DOW (created_at) |
+| #1003 | mail | `GET /mail/messages/stats/has-cc-by-weekday` — with/without cc_addrs por DOW |
+| #1004 | mail | `GET /mail/messages/stats/cc-count` — avg/max cc_addrs array length |
+| #1005 | mail | `GET /mail/messages/stats/in-reply-to-depth-by-folder` — reply ratio por folder |
+| #1006 | mail | `GET /mail/messages/stats/subject-word-count` — avg/max palavras no subject |
+| #1007 | search | `GET /search/index/segments/docs-range` — max_docs − min_docs amplitude |
+| #1008 | search | `GET /search/index/segments/count-by-size-band` — histograma tiny/small/medium/large/xlarge |
+| #1009 | search | `GET /search/index/segments/bytes-per-doc-range` — max−min bytes/doc amplitude |
+| #1010 | search | `GET /search/index/segments/docs-stdev` — population stdev de num_docs |
+| #1011 | calendar | `GET /calendars/:cal_id/events-by-range/transparency-by-month` — TRANSP × mês |
+| #1012 | calendar | `GET /calendars/:cal_id/events-by-range/dtend-duration-by-class` — avg/max duração por CLASS |
+| #1013 | calendar | `GET /calendars/:cal_id/events-by-range/attendee-domain-by-month` — domínios de attendees × mês |
+| #1014 | calendar | `GET /calendars/:cal_id/events-by-range/location-word-count` — avg/max palavras em location |
 
 ---
 
-## Próximos candidatos (#995+)
+## Próximos candidatos (#1015+)
 
-1. **notifications** — `GET /dlq/stats/by-kind-and-day-and-hour` — 3D kind×day×hour
-2. **drive** — `GET /drive/files/stats/ext-count-by-user` — top (owner, ext) por file_count
-3. **mail** — `GET /mail/messages/stats/has-cc-by-weekday` — with/without cc por DOW
-4. **search** — `GET /search/index/segments/docs-range` — max_docs − min_docs amplitude
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/transparency-by-month` — TRANSP × mês
+1. **notifications** — `GET /dlq/stats/by-second-and-kind-and-tenant` — 3D second×kind×tenant
+2. **drive** — `GET /drive/files/stats/version-count-by-user` — COUNT versions por owner_user_id
+3. **mail** — `GET /mail/messages/stats/to-addrs-count-by-folder` — avg to_addrs array length por folder
+4. **search** — `GET /search/index/segments/bytes-stdev` — population stdev de disk_bytes
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/sequence-by-month` — SEQUENCE médio × mês
 
 ---
 

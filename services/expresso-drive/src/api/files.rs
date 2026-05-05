@@ -129,6 +129,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/starred-age",            get(file_stats_starred_age))
         .route("/api/v1/drive/files/stats/folder-age",             get(file_stats_folder_age))
         .route("/api/v1/drive/files/stats/tag-size-by-ext",        get(file_stats_tag_size_by_ext))
+        .route("/api/v1/drive/files/stats/ext-count-by-user",           get(file_stats_ext_count_by_user))
+        .route("/api/v1/drive/files/stats/size-stdev-by-ext",           get(file_stats_size_stdev_by_ext))
+        .route("/api/v1/drive/files/stats/quota-utilization-by-folder", get(file_stats_quota_utilization_by_folder))
+        .route("/api/v1/drive/files/stats/file-count-by-weekday",       get(file_stats_file_count_by_weekday))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -4567,6 +4571,132 @@ async fn file_stats_created_vs_updated_gap(
         "avg_gap_days": avg_days,
         "max_gap_days": max_days,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/ext-count-by-user — top (owner_user_id, ext) by file_count. Sprint #999.
+async fn file_stats_ext_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 200);
+
+    let rows: Vec<(Option<uuid::Uuid>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT \
+            owner_user_id, \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY owner_user_id, ext \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(u, e, c)| serde_json::json!({"owner_user_id": u, "ext": e, "file_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-stdev-by-ext — stdev of size_bytes per extension. Sprint #1000.
+async fn file_stats_size_stdev_by_ext(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, f64, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            COUNT(*)::BIGINT AS file_count, \
+            COALESCE(AVG(size_bytes), 0.0) AS avg_bytes, \
+            STDDEV_POP(size_bytes) AS stdev_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY ext \
+          HAVING COUNT(*) > 1 \
+          ORDER BY stdev_bytes DESC NULLS LAST \
+          LIMIT 50",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(e, c, avg, sd)| serde_json::json!({"ext": e, "file_count": c, "avg_bytes": avg, "stdev_bytes": sd}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/quota-utilization-by-folder — used vs quota per folder. Sprint #1001.
+async fn file_stats_quota_utilization_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(uuid::Uuid, Option<String>, i64, Option<i64>, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            f.id, \
+            f.name, \
+            COALESCE(SUM(fi.size_bytes) FILTER (WHERE fi.kind = 'file' AND fi.deleted_at IS NULL), 0)::BIGINT AS used_bytes, \
+            fq.quota_bytes, \
+            CASE WHEN fq.quota_bytes IS NOT NULL AND fq.quota_bytes > 0 \
+                 THEN COALESCE(SUM(fi.size_bytes) FILTER (WHERE fi.kind = 'file' AND fi.deleted_at IS NULL), 0)::FLOAT8 / fq.quota_bytes \
+                 ELSE NULL END AS utilization_ratio \
+           FROM drive_files f \
+           LEFT JOIN drive_files fi ON fi.parent_id = f.id \
+           LEFT JOIN drive_folder_quotas fq ON fq.folder_id = f.id \
+          WHERE f.tenant_id = $1 AND f.kind = 'folder' AND f.deleted_at IS NULL \
+          GROUP BY f.id, f.name, fq.quota_bytes \
+          ORDER BY used_bytes DESC \
+          LIMIT 50",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(id, name, used, quota, ratio)| serde_json::json!({
+            "folder_id": id,
+            "folder_name": name,
+            "used_bytes": used,
+            "quota_bytes": quota,
+            "utilization_ratio": ratio,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/file-count-by-weekday — COUNT files per day-of-week (created_at). Sprint #1002.
+async fn file_stats_file_count_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

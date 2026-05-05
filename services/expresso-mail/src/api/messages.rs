@@ -115,6 +115,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/sender-coverage-by-folder",  get(sender_coverage_by_folder_stats))
         .route("/mail/messages/stats/reply-chain-depth",          get(reply_chain_depth_stats))
         .route("/mail/messages/stats/has-reply-to-by-folder",     get(has_reply_to_by_folder_stats))
+        .route("/mail/messages/stats/has-cc-by-weekday",          get(has_cc_by_weekday_stats))
+        .route("/mail/messages/stats/cc-count",                   get(cc_count_stats))
+        .route("/mail/messages/stats/in-reply-to-depth-by-folder", get(in_reply_to_depth_by_folder_stats))
+        .route("/mail/messages/stats/subject-word-count",         get(subject_word_count_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -4779,4 +4783,133 @@ async fn bcc_domain_stats(
         .map(|(domain, count)| serde_json::json!({"domain": domain, "occurrence_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-cc-by-weekday — with/without cc_addrs per DOW. Sprint #1003.
+async fn has_cc_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.cc_addrs IS NOT NULL AND jsonb_array_length(m.cc_addrs) > 0)::BIGINT AS with_cc, \
+            COUNT(*) FILTER (WHERE m.cc_addrs IS NULL OR jsonb_array_length(m.cc_addrs) = 0)::BIGINT  AS without_cc \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, with_cc, without_cc)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "with_cc": with_cc, "without_cc": without_cc})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count — distribution of cc_addrs array length. Sprint #1004.
+async fn cc_count_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (total, with_cc, avg_cc, max_cc): (i64, i64, Option<f64>, Option<i64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS total_messages, \
+            COUNT(*) FILTER (WHERE cc_addrs IS NOT NULL AND jsonb_array_length(cc_addrs) > 0)::BIGINT AS with_cc, \
+            AVG(jsonb_array_length(cc_addrs)) FILTER (WHERE cc_addrs IS NOT NULL AND jsonb_array_length(cc_addrs) > 0) AS avg_cc_count, \
+            MAX(jsonb_array_length(cc_addrs))::BIGINT FILTER (WHERE cc_addrs IS NOT NULL) AS max_cc_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "total_messages": total,
+        "with_cc": with_cc,
+        "without_cc": total - with_cc,
+        "avg_cc_count": avg_cc,
+        "max_cc_count": max_cc,
+    })))
+}
+
+/// GET /mail/messages/stats/in-reply-to-depth-by-folder — fraction of messages that are replies per folder. Sprint #1005.
+async fn in_reply_to_depth_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, Option<f64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL)::BIGINT AS reply_count, \
+            COUNT(m.id)::BIGINT AS total_messages, \
+            CASE WHEN COUNT(m.id) > 0 \
+                 THEN COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL)::FLOAT8 / COUNT(m.id) \
+                 ELSE NULL END AS reply_depth_ratio \
+           FROM mailboxes mb \
+           LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+          WHERE mb.user_id = $2 \
+          GROUP BY mb.name \
+          ORDER BY reply_depth_ratio DESC NULLS LAST",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, replies, total, ratio)| serde_json::json!({
+            "folder": folder,
+            "reply_count": replies,
+            "total_messages": total,
+            "reply_depth_ratio": ratio,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-word-count — avg/max word count in subject field. Sprint #1006.
+async fn subject_word_count_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (total, with_subject, avg_words, max_words): (i64, i64, Option<f64>, Option<i64>) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT AS total_messages, \
+            COUNT(*) FILTER (WHERE subject IS NOT NULL AND TRIM(subject) <> '')::BIGINT AS with_subject, \
+            AVG(array_length(regexp_split_to_array(TRIM(subject), '\\s+'), 1)) \
+                FILTER (WHERE subject IS NOT NULL AND TRIM(subject) <> '') AS avg_words, \
+            MAX(array_length(regexp_split_to_array(TRIM(subject), '\\s+'), 1))::BIGINT \
+                FILTER (WHERE subject IS NOT NULL AND TRIM(subject) <> '') AS max_words \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "total_messages": total,
+        "with_subject": with_subject,
+        "avg_subject_words": avg_words,
+        "max_subject_words": max_words,
+    })))
 }

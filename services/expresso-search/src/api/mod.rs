@@ -2542,6 +2542,72 @@ pub async fn segment_top_n_by_bytes(
     Json(serde_json::json!({"rows": rows, "limit": limit}))
 }
 
+/// GET /api/v1/search/index/segments/docs-range — max_docs − min_docs amplitude. Sprint #1007.
+pub async fn segment_docs_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() {
+        return Json(serde_json::json!({"docs_range": null}));
+    }
+    let min = segs.iter().map(|(_, nd, _)| *nd).min().unwrap_or(0);
+    let max = segs.iter().map(|(_, nd, _)| *nd).max().unwrap_or(0);
+    Json(serde_json::json!({"min_docs": min, "max_docs": max, "docs_range": max - min}))
+}
+
+/// GET /api/v1/search/index/segments/count-by-size-band — histogram tiny/small/medium/large/xlarge by disk_bytes. Sprint #1008.
+pub async fn segment_count_by_size_band(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut tiny: u64 = 0;   // < 64 KB
+    let mut small: u64 = 0;  // 64 KB – 1 MB
+    let mut medium: u64 = 0; // 1 MB – 16 MB
+    let mut large: u64 = 0;  // 16 MB – 256 MB
+    let mut xlarge: u64 = 0; // ≥ 256 MB
+    for (_, _, db) in &segs {
+        match *db {
+            b if b < 65_536             => tiny   += 1,
+            b if b < 1_048_576          => small  += 1,
+            b if b < 16_777_216         => medium += 1,
+            b if b < 268_435_456        => large  += 1,
+            _                           => xlarge += 1,
+        }
+    }
+    Json(serde_json::json!({
+        "total_segments": segs.len(),
+        "tiny_lt64kb": tiny,
+        "small_64kb_1mb": small,
+        "medium_1mb_16mb": medium,
+        "large_16mb_256mb": large,
+        "xlarge_gte256mb": xlarge,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-range — max−min bytes/doc amplitude. Sprint #1009.
+pub async fn segment_bytes_per_doc_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    if ratios.is_empty() {
+        return Json(serde_json::json!({"bytes_per_doc_range": null}));
+    }
+    let min = ratios.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = ratios.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    Json(serde_json::json!({"min_bytes_per_doc": min, "max_bytes_per_doc": max, "bytes_per_doc_range": max - min}))
+}
+
+/// GET /api/v1/search/index/segments/docs-stdev — population stdev of num_docs across segments. Sprint #1010.
+pub async fn segment_docs_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"docs_stdev": null, "segment_count": n}));
+    }
+    let mean = segs.iter().map(|(_, nd, _)| *nd as f64).sum::<f64>() / n as f64;
+    let variance = segs.iter().map(|(_, nd, _)| { let d = *nd as f64 - mean; d * d }).sum::<f64>() / n as f64;
+    let stdev = variance.sqrt();
+    Json(serde_json::json!({"mean_docs": mean, "docs_stdev": stdev, "segment_count": n}))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,
