@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #710 — (commit pendente)
+**Último sprint:** #714 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -95,15 +95,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #708 | search | `GET /search/index/segments/cumulative` — cumsum num_docs+disk_bytes por segmento ASC |
 | #709 | calendar | `GET /calendars/stats/event-density?bucket=day|week|month` — cross-tenant DATE_TRUNC GROUP BY |
 | #710 | notifications | `GET /dlq/stats/by-tenant-and-kind?limit=N` — GROUP BY (tenant_id, kind) COUNT DESC |
+| #711 | drive | `GET /drive/files/stats/ext-by-folder?folder_id=` — breakdown extensão por pasta; substring(name FROM '\.[^.]*$') |
+| #712 | mail | `GET /mail/messages/stats/to-count-by-folder` — avg/max jsonb_array_length(to_addrs) por pasta |
+| #713 | search | `GET /search/index/segments/percentile?p=N` — num_docs+disk_bytes no percentil N via rank em memória |
+| #714 | calendar | `GET /calendars/:cal_id/events-by-range/all-day-stats` — all_day(time='00:00:00') vs timed |
 
 ---
 
-## Próximos candidatos (#711+)
+## Próximos candidatos (#715+)
 
-1. **drive** — `GET /drive/files/stats/ext-by-folder?folder_id=` — breakdown de extensão por pasta (parent_id ou raiz); análogo a mime-by-folder (#672) mas por extensão
-2. **mail** — `GET /mail/messages/stats/to-count-by-folder` — avg/max to_addrs por pasta; mede "fan-out" de mensagens
-3. **search** — `GET /search/index/segments/percentile?p=N` — num_docs e disk_bytes no percentil N (0-100) via rank em memória
-4. **calendar** — `GET /calendars/:cal_id/events-by-range/all-day-stats` — COUNT all-day events (dtstart sem hora = DATE type) vs timed
+1. **notifications** — `GET /dlq/stats/by-day-and-kind?since=&until=` — GROUP BY (day, kind) ASC; análogo a by-tenant-and-day (#661) escopado por kind
+2. **drive** — `GET /drive/files/stats/lock-count` — COUNT arquivos bloqueados (locked_at IS NOT NULL); total + por user
+3. **mail** — `GET /mail/messages/stats/subject-length-by-folder` — avg/max LENGTH(subject) por pasta; indica verbosidade
+4. **search** — `GET /search/index/segments/stdev` — desvio padrão de num_docs e disk_bytes entre segmentos; medida de desbalanceamento
 
 ---
 

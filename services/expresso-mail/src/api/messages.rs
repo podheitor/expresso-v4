@@ -58,6 +58,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-by-folder",              get(cc_by_folder_stats))
         .route("/mail/messages/stats/bcc-by-folder",             get(bcc_by_folder_stats))
         .route("/mail/messages/stats/reply-rate-by-folder",      get(reply_rate_by_folder_stats))
+        .route("/mail/messages/stats/to-count-by-folder",        get(to_count_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2592,6 +2593,46 @@ async fn reply_rate_by_folder_stats(
             "total":       total,
             "replies":     replies,
             "non_replies": non_replies,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/to-count-by-folder — fan-out de destinatários por mailbox.
+///
+/// `to_addrs` é JSONB array — usa `jsonb_array_length` para contar destinatários por mensagem.
+/// Retorna `avg_to` e `max_to` por pasta. LEFT JOIN para incluir pastas vazias.
+/// Retorna `{folders:[{folder,message_count,avg_to,max_to}]}` ordenado por message_count DESC. Sprint #712.
+async fn to_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS message_count, \
+            AVG(jsonb_array_length(m.to_addrs))   AS avg_to, \
+            MAX(jsonb_array_length(m.to_addrs))::BIGINT AS max_to \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY message_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, message_count, avg_to, max_to)| serde_json::json!({
+            "folder":        folder,
+            "message_count": message_count,
+            "avg_to":        avg_to,
+            "max_to":        max_to,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

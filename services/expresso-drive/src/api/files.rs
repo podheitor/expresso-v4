@@ -73,6 +73,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folder-depth",    get(file_stats_folder_depth))
         .route("/api/v1/drive/files/stats/version-count",   get(file_stats_version_count))
         .route("/api/v1/drive/files/stats/tag-count",        get(file_stats_tag_count))
+        .route("/api/v1/drive/files/stats/ext-by-folder",    get(file_stats_ext_by_folder))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2513,6 +2514,63 @@ async fn file_stats_tag_count(
         .map(|(tag, file_count)| serde_json::json!({"tag": tag, "file_count": file_count}))
         .collect();
     Ok(Json(serde_json::json!({"tags": tags})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-by-folder?folder_id= — breakdown de extensão numa pasta.
+///
+/// Análogo a `mime-by-folder` (#672) mas agrupa por extensão (parte após o último '.' do nome).
+/// `folder_id` opcional: ausente = raiz (`parent_id IS NULL`). Extensão NULL = sem ponto no nome.
+/// Retorna `{folder_id,rows:[{extension,file_count,total_bytes}]}` ordenado por total_bytes DESC. Sprint #711.
+#[derive(Debug, Deserialize)]
+struct StatsExtByFolderQuery {
+    folder_id: Option<Uuid>,
+}
+
+async fn file_stats_ext_by_folder(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsExtByFolderQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Option<String>, i64, i64)> = if let Some(fid) = q.folder_id {
+        sqlx::query_as(
+            "SELECT \
+                CASE WHEN name LIKE '%.%' \
+                     THEN lower(substring(name FROM '\\.[^.]*$')) \
+                     ELSE NULL END AS extension, \
+                COUNT(*)::BIGINT AS file_count, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' AND parent_id = $2 \
+              GROUP BY extension \
+              ORDER BY total_bytes DESC",
+        )
+        .bind(ctx.tenant_id).bind(fid).fetch_all(pool).await?
+    } else {
+        sqlx::query_as(
+            "SELECT \
+                CASE WHEN name LIKE '%.%' \
+                     THEN lower(substring(name FROM '\\.[^.]*$')) \
+                     ELSE NULL END AS extension, \
+                COUNT(*)::BIGINT AS file_count, \
+                COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes \
+               FROM drive_files \
+              WHERE tenant_id = $1 AND deleted_at IS NULL AND kind = 'file' AND parent_id IS NULL \
+              GROUP BY extension \
+              ORDER BY total_bytes DESC",
+        )
+        .bind(ctx.tenant_id).fetch_all(pool).await?
+    };
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, fc, tb)| serde_json::json!({
+            "extension":   ext,
+            "file_count":  fc,
+            "total_bytes": tb,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

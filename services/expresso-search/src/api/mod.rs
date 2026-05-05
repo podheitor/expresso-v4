@@ -916,6 +916,44 @@ pub async fn segment_doc_ratio(
     Json(serde_json::json!({"segments": out}))
 }
 
+/// GET /api/v1/search/index/segments/percentile?p=N — num_docs e disk_bytes no percentil N.
+///
+/// Ordena segmentos por num_docs ASC, calcula rank percentil. `p` aceita 0-100 (default 50 = mediana).
+/// Retorna `{p,segment_count,num_docs_at_p,disk_bytes_at_p}`. Null quando índice vazio. Sprint #713.
+#[derive(Debug, serde::Deserialize)]
+struct PercentileQuery {
+    p: Option<u64>,
+}
+
+pub async fn segment_percentile(
+    State(store): State<IndexStore>,
+    Query(q):     Query<PercentileQuery>,
+) -> Json<serde_json::Value> {
+    let p = q.p.unwrap_or(50).clamp(0, 100);
+    let mut segs = store.list_segments().unwrap_or_default();
+    let count = segs.len();
+
+    if count == 0 {
+        return Json(serde_json::json!({
+            "p": p, "segment_count": 0,
+            "num_docs_at_p": serde_json::Value::Null,
+            "disk_bytes_at_p": serde_json::Value::Null,
+        }));
+    }
+
+    segs.sort_by_key(|(_, num_docs, _)| *num_docs);
+    let idx = ((p as usize * (count - 1)) + 50) / 100;
+    let idx = idx.min(count - 1);
+    let (_, num_docs_at_p, disk_bytes_at_p) = &segs[idx];
+
+    Json(serde_json::json!({
+        "p":               p,
+        "segment_count":   count,
+        "num_docs_at_p":   num_docs_at_p,
+        "disk_bytes_at_p": disk_bytes_at_p,
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.
