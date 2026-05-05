@@ -88,7 +88,11 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folder-file-count",  get(file_stats_folder_file_count))
         .route("/api/v1/drive/files/stats/deep-files",         get(file_stats_deep_files))
         .route("/api/v1/drive/files/stats/mime-entropy",        get(file_stats_mime_entropy))
-        .route("/api/v1/drive/files/stats/avg-versions",        get(file_stats_avg_versions))
+        .route("/api/v1/drive/files/stats/avg-versions",         get(file_stats_avg_versions))
+        .route("/api/v1/drive/files/stats/ext-entropy",           get(file_stats_ext_entropy))
+        .route("/api/v1/drive/files/stats/checksum-coverage",      get(file_stats_checksum_coverage))
+        .route("/api/v1/drive/files/stats/storage-key-coverage",   get(file_stats_storage_key_coverage))
+        .route("/api/v1/drive/files/stats/locked-by-user",         get(file_stats_locked_by_user))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -3129,6 +3133,151 @@ async fn file_stats_avg_versions(
         "avg_versions":        avg_versions,
         "max_versions":        max_versions,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/ext-entropy — Shannon H sobre extensões de arquivo.
+///
+/// H = -Σ p_i * log2(p_i) para extensões LOWER(SUBSTRING(name FROM '\.[^.]*$')).
+/// Arquivos sem extensão agrupados como "(none)". kind='file', não-deletados.
+/// Retorna `{ext_count,total_files,entropy_bits,top:[{ext,file_count}]}`. Sprint #796.
+async fn file_stats_ext_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(NULLIF(LOWER(SUBSTRING(name FROM '\\.[^.]*$')), ''), '(none)') AS ext, \
+            COUNT(*)::BIGINT AS cnt \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file' \
+          GROUP BY ext \
+          ORDER BY cnt DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let entropy: f64 = if total == 0 { 0.0 } else {
+        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
+            let p = *c as f64 / total as f64;
+            -p * p.log2()
+        }).sum()
+    };
+    let top: Vec<serde_json::Value> = rows.iter().take(20)
+        .map(|(e, c)| serde_json::json!({"ext": e, "file_count": c}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "ext_count":    rows.len(),
+        "total_files":  total,
+        "entropy_bits": entropy,
+        "top":          top,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/checksum-coverage — COUNT com/sem sha256.
+///
+/// Arquivos kind='file', não-deletados. Indica cobertura de integridade.
+/// Retorna `{total_files,with_checksum,without_checksum,coverage_pct}`. Sprint #801.
+async fn file_stats_checksum_coverage(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total, with_checksum): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT, \
+            COUNT(*) FILTER (WHERE sha256 IS NOT NULL AND sha256 <> '')::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file'",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let without_checksum = total - with_checksum;
+    let coverage_pct = if total > 0 { with_checksum as f64 / total as f64 * 100.0 } else { 0.0 };
+    Ok(Json(serde_json::json!({
+        "total_files":      total,
+        "with_checksum":    with_checksum,
+        "without_checksum": without_checksum,
+        "coverage_pct":     coverage_pct,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/storage-key-coverage — COUNT com/sem storage_key.
+///
+/// Arquivos kind='file', não-deletados. storage_key NULL indica upload não finalizado.
+/// Retorna `{total_files,with_storage_key,without_storage_key,coverage_pct}`. Sprint #806.
+async fn file_stats_storage_key_coverage(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total, with_key): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT, \
+            COUNT(*) FILTER (WHERE storage_key IS NOT NULL AND storage_key <> '')::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND deleted_at IS NULL \
+            AND kind       = 'file'",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let without_key = total - with_key;
+    let coverage_pct = if total > 0 { with_key as f64 / total as f64 * 100.0 } else { 0.0 };
+    Ok(Json(serde_json::json!({
+        "total_files":       total,
+        "with_storage_key":  with_key,
+        "without_storage_key": without_key,
+        "coverage_pct":      coverage_pct,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/locked-by-user?limit=N — COUNT arquivos locked por locked_by.
+///
+/// Apenas arquivos com locked_at IS NOT NULL. Limit default 20 max 200.
+/// Retorna `{total_locked,rows:[{locked_by,file_count}]}` file_count DESC. Sprint #811.
+async fn file_stats_locked_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsTopFilesQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let limit = q.limit.unwrap_or(20).min(200).max(1);
+    let pool   = state.db_or_unavailable()?;
+
+    let (total_locked,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT FROM drive_files \
+          WHERE tenant_id = $1 AND locked_at IS NOT NULL AND deleted_at IS NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool).await?;
+
+    let rows: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT locked_by, COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id  = $1 \
+            AND locked_at  IS NOT NULL \
+            AND deleted_at IS NULL \
+          GROUP BY locked_by \
+          ORDER BY file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let out: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(uid, fc)| serde_json::json!({"locked_by": uid, "file_count": fc}))
+        .collect();
+    Ok(Json(serde_json::json!({"total_locked": total_locked, "rows": out})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

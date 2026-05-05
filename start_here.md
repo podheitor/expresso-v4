@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #794
+**Último sprint:** #814
 
 ```
 git log --oneline | head -10
@@ -180,15 +180,36 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #793 | search | `GET /search/index/segments/size-ratio` — disk_bytes/num_docs (bytes per doc) DESC |
 | #794 | calendar | `GET /calendars/:cal_id/events-by-range/title-word-count` — avg/max palavras em summary |
 
+| #795 | notifications | `GET /dlq/stats/by-minute-and-tenant` — GROUP BY (minute, tenant_id) ASC |
+| #796 | drive | `GET /drive/files/stats/ext-entropy` — Shannon H sobre extensões; top-20 |
+| #797 | mail | `GET /mail/messages/stats/attachment-size-by-folder` — avg/max size_bytes WHERE has_attachments |
+| #798 | search | `GET /search/index/segments/z-scores` — z=(x-mean)/stdev por segmento; docs_z DESC |
+| #799 | calendar | `GET /calendars/:cal_id/events-by-range/location-entropy` — Shannon H sobre locations |
+| #800 | notifications | `GET /dlq/stats/by-minute-and-user` — GROUP BY (minute, user_id) ASC |
+| #801 | drive | `GET /drive/files/stats/checksum-coverage` — with/without sha256; coverage_pct |
+| #802 | mail | `GET /mail/messages/stats/read-ratio-by-folder` — Seen flag read/unread + read_pct |
+| #803 | search | `GET /search/index/segments/doc-density` — num_docs/disk_bytes (docs_per_byte) DESC |
+| #804 | calendar | `GET /calendars/:cal_id/events-by-range/has-alarm-stats` — LIKE '%BEGIN:VALARM%' |
+| #805 | notifications | `GET /dlq/stats/top-tenants-by-kind?limit=N` — top-N tenants por kind |
+| #806 | drive | `GET /drive/files/stats/storage-key-coverage` — with/without storage_key; coverage_pct |
+| #807 | mail | `GET /mail/messages/stats/subject-word-count-by-folder` — avg/max palavras via regexp_split |
+| #808 | search | `GET /search/index/segments/coefficient-dispersion` — range/mean para num_docs e disk_bytes |
+| #809 | calendar | `GET /calendars/:cal_id/events-by-range/dtstart-hour-distribution` — histograma 0-23h |
+| #810 | notifications | `GET /dlq/stats/by-kind-and-minute` — GROUP BY (kind, minute) ASC |
+| #811 | drive | `GET /drive/files/stats/locked-by-user?limit=N` — top-N users por arquivos bloqueados |
+| #812 | mail | `GET /mail/messages/stats/cc-count-distribution` — histograma 0/1/2/3/4/5+ cc_addrs |
+| #813 | search | `GET /search/index/segments/percentile-rank` — percentis 25/50/75/90/95 de num_docs e disk_bytes |
+| #814 | calendar | `GET /calendars/:cal_id/events-by-range/weekday-distribution` — COUNT por DOW (0=Sun..6=Sat) |
+
 ---
 
-## Próximos candidatos (#795+)
+## Próximos candidatos (#815+)
 
-1. **notifications** — `GET /dlq/stats/by-minute-and-tenant` — GROUP BY (minute, tenant_id) granularidade fina
-2. **drive** — `GET /drive/files/stats/ext-entropy` — Shannon H sobre extensões de arquivo
-3. **mail** — `GET /mail/messages/stats/attachment-size-by-folder` — avg/max attachment bytes por pasta
-4. **search** — `GET /search/index/segments/z-scores` — z-score de num_docs e disk_bytes por segmento
-5. **calendar** — `GET /calendars/:cal_id/events-by-range/location-entropy` — Shannon H sobre top locations
+1. **notifications** — `GET /dlq/stats/by-attempts-and-kind` — histograma tentativas cruzado com kind
+2. **drive** — `GET /drive/files/stats/mime-by-ext` — top mime_type por extensão (GROUP BY ext, mime)
+3. **mail** — `GET /mail/messages/stats/flagged-by-folder` — COUNT \Flagged por pasta
+4. **search** — `GET /search/index/segments/outliers` — segmentos com |z| > threshold
+5. **calendar** — `GET /calendars/:cal_id/events-by-range/month-distribution` — COUNT por mês do ano (1-12)
 
 ---
 

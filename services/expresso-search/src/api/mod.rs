@@ -1644,6 +1644,142 @@ pub async fn segment_size_ratio(
     Json(serde_json::json!({"segments": out}))
 }
 
+/// GET /api/v1/search/index/segments/z-scores — z-score de num_docs e disk_bytes por segmento.
+///
+/// z = (x - mean) / stdev. Segmentos com |z| > 2 são outliers candidatos a merge/vacuum.
+/// Retorna `{segment_count,segments:[{id,num_docs,disk_bytes,docs_z,bytes_z}]}` docs_z DESC. Sprint #798.
+pub async fn segment_z_scores(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({"segment_count": n, "segments": []}));
+    }
+
+    fn mean_stdev(vals: &[f64]) -> (f64, f64) {
+        let n = vals.len() as f64;
+        let m = vals.iter().sum::<f64>() / n;
+        let var = vals.iter().map(|x| (x - m).powi(2)).sum::<f64>() / (n - 1.0);
+        (m, var.sqrt())
+    }
+
+    let docs_f:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes_f: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let (md, sd) = mean_stdev(&docs_f);
+    let (mb, sb) = mean_stdev(&bytes_f);
+
+    let mut out: Vec<serde_json::Value> = segs.iter().map(|(id, docs, bytes)| {
+        let dz = if sd > 0.0 { (*docs as f64 - md) / sd } else { 0.0 };
+        let bz = if sb > 0.0 { (*bytes as f64 - mb) / sb } else { 0.0 };
+        serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "docs_z": dz, "bytes_z": bz})
+    }).collect();
+    out.sort_by(|a, b| {
+        b["docs_z"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&a["docs_z"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Json(serde_json::json!({"segment_count": n, "segments": out}))
+}
+
+/// GET /api/v1/search/index/segments/doc-density — num_docs/disk_bytes por segmento (inverso de size_ratio).
+///
+/// docs_per_byte = num_docs / disk_bytes. disk_bytes=0 → null. Ordenado por docs_per_byte DESC. Sprint #803.
+pub async fn segment_doc_density(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let mut segs = store.list_segments().unwrap_or_default();
+    segs.sort_by(|a, b| {
+        let ra = if a.2 > 0 { a.1 as f64 / a.2 as f64 } else { 0.0 };
+        let rb = if b.2 > 0 { b.1 as f64 / b.2 as f64 } else { 0.0 };
+        rb.partial_cmp(&ra).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let out: Vec<serde_json::Value> = segs.iter().map(|(id, docs, bytes)| {
+        let density: Option<f64> = if *bytes > 0 { Some(*docs as f64 / *bytes as f64) } else { None };
+        serde_json::json!({"id": id, "num_docs": docs, "disk_bytes": bytes, "docs_per_byte": density})
+    }).collect();
+
+    Json(serde_json::json!({"segments": out}))
+}
+
+/// GET /api/v1/search/index/segments/coefficient-dispersion — range/mean (índice de dispersão).
+///
+/// CD = (max - min) / mean. Valor alto indica segmentos muito desbalanceados.
+/// Retorna `{segment_count,num_docs_cd,disk_bytes_cd}`. Sprint #808.
+pub async fn segment_coefficient_dispersion(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n < 2 {
+        return Json(serde_json::json!({
+            "segment_count":    n,
+            "num_docs_cd":      serde_json::Value::Null,
+            "disk_bytes_cd":    serde_json::Value::Null,
+        }));
+    }
+
+    fn cd(vals: &[u64]) -> Option<f64> {
+        let min = *vals.iter().min()?;
+        let max = *vals.iter().max()?;
+        let mean = vals.iter().sum::<u64>() as f64 / vals.len() as f64;
+        if mean == 0.0 { None } else { Some((max - min) as f64 / mean) }
+    }
+
+    let docs:  Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    let bytes: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+
+    Json(serde_json::json!({
+        "segment_count":  n,
+        "num_docs_cd":    cd(&docs),
+        "disk_bytes_cd":  cd(&bytes),
+    }))
+}
+
+/// GET /api/v1/search/index/segments/percentile-rank — percentis 25/50/75/90/95 de num_docs e disk_bytes.
+///
+/// Interpolação linear nos valores ordenados. Sprint #813.
+pub async fn segment_percentile_rank(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n    = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({"segment_count": 0}));
+    }
+
+    fn quantile(sorted: &[f64], p: f64) -> f64 {
+        let idx = p * (sorted.len() - 1) as f64;
+        let lo  = idx.floor() as usize;
+        let hi  = idx.ceil() as usize;
+        if lo == hi { sorted[lo] } else { sorted[lo] + (idx - lo as f64) * (sorted[hi] - sorted[lo]) }
+    }
+
+    let mut docs:  Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mut bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    docs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    bytes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let pcts = [0.25_f64, 0.50, 0.75, 0.90, 0.95];
+    let docs_pct:  Vec<serde_json::Value> = pcts.iter().map(|&p| {
+        serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&docs, p)})
+    }).collect();
+    let bytes_pct: Vec<serde_json::Value> = pcts.iter().map(|&p| {
+        serde_json::json!({"pct": (p * 100.0) as u32, "value": quantile(&bytes, p)})
+    }).collect();
+
+    Json(serde_json::json!({
+        "segment_count":        n,
+        "num_docs_percentiles":   docs_pct,
+        "disk_bytes_percentiles": bytes_pct,
+    }))
+}
+
 pub async fn search_stats_by_tenant(
     State(store): State<IndexStore>,
     Query(q):     Query<StatsByTenantQuery>,

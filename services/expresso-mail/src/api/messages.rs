@@ -75,6 +75,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-count-distribution",        get(to_count_distribution_stats))
         .route("/mail/messages/stats/avg-recipients-by-folder",    get(avg_recipients_by_folder_stats))
         .route("/mail/messages/stats/first-message-by-folder",     get(first_message_by_folder_stats))
+        .route("/mail/messages/stats/attachment-size-by-folder",   get(attachment_size_by_folder_stats))
+        .route("/mail/messages/stats/read-ratio-by-folder",        get(read_ratio_by_folder_stats))
+        .route("/mail/messages/stats/subject-word-count-by-folder", get(subject_word_count_by_folder_stats))
+        .route("/mail/messages/stats/cc-count-distribution",       get(cc_count_distribution_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -3288,4 +3292,171 @@ async fn first_message_by_folder_stats(
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-size-by-folder — avg/max size_bytes de msgs com anexos.
+///
+/// Filtra has_attachments=true para refletir tamanho de mensagens com conteúdo binário.
+/// LEFT JOIN mailboxes para incluir pastas sem anexos (count=0).
+/// Retorna `{folders:[{folder,total_with_attachments,avg_bytes,max_bytes}]}`. Sprint #797.
+async fn attachment_size_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id) FILTER (WHERE m.has_attachments)::BIGINT AS total_with_attachments, \
+            AVG(m.size_bytes::BIGINT) FILTER (WHERE m.has_attachments) AS avg_bytes, \
+            MAX(m.size_bytes::BIGINT) FILTER (WHERE m.has_attachments) AS max_bytes \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total_with_attachments DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, avg, max)| serde_json::json!({
+            "folder":                 folder,
+            "total_with_attachments": total,
+            "avg_bytes":              avg,
+            "max_bytes":              max,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/read-ratio-by-folder — read/unread ratio por pasta.
+///
+/// "Seen" flag indica leitura. Inclui pastas vazias via LEFT JOIN.
+/// Retorna `{folders:[{folder,total,read,unread,read_pct}]}`. Sprint #802.
+async fn read_ratio_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS total, \
+            COUNT(m.id) FILTER (WHERE '\\Seen' = ANY(m.flags))::BIGINT AS read, \
+            COUNT(m.id) FILTER (WHERE NOT ('\\Seen' = ANY(m.flags)))::BIGINT AS unread \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY total DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, total, read, unread)| {
+            let read_pct = if total > 0 { read as f64 / total as f64 * 100.0 } else { 0.0 };
+            serde_json::json!({
+                "folder":   folder,
+                "total":    total,
+                "read":     read,
+                "unread":   unread,
+                "read_pct": read_pct,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/subject-word-count-by-folder — avg/max palavras em subject por pasta.
+///
+/// Conta via `array_length(regexp_split_to_array(trim(subject), '\s+'), 1)`.
+/// Subjects null/vazio contam como 0. LEFT JOIN mailboxes para pastas vazias.
+/// Retorna `{folders:[{folder,message_count,avg_words,max_words}]}`. Sprint #807.
+async fn subject_word_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS message_count, \
+            AVG(CASE WHEN m.subject IS NOT NULL AND m.subject <> '' \
+                THEN array_length(regexp_split_to_array(trim(m.subject), '\\s+'), 1) \
+                ELSE 0 END) AS avg_words, \
+            MAX(CASE WHEN m.subject IS NOT NULL AND m.subject <> '' \
+                THEN array_length(regexp_split_to_array(trim(m.subject), '\\s+'), 1) \
+                ELSE 0 END)::BIGINT AS max_words \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY message_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, mc, avg, max)| serde_json::json!({
+            "folder":         folder,
+            "message_count":  mc,
+            "avg_words":      avg,
+            "max_words":      max,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /api/v1/mail/messages/stats/cc-count-distribution — histograma de destinatários CC.
+///
+/// Buckets: 0/1/2/3/4/5+ via jsonb_array_length(cc_addrs). Cross-folder por user. Sprint #812.
+async fn cc_count_distribution_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let (b0, b1, b2, b3, b4, b5p): (i64, i64, i64, i64, i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*) FILTER (WHERE COALESCE(jsonb_array_length(cc_addrs), 0) = 0)::BIGINT AS b0, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(cc_addrs) = 1)::BIGINT              AS b1, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(cc_addrs) = 2)::BIGINT              AS b2, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(cc_addrs) = 3)::BIGINT              AS b3, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(cc_addrs) = 4)::BIGINT              AS b4, \
+            COUNT(*) FILTER (WHERE jsonb_array_length(cc_addrs) >= 5)::BIGINT             AS b5p \
+         FROM messages m \
+         WHERE m.tenant_id = $1 \
+           AND EXISTS ( \
+               SELECT 1 FROM mailboxes mb \
+                WHERE mb.id = m.mailbox_id AND mb.tenant_id = $1 AND mb.user_id = $2 \
+           )",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "cc_0":  b0,
+        "cc_1":  b1,
+        "cc_2":  b2,
+        "cc_3":  b3,
+        "cc_4":  b4,
+        "cc_5p": b5p,
+    })))
 }

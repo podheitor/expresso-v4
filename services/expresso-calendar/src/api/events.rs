@@ -285,6 +285,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_rrule_freq_stats),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/location-entropy",
+            get(events_by_range_location_entropy),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-alarm-stats",
+            get(events_by_range_has_alarm_stats),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/dtstart-hour-distribution",
+            get(events_by_range_dtstart_hour_distribution),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/weekday-distribution",
+            get(events_by_range_weekday_distribution),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/transparency-stats",
             get(events_by_range_transparency_stats),
         )
@@ -2444,6 +2460,172 @@ async fn events_by_range_no_end_count(
         "no_end_count":   no_end_count,
         "with_end_count": total - no_end_count,
     })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/location-entropy?after=&before=
+///
+/// Shannon H = -Σ p_i * log2(p_i) sobre locations. NULL/"" agrupados como "(none)".
+/// Retorna `{calendar_id,location_count,total_events,entropy_bits,top:[{location,count}]}`. Sprint #799.
+async fn events_by_range_location_entropy(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(NULLIF(location, ''), '(none)') AS loc, COUNT(*)::BIGINT AS cnt \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY loc \
+          ORDER BY cnt DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let entropy: f64 = if total == 0 { 0.0 } else {
+        rows.iter().filter(|(_, c)| *c > 0).map(|(_, c)| {
+            let p = *c as f64 / total as f64;
+            -p * p.log2()
+        }).sum()
+    };
+    let top: Vec<serde_json::Value> = rows.iter().take(20)
+        .map(|(loc, cnt)| serde_json::json!({"location": loc, "count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({
+        "calendar_id":    cal_id,
+        "location_count": rows.len(),
+        "total_events":   total,
+        "entropy_bits":   entropy,
+        "top":            top,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-alarm-stats?after=&before=
+///
+/// COUNT eventos com/sem VALARM em ical_raw (LIKE '%BEGIN:VALARM%').
+/// Retorna `{calendar_id,total,with_alarm,without_alarm}`. Sprint #804.
+async fn events_by_range_has_alarm_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let (total, with_alarm): (i64, i64) = sqlx::query_as(
+        "SELECT \
+            COUNT(*)::BIGINT, \
+            COUNT(*) FILTER (WHERE ical_raw LIKE '%BEGIN:VALARM%')::BIGINT \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4)",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(&mut *tx).await?;
+    tx.commit().await?;
+
+    Ok(Json(serde_json::json!({
+        "calendar_id":   cal_id,
+        "total":         total,
+        "with_alarm":    with_alarm,
+        "without_alarm": total - with_alarm,
+    })))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/dtstart-hour-distribution?after=&before=
+///
+/// Histograma de horas do dia (0–23) de dtstart AT TIME ZONE 'UTC'.
+/// Útil para detectar concentração de reuniões/eventos em faixas horárias.
+/// Retorna `{calendar_id,rows:[{hour,count}]}` hour ASC. Sprint #809.
+async fn events_by_range_dtstart_hour_distribution(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY hour \
+          ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(hour, count)| serde_json::json!({"hour": hour, "count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/weekday-distribution?after=&before=
+///
+/// COUNT por dia da semana de dtstart (0=Sun, 1=Mon, ..., 6=Sat) via EXTRACT(DOW).
+/// Retorna `{calendar_id,rows:[{dow,day_name,count}]}` dow ASC. Sprint #814.
+async fn events_by_range_weekday_distribution(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS count \
+           FROM calendar_events \
+          WHERE tenant_id   = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/rrule-freq-stats?after=&before=
