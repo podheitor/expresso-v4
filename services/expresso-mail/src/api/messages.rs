@@ -60,6 +60,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/reply-rate-by-folder",      get(reply_rate_by_folder_stats))
         .route("/mail/messages/stats/to-count-by-folder",        get(to_count_by_folder_stats))
         .route("/mail/messages/stats/subject-length-by-folder",  get(subject_length_by_folder_stats))
+        .route("/mail/messages/stats/preview-length-by-folder",  get(preview_length_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -2675,6 +2676,45 @@ async fn subject_length_by_folder_stats(
             "message_count":       message_count,
             "avg_subject_length":  avg_len,
             "max_subject_length":  max_len,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"folders": folders})))
+}
+
+/// GET /mail/messages/stats/preview-length-by-folder — avg/max LENGTH(preview_text) por pasta.
+///
+/// Indica riqueza do snippet de preview por mailbox. LEFT JOIN para incluir pastas vazias.
+/// avg_preview_length é NULL quando pasta não tem mensagens. Sprint #722.
+async fn preview_length_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i64, Option<f64>, Option<i64>)> = sqlx::query_as(
+        "SELECT \
+            mb.name AS folder, \
+            COUNT(m.id)::BIGINT AS message_count, \
+            AVG(LENGTH(m.preview_text)) AS avg_preview_length, \
+            MAX(LENGTH(m.preview_text))::BIGINT AS max_preview_length \
+         FROM mailboxes mb \
+         LEFT JOIN messages m ON m.mailbox_id = mb.id AND m.tenant_id = $1 \
+         WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name \
+         ORDER BY message_count DESC, mb.name ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let folders: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, message_count, avg_len, max_len)| serde_json::json!({
+            "folder":              folder,
+            "message_count":       message_count,
+            "avg_preview_length":  avg_len,
+            "max_preview_length":  max_len,
         }))
         .collect();
     Ok(Json(serde_json::json!({"folders": folders})))

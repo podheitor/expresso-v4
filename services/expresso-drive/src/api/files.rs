@@ -75,6 +75,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/tag-count",        get(file_stats_tag_count))
         .route("/api/v1/drive/files/stats/ext-by-folder",    get(file_stats_ext_by_folder))
         .route("/api/v1/drive/files/stats/lock-count",       get(file_stats_lock_count))
+        .route("/api/v1/drive/files/stats/starred-count",    get(file_stats_starred_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2612,6 +2613,47 @@ async fn file_stats_lock_count(
     Ok(Json(serde_json::json!({
         "total_locked": total_locked,
         "by_user":      by_user_out,
+    })))
+}
+
+/// GET /api/v1/drive/files/stats/starred-count — arquivos estrelados por total e por user_id.
+///
+/// Conta arquivos onde `starred_at IS NOT NULL AND deleted_at IS NULL AND kind = 'file'`.
+/// Retorna `{total_starred, by_user:[{user_id,starred_count}]}` ordenado por starred_count DESC.
+/// Sprint #721.
+async fn file_stats_starred_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_starred,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND starred_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    let by_user: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT AS starred_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND starred_at IS NOT NULL \
+          GROUP BY owner_user_id \
+          ORDER BY starred_count DESC, owner_user_id ASC NULLS LAST",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    let by_user_out: Vec<serde_json::Value> = by_user.into_iter()
+        .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "starred_count": cnt}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "total_starred": total_starred,
+        "by_user":       by_user_out,
     })))
 }
 

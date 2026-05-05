@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #718 — (commit pendente)
+**Último sprint:** #722 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -103,15 +103,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #716 | drive | `GET /drive/files/stats/lock-count` — COUNT arquivos bloqueados (locked_at IS NOT NULL); total + by_user |
 | #717 | mail | `GET /mail/messages/stats/subject-length-by-folder` — avg/max LENGTH(subject) por pasta; indica verbosidade |
 | #718 | search | `GET /search/index/segments/stdev` — desvio padrão amostral (n-1) de num_docs e disk_bytes; medida de desbalanceamento |
+| #719 | calendar | `GET /calendars/:cal_id/events-by-range/description-stats` — with/without + avg/max LENGTH(description) |
+| #720 | notifications | `GET /dlq/stats/by-hour-and-kind?since=&until=` — GROUP BY (hour, kind) ASC; granularidade intra-dia por tipo |
+| #721 | drive | `GET /drive/files/stats/starred-count` — COUNT starred_at IS NOT NULL; total + by_user DESC |
+| #722 | mail | `GET /mail/messages/stats/preview-length-by-folder` — avg/max LENGTH(preview_text) por pasta |
 
 ---
 
-## Próximos candidatos (#719+)
+## Próximos candidatos (#723+)
 
-1. **calendar** — `GET /calendars/:cal_id/events-by-range/description-stats` — with/without description + avg/max LENGTH(description)
-2. **notifications** — `GET /dlq/stats/by-hour-and-kind?since=&until=` — GROUP BY (hour, kind) ASC; granularidade intra-dia por tipo
-3. **drive** — `GET /drive/files/stats/starred-count` — COUNT arquivos estrelados (starred_at IS NOT NULL); total + por user
-4. **mail** — `GET /mail/messages/stats/priority-by-folder` — COUNT FILTER por prioridade (X-Priority header ou campo priority)
+1. **search** — `GET /search/index/segments/entropy` — entropia de Shannon sobre distribuição normalizada de num_docs; medida de desequilíbrio
+2. **calendar** — `GET /calendars/:cal_id/events-by-range/summary-length-stats` — avg/max LENGTH(summary) por calendário
+3. **notifications** — `GET /dlq/stats/by-minute?since=&until=` — DATE_TRUNC('minute') GROUP BY; granularidade fina de picos
+4. **drive** — `GET /drive/files/stats/expiry-count` — COUNT arquivos com expires_at IS NOT NULL; total + expirados (expires_at < NOW())
 
 ---
 
