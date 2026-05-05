@@ -954,6 +954,50 @@ pub async fn segment_percentile(
     }))
 }
 
+/// GET /api/v1/search/index/segments/stdev — desvio padrão de num_docs e disk_bytes.
+///
+/// Medida de desbalanceamento entre segmentos. Calcula média e desvio padrão amostral (n-1)
+/// de num_docs e disk_bytes via iteração em memória sobre list_segments().
+/// Retorna `{segment_count,num_docs_mean,num_docs_stdev,disk_bytes_mean,disk_bytes_stdev}`.
+/// Todos os campos são null quando o índice está vazio; stdev é null com 1 segmento. Sprint #718.
+pub async fn segment_stdev(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+
+    if n == 0 {
+        return Json(serde_json::json!({
+            "segment_count":    0,
+            "num_docs_mean":    serde_json::Value::Null,
+            "num_docs_stdev":   serde_json::Value::Null,
+            "disk_bytes_mean":  serde_json::Value::Null,
+            "disk_bytes_stdev": serde_json::Value::Null,
+        }));
+    }
+
+    let docs_vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let bytes_vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+
+    let mean_f = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    let stdev_f = |v: &[f64], mean: f64| -> Option<f64> {
+        if v.len() < 2 { return None; }
+        let variance = v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (v.len() - 1) as f64;
+        Some(variance.sqrt())
+    };
+
+    let docs_mean  = mean_f(&docs_vals);
+    let bytes_mean = mean_f(&bytes_vals);
+
+    Json(serde_json::json!({
+        "segment_count":    n,
+        "num_docs_mean":    docs_mean,
+        "num_docs_stdev":   stdev_f(&docs_vals, docs_mean),
+        "disk_bytes_mean":  bytes_mean,
+        "disk_bytes_stdev": stdev_f(&bytes_vals, bytes_mean),
+    }))
+}
+
 /// GET /api/v1/search/index/segments/cumulative — acumulado de num_docs e disk_bytes por segmento.
 ///
 /// Ordena segmentos por num_docs ASC e calcula cumsum de num_docs e disk_bytes.

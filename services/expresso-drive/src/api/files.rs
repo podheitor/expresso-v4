@@ -74,6 +74,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-count",   get(file_stats_version_count))
         .route("/api/v1/drive/files/stats/tag-count",        get(file_stats_tag_count))
         .route("/api/v1/drive/files/stats/ext-by-folder",    get(file_stats_ext_by_folder))
+        .route("/api/v1/drive/files/stats/lock-count",       get(file_stats_lock_count))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -2571,6 +2572,47 @@ async fn file_stats_ext_by_folder(
         }))
         .collect();
     Ok(Json(serde_json::json!({"folder_id": q.folder_id, "rows": out})))
+}
+
+/// GET /api/v1/drive/files/stats/lock-count — arquivos bloqueados por total e por user_id.
+///
+/// Conta arquivos onde `locked_at IS NOT NULL AND deleted_at IS NULL AND kind = 'file'`.
+/// Retorna `{total_locked, by_user:[{user_id,locked_count}]}` ordenado por locked_count DESC.
+/// Sprint #716.
+async fn file_stats_lock_count(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let (total_locked,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)::BIGINT \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND locked_at IS NOT NULL",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_one(pool)
+    .await?;
+
+    let by_user: Vec<(Option<Uuid>, i64)> = sqlx::query_as(
+        "SELECT owner_user_id, COUNT(*)::BIGINT AS locked_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND locked_at IS NOT NULL \
+          GROUP BY owner_user_id \
+          ORDER BY locked_count DESC, owner_user_id ASC NULLS LAST",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+
+    let by_user_out: Vec<serde_json::Value> = by_user.into_iter()
+        .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "locked_count": cnt}))
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "total_locked": total_locked,
+        "by_user":      by_user_out,
+    })))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.

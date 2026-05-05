@@ -1,6 +1,6 @@
 # Expresso v4 — Ponto de Retomada
 
-**Último sprint:** #714 — (commit pendente)
+**Último sprint:** #718 — (commit pendente)
 
 ```
 git log --oneline | head -10
@@ -99,15 +99,19 @@ Libs compartilhadas: `expresso-core` (DB pool, RLS tenant tx), `expresso-auth-cl
 | #712 | mail | `GET /mail/messages/stats/to-count-by-folder` — avg/max jsonb_array_length(to_addrs) por pasta |
 | #713 | search | `GET /search/index/segments/percentile?p=N` — num_docs+disk_bytes no percentil N via rank em memória |
 | #714 | calendar | `GET /calendars/:cal_id/events-by-range/all-day-stats` — all_day(time='00:00:00') vs timed |
+| #715 | notifications | `GET /dlq/stats/by-day-and-kind?since=&until=` — GROUP BY (day, kind) ASC; análogo a by-tenant-and-day (#661) escopado por kind |
+| #716 | drive | `GET /drive/files/stats/lock-count` — COUNT arquivos bloqueados (locked_at IS NOT NULL); total + by_user |
+| #717 | mail | `GET /mail/messages/stats/subject-length-by-folder` — avg/max LENGTH(subject) por pasta; indica verbosidade |
+| #718 | search | `GET /search/index/segments/stdev` — desvio padrão amostral (n-1) de num_docs e disk_bytes; medida de desbalanceamento |
 
 ---
 
-## Próximos candidatos (#715+)
+## Próximos candidatos (#719+)
 
-1. **notifications** — `GET /dlq/stats/by-day-and-kind?since=&until=` — GROUP BY (day, kind) ASC; análogo a by-tenant-and-day (#661) escopado por kind
-2. **drive** — `GET /drive/files/stats/lock-count` — COUNT arquivos bloqueados (locked_at IS NOT NULL); total + por user
-3. **mail** — `GET /mail/messages/stats/subject-length-by-folder` — avg/max LENGTH(subject) por pasta; indica verbosidade
-4. **search** — `GET /search/index/segments/stdev` — desvio padrão de num_docs e disk_bytes entre segmentos; medida de desbalanceamento
+1. **calendar** — `GET /calendars/:cal_id/events-by-range/description-stats` — with/without description + avg/max LENGTH(description)
+2. **notifications** — `GET /dlq/stats/by-hour-and-kind?since=&until=` — GROUP BY (hour, kind) ASC; granularidade intra-dia por tipo
+3. **drive** — `GET /drive/files/stats/starred-count` — COUNT arquivos estrelados (starred_at IS NOT NULL); total + por user
+4. **mail** — `GET /mail/messages/stats/priority-by-folder` — COUNT FILTER por prioridade (X-Priority header ou campo priority)
 
 ---
 
