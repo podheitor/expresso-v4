@@ -2135,6 +2135,45 @@ pub async fn segment_compaction_ratio(
     Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-bytes-ratio-min — valor mínimo de (num_docs/disk_bytes) por segmento. Sprint #1128.
+pub async fn segment_docs_bytes_ratio_min(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_bytes_ratio_min": null, "segment_count": 0}));
+    }
+    let min_ratio = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, nd, db)| *nd as f64 / *db as f64)
+        .fold(f64::INFINITY, f64::min);
+    let val = if min_ratio == f64::INFINITY { serde_json::Value::Null } else { serde_json::json!(min_ratio) };
+    Json(serde_json::json!({"segment_count": n, "docs_bytes_ratio_min": val}))
+}
+
+/// GET /api/v1/search/index/segments/docs-bytes-ratio-mean — média de (num_docs/disk_bytes) por segmento. Sprint #1133.
+pub async fn segment_docs_bytes_ratio_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_bytes_ratio_mean": null, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, nd, db)| *nd as f64 / *db as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        serde_json::json!(mean)
+    };
+    Json(serde_json::json!({"segment_count": n, "docs_bytes_ratio_mean": val}))
+}
+
 /// GET /api/v1/search/index/segments/large-docs-ratio — fração de num_docs do maior segmento vs total. Sprint #1118.
 pub async fn segment_large_docs_ratio(
     State(store): State<IndexStore>,
