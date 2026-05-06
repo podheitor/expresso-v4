@@ -2135,6 +2135,51 @@ pub async fn segment_compaction_ratio(
     Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-bytes-ratio-stdev — stdev de (num_docs/disk_bytes) por segmento. Sprint #1138.
+pub async fn segment_docs_bytes_ratio_stdev(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_bytes_ratio_stdev": null, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, nd, db)| *nd as f64 / *db as f64)
+        .collect();
+    let val = if ratios.len() < 2 {
+        serde_json::Value::Null
+    } else {
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        let variance = ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / (ratios.len() - 1) as f64;
+        serde_json::json!(variance.sqrt())
+    };
+    Json(serde_json::json!({"segment_count": n, "docs_bytes_ratio_stdev": val}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-mean — média de disk_bytes/num_docs por segmento. Sprint #1143.
+pub async fn segment_bytes_per_doc_mean(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_mean": null, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        serde_json::json!(mean)
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_mean": val}))
+}
+
 /// GET /api/v1/search/index/segments/docs-bytes-ratio-min — valor mínimo de (num_docs/disk_bytes) por segmento. Sprint #1128.
 pub async fn segment_docs_bytes_ratio_min(
     State(store): State<IndexStore>,

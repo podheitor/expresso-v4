@@ -136,6 +136,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/sent-by-month",             get(sent_by_month_stats))
         .route("/mail/messages/stats/read-by-month",             get(read_by_month_stats))
         .route("/mail/messages/stats/starred-by-month",          get(starred_by_month_stats))
+        .route("/mail/messages/stats/subject-length-by-month",   get(subject_length_by_month_stats))
+        .route("/mail/messages/stats/bcc-count-by-month",        get(bcc_count_by_month_stats))
         .route("/mail/messages/stats/body-size-by-month",        get(body_size_by_month_stats))
         .route("/mail/messages/stats/attachment-by-month",       get(attachment_by_month_stats))
         .route("/mail/messages/stats/flagged-by-month",          get(flagged_by_month_stats))
@@ -5353,6 +5355,78 @@ async fn flagged_by_month_stats(
             let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
             let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"month": month, "month_name": month_name, "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-by-month — AVG/MAX LENGTH(subject) por mês. Sprint #1137.
+async fn subject_length_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            AVG(LENGTH(m.subject))::FLOAT8 AS avg_subject_length, \
+            MAX(LENGTH(m.subject))::BIGINT AS max_subject_length \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.subject IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, avg, max)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "avg_subject_length": avg, "max_subject_length": max})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-by-month — COUNT mensagens com bcc_addrs × mês. Sprint #1142.
+async fn bcc_count_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE m.bcc_addrs IS NOT NULL AND m.bcc_addrs <> '{}')::BIGINT AS with_bcc_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, with_bcc, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { with_bcc as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": month_name, "with_bcc_count": with_bcc, "total_count": total, "bcc_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
