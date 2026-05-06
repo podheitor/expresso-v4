@@ -143,6 +143,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flagged-by-month",          get(flagged_by_month_stats))
         .route("/mail/messages/stats/preview-length-by-month",   get(preview_length_by_month_stats))
         .route("/mail/messages/stats/cc-count-by-month",         get(cc_count_by_month_stats))
+        .route("/mail/messages/stats/to-count-by-month",         get(to_count_by_month_stats))
+        .route("/mail/messages/stats/thread-count-by-month",     get(thread_count_by_month_stats))
         .route("/mail/messages/stats/preview-length-by-weekday", get(preview_length_by_weekday_stats))
         .route("/mail/messages/stats/subject-length-by-weekday", get(subject_length_by_weekday_stats))
         .route("/mail/messages/stats/to-count-by-weekday",       get(to_count_by_weekday_stats))
@@ -5501,6 +5503,79 @@ async fn cc_count_by_month_stats(
             let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
             let rate = if total > 0 { with_cc as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"month": month, "month_name": month_name, "with_cc_count": with_cc, "total_count": total, "cc_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/to-count-by-month — AVG destinatários (to_addrs) × mês. Sprint #1157.
+async fn to_count_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COALESCE(AVG(jsonb_array_length(m.to_addrs)), 0.0)::FLOAT8 AS avg_to_count, \
+            COALESCE(MAX(jsonb_array_length(m.to_addrs)), 0)::BIGINT AS max_to_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.to_addrs IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, avg_to, max_to, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "avg_to_count": avg_to, "max_to_count": max_to, "total_count": total})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/thread-count-by-month — COUNT threads únicas × mês. Sprint #1162.
+async fn thread_count_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(DISTINCT m.thread_id)::BIGINT AS thread_count, \
+            COUNT(*)::BIGINT AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, threads, messages)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let avg_per_thread = if threads > 0 { messages as f64 / threads as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": month_name, "thread_count": threads, "message_count": messages, "avg_messages_per_thread": avg_per_thread})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

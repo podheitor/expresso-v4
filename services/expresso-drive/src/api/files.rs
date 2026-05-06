@@ -104,6 +104,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-by-month",        get(file_stats_deleted_by_month))
         .route("/api/v1/drive/files/stats/mime-by-month",           get(file_stats_mime_by_month))
         .route("/api/v1/drive/files/stats/version-count-by-month",  get(file_stats_version_count_by_month))
+        .route("/api/v1/drive/files/stats/folder-count-by-month",   get(file_stats_folder_count_by_month))
+        .route("/api/v1/drive/files/stats/name-length-by-month",    get(file_stats_name_length_by_month))
         .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
         .route("/api/v1/drive/files/stats/version-age",             get(file_stats_version_age))
@@ -3473,6 +3475,72 @@ async fn file_stats_version_count_by_month(
         .map(|(month, avg_v, max_v, files)| {
             let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"month": month, "month_name": month_name, "avg_versions": avg_v, "max_versions": max_v, "file_count": files})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-count-by-month — COUNT pastas criadas × mês. Sprint #1156.
+async fn file_stats_folder_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*)::BIGINT AS folder_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'folder' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, count)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "folder_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-by-month — AVG/MAX LENGTH(name) por mês. Sprint #1161.
+async fn file_stats_name_length_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COALESCE(AVG(LENGTH(name)), 0.0)::FLOAT8 AS avg_name_length, \
+            COALESCE(MAX(LENGTH(name)), 0)::BIGINT AS max_name_length, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, avg_len, max_len, count)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "avg_name_length": avg_len, "max_name_length": max_len, "file_count": count})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

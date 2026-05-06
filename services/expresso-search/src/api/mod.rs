@@ -2231,6 +2231,45 @@ pub async fn segment_bytes_per_doc_cv(
     Json(serde_json::json!({"segment_count": n, "bytes_per_doc_cv": val}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-above-p75 — segmentos com disk_bytes acima do P75. Sprint #1158.
+pub async fn segment_bytes_above_p75(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "segment_count": 0, "p75_bytes": null}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes_sorted.sort_unstable();
+    let p75_idx = ((n as f64 * 0.75) as usize).min(n - 1);
+    let p75 = bytes_sorted[p75_idx];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db > p75)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"segment_count": n, "p75_bytes": p75, "above_count": above.len(), "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-median — mediana de disk_bytes dos segmentos. Sprint #1163.
+pub async fn segment_bytes_median(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_median": null, "segment_count": 0}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes_sorted.sort_unstable();
+    let median = if n % 2 == 1 {
+        bytes_sorted[n / 2] as f64
+    } else {
+        (bytes_sorted[n / 2 - 1] + bytes_sorted[n / 2]) as f64 / 2.0
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_median": median}))
+}
+
 /// GET /api/v1/search/index/segments/docs-bytes-ratio-min — valor mínimo de (num_docs/disk_bytes) por segmento. Sprint #1128.
 pub async fn segment_docs_bytes_ratio_min(
     State(store): State<IndexStore>,
