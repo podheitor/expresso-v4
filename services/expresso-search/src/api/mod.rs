@@ -2180,6 +2180,57 @@ pub async fn segment_bytes_per_doc_mean(
     Json(serde_json::json!({"segment_count": n, "bytes_per_doc_mean": val}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-stdev — stdev de disk_bytes/num_docs por segmento. Sprint #1148.
+pub async fn segment_bytes_per_doc_stdev(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_stdev": null, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.len() < 2 {
+        serde_json::Value::Null
+    } else {
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        let variance = ratios.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (ratios.len() - 1) as f64;
+        serde_json::json!(variance.sqrt())
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_stdev": val}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-cv — coeficiente de variação de disk_bytes/num_docs. Sprint #1153.
+pub async fn segment_bytes_per_doc_cv(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_cv": null, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.len() < 2 {
+        serde_json::Value::Null
+    } else {
+        let mean = ratios.iter().sum::<f64>() / ratios.len() as f64;
+        if mean == 0.0 {
+            serde_json::Value::Null
+        } else {
+            let variance = ratios.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (ratios.len() - 1) as f64;
+            let stdev = variance.sqrt();
+            serde_json::json!(stdev / mean)
+        }
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_cv": val}))
+}
+
 /// GET /api/v1/search/index/segments/docs-bytes-ratio-min — valor mínimo de (num_docs/disk_bytes) por segmento. Sprint #1128.
 pub async fn segment_docs_bytes_ratio_min(
     State(store): State<IndexStore>,

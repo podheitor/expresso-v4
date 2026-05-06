@@ -4312,6 +4312,86 @@ async fn dlq_stats_by_minute_and_hour_and_user(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-minute-and-hour-and-tenant — 3D minute×hour×tenant COUNT. Sprint #1145.
+async fn dlq_stats_by_minute_and_hour_and_tenant(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(i32, i32, Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MINUTE  FROM failed_at AT TIME ZONE 'UTC')::INT AS minute_of_hour, \
+            EXTRACT(HOUR    FROM failed_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            tenant_id, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY minute_of_hour, hour_of_day, tenant_id \
+         ORDER BY count DESC",
+    )
+    .bind(since_dt).bind(until_dt)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, h, t, c)| json!({"minute_of_hour": m, "hour_of_day": h, "tenant_id": t, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-day-and-hour-and-user — 3D day×hour×user COUNT. Sprint #1150.
+async fn dlq_stats_by_day_and_hour_and_user(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({"error": "unavailable"})),
+    ))?;
+    let since_dt = q.since.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))
+    }).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| {
+        OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
+            .map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))
+    }).transpose()?;
+
+    let rows: Vec<(i32, i32, Option<uuid::Uuid>, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW  FROM failed_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            EXTRACT(HOUR FROM failed_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            user_id, \
+            COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::timestamptz IS NULL OR failed_at >= $1) \
+           AND ($2::timestamptz IS NULL OR failed_at <  $2) \
+         GROUP BY day_of_week, hour_of_day, user_id \
+         ORDER BY count DESC",
+    )
+    .bind(since_dt).bind(until_dt)
+    .fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, h, u, c)| json!({"day_of_week": d, "hour_of_day": h, "user_id": u, "count": c}))
+        .collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-hour-and-minute-and-user — 3D hour×minute×user COUNT. Sprint #1125.
 async fn dlq_stats_by_hour_and_minute_and_user(
     State(st): State<AppState>,
@@ -5636,6 +5716,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-hour-and-minute-and-user",    get(dlq_stats_by_hour_and_minute_and_user))
         .route("/api/v1/notifications/dlq/stats/by-minute-and-hour-and-kind",   get(dlq_stats_by_minute_and_hour_and_kind))
         .route("/api/v1/notifications/dlq/stats/by-minute-and-hour-and-user",   get(dlq_stats_by_minute_and_hour_and_user))
+        .route("/api/v1/notifications/dlq/stats/by-minute-and-hour-and-tenant", get(dlq_stats_by_minute_and_hour_and_tenant))
+        .route("/api/v1/notifications/dlq/stats/by-day-and-hour-and-user",      get(dlq_stats_by_day_and_hour_and_user))
         .route("/api/v1/notifications/dlq/stats/by-hour-and-minute-and-tenant",  get(dlq_stats_by_hour_and_minute_and_tenant))
         .route("/api/v1/notifications/dlq/stats/by-hour-and-minute-and-kind",    get(dlq_stats_by_hour_and_minute_and_kind))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
