@@ -2636,6 +2636,25 @@ pub async fn segment_docs_cv(State(store): State<IndexStore>) -> Json<serde_json
     Json(serde_json::json!({"mean_docs": mean, "docs_stdev": variance.sqrt(), "docs_cv": cv, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-range — max_bytes − min_bytes amplitude. Sprint #1098.
+pub async fn segment_bytes_range(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_range": null, "segment_count": 0}));
+    }
+    let min = segs.iter().map(|(_, _, db)| *db).min().unwrap_or(0);
+    let max = segs.iter().map(|(_, _, db)| *db).max().unwrap_or(0);
+    Json(serde_json::json!({
+        "segment_count": n,
+        "disk_bytes_min": min,
+        "disk_bytes_max": max,
+        "bytes_range": max.saturating_sub(min),
+    }))
+}
+
 /// GET /api/v1/search/index/segments/bytes-cv — coefficient of variation of disk_bytes (stdev/mean). Sprint #1029.
 pub async fn segment_bytes_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

@@ -145,6 +145,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/created-by-weekday-and-ext",  get(file_stats_created_by_weekday_and_ext))
         .route("/api/v1/drive/files/stats/avg-version-size",            get(file_stats_avg_version_size))
         .route("/api/v1/drive/files/stats/folder-count",                get(file_stats_folder_count))
+        .route("/api/v1/drive/files/stats/starred-by-weekday",          get(file_stats_starred_by_weekday))
         .route("/api/v1/drive/files/stats/deleted-by-weekday",          get(file_stats_deleted_by_weekday))
         .route("/api/v1/drive/files/stats/version-size-by-weekday",     get(file_stats_version_size_by_weekday))
         .route("/api/v1/drive/files/stats/version-count-by-weekday",    get(file_stats_version_count_by_weekday))
@@ -5099,6 +5100,37 @@ async fn file_stats_folder_count(
         "total_folders": total_folders,
         "by_user": by_user_json,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/starred-by-weekday — COUNT arquivos starred × DOW de created_at. Sprint #1096.
+async fn file_stats_starred_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE starred = true)::BIGINT AS starred_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, starred, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": dow, "day_name": day_name, "starred_count": starred, "total_count": total, "starred_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/deleted-by-weekday — COUNT arquivos soft-deleted × DOW de deleted_at. Sprint #1091.

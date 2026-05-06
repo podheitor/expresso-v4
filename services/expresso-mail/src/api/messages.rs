@@ -131,6 +131,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-domain",             get(to_domain_stats))
         .route("/mail/messages/stats/age-by-folder",         get(age_by_folder_stats))
         .route("/mail/messages/stats/flagged-rate-by-folder", get(flagged_rate_by_folder_stats))
+        .route("/mail/messages/stats/body-size-by-weekday",      get(body_size_by_weekday_stats))
         .route("/mail/messages/stats/preview-length-by-weekday", get(preview_length_by_weekday_stats))
         .route("/mail/messages/stats/subject-length-by-weekday", get(subject_length_by_weekday_stats))
         .route("/mail/messages/stats/to-count-by-weekday",       get(to_count_by_weekday_stats))
@@ -5309,6 +5310,39 @@ async fn flagged_rate_by_folder_stats(
                 "flagged_count": flagged,
                 "flagged_rate": rate,
             })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-size-by-weekday — AVG/MAX body_size × DOW. Sprint #1097.
+async fn body_size_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(m.body_size)::FLOAT8 AS avg_body_size, \
+            MAX(m.body_size)::BIGINT AS max_body_size \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.body_size IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, avg, max)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "avg_body_size": avg, "max_body_size": max})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
