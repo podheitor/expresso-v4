@@ -489,6 +489,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_transparency_by_dow),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/recurrence-by-dow",
+            get(events_by_range_recurrence_by_dow),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-location-by-dow",
+            get(events_by_range_has_location_by_dow),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/organizer-top-n",
             get(events_by_range_organizer_top_n),
         )
@@ -4811,6 +4819,86 @@ async fn events_by_range_status_by_hour(
         .map(|(status, hour, count)| serde_json::json!({
             "status": status, "hour_of_day": hour, "event_count": count,
         }))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/recurrence-by-dow — tem rrule × dia-da-semana COUNT. Sprint #1119.
+async fn events_by_range_recurrence_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(bool, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            (rrule IS NOT NULL AND rrule <> '') AS is_recurring, \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY is_recurring, dow \
+          ORDER BY dow ASC, is_recurring DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(recurring, dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"is_recurring": recurring, "dow": dow, "day_name": day_name, "event_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-location-by-dow — tem location × dia-da-semana COUNT. Sprint #1124.
+async fn events_by_range_has_location_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(bool, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            (location IS NOT NULL AND location <> '') AS has_location, \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY has_location, dow \
+          ORDER BY dow ASC, has_location DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(has_loc, dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"has_location": has_loc, "dow": dow, "day_name": day_name, "event_count": count})
+        })
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }

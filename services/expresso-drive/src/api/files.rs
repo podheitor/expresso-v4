@@ -95,6 +95,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/locked-by-user",         get(file_stats_locked_by_user))
         .route("/api/v1/drive/files/stats/created-by-month",        get(file_stats_created_by_month))
         .route("/api/v1/drive/files/stats/modified-by-month",       get(file_stats_modified_by_month))
+        .route("/api/v1/drive/files/stats/starred-by-month",        get(file_stats_starred_by_month))
+        .route("/api/v1/drive/files/stats/versioned-by-month",      get(file_stats_versioned_by_month))
         .route("/api/v1/drive/files/stats/deleted-by-month",        get(file_stats_deleted_by_month))
         .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
@@ -3329,6 +3331,74 @@ async fn file_stats_deleted_by_month(
         .map(|(month, count)| {
             let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"month": month, "month_name": month_name, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/starred-by-month — COUNT arquivos starred por mês (1–12). Sprint #1116.
+async fn file_stats_starred_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE starred = true)::BIGINT AS starred_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, starred, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": month_name, "starred_count": starred, "total_count": total, "starred_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/versioned-by-month — COUNT arquivos com versão > 1 por mês (1–12). Sprint #1121.
+async fn file_stats_versioned_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE version > 1)::BIGINT AS versioned_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, versioned, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { versioned as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": month_name, "versioned_count": versioned, "total_count": total, "versioned_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

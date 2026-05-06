@@ -2135,6 +2135,43 @@ pub async fn segment_compaction_ratio(
     Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/large-docs-ratio — fração de num_docs do maior segmento vs total. Sprint #1118.
+pub async fn segment_large_docs_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"large_docs_ratio": null, "segment_count": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let max_docs = segs.iter().map(|(_, nd, _)| *nd).max().unwrap_or(0);
+    let ratio = if total_docs > 0 { max_docs as f64 / total_docs as f64 } else { 0.0 };
+    Json(serde_json::json!({
+        "segment_count": n,
+        "total_docs": total_docs,
+        "max_docs": max_docs,
+        "large_docs_ratio": ratio,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/docs-bytes-ratio-max — valor máximo de (num_docs/disk_bytes) por segmento. Sprint #1123.
+pub async fn segment_docs_bytes_ratio_max(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_bytes_ratio_max": null, "segment_count": 0}));
+    }
+    let max_ratio = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, nd, db)| *nd as f64 / *db as f64)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let val = if max_ratio == f64::NEG_INFINITY { serde_json::Value::Null } else { serde_json::json!(max_ratio) };
+    Json(serde_json::json!({"segment_count": n, "docs_bytes_ratio_max": val}))
+}
+
 /// GET /api/v1/search/index/segments/large-bytes-ratio — fração de disk_bytes do maior segmento vs total. Sprint #1113.
 pub async fn segment_large_bytes_ratio(
     State(store): State<IndexStore>,
