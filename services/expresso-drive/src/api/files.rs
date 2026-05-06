@@ -108,6 +108,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-by-month",    get(file_stats_name_length_by_month))
         .route("/api/v1/drive/files/stats/name-length-by-weekday",  get(file_stats_name_length_by_weekday))
         .route("/api/v1/drive/files/stats/folder-count-by-weekday", get(file_stats_folder_count_by_weekday))
+        .route("/api/v1/drive/files/stats/locked-by-weekday",       get(file_stats_locked_by_weekday))
+        .route("/api/v1/drive/files/stats/versioned-by-weekday",    get(file_stats_versioned_by_weekday))
         .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
         .route("/api/v1/drive/files/stats/version-age",             get(file_stats_version_age))
@@ -3603,6 +3605,69 @@ async fn file_stats_folder_count_by_weekday(
         .map(|(dow, count)| {
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "folder_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/locked-by-weekday — COUNT arquivos com locked_at × DOW. Sprint #1176.
+async fn file_stats_locked_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM locked_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE locked_at IS NOT NULL)::BIGINT AS locked_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, locked, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { locked as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": dow, "day_name": day_name, "locked_count": locked, "total_count": total, "locked_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/versioned-by-weekday — COUNT arquivos com versões × DOW. Sprint #1181.
+async fn file_stats_versioned_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM f.created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(DISTINCT v.file_id)::BIGINT AS versioned_count, \
+            COUNT(DISTINCT f.id)::BIGINT AS total_count \
+           FROM drive_files f \
+           LEFT JOIN drive_file_versions v ON v.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.kind = 'file' AND f.deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, versioned, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { versioned as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": dow, "day_name": day_name, "versioned_count": versioned, "total_count": total, "versioned_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

@@ -529,6 +529,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_all_day_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/recurrence-by-hour",
+            get(events_by_range_recurrence_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-location-by-hour",
+            get(events_by_range_has_location_by_hour),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/organizer-by-dow",
             get(events_by_range_organizer_by_dow),
         )
@@ -5169,6 +5177,78 @@ async fn events_by_range_all_day_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(all_day, h, count)| serde_json::json!({"hour_of_day": h, "is_all_day": all_day, "event_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/recurrence-by-hour — eventos recorrentes × hora-do-dia. Sprint #1179.
+async fn events_by_range_recurrence_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(bool, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            (rrule IS NOT NULL AND rrule <> '') AS is_recurring, \
+            EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY is_recurring, hour_of_day \
+          ORDER BY hour_of_day ASC, is_recurring ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(recurring, h, count)| serde_json::json!({"hour_of_day": h, "is_recurring": recurring, "event_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-location-by-hour — eventos com location × hora-do-dia. Sprint #1184.
+async fn events_by_range_has_location_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(bool, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            (location IS NOT NULL AND location <> '') AS has_location, \
+            EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY has_location, hour_of_day \
+          ORDER BY hour_of_day ASC, has_location ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(has_loc, h, count)| serde_json::json!({"hour_of_day": h, "has_location": has_loc, "event_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }

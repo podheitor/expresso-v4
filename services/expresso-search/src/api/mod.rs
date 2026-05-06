@@ -2312,6 +2312,36 @@ pub async fn segment_bytes_per_doc_p75(
     Json(serde_json::json!({"segment_count": n, "bytes_per_doc_p75": val}))
 }
 
+/// GET /api/v1/search/index/segments/docs-p25 — percentil 25 de num_docs dos segmentos. Sprint #1178.
+pub async fn segment_docs_p25(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_p25": null, "segment_count": 0}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs_sorted.sort_unstable();
+    let p25_idx = ((n as f64 * 0.25) as usize).min(n - 1);
+    Json(serde_json::json!({"segment_count": n, "docs_p25": docs_sorted[p25_idx]}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-p25 — percentil 25 de disk_bytes dos segmentos. Sprint #1183.
+pub async fn segment_bytes_p25(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p25": null, "segment_count": 0}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes_sorted.sort_unstable();
+    let p25_idx = ((n as f64 * 0.25) as usize).min(n - 1);
+    Json(serde_json::json!({"segment_count": n, "bytes_p25": bytes_sorted[p25_idx]}))
+}
+
 /// GET /api/v1/search/index/segments/docs-bytes-ratio-min — valor mínimo de (num_docs/disk_bytes) por segmento. Sprint #1128.
 pub async fn segment_docs_bytes_ratio_min(
     State(store): State<IndexStore>,

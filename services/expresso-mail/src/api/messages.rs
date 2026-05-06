@@ -147,6 +147,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/thread-count-by-month",     get(thread_count_by_month_stats))
         .route("/mail/messages/stats/flagged-by-weekday",        get(flagged_by_weekday_stats))
         .route("/mail/messages/stats/read-by-weekday",           get(read_by_weekday_stats))
+        .route("/mail/messages/stats/starred-by-weekday",        get(starred_by_weekday_stats))
+        .route("/mail/messages/stats/attachment-count-by-weekday", get(attachment_count_by_weekday_stats))
         .route("/mail/messages/stats/preview-length-by-weekday", get(preview_length_by_weekday_stats))
         .route("/mail/messages/stats/subject-length-by-weekday", get(subject_length_by_weekday_stats))
         .route("/mail/messages/stats/to-count-by-weekday",       get(to_count_by_weekday_stats))
@@ -5170,6 +5172,72 @@ async fn read_by_weekday_stats(
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             let rate = if total > 0 { read as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"dow": dow, "day_name": day_name, "read_count": read, "total_count": total, "read_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/starred-by-weekday — COUNT mensagens starred × DOW. Sprint #1177.
+async fn starred_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.starred = true)::BIGINT AS starred_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, starred, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": dow, "day_name": day_name, "starred_count": starred, "total_count": total, "starred_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-by-weekday — AVG attachment_count × DOW. Sprint #1182.
+async fn attachment_count_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COALESCE(AVG(m.attachment_count), 0.0)::FLOAT8 AS avg_attachment_count, \
+            COALESCE(MAX(m.attachment_count), 0)::BIGINT AS max_attachment_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, avg_att, max_att, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "avg_attachment_count": avg_att, "max_attachment_count": max_att, "total_count": total})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
