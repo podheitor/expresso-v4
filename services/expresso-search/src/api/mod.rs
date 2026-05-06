@@ -3227,6 +3227,52 @@ pub async fn segment_docs_above_p90(
     Json(serde_json::json!({"p90_docs": p90, "above_p90": above, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-p90 — percentil 90 de bytes/doc dos segmentos. Sprint #1233.
+pub async fn segment_bytes_per_doc_p90(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_p90": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let p90_idx = ((ratios.len() as f64 * 0.90) as usize).min(ratios.len() - 1);
+        serde_json::json!(ratios[p90_idx])
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_p90": val}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-p10 — percentil 10 de bytes/doc dos segmentos. Sprint #1228.
+pub async fn segment_bytes_per_doc_p10(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_p10": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let p10_idx = ((ratios.len() as f64 * 0.10) as usize).min(ratios.len() - 1);
+        serde_json::json!(ratios[p10_idx])
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_p10": val}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-p25 — percentil 25 de bytes/doc dos segmentos. Sprint #1223.
 pub async fn segment_bytes_per_doc_p25(
     State(store): State<IndexStore>,

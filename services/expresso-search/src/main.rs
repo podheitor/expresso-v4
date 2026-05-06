@@ -179,6 +179,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/bytes-median",              get(api::segment_bytes_median))
         .route("/api/v1/search/index/segments/docs-median",               get(api::segment_docs_median))
         .route("/api/v1/search/index/segments/bytes-per-doc-p75",         get(api::segment_bytes_per_doc_p75))
+        .route("/api/v1/search/index/segments/bytes-per-doc-p90",         get(api::segment_bytes_per_doc_p90))
+        .route("/api/v1/search/index/segments/bytes-per-doc-p10",         get(api::segment_bytes_per_doc_p10))
         .route("/api/v1/search/index/segments/bytes-per-doc-p25",         get(api::segment_bytes_per_doc_p25))
         .route("/api/v1/search/index/segments/docs-p25",                  get(api::segment_docs_p25))
         .route("/api/v1/search/index/segments/bytes-p25",                 get(api::segment_bytes_p25))
