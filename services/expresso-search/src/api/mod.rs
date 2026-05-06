@@ -2135,6 +2135,41 @@ pub async fn segment_compaction_ratio(
     Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/large-bytes-ratio — fração de disk_bytes do maior segmento vs total. Sprint #1113.
+pub async fn segment_large_bytes_ratio(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"large_bytes_ratio": null, "segment_count": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let max_bytes = segs.iter().map(|(_, _, db)| *db).max().unwrap_or(0);
+    let ratio = if total_bytes > 0 { max_bytes as f64 / total_bytes as f64 } else { 0.0 };
+    Json(serde_json::json!({
+        "segment_count": n,
+        "total_bytes": total_bytes,
+        "max_bytes": max_bytes,
+        "large_bytes_ratio": ratio,
+    }))
+}
+
+/// GET /api/v1/search/index/segments/bottom-n-by-docs — bottom-N segmentos por num_docs. Sprint #1108.
+pub async fn segment_bottom_n_by_docs(
+    State(store): State<IndexStore>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let n = params.get("n").and_then(|v| v.parse::<usize>().ok()).unwrap_or(5).min(100).max(1);
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted: Vec<_> = segs.iter().collect();
+    sorted.sort_by_key(|(_, nd, _)| *nd);
+    let rows: Vec<serde_json::Value> = sorted.into_iter().take(n)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"n": n, "segment_count": segs.len(), "rows": rows}))
+}
+
 /// GET /api/v1/search/index/segments/docs-above-p75 — segmentos com num_docs acima do 75th percentile. Sprint #1103.
 pub async fn segment_docs_above_p75(
     State(store): State<IndexStore>,

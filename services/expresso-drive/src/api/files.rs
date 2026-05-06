@@ -94,6 +94,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/storage-key-coverage",   get(file_stats_storage_key_coverage))
         .route("/api/v1/drive/files/stats/locked-by-user",         get(file_stats_locked_by_user))
         .route("/api/v1/drive/files/stats/created-by-month",        get(file_stats_created_by_month))
+        .route("/api/v1/drive/files/stats/modified-by-month",       get(file_stats_modified_by_month))
+        .route("/api/v1/drive/files/stats/deleted-by-month",        get(file_stats_deleted_by_month))
         .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
         .route("/api/v1/drive/files/stats/version-age",             get(file_stats_version_age))
@@ -3298,6 +3300,71 @@ async fn file_stats_storage_key_coverage(
         "without_storage_key": without_key,
         "coverage_pct":      coverage_pct,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-by-month — COUNT arquivos deletados por mês (1–12). Sprint #1111.
+async fn file_stats_deleted_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM deleted_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, count)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/modified-by-month — COUNT arquivos modificados por mês (1–12). Sprint #1106.
+async fn file_stats_modified_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM updated_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND updated_at IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, count)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/created-by-month — COUNT arquivos criados por mês (1–12). Sprint #1101.
