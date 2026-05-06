@@ -171,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/docs-percentile-band", get(api::segment_docs_percentile_band))
         .route("/api/v1/search/index/segments/size-spread",          get(api::segment_size_spread))
         .route("/api/v1/search/index/segments/compaction-ratio",     get(api::segment_compaction_ratio))
+        .route("/api/v1/search/index/segments/docs-above-p75",        get(api::segment_docs_above_p75))
         .route("/api/v1/search/index/segments/above-p75",            get(api::segment_above_p75))
         .route("/api/v1/search/index/segments/variance",             get(api::segment_variance))
         .route("/api/v1/search/index/segments/docs-floor",           get(api::segment_docs_floor))

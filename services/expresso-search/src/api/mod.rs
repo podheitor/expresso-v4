@@ -2135,6 +2135,28 @@ pub async fn segment_compaction_ratio(
     Json(serde_json::json!({"compaction_ratio": ratio, "total_docs": total_docs, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-above-p75 — segmentos com num_docs acima do 75th percentile. Sprint #1103.
+pub async fn segment_docs_above_p75(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_docs": null, "rows": [], "count_above": 0, "segment_count": 0}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p75_idx = ((n as f64 * 0.75) as usize).saturating_sub(1).min(n - 1);
+    let p75 = sorted_docs[p75_idx];
+    let mut above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd > p75)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    above.sort_by(|a, b| b["num_docs"].as_u64().cmp(&a["num_docs"].as_u64()));
+    let count_above = above.len();
+    Json(serde_json::json!({"p75_docs": p75, "rows": above, "count_above": count_above, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/above-p75 — segmentos com disk_bytes acima do 75th percentile.
 ///
 /// Retorna `{p75_bytes,rows:[{id,num_docs,disk_bytes}],count_above,segment_count}`. Sprint #923.
