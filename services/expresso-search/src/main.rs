@@ -177,6 +177,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/bytes-per-doc-cv",          get(api::segment_bytes_per_doc_cv))
         .route("/api/v1/search/index/segments/bytes-above-p75",           get(api::segment_bytes_above_p75))
         .route("/api/v1/search/index/segments/bytes-median",              get(api::segment_bytes_median))
+        .route("/api/v1/search/index/segments/docs-median",               get(api::segment_docs_median))
+        .route("/api/v1/search/index/segments/bytes-per-doc-p75",         get(api::segment_bytes_per_doc_p75))
         .route("/api/v1/search/index/segments/docs-bytes-ratio-min",      get(api::segment_docs_bytes_ratio_min))
         .route("/api/v1/search/index/segments/docs-bytes-ratio-mean",     get(api::segment_docs_bytes_ratio_mean))
         .route("/api/v1/search/index/segments/large-docs-ratio",         get(api::segment_large_docs_ratio))
