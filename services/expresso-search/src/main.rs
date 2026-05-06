@@ -202,6 +202,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/docs-above-p90",  get(api::segment_docs_above_p90))
         .route("/api/v1/search/index/segments/large-ratio",     get(api::segment_large_ratio))
         .route("/api/v1/search/index/segments/docs-min",        get(api::segment_docs_min))
+        .route("/api/v1/search/index/segments/bytes-min",       get(api::segment_bytes_min))
         .route("/api/v1/search/index/segments/balance-score",      get(api::segment_balance_score))
         .route("/api/v1/search/index/segments/age-index-ratio",   get(api::segment_age_index_ratio))
         .route("/api/v1/search/index/segments/doc-index-ratio",   get(api::segment_doc_index_ratio))

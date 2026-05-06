@@ -145,6 +145,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/created-by-weekday-and-ext",  get(file_stats_created_by_weekday_and_ext))
         .route("/api/v1/drive/files/stats/avg-version-size",            get(file_stats_avg_version_size))
         .route("/api/v1/drive/files/stats/folder-count",                get(file_stats_folder_count))
+        .route("/api/v1/drive/files/stats/version-count-by-weekday",    get(file_stats_version_count_by_weekday))
         .route("/api/v1/drive/files/stats/mime-by-weekday",             get(file_stats_mime_by_weekday))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
@@ -5096,6 +5097,36 @@ async fn file_stats_folder_count(
         "total_folders": total_folders,
         "by_user": by_user_json,
     })))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-by-weekday — COUNT versões criadas × DOW. Sprint #1081.
+async fn file_stats_version_count_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM v.created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS version_count \
+           FROM drive_file_versions v \
+           JOIN drive_files f ON f.id = v.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "version_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/mime-by-weekday — top mime_type × DOW de created_at. Sprint #1076.
