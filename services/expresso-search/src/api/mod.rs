@@ -3487,6 +3487,32 @@ pub async fn segment_avg_docs_per_segment(
     Json(serde_json::json!({"avg_docs_per_segment": avg, "total_docs": total, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-sum — soma total de disk_bytes em todos os segmentos (alias detalhado). Sprint #1258.
+pub async fn segment_bytes_sum(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let n = segs.len();
+    let avg = if n == 0 { 0.0 } else { total as f64 / n as f64 };
+    Json(serde_json::json!({"bytes_sum": total, "segment_count": n, "avg_bytes_per_segment": avg}))
+}
+
+/// GET /api/v1/search/index/segments/docs-bytes-product — produto (num_docs × disk_bytes) por segmento. Sprint #1263.
+pub async fn segment_docs_bytes_product(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let rows: Vec<serde_json::Value> = segs.iter()
+        .map(|(name, nd, db)| {
+            let product = (*nd as u64).saturating_mul(*db);
+            serde_json::json!({"segment": name, "num_docs": nd, "disk_bytes": db, "product": product})
+        })
+        .collect();
+    let total_product: u64 = segs.iter().map(|(_, nd, db)| (*nd as u64).saturating_mul(*db)).sum();
+    Json(serde_json::json!({"segments": rows, "total_product": total_product, "segment_count": segs.len()}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

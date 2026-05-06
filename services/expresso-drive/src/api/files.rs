@@ -181,6 +181,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-by-weekday",             get(file_stats_mime_by_weekday))
         .route("/api/v1/drive/files/stats/modified-by-weekday",        get(file_stats_modified_by_weekday))
         .route("/api/v1/drive/files/stats/file-count-by-hour",         get(file_stats_file_count_by_hour))
+        .route("/api/v1/drive/files/stats/quota-by-weekday",           get(file_stats_quota_by_weekday))
+        .route("/api/v1/drive/files/stats/quota-by-hour",              get(file_stats_quota_by_hour))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -6232,6 +6234,62 @@ async fn file_stats_file_count_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "file_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/quota-by-weekday — SUM/AVG quota_bytes de arquivos × DOW de created_at. Sprint #1256.
+async fn file_stats_quota_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, f64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes, \
+            COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, total, avg)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "total_bytes": total, "avg_bytes": avg})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/quota-by-hour — SUM/AVG quota_bytes de arquivos × hora-do-dia de created_at. Sprint #1261.
+async fn file_stats_quota_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, f64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COALESCE(SUM(size_bytes), 0)::BIGINT AS total_bytes, \
+            COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_bytes \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, total, avg)| serde_json::json!({"hour_of_day": h, "total_bytes": total, "avg_bytes": avg}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

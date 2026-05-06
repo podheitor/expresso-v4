@@ -167,6 +167,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/bcc-count-by-weekday",  get(bcc_count_by_weekday_stats))
         .route("/mail/messages/stats/preview-length-by-hour", get(preview_length_by_hour_stats))
         .route("/mail/messages/stats/thread-count-by-hour",   get(thread_count_by_hour_stats))
+        .route("/mail/messages/stats/unread-by-hour",          get(unread_by_hour_stats))
+        .route("/mail/messages/stats/deleted-by-hour",         get(deleted_by_hour_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5418,6 +5420,62 @@ async fn thread_count_by_hour_stats(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "thread_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/unread-by-hour — COUNT mensagens não lidas × hora-do-dia. Sprint #1257.
+async fn unread_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS unread_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.seen = false \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "unread_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/deleted-by-hour — COUNT mensagens deletadas × hora-do-dia. Sprint #1262.
+async fn deleted_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS deleted_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.deleted_at IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "deleted_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
