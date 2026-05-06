@@ -2817,6 +2817,22 @@ pub async fn segment_bytes_min(
     }
 }
 
+/// GET /api/v1/search/index/segments/docs-max — segmento com maior num_docs. Sprint #1088.
+pub async fn segment_docs_max(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() {
+        return Json(serde_json::json!({"segment": null}));
+    }
+    let max = segs.into_iter().max_by_key(|(_, nd, _)| *nd);
+    if let Some((id, nd, db)) = max {
+        Json(serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+    } else {
+        Json(serde_json::json!({"segment": null}))
+    }
+}
+
 /// GET /api/v1/search/index/segments/docs-min — segmento com menor num_docs. Sprint #1078.
 pub async fn segment_docs_min(
     State(store): State<IndexStore>,
