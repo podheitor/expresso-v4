@@ -3227,6 +3227,38 @@ pub async fn segment_docs_above_p90(
     Json(serde_json::json!({"p90_docs": p90, "above_p90": above, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/total-docs — soma total de num_docs em todos os segmentos. Sprint #1243.
+pub async fn segment_total_docs(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    Json(serde_json::json!({"total_docs": total, "segment_count": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-median — mediana de bytes/doc dos segmentos. Sprint #1238.
+pub async fn segment_bytes_per_doc_median(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_median": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mid = (ratios.len() - 1) / 2;
+        serde_json::json!(ratios[mid])
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_median": val}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-p90 — percentil 90 de bytes/doc dos segmentos. Sprint #1233.
 pub async fn segment_bytes_per_doc_p90(
     State(store): State<IndexStore>,

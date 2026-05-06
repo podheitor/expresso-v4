@@ -154,6 +154,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/unread-by-month",            get(unread_by_month_stats))
         .route("/mail/messages/stats/size-by-hour",               get(size_by_hour_stats))
         .route("/mail/messages/stats/flagged-by-hour",            get(flagged_by_hour_stats))
+        .route("/mail/messages/stats/body-size-by-hour",          get(body_size_by_hour_stats))
+        .route("/mail/messages/stats/subject-length-by-hour",     get(subject_length_by_hour_stats))
         .route("/mail/messages/stats/cc-count-by-hour",           get(cc_count_by_hour_stats))
         .route("/mail/messages/stats/to-count-by-hour",           get(to_count_by_hour_stats))
         .route("/mail/messages/stats/bcc-count-by-hour",          get(bcc_count_by_hour_stats))
@@ -5417,6 +5419,64 @@ async fn flagged_by_hour_stats(
             let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"hour_of_day": h, "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-size-by-hour — AVG/SUM body_size × hora-do-dia. Sprint #1242.
+async fn body_size_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            AVG(m.body_size)::FLOAT8 AS avg_body_size, \
+            COALESCE(SUM(m.body_size), 0)::BIGINT AS total_body_size \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.body_size IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, avg, total)| serde_json::json!({"hour_of_day": h, "avg_body_size": avg, "total_body_size": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-by-hour — AVG/MAX LENGTH(subject) × hora-do-dia. Sprint #1237.
+async fn subject_length_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            AVG(LENGTH(m.subject))::FLOAT8 AS avg_subject_length, \
+            MAX(LENGTH(m.subject))::BIGINT AS max_subject_length \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.subject IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, avg, max)| serde_json::json!({"hour_of_day": h, "avg_subject_length": avg, "max_subject_length": max}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

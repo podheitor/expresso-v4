@@ -115,6 +115,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/locked-by-hour",          get(file_stats_locked_by_hour))
         .route("/api/v1/drive/files/stats/name-length-by-hour",     get(file_stats_name_length_by_hour))
         .route("/api/v1/drive/files/stats/mime-by-hour",            get(file_stats_mime_by_hour))
+        .route("/api/v1/drive/files/stats/version-size-by-month",        get(file_stats_version_size_by_month))
+        .route("/api/v1/drive/files/stats/version-size-by-hour",         get(file_stats_version_size_by_hour))
         .route("/api/v1/drive/files/stats/folder-count-by-hour",        get(file_stats_folder_count_by_hour))
         .route("/api/v1/drive/files/stats/version-count-by-hour",      get(file_stats_version_count_by_hour))
         .route("/api/v1/drive/files/stats/ext-by-hour",               get(file_stats_ext_by_hour))
@@ -3818,6 +3820,67 @@ async fn file_stats_mime_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, mime, count)| serde_json::json!({"hour_of_day": h, "mime_type": mime.unwrap_or_else(|| "unknown".to_string()), "file_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-size-by-month — AVG/SUM size_bytes de versões × mês. Sprint #1241.
+async fn file_stats_version_size_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM v.created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COALESCE(AVG(v.size_bytes)::BIGINT, 0) AS avg_size_bytes, \
+            COALESCE(SUM(v.size_bytes)::BIGINT, 0) AS total_size_bytes \
+           FROM drive_file_versions v \
+           JOIN drive_files f ON f.id = v.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, avg, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": month_name, "avg_size_bytes": avg, "total_size_bytes": total})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-size-by-hour — AVG/SUM size_bytes de versões × hora-do-dia. Sprint #1236.
+async fn file_stats_version_size_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM v.created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COALESCE(AVG(v.size_bytes)::BIGINT, 0) AS avg_size_bytes, \
+            COALESCE(SUM(v.size_bytes)::BIGINT, 0) AS total_size_bytes \
+           FROM drive_file_versions v \
+           JOIN drive_files f ON f.id = v.file_id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, avg, total)| serde_json::json!({"hour_of_day": h, "avg_size_bytes": avg, "total_size_bytes": total}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
