@@ -151,6 +151,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-by-weekday", get(attachment_count_by_weekday_stats))
         .route("/mail/messages/stats/attachment-count-by-month",  get(attachment_count_by_month_stats))
         .route("/mail/messages/stats/reply-to-by-month",          get(reply_to_by_month_stats))
+        .route("/mail/messages/stats/unread-by-month",            get(unread_by_month_stats))
+        .route("/mail/messages/stats/size-by-hour",               get(size_by_hour_stats))
         .route("/mail/messages/stats/preview-length-by-weekday", get(preview_length_by_weekday_stats))
         .route("/mail/messages/stats/subject-length-by-weekday", get(subject_length_by_weekday_stats))
         .route("/mail/messages/stats/to-count-by-weekday",       get(to_count_by_weekday_stats))
@@ -5313,6 +5315,71 @@ async fn reply_to_by_month_stats(
             let rate = if total > 0 { with_rt as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"month": month, "month_name": month_name, "with_reply_to_count": with_rt, "total_count": total, "reply_to_rate": rate})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/unread-by-month — COUNT mensagens não lidas × mês. Sprint #1197.
+async fn unread_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE m.is_read = FALSE OR m.is_read IS NULL)::BIGINT AS unread_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, unread, total)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { unread as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": month_name, "unread_count": unread, "total_count": total, "unread_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-by-hour — AVG/MAX size × hora-do-dia (received_at). Sprint #1202.
+async fn size_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COALESCE(AVG(m.size), 0.0)::FLOAT8 AS avg_size, \
+            COALESCE(MAX(m.size), 0)::BIGINT AS max_size, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, avg_sz, max_sz, total)| serde_json::json!({"hour_of_day": h, "avg_size": avg_sz, "max_size": max_sz, "total_count": total}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
