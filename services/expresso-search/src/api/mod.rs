@@ -2801,6 +2801,22 @@ pub async fn segment_large_ratio(
     }))
 }
 
+/// GET /api/v1/search/index/segments/bytes-max — segmento com maior disk_bytes. Sprint #1093.
+pub async fn segment_bytes_max(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() {
+        return Json(serde_json::json!({"segment": null}));
+    }
+    let max = segs.into_iter().max_by_key(|(_, _, db)| *db);
+    if let Some((id, nd, db)) = max {
+        Json(serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+    } else {
+        Json(serde_json::json!({"segment": null}))
+    }
+}
+
 /// GET /api/v1/search/index/segments/bytes-min — segmento com menor disk_bytes. Sprint #1083.
 pub async fn segment_bytes_min(
     State(store): State<IndexStore>,
