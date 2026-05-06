@@ -3227,6 +3227,46 @@ pub async fn segment_docs_above_p90(
     Json(serde_json::json!({"p90_docs": p90, "above_p90": above, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-p25 — percentil 25 de bytes/doc dos segmentos. Sprint #1223.
+pub async fn segment_bytes_per_doc_p25(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_p25": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, db)| *db as f64 / *nd as f64)
+        .collect();
+    let val = if ratios.is_empty() {
+        serde_json::Value::Null
+    } else {
+        ratios.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let p25_idx = ((ratios.len() as f64 * 0.25) as usize).min(ratios.len() - 1);
+        serde_json::json!(ratios[p25_idx])
+    };
+    Json(serde_json::json!({"segment_count": n, "bytes_per_doc_p25": val}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-p90-count — contagem numérica de segmentos com num_docs > P90. Sprint #1218.
+pub async fn segment_docs_above_p90_count(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p90_docs": null, "above_p90_count": 0, "segment_count": n}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p90_idx = ((n as f64 - 1.0) * 0.90) as usize;
+    let p90 = sorted_docs[p90_idx.min(n - 1)];
+    let count = segs.iter().filter(|(_, nd, _)| *nd > p90).count();
+    Json(serde_json::json!({"p90_docs": p90, "above_p90_count": count, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/large-ratio — ratio segmentos > mediana disk_bytes / total. Sprint #1070.
 pub async fn segment_large_ratio(
     State(store): State<IndexStore>,

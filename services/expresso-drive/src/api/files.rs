@@ -115,6 +115,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/locked-by-hour",          get(file_stats_locked_by_hour))
         .route("/api/v1/drive/files/stats/name-length-by-hour",     get(file_stats_name_length_by_hour))
         .route("/api/v1/drive/files/stats/mime-by-hour",            get(file_stats_mime_by_hour))
+        .route("/api/v1/drive/files/stats/ext-by-hour",               get(file_stats_ext_by_hour))
+        .route("/api/v1/drive/files/stats/versioned-by-hour",        get(file_stats_versioned_by_hour))
         .route("/api/v1/drive/files/stats/deleted-by-hour",         get(file_stats_deleted_by_hour))
         .route("/api/v1/drive/files/stats/mime-by-ext",             get(file_stats_mime_by_ext))
         .route("/api/v1/drive/files/stats/size-trend-by-day",       get(file_stats_size_trend_by_day))
@@ -3814,6 +3816,61 @@ async fn file_stats_mime_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, mime, count)| serde_json::json!({"hour_of_day": h, "mime_type": mime.unwrap_or_else(|| "unknown".to_string()), "file_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-by-hour — COUNT arquivos por (ext, hora-do-dia). Sprint #1221.
+async fn file_stats_ext_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Query(q):     Query<StatsLimitQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let limit = q.limit.unwrap_or(50).clamp(1, 200);
+
+    let rows: Vec<(Option<String>, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            LOWER(NULLIF(SUBSTRING(name FROM '\\.[^.]*$'), '')) AS ext, \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY ext, hour_of_day \
+          ORDER BY hour_of_day ASC, file_count DESC \
+          LIMIT $2",
+    )
+    .bind(ctx.tenant_id).bind(limit)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, h, count)| serde_json::json!({"ext": ext, "hour_of_day": h, "file_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/versioned-by-hour — COUNT arquivos com versões × hora-do-dia (created_at). Sprint #1216.
+async fn file_stats_versioned_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS versioned_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+            AND version > 1 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "versioned_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
