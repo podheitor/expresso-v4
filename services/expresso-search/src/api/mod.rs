@@ -3464,6 +3464,29 @@ pub async fn search_stats_by_tenant(
     Ok(Json(serde_json::json!({"rows": out})))
 }
 
+/// GET /api/v1/search/index/segments/total-bytes — soma total de disk_bytes em todos os segmentos. Sprint #1248.
+pub async fn segment_total_bytes(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    Json(serde_json::json!({"total_bytes": total, "segment_count": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/avg-docs-per-segment — média de num_docs por segmento. Sprint #1253.
+pub async fn segment_avg_docs_per_segment(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_docs_per_segment": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let avg = total as f64 / n as f64;
+    Json(serde_json::json!({"avg_docs_per_segment": avg, "total_docs": total, "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
