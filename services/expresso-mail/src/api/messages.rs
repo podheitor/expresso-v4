@@ -131,6 +131,7 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/to-domain",             get(to_domain_stats))
         .route("/mail/messages/stats/age-by-folder",         get(age_by_folder_stats))
         .route("/mail/messages/stats/flagged-rate-by-folder", get(flagged_rate_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-by-weekday",  get(bcc_count_by_weekday_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5305,6 +5306,38 @@ async fn flagged_rate_by_folder_stats(
                 "flagged_count": flagged,
                 "flagged_rate": rate,
             })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-by-weekday — COUNT mensagens com bcc_addrs × DOW. Sprint #1077.
+async fn bcc_count_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.bcc_addrs IS NOT NULL AND jsonb_array_length(m.bcc_addrs) > 0)::BIGINT AS with_bcc, \
+            COUNT(*) FILTER (WHERE m.bcc_addrs IS NULL OR jsonb_array_length(m.bcc_addrs) = 0)::BIGINT  AS without_bcc \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, with_bcc, without_bcc)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "with_bcc": with_bcc, "without_bcc": without_bcc})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

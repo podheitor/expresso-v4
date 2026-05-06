@@ -457,6 +457,10 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_location_by_month),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/class-by-hour",
+            get(events_by_range_class_by_hour),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/organizer-top-n",
             get(events_by_range_organizer_top_n),
         )
@@ -4626,6 +4630,44 @@ async fn events_by_range_location_by_month(
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(month, location, count)| serde_json::json!({
             "month": month, "location": location, "event_count": count,
+        }))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/class-by-hour — CLASS × hora-do-dia COUNT. Sprint #1079.
+async fn events_by_range_class_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(String, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            COALESCE(NULLIF(UPPER(classification), ''), 'UNSET') AS class, \
+            EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND dtstart IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY class, hour_of_day \
+          ORDER BY class ASC, hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, hour, count)| serde_json::json!({
+            "class": class, "hour_of_day": hour, "event_count": count,
         }))
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
