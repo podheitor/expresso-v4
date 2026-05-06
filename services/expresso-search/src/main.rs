@@ -230,6 +230,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/avg-docs-per-segment", get(api::segment_avg_docs_per_segment))
         .route("/api/v1/search/index/segments/bytes-sum",             get(api::segment_bytes_sum))
         .route("/api/v1/search/index/segments/docs-bytes-product",    get(api::segment_docs_bytes_product))
+        .route("/api/v1/search/index/segments/bytes-p99",             get(api::segment_bytes_p99))
+        .route("/api/v1/search/index/segments/docs-p99",              get(api::segment_docs_p99))
         .route("/api/v1/search/index/segments/bytes-above-p90", get(api::segment_bytes_above_p90))
         .route("/api/v1/search/index/segments/docs-above-p90",       get(api::segment_docs_above_p90))
         .route("/api/v1/search/index/segments/docs-above-p90-count", get(api::segment_docs_above_p90_count))

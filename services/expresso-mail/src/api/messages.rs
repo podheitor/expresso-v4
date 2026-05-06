@@ -167,8 +167,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/bcc-count-by-weekday",  get(bcc_count_by_weekday_stats))
         .route("/mail/messages/stats/preview-length-by-hour", get(preview_length_by_hour_stats))
         .route("/mail/messages/stats/thread-count-by-hour",   get(thread_count_by_hour_stats))
-        .route("/mail/messages/stats/unread-by-hour",          get(unread_by_hour_stats))
-        .route("/mail/messages/stats/deleted-by-hour",         get(deleted_by_hour_stats))
+        .route("/mail/messages/stats/unread-by-hour",              get(unread_by_hour_stats))
+        .route("/mail/messages/stats/deleted-by-hour",             get(deleted_by_hour_stats))
+        .route("/mail/messages/stats/has-attachments-by-hour",     get(has_attachments_by_hour_stats))
+        .route("/mail/messages/stats/attachment-count-by-hour",    get(attachment_count_by_hour_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5476,6 +5478,62 @@ async fn deleted_by_hour_stats(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "deleted_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-attachments-by-hour — COUNT mensagens com/sem attachments × hora-do-dia. Sprint #1267.
+async fn has_attachments_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*) FILTER (WHERE m.has_attachments = true)::BIGINT AS with_attachments, \
+            COUNT(*) FILTER (WHERE m.has_attachments = false OR m.has_attachments IS NULL)::BIGINT AS without_attachments \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, with_att, without_att)| serde_json::json!({"hour_of_day": h, "with_attachments": with_att, "without_attachments": without_att}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-by-hour — SUM attachment count × hora-do-dia. Sprint #1272.
+async fn attachment_count_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, f64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*) FILTER (WHERE m.has_attachments = true)::BIGINT AS messages_with_attachments, \
+            COUNT(*) FILTER (WHERE m.has_attachments = true)::FLOAT8 / NULLIF(COUNT(*), 0)::FLOAT8 AS attachment_rate \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, msgs_with, rate)| serde_json::json!({"hour_of_day": h, "messages_with_attachments": msgs_with, "attachment_rate": rate}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

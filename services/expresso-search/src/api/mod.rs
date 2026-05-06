@@ -3513,6 +3513,36 @@ pub async fn segment_docs_bytes_product(
     Json(serde_json::json!({"segments": rows, "total_product": total_product, "segment_count": segs.len()}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-p99 — 99th percentile de disk_bytes nos segmentos. Sprint #1268.
+pub async fn segment_bytes_p99(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p99": null, "segment_count": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"bytes_p99": vals[idx], "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-p99 — 99th percentile de num_docs nos segmentos. Sprint #1273.
+pub async fn segment_docs_p99(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_p99": null, "segment_count": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
