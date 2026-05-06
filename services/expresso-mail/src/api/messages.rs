@@ -153,6 +153,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/reply-to-by-month",          get(reply_to_by_month_stats))
         .route("/mail/messages/stats/unread-by-month",            get(unread_by_month_stats))
         .route("/mail/messages/stats/size-by-hour",               get(size_by_hour_stats))
+        .route("/mail/messages/stats/flagged-by-hour",            get(flagged_by_hour_stats))
+        .route("/mail/messages/stats/read-by-hour",               get(read_by_hour_stats))
         .route("/mail/messages/stats/preview-length-by-weekday", get(preview_length_by_weekday_stats))
         .route("/mail/messages/stats/subject-length-by-weekday", get(subject_length_by_weekday_stats))
         .route("/mail/messages/stats/to-count-by-weekday",       get(to_count_by_weekday_stats))
@@ -5380,6 +5382,68 @@ async fn size_by_hour_stats(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, avg_sz, max_sz, total)| serde_json::json!({"hour_of_day": h, "avg_size": avg_sz, "max_size": max_sz, "total_count": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-by-hour — COUNT mensagens flagged × hora-do-dia. Sprint #1207.
+async fn flagged_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*) FILTER (WHERE m.flagged = true)::BIGINT AS flagged_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, flagged, total)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"hour_of_day": h, "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/read-by-hour — COUNT mensagens lidas × hora-do-dia. Sprint #1212.
+async fn read_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*) FILTER (WHERE m.is_read = true)::BIGINT AS read_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, read, total)| {
+            let rate = if total > 0 { read as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"hour_of_day": h, "read_count": read, "total_count": total, "read_rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
