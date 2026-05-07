@@ -283,6 +283,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/zero-size-by-dow",          get(file_stats_zero_size_by_dow))
         .route("/api/v1/drive/files/stats/empty-by-dow",              get(file_stats_empty_by_dow))
         .route("/api/v1/drive/files/stats/starred-size-by-dow",       get(file_stats_starred_size_by_dow))
+        .route("/api/v1/drive/files/stats/locked-size-by-dow",        get(file_stats_locked_size_by_dow))
+        .route("/api/v1/drive/files/stats/trashed-size-by-user",      get(file_stats_trashed_size_by_user))
+        .route("/api/v1/drive/files/stats/shared-size-by-dow",        get(file_stats_shared_size_by_dow))
+        .route("/api/v1/drive/files/stats/locked-size-by-month",      get(file_stats_locked_size_by_month))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -8879,6 +8883,112 @@ async fn file_stats_starred_size_by_dow(
         .map(|(dow, size, cnt)| {
             let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": name, "starred_size_bytes": size, "starred_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/locked-size-by-dow — total size of locked files × DOW. Sprint #1766.
+async fn file_stats_locked_size_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         SUM(size_bytes) FILTER (WHERE locked = true)::BIGINT AS locked_size, \
+         COUNT(*) FILTER (WHERE locked = true)::BIGINT AS locked_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, size, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "locked_size_bytes": size, "locked_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/trashed-size-by-user — total trashed file size × user. Sprint #1771.
+async fn file_stats_trashed_size_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(uuid::Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id, SUM(size_bytes)::BIGINT AS trashed_size, COUNT(*)::BIGINT AS trashed_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND trashed = true \
+         GROUP BY owner_id ORDER BY trashed_size DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, size, cnt)| serde_json::json!({"user_id": uid, "trashed_size_bytes": size, "trashed_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/shared-size-by-dow — total size of shared files × DOW. Sprint #1776.
+async fn file_stats_shared_size_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         SUM(size_bytes) FILTER (WHERE shared = true)::BIGINT AS shared_size, \
+         COUNT(*) FILTER (WHERE shared = true)::BIGINT AS shared_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, size, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "shared_size_bytes": size, "shared_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/locked-size-by-month — total size of locked files × month. Sprint #1781.
+async fn file_stats_locked_size_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+         SUM(size_bytes) FILTER (WHERE locked = true)::BIGINT AS locked_size, \
+         COUNT(*) FILTER (WHERE locked = true)::BIGINT AS locked_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, size, cnt)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "locked_size_bytes": size, "locked_count": cnt})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
