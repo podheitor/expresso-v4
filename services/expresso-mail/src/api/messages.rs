@@ -179,6 +179,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/unread-by-dow",               get(unread_by_dow_stats))
         .route("/mail/messages/stats/deleted-by-dow",              get(deleted_by_dow_stats))
         .route("/mail/messages/stats/in-reply-to-by-dow",          get(in_reply_to_by_dow_stats))
+        .route("/mail/messages/stats/reply-to-by-weekday",         get(reply_to_by_weekday_stats))
+        .route("/mail/messages/stats/in-reply-to-by-weekday",      get(in_reply_to_by_weekday_stats))
         .route("/mail/messages/stats/has-reply-to-by-month",       get(has_reply_to_by_month_stats))
         .route("/mail/messages/stats/has-reply-to-by-dow",         get(has_reply_to_by_dow_stats))
         .route("/mail/messages/stats/in-reply-to-by-month",        get(in_reply_to_by_month_stats))
@@ -5648,6 +5650,72 @@ async fn in_reply_to_by_dow_stats(
             let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
             let rate = if total > 0 { with_irt as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"day_of_week": d, "day_name": day_name, "with_in_reply_to": with_irt, "total_count": total, "reply_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/reply-to-by-weekday — COUNT mensagens com reply_to × dia-da-semana (DOW). Sprint #1372.
+async fn reply_to_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.reply_to IS NOT NULL AND m.reply_to <> '')::BIGINT AS with_reply_to, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, with_rt, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { with_rt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": d, "day_name": day_name, "with_reply_to": with_rt, "total_count": total, "reply_to_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/in-reply-to-by-weekday — COUNT mensagens com in_reply_to × DOW. Sprint #1367.
+async fn in_reply_to_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, with_irt, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { with_irt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": d, "day_name": day_name, "with_in_reply_to": with_irt, "total_count": total, "reply_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

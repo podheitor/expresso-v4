@@ -3638,6 +3638,44 @@ pub async fn segment_bytes_entropy(
     Json(serde_json::json!({"bytes_entropy": entropy, "total_bytes": total, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-herfindahl — índice HHI de concentração de disk_bytes. Sprint #1373.
+pub async fn segment_bytes_herfindahl(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_herfindahl": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"bytes_herfindahl": 0.0, "segment_count": n}));
+    }
+    let hhi: f64 = segs.iter()
+        .map(|(_, _, db)| { let s = *db as f64 / total as f64; s * s })
+        .sum();
+    Json(serde_json::json!({"bytes_herfindahl": hhi, "segment_count": n, "total_bytes": total}))
+}
+
+/// GET /api/v1/search/index/segments/docs-herfindahl — índice HHI de concentração de num_docs. Sprint #1368.
+pub async fn segment_docs_herfindahl(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_herfindahl": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"docs_herfindahl": 0.0, "segment_count": n}));
+    }
+    let hhi: f64 = segs.iter()
+        .map(|(_, nd, _)| { let s = *nd as f64 / total as f64; s * s })
+        .sum();
+    Json(serde_json::json!({"docs_herfindahl": hhi, "segment_count": n, "total_docs": total}))
+}
+
 /// GET /api/v1/search/index/segments/count-gini — coeficiente de Gini combinado (docs+bytes) normalizado. Sprint #1363.
 pub async fn segment_count_gini(
     State(store): State<IndexStore>,
