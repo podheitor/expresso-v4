@@ -192,6 +192,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-count-by-weekday",      get(file_stats_mime_count_by_weekday))
         .route("/api/v1/drive/files/stats/mime-count-by-hour",         get(file_stats_mime_count_by_hour))
         .route("/api/v1/drive/files/stats/ext-count-by-weekday",       get(file_stats_ext_count_by_weekday))
+        .route("/api/v1/drive/files/stats/mime-count-by-month",         get(file_stats_mime_count_by_month))
+        .route("/api/v1/drive/files/stats/ext-count-by-month",          get(file_stats_ext_count_by_month))
         .route("/api/v1/drive/files/stats/shared-by-hour",              get(file_stats_shared_by_hour))
         .route("/api/v1/drive/files/stats/shared-by-weekday",           get(file_stats_shared_by_weekday))
         .route("/api/v1/drive/files/stats/ext-count-by-hour",          get(file_stats_ext_count_by_hour))
@@ -6354,6 +6356,56 @@ async fn file_stats_shared_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "shared_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/mime-count-by-month — COUNT DISTINCT mime_types × mês de created_at. Sprint #1331.
+async fn file_stats_mime_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(DISTINCT mime_type)::BIGINT AS mime_type_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND mime_type IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| serde_json::json!({"month": m, "mime_type_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/ext-count-by-month — COUNT DISTINCT extensões × mês de created_at. Sprint #1326.
+async fn file_stats_ext_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(DISTINCT extension)::BIGINT AS ext_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND extension IS NOT NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| serde_json::json!({"month": m, "ext_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

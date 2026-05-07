@@ -3658,6 +3658,44 @@ pub async fn segment_bytes_skewness(
     Json(serde_json::json!({"bytes_skewness": skewness, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-kurtosis — curtose (excess kurtosis) de disk_bytes nos segmentos. Sprint #1333.
+pub async fn segment_bytes_kurtosis(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"bytes_kurtosis": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    if variance == 0.0 {
+        return Json(serde_json::json!({"bytes_kurtosis": 0.0, "segment_count": n}));
+    }
+    let kurtosis = vals.iter().map(|v| ((v - mean) / variance.sqrt()).powi(4)).sum::<f64>() / n as f64 - 3.0;
+    Json(serde_json::json!({"bytes_kurtosis": kurtosis, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-kurtosis — curtose (excess kurtosis) de num_docs nos segmentos. Sprint #1328.
+pub async fn segment_docs_kurtosis(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"docs_kurtosis": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    if variance == 0.0 {
+        return Json(serde_json::json!({"docs_kurtosis": 0.0, "segment_count": n}));
+    }
+    let kurtosis = vals.iter().map(|v| ((v - mean) / variance.sqrt()).powi(4)).sum::<f64>() / n as f64 - 3.0;
+    Json(serde_json::json!({"docs_kurtosis": kurtosis, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-skewness — assimetria (skewness) de num_docs nos segmentos. Sprint #1318.
 pub async fn segment_docs_skewness(
     State(store): State<IndexStore>,
