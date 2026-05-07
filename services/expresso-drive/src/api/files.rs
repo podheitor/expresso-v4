@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-count-by-mime",        get(file_stats_deleted_count_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-by-mime",         get(file_stats_deleted_size_by_mime))
+        .route("/api/v1/drive/files/stats/version-count-by-kind",        get(file_stats_version_count_by_kind))
+        .route("/api/v1/drive/files/stats/version-avg-by-kind",          get(file_stats_version_avg_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-kind",         get(file_stats_shared_count_by_kind))
         .route("/api/v1/drive/files/stats/shared-size-by-kind",          get(file_stats_shared_size_by_kind))
         .route("/api/v1/drive/files/stats/version-count-by-mime",        get(file_stats_version_count_by_mime))
@@ -10204,6 +10208,65 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-count-by-mime — arquivos deletados por mime_type completo. Sprint #2146.
+async fn file_stats_deleted_count_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown') AS mime_type, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY deleted_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, cnt)| serde_json::json!({"mime_type": mime, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-by-mime — SUM size_bytes de deletados por mime_type. Sprint #2151.
+async fn file_stats_deleted_size_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown') AS mime_type, \
+         SUM(size_bytes)::BIGINT AS deleted_size_bytes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY deleted_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, size, cnt)| serde_json::json!({"mime_type": mime, "deleted_size_bytes": size, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-by-kind — versões totais por categoria MIME. Sprint #2156.
+async fn file_stats_version_count_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(SPLIT_PART(mime_type, '/', 1), 'unknown') AS kind_category, \
+         SUM(version)::BIGINT AS total_versions, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY kind_category ORDER BY total_versions DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kc, versions, cnt)| serde_json::json!({"kind_category": kc, "total_versions": versions, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-avg-by-kind — versão média por categoria MIME. Sprint #2161.
+async fn file_stats_version_avg_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(SPLIT_PART(mime_type, '/', 1), 'unknown') AS kind_category, \
+         AVG(version)::FLOAT AS avg_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY kind_category ORDER BY avg_version DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kc, avg, cnt)| serde_json::json!({"kind_category": kc, "avg_version": avg, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
