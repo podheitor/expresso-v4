@@ -4753,6 +4753,55 @@ pub async fn segment_top_by_docs(State(store): State<IndexStore>) -> Json<serde_
     Json(serde_json::json!({"top_segments": top}))
 }
 
+/// GET /api/v1/search/index/segments/top-segments-by-bytes — top-5 segmentos por disk_bytes. Sprint #1628.
+pub async fn segment_top_by_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| b.2.cmp(&a.2));
+    let top: Vec<serde_json::Value> = sorted.into_iter().take(5)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"top_segments": top}))
+}
+
+/// GET /api/v1/search/index/segments/bottom-segments-by-docs — bottom-5 segmentos por num_docs (menores). Sprint #1633.
+pub async fn segment_bottom_by_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| a.1.cmp(&b.1));
+    let bottom: Vec<serde_json::Value> = sorted.into_iter().take(5)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"bottom_segments": bottom}))
+}
+
+/// GET /api/v1/search/index/segments/bottom-segments-by-bytes — bottom-5 segmentos por disk_bytes (menores). Sprint #1638.
+pub async fn segment_bottom_by_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| a.2.cmp(&b.2));
+    let bottom: Vec<serde_json::Value> = sorted.into_iter().take(5)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"bottom_segments": bottom}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-p50 — segmentos com bytes/doc acima do P50. Sprint #1643.
+pub async fn segment_ratio_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<u64> = segs.iter().filter(|(_, nd, _)| *nd > 0).map(|(_, nd, db)| db / nd).collect();
+    let n = ratios.len();
+    if n == 0 { return Json(serde_json::json!({"p50_ratio": null, "above_count": 0, "segment_count": 0})); }
+    let mut sorted = ratios.clone();
+    sorted.sort_unstable();
+    let p50 = sorted[n / 2];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, db)| *nd > 0 && db / nd > p50)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": db / nd}))
+        .collect();
+    Json(serde_json::json!({"p50_ratio": p50, "above_count": above.len(), "segments": above}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
