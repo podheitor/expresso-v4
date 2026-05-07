@@ -225,6 +225,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/avg-to-by-month",             get(avg_to_by_month_stats))
         .route("/mail/messages/stats/avg-bcc-by-month",            get(avg_bcc_by_month_stats))
         .route("/mail/messages/stats/reply-to-count-by-month",     get(reply_to_count_by_month_stats))
+        .route("/mail/messages/stats/avg-to-by-dow",               get(avg_to_by_dow_stats))
+        .route("/mail/messages/stats/avg-cc-by-dow",               get(avg_cc_by_dow_stats))
+        .route("/mail/messages/stats/avg-bcc-by-dow",              get(avg_bcc_by_dow_stats))
+        .route("/mail/messages/stats/reply-to-count-by-hour",      get(reply_to_count_by_hour_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -8321,6 +8325,89 @@ async fn reply_to_count_by_month_stats(
     const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(m, cnt, total)| { let month_name = MONTH_NAMES.get((m-1) as usize).copied().unwrap_or("Unknown"); serde_json::json!({"month": m, "month_name": month_name, "reply_to_count": cnt, "total": total}) })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-to-by-dow — AVG/MAX jsonb_array_length(to_addrs) × DOW (0=Sun). Sprint #1547.
+async fn avg_to_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(COALESCE(jsonb_array_length(m.to_addrs), 0))::FLOAT8 AS avg_to, \
+            MAX(COALESCE(jsonb_array_length(m.to_addrs), 0))::BIGINT AS max_to \
+           FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, avg, max)| { let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown"); serde_json::json!({"dow": d, "day_name": day_name, "avg_to": avg, "max_to": max}) })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-cc-by-dow — AVG/MAX jsonb_array_length(cc_addrs) × DOW (0=Sun). Sprint #1552.
+async fn avg_cc_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(COALESCE(jsonb_array_length(m.cc_addrs), 0))::FLOAT8 AS avg_cc, \
+            MAX(COALESCE(jsonb_array_length(m.cc_addrs), 0))::BIGINT AS max_cc \
+           FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, avg, max)| { let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown"); serde_json::json!({"dow": d, "day_name": day_name, "avg_cc": avg, "max_cc": max}) })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-bcc-by-dow — AVG/MAX jsonb_array_length(bcc_addrs) × DOW (0=Sun). Sprint #1557.
+async fn avg_bcc_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            AVG(COALESCE(jsonb_array_length(m.bcc_addrs), 0))::FLOAT8 AS avg_bcc, \
+            MAX(COALESCE(jsonb_array_length(m.bcc_addrs), 0))::BIGINT AS max_bcc \
+           FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, avg, max)| { let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown"); serde_json::json!({"dow": d, "day_name": day_name, "avg_bcc": avg, "max_bcc": max}) })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/reply-to-count-by-hour — COUNT mensagens com reply_to não nulo × hora-do-dia. Sprint #1562.
+async fn reply_to_count_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour, \
+            COUNT(*) FILTER (WHERE m.reply_to IS NOT NULL AND m.reply_to <> '')::BIGINT AS reply_to_count, \
+            COUNT(*)::BIGINT AS total \
+           FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 GROUP BY hour ORDER BY hour ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, cnt, total)| serde_json::json!({"hour": h, "reply_to_count": cnt, "total": total}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
