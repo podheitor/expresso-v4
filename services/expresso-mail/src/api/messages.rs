@@ -297,6 +297,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-p75-by-folder",           get(size_p75_by_folder_stats))
         .route("/mail/messages/stats/size-p90-by-folder",           get(size_p90_by_folder_stats))
         .route("/mail/messages/stats/size-histogram-by-tier",       get(size_histogram_by_tier_stats))
+        .route("/mail/messages/stats/size-p95-by-folder",           get(size_p95_by_folder_stats))
+        .route("/mail/messages/stats/size-p99-by-folder",           get(size_p99_by_folder_stats))
+        .route("/mail/messages/stats/size-p10-by-tier",             get(size_p10_by_tier_stats))
+        .route("/mail/messages/stats/size-p25-by-tier",             get(size_p25_by_tier_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -10387,6 +10391,120 @@ async fn size_histogram_by_tier_stats(
     let result: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|(folder, tier, cnt)| serde_json::json!({"folder": folder, "tier": tier, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p95-by-folder — P95 tamanho × pasta. Sprint #1907.
+async fn size_p95_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY m.size)::BIGINT AS p95_size_bytes, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY p95_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, p95, cnt)| serde_json::json!({"folder": folder, "p95_size_bytes": p95, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p99-by-folder — P99 tamanho × pasta. Sprint #1912.
+async fn size_p99_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY m.size)::BIGINT AS p99_size_bytes, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY p99_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, p99, cnt)| serde_json::json!({"folder": folder, "p99_size_bytes": p99, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p10-by-tier — P10 tamanho × tier. Sprint #1917.
+async fn size_p10_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY m.size)::BIGINT AS p10_size_bytes, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p10_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(tier, p10, cnt)| serde_json::json!({"tier": tier, "p10_size_bytes": p10, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p25-by-tier — P25 tamanho × tier. Sprint #1922.
+async fn size_p25_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY m.size)::BIGINT AS p25_size_bytes, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p25_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(tier, p25, cnt)| serde_json::json!({"tier": tier, "p25_size_bytes": p25, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
