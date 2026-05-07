@@ -6372,6 +6372,56 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+pub async fn segment_size_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let p50 = sizes[n / 2];
+    Json(serde_json::json!({"p50_size": p50, "segment_count": n}))
+}
+
+pub async fn segment_size_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let p75 = sizes[3 * n / 4];
+    Json(serde_json::json!({"p75_size": p75, "segment_count": n}))
+}
+
+pub async fn segment_size_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p90_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let p90 = sizes[9 * n / 10];
+    Json(serde_json::json!({"p90_size": p90, "segment_count": n}))
+}
+
+pub async fn segment_ratio_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_ratio": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p50 = ratios[n / 2];
+    Json(serde_json::json!({"p50_ratio": p50, "segment_count": n}))
+}
+
 pub async fn segment_size_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();

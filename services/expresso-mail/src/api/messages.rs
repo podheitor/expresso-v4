@@ -336,6 +336,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/subject-length-p90-by-tier",   get(subject_length_p90_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p75-by-tier",   get(subject_length_p75_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p50-by-tier",   get(subject_length_p50_by_tier_stats))
+        .route("/mail/messages/stats/body-length-p50-by-tier",       get(body_length_p50_by_tier_stats))
+        .route("/mail/messages/stats/body-length-p75-by-tier",       get(body_length_p75_by_tier_stats))
+        .route("/mail/messages/stats/body-length-p90-by-tier",       get(body_length_p90_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-p75-by-tier",   get(recipient_count_p75_by_tier_stats))
         .route("/mail/messages/stats/body-length-avg-by-tier",       get(body_length_avg_by_tier_stats))
         .route("/mail/messages/stats/body-length-p50-by-folder",    get(body_length_p50_by_folder_stats))
         .route("/mail/messages/stats/body-length-p75-by-folder",    get(body_length_p75_by_folder_stats))
@@ -11476,6 +11480,114 @@ async fn subject_length_p50_by_tier_stats(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(tier, p50, cnt)| serde_json::json!({"tier": tier, "p50_subject_length": p50, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-p50-by-tier — P50 comprimento de body × tier de tamanho. Sprint #2127.
+async fn body_length_p50_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(m.body_text))::BIGINT AS p50_body_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p50_body_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p50, cnt)| serde_json::json!({"tier": tier, "p50_body_length": p50, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-p75-by-tier — P75 comprimento de body × tier de tamanho. Sprint #2132.
+async fn body_length_p75_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(m.body_text))::BIGINT AS p75_body_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p75_body_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p75, cnt)| serde_json::json!({"tier": tier, "p75_body_length": p75, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-p90-by-tier — P90 comprimento de body × tier de tamanho. Sprint #2137.
+async fn body_length_p90_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(m.body_text))::BIGINT AS p90_body_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p90_body_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p90, cnt)| serde_json::json!({"tier": tier, "p90_body_length": p90, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-p75-by-tier — P75 destinatários × tier de tamanho. Sprint #2142.
+async fn recipient_count_p75_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         PERCENTILE_CONT(0.75) WITHIN GROUP ( \
+             ORDER BY (COALESCE(jsonb_array_length(m.to_addrs), 0) \
+                     + COALESCE(jsonb_array_length(m.cc_addrs), 0) \
+                     + COALESCE(jsonb_array_length(m.bcc_addrs), 0)) \
+         )::BIGINT AS p75_recipient_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY p75_recipient_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p75, cnt)| serde_json::json!({"tier": tier, "p75_recipient_count": p75, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
