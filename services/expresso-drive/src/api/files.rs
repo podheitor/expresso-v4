@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/shared-count-by-ext",          get(file_stats_shared_count_by_ext))
+        .route("/api/v1/drive/files/stats/shared-size-by-ext",           get(file_stats_shared_size_by_ext))
+        .route("/api/v1/drive/files/stats/version-avg-by-owner",         get(file_stats_version_avg_by_owner))
+        .route("/api/v1/drive/files/stats/version-avg-by-ext",           get(file_stats_version_avg_by_ext))
         .route("/api/v1/drive/files/stats/version-count-by-owner",     get(file_stats_version_count_by_owner))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
@@ -10196,6 +10200,64 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/shared-count-by-ext — número de arquivos compartilhados por extensão. Sprint #2106.
+async fn file_stats_shared_count_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT LOWER(SPLIT_PART(name, '.', -1)) AS ext, COUNT(*)::BIGINT AS shared_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND shared = TRUE \
+         GROUP BY ext ORDER BY shared_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, cnt)| serde_json::json!({"ext": ext, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/shared-size-by-ext — SUM size_bytes de arquivos compartilhados por extensão. Sprint #2111.
+async fn file_stats_shared_size_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(SPLIT_PART(name, '.', -1)) AS ext, \
+         SUM(size_bytes)::BIGINT AS shared_size_bytes, COUNT(*)::BIGINT AS shared_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND shared = TRUE \
+         GROUP BY ext ORDER BY shared_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, size, cnt)| serde_json::json!({"ext": ext, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-avg-by-owner — versão média por owner. Sprint #2116.
+async fn file_stats_version_avg_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, AVG(version)::FLOAT AS avg_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY avg_version DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, avg, cnt)| serde_json::json!({"owner_id": owner, "avg_version": avg, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-avg-by-ext — versão média por extensão. Sprint #2121.
+async fn file_stats_version_avg_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(SPLIT_PART(name, '.', -1)) AS ext, \
+         AVG(version)::FLOAT AS avg_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY avg_version DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, avg, cnt)| serde_json::json!({"ext": ext, "avg_version": avg, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

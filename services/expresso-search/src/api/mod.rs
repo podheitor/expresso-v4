@@ -6372,6 +6372,61 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+pub async fn segment_size_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"iqr_size": null, "segment_count": n}));
+    }
+    let mut sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    sizes.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q1 = sizes[n / 4];
+    let q3 = sizes[3 * n / 4];
+    Json(serde_json::json!({"iqr_size": q3 - q1, "q1_size": q1, "q3_size": q3, "segment_count": n}))
+}
+
+pub async fn segment_size_skew(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"skew_size": null, "segment_count": n}));
+    }
+    let sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = sizes.iter().sum::<f64>() / n as f64;
+    let stddev = (sizes.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let skew = if stddev > 0.0 {
+        sizes.iter().map(|s| ((s - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"skew_size": skew, "mean_size": mean, "stddev_size": stddev, "segment_count": n}))
+}
+
+pub async fn segment_size_kurtosis(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"kurtosis_size": null, "segment_count": n}));
+    }
+    let sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = sizes.iter().sum::<f64>() / n as f64;
+    let stddev = (sizes.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let kurt = if stddev > 0.0 {
+        sizes.iter().map(|s| ((s - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0
+    } else { 0.0 };
+    Json(serde_json::json!({"kurtosis_size": kurt, "mean_size": mean, "stddev_size": stddev, "segment_count": n}))
+}
+
+pub async fn segment_size_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"size_range": null, "segment_count": 0}));
+    }
+    let sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    let min = *sizes.iter().min().unwrap();
+    let max = *sizes.iter().max().unwrap();
+    Json(serde_json::json!({"min_size": min, "max_size": max, "size_range": max.saturating_sub(min), "segment_count": n}))
+}
+
 pub async fn segment_size_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
