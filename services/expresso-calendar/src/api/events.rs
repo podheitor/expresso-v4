@@ -705,6 +705,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_last_modified_by_dow),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/recurring-by-month",
+            get(events_by_range_recurring_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/last-modified-by-month",
+            get(events_by_range_last_modified_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/created-by-month",
             get(events_by_range_created_by_month),
         )
@@ -5882,6 +5890,79 @@ async fn events_by_range_last_modified_by_dow(
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "event_count": count})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/recurring-by-month — COUNT eventos recorrentes × mês de dtstart. Sprint #1324.
+async fn events_by_range_recurring_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE rrule IS NOT NULL AND rrule <> '')::BIGINT AS recurring_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, recurring, total)| {
+            let rate = if total > 0 { recurring as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": m, "recurring_count": recurring, "total_count": total, "recurring_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/last-modified-by-month — COUNT eventos × mês de last_modified. Sprint #1319.
+async fn events_by_range_last_modified_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM last_modified AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND last_modified IS NOT NULL \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| serde_json::json!({"month": m, "event_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }

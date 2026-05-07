@@ -3638,6 +3638,46 @@ pub async fn segment_bytes_entropy(
     Json(serde_json::json!({"bytes_entropy": entropy, "total_bytes": total, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-skewness — assimetria (skewness) de disk_bytes nos segmentos. Sprint #1323.
+pub async fn segment_bytes_skewness(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"bytes_skewness": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let std_dev = variance.sqrt();
+    if std_dev == 0.0 {
+        return Json(serde_json::json!({"bytes_skewness": 0.0, "segment_count": n}));
+    }
+    let skewness = vals.iter().map(|v| ((v - mean) / std_dev).powi(3)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_skewness": skewness, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-skewness — assimetria (skewness) de num_docs nos segmentos. Sprint #1318.
+pub async fn segment_docs_skewness(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"docs_skewness": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let std_dev = variance.sqrt();
+    if std_dev == 0.0 {
+        return Json(serde_json::json!({"docs_skewness": 0.0, "segment_count": n}));
+    }
+    let skewness = vals.iter().map(|v| ((v - mean) / std_dev).powi(3)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"docs_skewness": skewness, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-entropy — entropia de Shannon de bytes/doc. Sprint #1313.
 pub async fn segment_bytes_per_doc_entropy(
     State(store): State<IndexStore>,

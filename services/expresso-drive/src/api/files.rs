@@ -192,6 +192,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-count-by-weekday",      get(file_stats_mime_count_by_weekday))
         .route("/api/v1/drive/files/stats/mime-count-by-hour",         get(file_stats_mime_count_by_hour))
         .route("/api/v1/drive/files/stats/ext-count-by-weekday",       get(file_stats_ext_count_by_weekday))
+        .route("/api/v1/drive/files/stats/shared-by-hour",              get(file_stats_shared_by_hour))
+        .route("/api/v1/drive/files/stats/shared-by-weekday",           get(file_stats_shared_by_weekday))
         .route("/api/v1/drive/files/stats/ext-count-by-hour",          get(file_stats_ext_count_by_hour))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
@@ -6327,6 +6329,56 @@ async fn file_stats_ext_count_by_weekday(
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "ext_count": count})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/shared-by-hour — COUNT arquivos compartilhados × hora-do-dia de shared_at. Sprint #1321.
+async fn file_stats_shared_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM shared_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS shared_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND shared_at IS NOT NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "shared_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/shared-by-weekday — COUNT arquivos compartilhados × DOW de shared_at. Sprint #1316.
+async fn file_stats_shared_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM shared_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS shared_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND shared_at IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, count)| serde_json::json!({"day_of_week": d, "shared_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
