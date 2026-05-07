@@ -3942,6 +3942,46 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-above-p99 — segmentos com num_docs > P99. Sprint #1403.
+pub async fn segment_docs_above_p99(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p99_docs": null, "above_p99": [], "segment_count": n}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p99_idx = ((n as f64 - 1.0) * 0.99) as usize;
+    let p99 = sorted_docs[p99_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd > p99)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p99_docs": p99, "above_p99": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-herfindahl — índice HHI de concentração de (num_docs + disk_bytes). Sprint #1398.
+pub async fn segment_count_herfindahl(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_herfindahl": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| *nd as f64 + *db as f64)
+        .collect();
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"count_herfindahl": 0.0, "segment_count": n}));
+    }
+    let hhi: f64 = vals.iter().map(|&x| { let s = x / total; s * s }).sum();
+    Json(serde_json::json!({"count_herfindahl": hhi, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/count-theil — índice de Theil (T0) de (num_docs + disk_bytes) normalizado por segmento. Sprint #1393.
 pub async fn segment_count_theil(
     State(store): State<IndexStore>,
