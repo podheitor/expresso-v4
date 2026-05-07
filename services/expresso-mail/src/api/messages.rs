@@ -172,7 +172,9 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/has-attachments-by-hour",     get(has_attachments_by_hour_stats))
         .route("/mail/messages/stats/attachment-count-by-hour",    get(attachment_count_by_hour_stats))
         .route("/mail/messages/stats/from-addr-count-by-hour",     get(from_addr_count_by_hour_stats))
-        .route("/mail/messages/stats/sender-domain-by-month",      get(sender_domain_by_month_stats))
+        .route("/mail/messages/stats/from-addr-count-by-month",          get(from_addr_count_by_month_stats))
+        .route("/mail/messages/stats/sender-domain-count-by-hour",       get(sender_domain_count_by_hour_stats))
+        .route("/mail/messages/stats/sender-domain-by-month",            get(sender_domain_by_month_stats))
         .route("/mail/messages/stats/from-addr-by-month",          get(from_addr_by_month_stats))
         .route("/mail/messages/stats/from-addr-by-hour",           get(from_addr_by_hour_stats))
         .route("/mail/messages/stats/sender-domain-by-hour",       get(sender_domain_by_hour_stats))
@@ -7496,6 +7498,68 @@ async fn to_count_by_weekday_stats(
         .map(|(dow, avg, max)| {
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "avg_to_count": avg, "max_to_count": max})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/sender-domain-count-by-hour — COUNT domínios únicos de from_addr × hora. Sprint #1412.
+async fn sender_domain_count_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(DISTINCT LOWER(NULLIF(SPLIT_PART(m.from_addr, '@', 2), '')))::BIGINT AS unique_domain_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.from_addr LIKE '%@%' \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "unique_domain_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/from-addr-count-by-month — COUNT from_addr únicos × mês. Sprint #1407.
+async fn from_addr_count_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(DISTINCT m.from_addr)::BIGINT AS unique_from_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| {
+            let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": m, "month_name": month_name, "unique_from_count": count})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
