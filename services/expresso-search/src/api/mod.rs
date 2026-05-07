@@ -4371,6 +4371,76 @@ pub async fn segment_docs_theil(
     Json(serde_json::json!({"docs_theil": theil, "segment_count": n, "total_docs": total}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-above-p75-count — número de segmentos com disk_bytes > P75. Sprint #1528.
+pub async fn segment_bytes_above_p75_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"p75_bytes": null, "above_p75_count": 0, "segment_count": n}));
+    }
+    let bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    let mut sorted = bytes.clone();
+    sorted.sort_unstable();
+    let p75_idx = ((n as f64 - 1.0) * 0.75) as usize;
+    let p75 = sorted[p75_idx.min(n - 1)];
+    let above_count = bytes.iter().filter(|&&v| v > p75).count();
+    Json(serde_json::json!({"p75_bytes": p75, "above_p75_count": above_count, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-p75 — segmentos com (num_docs+disk_bytes) > P75. Sprint #1533.
+pub async fn segment_count_above_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"p75_count": null, "segments": [], "segment_count": n}));
+    }
+    let scores: Vec<u64> = segs.iter().map(|(_, nd, db)| nd + db).collect();
+    let mut sorted = scores.clone();
+    sorted.sort_unstable();
+    let p75_idx = ((n as f64 - 1.0) * 0.75) as usize;
+    let p75 = sorted[p75_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter().zip(scores.iter())
+        .filter(|(_, &sc)| sc > p75)
+        .map(|((id, nd, db), _)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p75_count": p75, "segments": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-p90 — segmentos com (num_docs+disk_bytes) > P90. Sprint #1538.
+pub async fn segment_count_above_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"p90_count": null, "segments": [], "segment_count": n}));
+    }
+    let scores: Vec<u64> = segs.iter().map(|(_, nd, db)| nd + db).collect();
+    let mut sorted = scores.clone();
+    sorted.sort_unstable();
+    let p90_idx = ((n as f64 - 1.0) * 0.90) as usize;
+    let p90 = sorted[p90_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter().zip(scores.iter())
+        .filter(|(_, &sc)| sc > p90)
+        .map(|((id, nd, db), _)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p90_count": p90, "segments": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-p75-count — número de segmentos acima do P75 de (num_docs+disk_bytes). Sprint #1543.
+pub async fn segment_count_p75_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"p75_count": null, "above_p75_count": 0, "segment_count": n}));
+    }
+    let scores: Vec<u64> = segs.iter().map(|(_, nd, db)| nd + db).collect();
+    let mut sorted = scores.clone();
+    sorted.sort_unstable();
+    let p75_idx = ((n as f64 - 1.0) * 0.75) as usize;
+    let p75 = sorted[p75_idx.min(n - 1)];
+    let above_count = scores.iter().filter(|&&v| v > p75).count();
+    Json(serde_json::json!({"p75_count": p75, "above_p75_count": above_count, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-above-p90-count — número de segmentos com disk_bytes > P90. Sprint #1508.
 pub async fn segment_bytes_above_p90_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
