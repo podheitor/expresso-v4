@@ -245,6 +245,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count-by-dow",              get(cc_count_by_dow_stats))
         .route("/mail/messages/stats/to-count-by-dow",              get(to_count_by_dow_stats))
         .route("/mail/messages/stats/avg-size-by-dow",              get(avg_size_by_dow_stats))
+        .route("/mail/messages/stats/avg-size-by-month",            get(avg_size_by_month_stats))
+        .route("/mail/messages/stats/avg-size-by-hour",             get(avg_size_by_hour_stats))
+        .route("/mail/messages/stats/avg-body-size-by-hour",        get(avg_body_size_by_hour_stats))
+        .route("/mail/messages/stats/avg-body-size-by-weekday",     get(avg_body_size_by_weekday_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -8784,6 +8788,118 @@ async fn avg_size_by_dow_stats(
         let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
         serde_json::json!({"dow": d, "day_name": day_name, "avg_size": avg, "total_size": total})
     }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-size-by-month — AVG size_bytes × month. Sprint #1647.
+async fn avg_size_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+         AVG(COALESCE(m.size_bytes, 0))::FLOAT8 AS avg_size, \
+         MAX(COALESCE(m.size_bytes, 0))::BIGINT AS max_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, avg, max)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "avg_size_bytes": avg, "max_size_bytes": max})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-size-by-hour — AVG size_bytes × hour. Sprint #1652.
+async fn avg_size_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour, \
+         AVG(COALESCE(m.size_bytes, 0))::FLOAT8 AS avg_size, \
+         MAX(COALESCE(m.size_bytes, 0))::BIGINT AS max_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY hour ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(hour, avg, max)| serde_json::json!({"hour": hour, "avg_size_bytes": avg, "max_size_bytes": max}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-body-size-by-hour — AVG body_size × hour. Sprint #1657.
+async fn avg_body_size_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour, \
+         AVG(COALESCE(m.body_size, 0))::FLOAT8 AS avg_body_size, \
+         MAX(COALESCE(m.body_size, 0))::BIGINT AS max_body_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY hour ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(hour, avg, max)| serde_json::json!({"hour": hour, "avg_body_size_bytes": avg, "max_body_size_bytes": max}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/avg-body-size-by-weekday — AVG body_size × DOW. Sprint #1662.
+async fn avg_body_size_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         AVG(COALESCE(m.body_size, 0))::FLOAT8 AS avg_body_size, \
+         MAX(COALESCE(m.body_size, 0))::BIGINT AS max_body_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, avg, max)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "avg_body_size_bytes": avg, "max_body_size_bytes": max})
+        })
+        .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
