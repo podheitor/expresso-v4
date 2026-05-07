@@ -3942,6 +3942,45 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-above-p95 — segmentos com num_docs > P95. Sprint #1433.
+pub async fn segment_docs_above_p95(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 5 {
+        return Json(serde_json::json!({"p95_docs": null, "above_p95": [], "segment_count": n}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p95_idx = ((n as f64 - 1.0) * 0.95) as usize;
+    let p95 = sorted_docs[p95_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd > p95)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p95_docs": p95, "above_p95": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-kurtosis — curtose (excess kurtosis) de (num_docs + disk_bytes). Sprint #1428.
+pub async fn segment_count_kurtosis(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"count_kurtosis": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, db)| *nd as f64 + *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    if variance == 0.0 {
+        return Json(serde_json::json!({"count_kurtosis": 0.0, "segment_count": n}));
+    }
+    let kurtosis = vals.iter().map(|v| ((v - mean) / variance.sqrt()).powi(4)).sum::<f64>() / n as f64 - 3.0;
+    Json(serde_json::json!({"count_kurtosis": kurtosis, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/count-skewness — skewness de (num_docs + disk_bytes) nos segmentos. Sprint #1423.
 pub async fn segment_count_skewness(
     State(store): State<IndexStore>,

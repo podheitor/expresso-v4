@@ -174,7 +174,9 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/from-addr-count-by-hour",     get(from_addr_count_by_hour_stats))
         .route("/mail/messages/stats/from-addr-count-by-month",          get(from_addr_count_by_month_stats))
         .route("/mail/messages/stats/sender-domain-count-by-hour",        get(sender_domain_count_by_hour_stats))
-        .route("/mail/messages/stats/sender-domain-count-by-month",      get(sender_domain_count_by_month_stats))
+        .route("/mail/messages/stats/sender-domain-count-by-month",       get(sender_domain_count_by_month_stats))
+        .route("/mail/messages/stats/sender-domain-count-by-weekday",    get(sender_domain_count_by_weekday_stats))
+        .route("/mail/messages/stats/to-addr-count-by-month",           get(to_addr_count_by_month_stats))
         .route("/mail/messages/stats/from-addr-count-by-weekday",        get(from_addr_count_by_weekday_stats))
         .route("/mail/messages/stats/sender-domain-by-month",            get(sender_domain_by_month_stats))
         .route("/mail/messages/stats/from-addr-by-month",          get(from_addr_by_month_stats))
@@ -7531,6 +7533,73 @@ async fn from_addr_count_by_weekday_stats(
         .map(|(dow, count)| {
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "unique_from_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/to-addr-count-by-month — AVG/SUM recipients (to_addrs) × mês. Sprint #1432.
+async fn to_addr_count_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            AVG(COALESCE(jsonb_array_length(m.to_addrs), 0))::FLOAT8 AS avg_to_count, \
+            SUM(COALESCE(jsonb_array_length(m.to_addrs), 0))::BIGINT AS total_to_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, avg, total)| {
+            let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": m, "month_name": month_name, "avg_to_count": avg, "total_to_count": total})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/sender-domain-count-by-weekday — COUNT domínios únicos de from_addr × DOW. Sprint #1427.
+async fn sender_domain_count_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(DISTINCT LOWER(NULLIF(SPLIT_PART(m.from_addr, '@', 2), '')))::BIGINT AS unique_domain_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.from_addr LIKE '%@%' \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "unique_domain_count": count})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
