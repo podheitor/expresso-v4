@@ -4000,6 +4000,82 @@ async fn dlq_stats_by_second_and_tenant_and_user(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-user-and-minute — 3D tenant×user×minute COUNT. Sprint #1485.
+async fn dlq_stats_by_tenant_and_user_and_minute(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<uuid::Uuid>, i32, i64)> = sqlx::query_as(
+        "SELECT tenant_id, user_id, EXTRACT(MINUTE FROM failed_at AT TIME ZONE 'UTC')::INT AS minute_of_hour, COUNT(*)::BIGINT \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) AND ($2::timestamptz IS NULL OR failed_at < $2) \
+          GROUP BY tenant_id, user_id, minute_of_hour ORDER BY count DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(t, u, m, c)| json!({"tenant_id": t, "user_id": u, "minute_of_hour": m, "count": c})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-user-and-second — 3D tenant×user×second COUNT. Sprint #1490.
+async fn dlq_stats_by_tenant_and_user_and_second(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<uuid::Uuid>, i32, i64)> = sqlx::query_as(
+        "SELECT tenant_id, user_id, EXTRACT(SECOND FROM failed_at AT TIME ZONE 'UTC')::INT AS second_of_minute, COUNT(*)::BIGINT \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) AND ($2::timestamptz IS NULL OR failed_at < $2) \
+          GROUP BY tenant_id, user_id, second_of_minute ORDER BY count DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(t, u, s, c)| json!({"tenant_id": t, "user_id": u, "second_of_minute": s, "count": c})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-and-tenant-and-minute — 3D user×tenant×minute COUNT. Sprint #1495.
+async fn dlq_stats_by_user_and_tenant_and_minute(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<uuid::Uuid>, uuid::Uuid, i32, i64)> = sqlx::query_as(
+        "SELECT user_id, tenant_id, EXTRACT(MINUTE FROM failed_at AT TIME ZONE 'UTC')::INT AS minute_of_hour, COUNT(*)::BIGINT \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) AND ($2::timestamptz IS NULL OR failed_at < $2) \
+          GROUP BY user_id, tenant_id, minute_of_hour ORDER BY count DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(u, t, m, c)| json!({"user_id": u, "tenant_id": t, "minute_of_hour": m, "count": c})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-and-tenant-and-second — 3D user×tenant×second COUNT. Sprint #1500.
+async fn dlq_stats_by_user_and_tenant_and_second(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<uuid::Uuid>, uuid::Uuid, i32, i64)> = sqlx::query_as(
+        "SELECT user_id, tenant_id, EXTRACT(SECOND FROM failed_at AT TIME ZONE 'UTC')::INT AS second_of_minute, COUNT(*)::BIGINT \
+           FROM notification_dlq \
+          WHERE ($1::timestamptz IS NULL OR failed_at >= $1) AND ($2::timestamptz IS NULL OR failed_at < $2) \
+          GROUP BY user_id, tenant_id, second_of_minute ORDER BY count DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(u, t, s, c)| json!({"user_id": u, "tenant_id": t, "second_of_minute": s, "count": c})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-and-minute-and-user — 3D kind×minute×user COUNT. Sprint #1455.
 async fn dlq_stats_by_kind_and_minute_and_user(
     State(st): State<AppState>,
@@ -8348,6 +8424,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-and-second-and-minute",       get(dlq_stats_by_kind_and_second_and_minute))
         .route("/api/v1/notifications/dlq/stats/by-user-and-minute-and-second",       get(dlq_stats_by_user_and_minute_and_second))
         .route("/api/v1/notifications/dlq/stats/by-second-and-tenant-and-user",       get(dlq_stats_by_second_and_tenant_and_user))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-user-and-minute",      get(dlq_stats_by_tenant_and_user_and_minute))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-user-and-second",      get(dlq_stats_by_tenant_and_user_and_second))
+        .route("/api/v1/notifications/dlq/stats/by-user-and-tenant-and-minute",      get(dlq_stats_by_user_and_tenant_and_minute))
+        .route("/api/v1/notifications/dlq/stats/by-user-and-tenant-and-second",      get(dlq_stats_by_user_and_tenant_and_second))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
