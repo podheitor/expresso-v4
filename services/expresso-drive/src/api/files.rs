@@ -331,6 +331,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/count-by-owner",            get(file_stats_count_by_owner))
         .route("/api/v1/drive/files/stats/folder-count-by-owner",     get(file_stats_folder_count_by_owner))
         .route("/api/v1/drive/files/stats/size-avg-by-kind",          get(file_stats_size_avg_by_kind))
+        .route("/api/v1/drive/files/stats/size-avg-by-owner",         get(file_stats_size_avg_by_owner))
+        .route("/api/v1/drive/files/stats/size-avg-by-ext",           get(file_stats_size_avg_by_ext))
+        .route("/api/v1/drive/files/stats/count-by-ext",              get(file_stats_count_by_ext))
+        .route("/api/v1/drive/files/stats/total-size-by-owner",       get(file_stats_total_size_by_owner))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -9912,6 +9916,59 @@ async fn file_stats_size_avg_by_kind(State(state): State<AppState>, ctx: Request
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(kc, avg, cnt)| serde_json::json!({"kind_category": kc, "avg_size_bytes": avg, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-avg-by-owner — AVG size_bytes por owner. Sprint #2006.
+async fn file_stats_size_avg_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, AVG(size_bytes)::BIGINT AS avg_size_bytes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY avg_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, avg, cnt)| serde_json::json!({"owner_id": owner, "avg_size_bytes": avg, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-avg-by-ext — AVG size_bytes por extensão. Sprint #2011.
+async fn file_stats_size_avg_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(LOWER(SPLIT_PART(name, '.', -1)), 'unknown') AS ext, \
+         AVG(size_bytes)::BIGINT AS avg_size_bytes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY avg_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, avg, cnt)| serde_json::json!({"ext": ext, "avg_size_bytes": avg, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-by-ext — número de arquivos por extensão. Sprint #2016.
+async fn file_stats_count_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(LOWER(SPLIT_PART(name, '.', -1)), 'unknown') AS ext, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, cnt)| serde_json::json!({"ext": ext, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/total-size-by-owner — SUM size_bytes por owner. Sprint #2021.
+async fn file_stats_total_size_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, SUM(size_bytes)::BIGINT AS total_size_bytes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY total_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, total, cnt)| serde_json::json!({"owner_id": owner, "total_size_bytes": total, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

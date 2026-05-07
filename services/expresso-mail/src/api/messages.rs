@@ -317,6 +317,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-rate-by-folder",            get(cc_rate_by_folder_stats))
         .route("/mail/messages/stats/bcc-rate-by-folder",           get(bcc_rate_by_folder_stats))
         .route("/mail/messages/stats/forward-rate-by-tier",         get(forward_rate_by_tier_stats))
+        .route("/mail/messages/stats/forward-rate-by-folder",       get(forward_rate_by_folder_stats))
+        .route("/mail/messages/stats/cc-count-by-folder",           get(cc_count_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-by-folder",          get(bcc_count_by_folder_stats))
+        .route("/mail/messages/stats/unread-rate-by-folder",        get(unread_rate_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -11003,6 +11007,96 @@ async fn forward_rate_by_tier_stats(
         .map(|(tier, fwd_cnt, total)| {
             let rate = if total > 0 { fwd_cnt as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"tier": tier, "forward_count": fwd_cnt, "message_count": total, "forward_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/forward-rate-by-folder — taxa de forwards × pasta. Sprint #2007.
+async fn forward_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.subject ILIKE 'Fwd:%' OR m.subject ILIKE 'FW:%')::BIGINT AS forward_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY message_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, fwd_cnt, total)| {
+            let rate = if total > 0 { fwd_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"folder_name": folder, "forward_count": fwd_cnt, "message_count": total, "forward_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count-by-folder — COUNT mensagens com cc × pasta. Sprint #2012.
+async fn cc_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.cc_addrs IS NOT NULL AND array_length(m.cc_addrs, 1) > 0)::BIGINT AS cc_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY cc_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, cc_cnt, total)| serde_json::json!({"folder_name": folder, "cc_count": cc_cnt, "message_count": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-by-folder — COUNT mensagens com bcc × pasta. Sprint #2017.
+async fn bcc_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.bcc_addrs IS NOT NULL AND array_length(m.bcc_addrs, 1) > 0)::BIGINT AS bcc_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY bcc_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, bcc_cnt, total)| serde_json::json!({"folder_name": folder, "bcc_count": bcc_cnt, "message_count": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/unread-rate-by-folder — taxa de não-lidas × pasta. Sprint #2022.
+async fn unread_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.flags IS NULL OR NOT ('\\\\Seen' = ANY(m.flags)))::BIGINT AS unread_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY unread_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, unread_cnt, total)| {
+            let rate = if total > 0 { unread_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"folder_name": folder, "unread_count": unread_cnt, "message_count": total, "unread_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

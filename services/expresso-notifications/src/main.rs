@@ -5828,6 +5828,86 @@ async fn dlq_stats_by_user_and_minute_and_month(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-second-and-month — 3D tenant×second×month COUNT. Sprint #2005.
+async fn dlq_stats_by_tenant_and_second_and_month(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i32, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, EXTRACT(SECOND FROM created_at)::INT AS second, \
+         EXTRACT(MONTH FROM created_at)::INT AS month, COUNT(*)::BIGINT \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id, second, month ORDER BY month, second, tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(t, sec, m, cnt)| json!({"tenant_id": t, "second": sec, "month": m, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-and-second-and-month — 3D user×second×month COUNT. Sprint #2010.
+async fn dlq_stats_by_user_and_second_and_month(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i32, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, EXTRACT(SECOND FROM created_at)::INT AS second, \
+         EXTRACT(MONTH FROM created_at)::INT AS month, COUNT(*)::BIGINT \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id, second, month ORDER BY month, second, user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(u, sec, m, cnt)| json!({"user_id": u, "second": sec, "month": m, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-and-dow-and-month — 3D kind×DOW×month COUNT. Sprint #2015.
+async fn dlq_stats_by_kind_and_dow_and_month(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i32, i64)> = sqlx::query_as(
+        "SELECT kind, EXTRACT(DOW FROM created_at)::INT AS dow, \
+         EXTRACT(MONTH FROM created_at)::INT AS month, COUNT(*)::BIGINT \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind, dow, month ORDER BY month, dow, kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(k, dow, m, cnt)| json!({"kind": k, "dow": dow, "month": m, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-and-dow-and-month — 3D tenant×DOW×month COUNT. Sprint #2020.
+async fn dlq_stats_by_tenant_and_dow_and_month(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i32, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, EXTRACT(DOW FROM created_at)::INT AS dow, \
+         EXTRACT(MONTH FROM created_at)::INT AS month, COUNT(*)::BIGINT \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id, dow, month ORDER BY month, dow, tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(t, dow, m, cnt)| json!({"tenant_id": t, "dow": dow, "month": m, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-and-second-and-month — 3D kind×second×month COUNT. Sprint #2000.
 async fn dlq_stats_by_kind_and_second_and_month(
     State(st): State<AppState>,
@@ -10590,6 +10670,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-minute-and-month",get(dlq_stats_by_tenant_and_minute_and_month))
         .route("/api/v1/notifications/dlq/stats/by-user-and-minute-and-month",  get(dlq_stats_by_user_and_minute_and_month))
         .route("/api/v1/notifications/dlq/stats/by-kind-and-second-and-month",  get(dlq_stats_by_kind_and_second_and_month))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-second-and-month",get(dlq_stats_by_tenant_and_second_and_month))
+        .route("/api/v1/notifications/dlq/stats/by-user-and-second-and-month",  get(dlq_stats_by_user_and_second_and_month))
+        .route("/api/v1/notifications/dlq/stats/by-kind-and-dow-and-month",     get(dlq_stats_by_kind_and_dow_and_month))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-and-dow-and-month",   get(dlq_stats_by_tenant_and_dow_and_month))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
