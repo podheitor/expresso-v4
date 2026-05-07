@@ -3638,6 +3638,52 @@ pub async fn segment_bytes_entropy(
     Json(serde_json::json!({"bytes_entropy": entropy, "total_bytes": total, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-gini — coeficiente de Gini de disk_bytes nos segmentos. Sprint #1353.
+pub async fn segment_bytes_gini(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_gini": null, "segment_count": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"bytes_gini": 0.0, "segment_count": n}));
+    }
+    let gini_num: f64 = vals.iter().enumerate().map(|(i, v)| {
+        (2.0 * (i as f64 + 1.0) - n as f64 - 1.0) * v
+    }).sum();
+    let gini = gini_num / (n as f64 * total);
+    Json(serde_json::json!({"bytes_gini": gini, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-gini — coeficiente de Gini de num_docs nos segmentos. Sprint #1348.
+pub async fn segment_docs_gini(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_gini": null, "segment_count": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"docs_gini": 0.0, "segment_count": n}));
+    }
+    let mut cum_sum = 0.0f64;
+    let gini_num: f64 = vals.iter().enumerate().map(|(i, v)| {
+        cum_sum += v;
+        (2.0 * (i as f64 + 1.0) - n as f64 - 1.0) * v
+    }).sum();
+    let gini = gini_num / (n as f64 * total);
+    Json(serde_json::json!({"docs_gini": gini, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-kurtosis — curtose (excess kurtosis) de bytes/doc nos segmentos. Sprint #1343.
 pub async fn segment_bytes_per_doc_kurtosis(
     State(store): State<IndexStore>,

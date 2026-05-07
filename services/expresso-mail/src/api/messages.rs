@@ -178,6 +178,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/read-by-dow",                 get(read_by_dow_stats))
         .route("/mail/messages/stats/unread-by-dow",               get(unread_by_dow_stats))
         .route("/mail/messages/stats/deleted-by-dow",              get(deleted_by_dow_stats))
+        .route("/mail/messages/stats/in-reply-to-by-dow",          get(in_reply_to_by_dow_stats))
+        .route("/mail/messages/stats/in-reply-to-by-month",        get(in_reply_to_by_month_stats))
         .route("/mail/messages/stats/seen-by-weekday",              get(seen_by_weekday_stats))
         .route("/mail/messages/stats/seen-by-month",                get(seen_by_month_stats))
         .route("/mail/messages/stats/deleted-by-month",             get(deleted_by_month_stats))
@@ -5611,6 +5613,70 @@ async fn has_attachments_by_month_stats(
         .map(|(m, with_att, total)| {
             let rate = if total > 0 { with_att as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"month": m, "with_attachments": with_att, "total_count": total, "attachment_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/in-reply-to-by-dow — COUNT mensagens com in_reply_to × dia-da-semana. Sprint #1352.
+async fn in_reply_to_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY day_of_week \
+          ORDER BY day_of_week ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, with_irt, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { with_irt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"day_of_week": d, "day_name": day_name, "with_in_reply_to": with_irt, "total_count": total, "reply_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/in-reply-to-by-month — COUNT mensagens com in_reply_to × mês. Sprint #1347.
+async fn in_reply_to_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, with_irt, total)| {
+            let rate = if total > 0 { with_irt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": m, "with_in_reply_to": with_irt, "total_count": total, "reply_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

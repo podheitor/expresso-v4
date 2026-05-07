@@ -192,6 +192,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-count-by-weekday",      get(file_stats_mime_count_by_weekday))
         .route("/api/v1/drive/files/stats/mime-count-by-hour",         get(file_stats_mime_count_by_hour))
         .route("/api/v1/drive/files/stats/ext-count-by-weekday",       get(file_stats_ext_count_by_weekday))
+        .route("/api/v1/drive/files/stats/shared-count-by-month",       get(file_stats_shared_count_by_month))
+        .route("/api/v1/drive/files/stats/locked-count-by-month",       get(file_stats_locked_count_by_month))
         .route("/api/v1/drive/files/stats/owner-count-by-month",        get(file_stats_owner_count_by_month))
         .route("/api/v1/drive/files/stats/tag-count-by-month",          get(file_stats_tag_count_by_month))
         .route("/api/v1/drive/files/stats/mime-count-by-month",         get(file_stats_mime_count_by_month))
@@ -6358,6 +6360,64 @@ async fn file_stats_shared_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "shared_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/shared-count-by-month — COUNT arquivos com shared_at × mês de created_at. Sprint #1351.
+async fn file_stats_shared_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE shared_at IS NOT NULL)::BIGINT AS shared_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, shared, total)| {
+            let rate = if total > 0 { shared as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": m, "shared_count": shared, "total_count": total, "share_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/locked-count-by-month — COUNT arquivos com locked_at × mês de created_at. Sprint #1346.
+async fn file_stats_locked_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*) FILTER (WHERE locked_at IS NOT NULL)::BIGINT AS locked_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, locked, total)| {
+            let rate = if total > 0 { locked as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": m, "locked_count": locked, "total_count": total, "lock_rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
