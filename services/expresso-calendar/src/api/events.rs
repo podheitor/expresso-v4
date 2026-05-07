@@ -1456,6 +1456,22 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p75-by-class",
             get(events_by_range_attendee_count_p75_by_class),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p50-by-weekday",
+            get(events_by_range_attendee_count_p50_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p75-by-weekday",
+            get(events_by_range_attendee_count_p75_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p50-by-month",
+            get(events_by_range_attendee_count_p50_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p75-by-month",
+            get(events_by_range_attendee_count_p75_by_month),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -10936,6 +10952,126 @@ async fn events_by_range_attendee_count_p75_by_class(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(class, p75, cnt)| serde_json::json!({"class": class, "p75_attendees": p75, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p50-by-weekday — P50 attendees × DOW. Sprint #2089.
+async fn events_by_range_attendee_count_p50_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS dow, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY jsonb_array_length(attendees))::BIGINT AS p50_attendees, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, p50, cnt)| serde_json::json!({"dow": dow, "p50_attendees": p50, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p75-by-weekday — P75 attendees × DOW. Sprint #2094.
+async fn events_by_range_attendee_count_p75_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS dow, \
+         PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY jsonb_array_length(attendees))::BIGINT AS p75_attendees, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, p75, cnt)| serde_json::json!({"dow": dow, "p75_attendees": p75, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p50-by-month — P50 attendees × mês. Sprint #2099.
+async fn events_by_range_attendee_count_p50_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY jsonb_array_length(attendees))::BIGINT AS p50_attendees, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY month ORDER BY month",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, p50, cnt)| serde_json::json!({"month": month, "p50_attendees": p50, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p75-by-month — P75 attendees × mês. Sprint #2104.
+async fn events_by_range_attendee_count_p75_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+         PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY jsonb_array_length(attendees))::BIGINT AS p75_attendees, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY month ORDER BY month",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, p75, cnt)| serde_json::json!({"month": month, "p75_attendees": p75, "event_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
