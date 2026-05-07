@@ -3575,6 +3575,46 @@ pub async fn segment_size_variance(
     Json(serde_json::json!({"size_variance": variance, "size_mean": mean, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-variance — variância de bytes/doc nos segmentos. Sprint #1298.
+pub async fn segment_bytes_per_doc_variance(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_variance": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| if *nd == 0 { 0.0 } else { *db as f64 / *nd as f64 })
+        .collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_per_doc_variance": variance, "bytes_per_doc_mean": mean, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-entropy — entropia de Shannon de num_docs. Sprint #1303.
+pub async fn segment_docs_entropy(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_entropy": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"docs_entropy": 0.0, "segment_count": n}));
+    }
+    let entropy: f64 = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(_, nd, _)| {
+            let p = *nd as f64 / total as f64;
+            -p * p.ln()
+        })
+        .sum();
+    Json(serde_json::json!({"docs_entropy": entropy, "total_docs": total, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-p99 — 99th percentile de disk_bytes nos segmentos. Sprint #1268.
 pub async fn segment_bytes_p99(
     State(store): State<IndexStore>,
