@@ -721,6 +721,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_has_categories_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-categories-by-weekday",
+            get(events_by_range_has_categories_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/category-count-by-weekday",
+            get(events_by_range_category_count_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/category-count-by-month",
             get(events_by_range_category_count_by_month),
         )
@@ -6169,6 +6177,85 @@ async fn events_by_range_attendee_count_avg_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, avg, count)| serde_json::json!({"hour_of_day": h, "avg_attendee_count": avg, "event_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-categories-by-weekday — eventos com/sem categories × DOW. Sprint #1444.
+async fn events_by_range_has_categories_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE categories IS NOT NULL AND cardinality(categories) > 0)::BIGINT AS with_categories, \
+            COUNT(*) FILTER (WHERE categories IS NULL OR cardinality(categories) = 0)::BIGINT  AS without_categories \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, with_cat, without_cat)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": d, "day_name": day_name, "with_categories": with_cat, "without_categories": without_cat})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/category-count-by-weekday — COUNT DISTINCT categorias × DOW. Sprint #1439.
+async fn events_by_range_category_count_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(DISTINCT cat)::BIGINT AS unique_category_count, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events, unnest(categories) AS cat \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND categories IS NOT NULL AND cardinality(categories) > 0 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, unique_cat, event_count)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": d, "day_name": day_name, "unique_category_count": unique_cat, "event_count": event_count})
+        })
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
 }

@@ -3942,6 +3942,43 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-p95-count — contagem de segmentos acima do P95 de disk_bytes. Sprint #1443.
+pub async fn segment_bytes_p95_count(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 5 {
+        return Json(serde_json::json!({"p95_bytes": null, "above_p95_count": 0, "segment_count": n}));
+    }
+    let mut sorted_bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sorted_bytes.sort_unstable();
+    let p95_idx = ((n as f64 - 1.0) * 0.95) as usize;
+    let p95 = sorted_bytes[p95_idx.min(n - 1)];
+    let above_count = segs.iter().filter(|(_, _, db)| *db > p95).count();
+    Json(serde_json::json!({"p95_bytes": p95, "above_p95_count": above_count, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-above-p95 — segmentos com disk_bytes > P95. Sprint #1438.
+pub async fn segment_bytes_above_p95(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 5 {
+        return Json(serde_json::json!({"p95_bytes": null, "above_p95": [], "segment_count": n}));
+    }
+    let mut sorted_bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sorted_bytes.sort_unstable();
+    let p95_idx = ((n as f64 - 1.0) * 0.95) as usize;
+    let p95 = sorted_bytes[p95_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db > p95)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p95_bytes": p95, "above_p95": above, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-above-p95 — segmentos com num_docs > P95. Sprint #1433.
 pub async fn segment_docs_above_p95(
     State(store): State<IndexStore>,
