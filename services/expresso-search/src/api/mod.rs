@@ -5023,6 +5023,90 @@ pub async fn segment_bytes_below_p50(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"p50_bytes": p50, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/ratio-below-p50 — segments with bytes/doc <= P50 ratio. Sprint #1708.
+pub async fn segment_ratio_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<(usize, u64)> = segs.iter().enumerate()
+        .filter(|(_, (_, nd, _))| *nd > 0)
+        .map(|(i, (_, nd, db))| (i, db / nd))
+        .collect();
+    let n = ratios.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut sorted_ratios: Vec<u64> = ratios.iter().map(|(_, r)| *r).collect();
+    sorted_ratios.sort_unstable();
+    let p50 = sorted_ratios[n / 2];
+    let below: Vec<serde_json::Value> = ratios.iter()
+        .filter(|(_, r)| *r <= p50)
+        .map(|(i, r)| {
+            let (id, nd, db) = &segs[*i];
+            serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r})
+        })
+        .collect();
+    Json(serde_json::json!({"p50_ratio": p50, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/docs-below-p75 — segments with num_docs <= P75. Sprint #1713.
+pub async fn segment_docs_below_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_docs": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p75 = docs[(n * 3) / 4];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd <= p75)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p75_docs": p75, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-below-p75 — segments with disk_bytes <= P75. Sprint #1718.
+pub async fn segment_bytes_below_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p75 = bytes[(n * 3) / 4];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= p75)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p75_bytes": p75, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-below-p75 — segments with bytes/doc <= P75 ratio. Sprint #1723.
+pub async fn segment_ratio_below_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<(usize, u64)> = segs.iter().enumerate()
+        .filter(|(_, (_, nd, _))| *nd > 0)
+        .map(|(i, (_, nd, db))| (i, db / nd))
+        .collect();
+    let n = ratios.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut sorted_ratios: Vec<u64> = ratios.iter().map(|(_, r)| *r).collect();
+    sorted_ratios.sort_unstable();
+    let p75 = sorted_ratios[(n * 3) / 4];
+    let below: Vec<serde_json::Value> = ratios.iter()
+        .filter(|(_, r)| *r <= p75)
+        .map(|(i, r)| {
+            let (id, nd, db) = &segs[*i];
+            serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r})
+        })
+        .collect();
+    Json(serde_json::json!({"p75_ratio": p75, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

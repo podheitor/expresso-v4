@@ -271,6 +271,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-size-by-dow",       get(file_stats_version_size_by_dow))
         .route("/api/v1/drive/files/stats/starred-by-dow",            get(file_stats_starred_by_dow))
         .route("/api/v1/drive/files/stats/modified-by-dow",           get(file_stats_modified_by_dow))
+        .route("/api/v1/drive/files/stats/deleted-by-dow",            get(file_stats_deleted_by_dow))
+        .route("/api/v1/drive/files/stats/trashed-count-by-user",     get(file_stats_trashed_count_by_user))
+        .route("/api/v1/drive/files/stats/locked-count-by-user",      get(file_stats_locked_count_by_user))
+        .route("/api/v1/drive/files/stats/tag-count-by-user",         get(file_stats_tag_count_by_user))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -8555,6 +8559,100 @@ async fn file_stats_modified_by_dow(
             let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": name, "modified_count": cnt})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/deleted-by-dow — deleted file count × DOW of deleted_at. Sprint #1706.
+async fn file_stats_deleted_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM deleted_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "deleted_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/trashed-count-by-user — trashed file count × user. Sprint #1711.
+async fn file_stats_trashed_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
+        "SELECT owner_id, COUNT(*)::BIGINT AS trashed_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND trashed = true \
+         GROUP BY owner_id ORDER BY trashed_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "trashed_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/locked-count-by-user — locked file count × user. Sprint #1716.
+async fn file_stats_locked_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
+        "SELECT owner_id, COUNT(*)::BIGINT AS locked_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND locked = true AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY locked_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "locked_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/tag-count-by-user — tagged file count × user. Sprint #1721.
+async fn file_stats_tag_count_by_user(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
+        "SELECT owner_id, COUNT(*)::BIGINT AS tagged_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         AND tags IS NOT NULL AND tags <> '[]'::jsonb \
+         GROUP BY owner_id ORDER BY tagged_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, cnt)| serde_json::json!({"user_id": uid, "tagged_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
