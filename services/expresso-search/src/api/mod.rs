@@ -4673,6 +4673,42 @@ pub async fn segment_avg_bytes_per_segment(State(store): State<IndexStore>) -> J
     Json(serde_json::json!({"avg_bytes": avg, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-min — segmento com menor ratio bytes/doc. Sprint #1588.
+pub async fn segment_bytes_per_doc_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() { return Json(serde_json::json!({"segment_id": null, "bytes_per_doc": null})); }
+    let ratios: Vec<(&String, u64)> = segs.iter()
+        .filter(|(_, nd, _)| *nd > 0)
+        .map(|(id, nd, db)| (id, db / nd))
+        .collect();
+    if ratios.is_empty() { return Json(serde_json::json!({"segment_id": null, "bytes_per_doc": null})); }
+    let (id, ratio) = ratios.into_iter().min_by_key(|(_, r)| *r).unwrap();
+    Json(serde_json::json!({"segment_id": id, "bytes_per_doc": ratio}))
+}
+
+/// GET /api/v1/search/index/segments/min-docs — segmento com menor num_docs. Sprint #1593.
+pub async fn segment_min_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() { return Json(serde_json::json!({"segment_id": null, "min_docs": null})); }
+    let (id, min_docs, _) = segs.iter().min_by_key(|(_, nd, _)| nd).unwrap();
+    Json(serde_json::json!({"segment_id": id, "min_docs": min_docs}))
+}
+
+/// GET /api/v1/search/index/segments/min-bytes — segmento com menor disk_bytes. Sprint #1598.
+pub async fn segment_min_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() { return Json(serde_json::json!({"segment_id": null, "min_bytes": null})); }
+    let (id, _, min_bytes) = segs.iter().min_by_key(|(_, _, db)| db).unwrap();
+    Json(serde_json::json!({"segment_id": id, "min_bytes": min_bytes}))
+}
+
+/// GET /api/v1/search/index/segments/total-segment-count — número total de segmentos no índice. Sprint #1603.
+pub async fn segment_total_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    Json(serde_json::json!({"total_segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

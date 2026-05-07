@@ -233,6 +233,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/in-reply-to-count-by-hour",    get(in_reply_to_count_by_hour_stats))
         .route("/mail/messages/stats/in-reply-to-count-by-weekday", get(in_reply_to_count_by_weekday_stats))
         .route("/mail/messages/stats/in-reply-to-count-by-month",   get(in_reply_to_count_by_month_stats))
+        .route("/mail/messages/stats/in-reply-to-count-by-dow",     get(in_reply_to_count_by_dow_stats))
+        .route("/mail/messages/stats/reply-to-count-by-dow",        get(reply_to_count_by_dow_stats))
+        .route("/mail/messages/stats/has-in-reply-to-by-hour",      get(has_in_reply_to_by_hour_stats))
+        .route("/mail/messages/stats/has-in-reply-to-by-weekday",   get(has_in_reply_to_by_weekday_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -8500,6 +8504,94 @@ async fn in_reply_to_count_by_month_stats(
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(m, with_irt, without_irt)| {
         let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
         serde_json::json!({"month": m, "month_name": month_name, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/in-reply-to-count-by-dow — COUNT mensagens com in_reply_to × DOW. Sprint #1587.
+async fn in_reply_to_count_by_dow_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NULL OR m.in_reply_to = '')::BIGINT AS without_in_reply_to \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, with_irt, without_irt)| {
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"dow": d, "day_name": day_name, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/reply-to-count-by-dow — COUNT mensagens com reply_to × DOW. Sprint #1592.
+async fn reply_to_count_by_dow_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.reply_to IS NOT NULL AND m.reply_to <> '')::BIGINT AS with_reply_to, \
+         COUNT(*) FILTER (WHERE m.reply_to IS NULL OR m.reply_to = '')::BIGINT AS without_reply_to \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, with_rt, without_rt)| {
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"dow": d, "day_name": day_name, "with_reply_to": with_rt, "without_reply_to": without_rt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-in-reply-to-by-hour — COUNT mensagens com/sem in_reply_to × hora. Sprint #1597.
+async fn has_in_reply_to_by_hour_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NULL OR m.in_reply_to = '')::BIGINT AS without_in_reply_to \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY hour ORDER BY hour ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, with_irt, without_irt)| serde_json::json!({"hour": h, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-in-reply-to-by-weekday — COUNT mensagens com/sem in_reply_to × DOW (nome). Sprint #1602.
+async fn has_in_reply_to_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NULL OR m.in_reply_to = '')::BIGINT AS without_in_reply_to \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, with_irt, without_irt)| {
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"dow": d, "day_name": day_name, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
