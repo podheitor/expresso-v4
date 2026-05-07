@@ -195,9 +195,11 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/locked-count-by-weekday",     get(file_stats_locked_count_by_weekday))
         .route("/api/v1/drive/files/stats/locked-count-by-hour",        get(file_stats_locked_count_by_hour))
         .route("/api/v1/drive/files/stats/shared-count-by-month",       get(file_stats_shared_count_by_month))
+        .route("/api/v1/drive/files/stats/owner-by-month",              get(file_stats_owner_by_month))
         .route("/api/v1/drive/files/stats/trashed-by-month",            get(file_stats_trashed_by_month))
         .route("/api/v1/drive/files/stats/trashed-by-hour",             get(file_stats_trashed_by_hour))
         .route("/api/v1/drive/files/stats/tag-by-hour",                 get(file_stats_tag_by_hour))
+        .route("/api/v1/drive/files/stats/owner-by-hour",               get(file_stats_owner_by_hour))
         .route("/api/v1/drive/files/stats/trashed-by-weekday",          get(file_stats_trashed_by_weekday))
         .route("/api/v1/drive/files/stats/locked-count-by-month",       get(file_stats_locked_count_by_month))
         .route("/api/v1/drive/files/stats/owner-count-by-month",        get(file_stats_owner_count_by_month))
@@ -6574,6 +6576,39 @@ async fn file_stats_locked_count_by_month(
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
+/// GET /api/v1/drive/files/stats/owner-by-month — COUNT arquivos por (owner_user_id, mês). Sprint #1391.
+async fn file_stats_owner_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            owner_user_id, \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND owner_user_id IS NOT NULL \
+          GROUP BY owner_user_id, month \
+          ORDER BY month ASC, file_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, month, count)| {
+            let month_name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"owner_user_id": owner, "month": month, "month_name": month_name, "file_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
 /// GET /api/v1/drive/files/stats/owner-count-by-month — COUNT DISTINCT owners × mês de created_at. Sprint #1341.
 async fn file_stats_owner_count_by_month(
     State(state): State<AppState>,
@@ -6912,6 +6947,32 @@ async fn file_stats_owner_count_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "owner_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/owner-by-hour — COUNT arquivos por (owner_user_id, hora-do-dia). Sprint #1386.
+async fn file_stats_owner_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(Uuid, i32, i64)> = sqlx::query_as(
+        "SELECT \
+            owner_user_id, \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS file_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL AND owner_user_id IS NOT NULL \
+          GROUP BY owner_user_id, hour_of_day \
+          ORDER BY hour_of_day ASC, file_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, h, count)| serde_json::json!({"owner_user_id": owner, "hour_of_day": h, "file_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

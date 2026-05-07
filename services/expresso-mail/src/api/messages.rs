@@ -171,6 +171,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/deleted-by-hour",             get(deleted_by_hour_stats))
         .route("/mail/messages/stats/has-attachments-by-hour",     get(has_attachments_by_hour_stats))
         .route("/mail/messages/stats/attachment-count-by-hour",    get(attachment_count_by_hour_stats))
+        .route("/mail/messages/stats/from-addr-by-month",          get(from_addr_by_month_stats))
+        .route("/mail/messages/stats/from-addr-by-hour",           get(from_addr_by_hour_stats))
         .route("/mail/messages/stats/sender-domain-by-hour",       get(sender_domain_by_hour_stats))
         .route("/mail/messages/stats/reply-to-by-hour",            get(reply_to_by_hour_stats))
         .route("/mail/messages/stats/has-reply-to-by-hour",        get(has_reply_to_by_hour_stats))
@@ -6140,6 +6142,77 @@ async fn flagged_by_dow_stats(
             let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"day_of_week": d, "day_name": day_name, "flagged_count": flagged, "total_count": total, "rate": rate})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/from-addr-by-month — COUNT mensagens por (from_addr, mês). Sprint #1392.
+async fn from_addr_by_month_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+            m.from_addr, \
+            COUNT(*)::BIGINT AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY month, m.from_addr \
+          ORDER BY month ASC, message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const MONTH_NAMES: [&str; 12] = [
+        "January","February","March","April","May","June",
+        "July","August","September","October","November","December",
+    ];
+    let mut by_month: std::collections::BTreeMap<i32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (month, from_addr, count) in rows {
+        by_month.entry(month).or_default().push(serde_json::json!({"from_addr": from_addr, "message_count": count}));
+    }
+    let result: Vec<serde_json::Value> = by_month.into_iter()
+        .map(|(m, addrs)| {
+            let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": m, "month_name": month_name, "senders": addrs})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/from-addr-by-hour — COUNT mensagens por (from_addr, hora-do-dia). Sprint #1387.
+async fn from_addr_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            m.from_addr, \
+            COUNT(*)::BIGINT AS message_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY hour_of_day, m.from_addr \
+          ORDER BY hour_of_day ASC, message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut by_hour: std::collections::BTreeMap<i32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (hour, from_addr, count) in rows {
+        by_hour.entry(hour).or_default().push(serde_json::json!({"from_addr": from_addr, "message_count": count}));
+    }
+    let result: Vec<serde_json::Value> = by_hour.into_iter()
+        .map(|(h, addrs)| serde_json::json!({"hour_of_day": h, "senders": addrs}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

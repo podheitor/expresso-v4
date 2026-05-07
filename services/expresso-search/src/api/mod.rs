@@ -3942,6 +3942,52 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/count-theil — índice de Theil (T0) de (num_docs + disk_bytes) normalizado por segmento. Sprint #1393.
+pub async fn segment_count_theil(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_theil": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| *nd as f64 + *db as f64)
+        .collect();
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"count_theil": 0.0, "segment_count": n}));
+    }
+    let mean = total / n as f64;
+    let theil: f64 = vals.iter()
+        .map(|&x| if x == 0.0 { 0.0 } else { (x / mean) * (x / mean).ln() })
+        .sum::<f64>() / n as f64;
+    Json(serde_json::json!({"count_theil": theil, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-theil — índice de Theil (T0) do ratio disk_bytes/num_docs. Sprint #1388.
+pub async fn segment_bytes_per_doc_theil(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_theil": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| if *nd == 0 { 0.0 } else { *db as f64 / *nd as f64 })
+        .collect();
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"bytes_per_doc_theil": 0.0, "segment_count": n}));
+    }
+    let mean = total / n as f64;
+    let theil: f64 = vals.iter()
+        .map(|&x| if x == 0.0 { 0.0 } else { (x / mean) * (x / mean).ln() })
+        .sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_per_doc_theil": theil, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-theil — índice de Theil (entropia generalizada T0) de disk_bytes. Sprint #1383.
 pub async fn segment_bytes_theil(
     State(store): State<IndexStore>,
