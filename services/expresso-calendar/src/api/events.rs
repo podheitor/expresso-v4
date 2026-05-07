@@ -1216,6 +1216,22 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events-by-range/categories-p10-by-class",
             get(events_by_range_categories_p10_by_class),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-p25-by-class",
+            get(events_by_range_summary_p25_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-p25-by-class",
+            get(events_by_range_categories_p25_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees-p25-by-class",
+            get(events_by_range_attendees_p25_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-p10-by-class",
+            get(events_by_range_summary_p10_by_class),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -8782,6 +8798,130 @@ async fn events_by_range_categories_p10_by_class(
         .into_iter()
         .map(|(class, p10, cnt)| {
             serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p10_categories_count": p10, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-p25-by-class — P25 summary length × class. Sprint #1789.
+async fn events_by_range_summary_p25_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(COALESCE(summary, '')))::BIGINT AS p25_summary_len, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY class ORDER BY class ASC",
+    )
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(state.db())
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(class, p25, cnt)| {
+            serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p25_summary_len": p25, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-p25-by-class — P25 categories count × class. Sprint #1794.
+async fn events_by_range_categories_p25_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY array_length(categories, 1))::BIGINT AS p25_categories, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY class ORDER BY class ASC",
+    )
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(state.db())
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(class, p25, cnt)| {
+            serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p25_categories_count": p25, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendees-p25-by-class — P25 attendees count × class. Sprint #1799.
+async fn events_by_range_attendees_p25_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY jsonb_array_length(attendees))::BIGINT AS p25_attendees, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY class ORDER BY class ASC",
+    )
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(state.db())
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(class, p25, cnt)| {
+            serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p25_attendees_count": p25, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-p10-by-class — P10 summary length × class. Sprint #1804.
+async fn events_by_range_summary_p10_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(COALESCE(summary, '')))::BIGINT AS p10_summary_len, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY class ORDER BY class ASC",
+    )
+    .bind(cal_id)
+    .bind(q.after)
+    .bind(q.before)
+    .fetch_all(state.db())
+    .await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(class, p10, cnt)| {
+            serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p10_summary_len": p10, "event_count": cnt})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
