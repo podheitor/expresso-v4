@@ -6168,6 +6168,56 @@ pub async fn segment_bytes_per_doc_above_p50(State(store): State<IndexStore>) ->
     Json(serde_json::json!({"p50_ratio": p50, "above_count": above.len(), "segment_count": n, "segments": above}))
 }
 
+pub async fn segment_empty_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let empty: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd == 0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"empty_count": empty.len(), "segment_count": segs.len(), "segments": empty}))
+}
+
+pub async fn segment_singleton_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let singletons: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd == 1)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"singleton_count": singletons.len(), "segment_count": segs.len(), "segments": singletons}))
+}
+
+pub async fn segment_large_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_docs": null, "large_count": 0, "segment_count": 0}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs_sorted.sort_unstable();
+    let p75 = docs_sorted[(n * 75) / 100];
+    let large: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd > p75)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p75_docs": p75, "large_count": large.len(), "segment_count": n, "segments": large}))
+}
+
+pub async fn segment_small_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25_docs": null, "small_count": 0, "segment_count": 0}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs_sorted.sort_unstable();
+    let p25 = docs_sorted[(n * 25) / 100];
+    let small: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd < p25)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p25_docs": p25, "small_count": small.len(), "segment_count": n, "segments": small}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

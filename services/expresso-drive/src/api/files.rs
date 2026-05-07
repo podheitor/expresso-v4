@@ -335,6 +335,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-avg-by-ext",           get(file_stats_size_avg_by_ext))
         .route("/api/v1/drive/files/stats/count-by-ext",              get(file_stats_count_by_ext))
         .route("/api/v1/drive/files/stats/total-size-by-owner",       get(file_stats_total_size_by_owner))
+        .route("/api/v1/drive/files/stats/total-size-by-ext",         get(file_stats_total_size_by_ext))
+        .route("/api/v1/drive/files/stats/total-size-by-kind",        get(file_stats_total_size_by_kind))
+        .route("/api/v1/drive/files/stats/count-by-mime",             get(file_stats_count_by_mime))
+        .route("/api/v1/drive/files/stats/empty-file-count-by-owner", get(file_stats_empty_file_count_by_owner))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -9969,6 +9973,65 @@ async fn file_stats_total_size_by_owner(State(state): State<AppState>, ctx: Requ
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, total, cnt)| serde_json::json!({"owner_id": owner, "total_size_bytes": total, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/total-size-by-ext — SUM size_bytes por extensão. Sprint #2026.
+async fn file_stats_total_size_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(LOWER(SPLIT_PART(name, '.', -1)), 'unknown') AS ext, \
+         SUM(size_bytes)::BIGINT AS total_size_bytes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY total_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, total, cnt)| serde_json::json!({"ext": ext, "total_size_bytes": total, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/total-size-by-kind — SUM size_bytes por mime category. Sprint #2031.
+async fn file_stats_total_size_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(SPLIT_PART(mime_type, '/', 1), 'unknown') AS kind_category, \
+         SUM(size_bytes)::BIGINT AS total_size_bytes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY kind_category ORDER BY total_size_bytes DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kc, total, cnt)| serde_json::json!({"kind_category": kc, "total_size_bytes": total, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-by-mime — número de arquivos por mime_type completo. Sprint #2036.
+async fn file_stats_count_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown') AS mime_type, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, cnt)| serde_json::json!({"mime_type": mime, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-file-count-by-owner — arquivos de tamanho zero por owner. Sprint #2041.
+async fn file_stats_empty_file_count_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT AS empty_file_count, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY empty_file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, empty, total)| {
+            let rate = if total > 0 { empty as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"owner_id": owner, "empty_file_count": empty, "file_count": total, "empty_rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
