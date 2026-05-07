@@ -303,6 +303,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/empty-ratio-by-hour",       get(file_stats_empty_ratio_by_hour))
         .route("/api/v1/drive/files/stats/empty-ratio-by-user",       get(file_stats_empty_ratio_by_user))
         .route("/api/v1/drive/files/stats/empty-ratio-by-weekday",    get(file_stats_empty_ratio_by_weekday))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-ext",        get(file_stats_empty_ratio_by_ext))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-dow",        get(file_stats_empty_ratio_by_dow))
+        .route("/api/v1/drive/files/stats/size-p25-by-user",          get(file_stats_size_p25_by_user))
+        .route("/api/v1/drive/files/stats/size-p10-by-user",          get(file_stats_size_p10_by_user))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -9402,6 +9406,100 @@ async fn file_stats_empty_ratio_by_weekday(
             let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
             serde_json::json!({"day_of_week": dow, "day_name": name, "empty_ratio": ratio})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-ext — ratio empty/total × extension. Sprint #1866.
+async fn file_stats_empty_ratio_by_ext(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(COALESCE(NULLIF(regexp_replace(name, '^.*\\.', ''), name), 'none')) AS ext, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY empty_ratio DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(ext, ratio, total)| serde_json::json!({"extension": ext, "empty_ratio": ratio, "total_count": total}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-dow — ratio empty/total × DOW. Sprint #1871.
+async fn file_stats_empty_ratio_by_dow(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, f64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, ratio)| {
+            let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
+            serde_json::json!({"day_of_week": dow, "day_name": name, "empty_ratio": ratio})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p25-by-user — P25 size_bytes × user. Sprint #1876.
+async fn file_stats_size_p25_by_user(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS user_id, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p25_size_bytes, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY p25_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, p25, cnt)| serde_json::json!({"user_id": uid, "p25_size_bytes": p25, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p10-by-user — P10 size_bytes × user. Sprint #1881.
+async fn file_stats_size_p10_by_user(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS user_id, \
+         PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p10_size_bytes, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY p10_size_bytes DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, p10, cnt)| serde_json::json!({"user_id": uid, "p10_size_bytes": p10, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

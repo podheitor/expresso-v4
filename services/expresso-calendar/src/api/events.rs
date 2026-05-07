@@ -1280,6 +1280,22 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events-by-range/summary-p50-by-weekday",
             get(events_by_range_summary_p50_by_weekday),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-p50-by-month",
+            get(events_by_range_summary_p50_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-p50-by-class",
+            get(events_by_range_categories_p50_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-p50-by-weekday",
+            get(events_by_range_categories_p50_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-p50-by-month",
+            get(events_by_range_categories_p50_by_month),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -9347,6 +9363,115 @@ async fn events_by_range_summary_p50_by_weekday(
         .map(|(dow, p50, cnt)| {
             let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
             serde_json::json!({"day_of_week": dow, "day_name": name, "p50_summary_len": p50, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-p50-by-month — P50 summary length × mês. Sprint #1869.
+async fn events_by_range_summary_p50_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(COALESCE(summary, '')))::BIGINT AS p50_summary_len, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, p50, cnt)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "p50_summary_len": p50, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-p50-by-class — P50 categories count × class. Sprint #1874.
+async fn events_by_range_categories_p50_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY array_length(categories, 1))::BIGINT AS p50_categories, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY class ORDER BY class ASC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, p50, cnt)| serde_json::json!({"class": class.unwrap_or_else(|| "PUBLIC".into()), "p50_categories_count": p50, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-p50-by-weekday — P50 categories count × DOW. Sprint #1879.
+async fn events_by_range_categories_p50_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY array_length(categories, 1))::BIGINT AS p50_categories, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, p50, cnt)| {
+            let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
+            serde_json::json!({"day_of_week": dow, "day_name": name, "p50_categories_count": p50, "event_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-p50-by-month — P50 categories count × mês. Sprint #1884.
+async fn events_by_range_categories_p50_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if q.after >= q.before {
+        return Err(CalendarError::BadRequest("after must be before before".into()));
+    }
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+         PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY array_length(categories, 1))::BIGINT AS p50_categories, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 AND dtstart >= $2 AND dtstart < $3 \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, p50, cnt)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "p50_categories_count": p50, "event_count": cnt})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

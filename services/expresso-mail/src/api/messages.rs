@@ -289,6 +289,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/unread-rate-by-hour",          get(unread_rate_by_hour_stats))
         .route("/mail/messages/stats/unread-rate-by-weekday",       get(unread_rate_by_weekday_stats))
         .route("/mail/messages/stats/flagged-rate-by-month",        get(flagged_rate_by_month_stats))
+        .route("/mail/messages/stats/flagged-rate-by-hour",         get(flagged_rate_by_hour_stats))
+        .route("/mail/messages/stats/flagged-rate-by-weekday",      get(flagged_rate_by_weekday_stats))
+        .route("/mail/messages/stats/size-count-by-tier",           get(size_count_by_tier_stats))
+        .route("/mail/messages/stats/size-histogram",               get(size_histogram_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -10156,6 +10160,120 @@ async fn flagged_rate_by_month_stats(
             let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"month": month, "month_name": MONTH_NAMES[(month as usize).saturating_sub(1).min(11)], "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-hour — taxa flagged × hora. Sprint #1867.
+async fn flagged_rate_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour, \
+         COUNT(*) FILTER (WHERE m.flagged = true)::BIGINT AS flagged_count, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY hour ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(hour, flagged, total)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"hour": hour, "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-weekday — taxa flagged × DOW. Sprint #1872.
+async fn flagged_rate_by_weekday_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.flagged = true)::BIGINT AS flagged_count, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, flagged, total)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"day_of_week": dow, "day_name": DAY_NAMES[dow as usize % 7], "flagged_count": flagged, "total_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-by-tier — COUNT mensagens por faixa de size. Sprint #1877.
+async fn size_count_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT CASE \
+           WHEN size_bytes = 0 THEN 'empty' \
+           WHEN size_bytes < 1024 THEN 'tiny' \
+           WHEN size_bytes < 10240 THEN 'small' \
+           WHEN size_bytes < 102400 THEN 'medium' \
+           WHEN size_bytes < 1048576 THEN 'large' \
+           ELSE 'huge' END AS tier, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY message_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(tier, cnt)| serde_json::json!({"tier": tier, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-histogram — distribuição de tamanhos em buckets de 10KB. Sprint #1882.
+async fn size_histogram_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT (size_bytes / 10240) AS bucket_10kb, COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY bucket_10kb ORDER BY bucket_10kb ASC \
+         LIMIT 100",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(bucket, cnt)| serde_json::json!({"bucket_10kb": bucket, "range_start_bytes": bucket * 10240, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
