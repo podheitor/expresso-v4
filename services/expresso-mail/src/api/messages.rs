@@ -173,6 +173,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-by-hour",    get(attachment_count_by_hour_stats))
         .route("/mail/messages/stats/has-reply-to-by-hour",        get(has_reply_to_by_hour_stats))
         .route("/mail/messages/stats/in-reply-to-by-hour",         get(in_reply_to_by_hour_stats))
+        .route("/mail/messages/stats/starred-by-dow",              get(starred_by_dow_stats))
+        .route("/mail/messages/stats/flagged-by-dow",              get(flagged_by_dow_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5536,6 +5538,72 @@ async fn attachment_count_by_hour_stats(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, msgs_with, rate)| serde_json::json!({"hour_of_day": h, "messages_with_attachments": msgs_with, "attachment_rate": rate}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/starred-by-dow — COUNT mensagens starred × dia-da-semana. Sprint #1287.
+async fn starred_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            COUNT(*) FILTER (WHERE m.starred = true)::BIGINT AS starred_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY day_of_week \
+          ORDER BY day_of_week ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, starred, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"day_of_week": d, "day_name": day_name, "starred_count": starred, "total_count": total, "rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-by-dow — COUNT mensagens flagged × dia-da-semana. Sprint #1292.
+async fn flagged_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            COUNT(*) FILTER (WHERE m.flagged = true)::BIGINT AS flagged_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY day_of_week \
+          ORDER BY day_of_week ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, flagged, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"day_of_week": d, "day_name": day_name, "flagged_count": flagged, "total_count": total, "rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

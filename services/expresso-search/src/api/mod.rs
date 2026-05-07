@@ -3545,6 +3545,36 @@ pub async fn segment_docs_variance(
     Json(serde_json::json!({"docs_variance": variance, "docs_mean": mean, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-variance — variância de disk_bytes nos segmentos. Sprint #1288.
+pub async fn segment_bytes_variance(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_variance": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_variance": variance, "bytes_mean": mean, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-variance — variância combinada de (num_docs + disk_bytes) normalizada. Sprint #1293.
+pub async fn segment_size_variance(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"size_variance": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, db)| (*nd as f64) + (*db as f64)).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"size_variance": variance, "size_mean": mean, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-p99 — 99th percentile de disk_bytes nos segmentos. Sprint #1268.
 pub async fn segment_bytes_p99(
     State(store): State<IndexStore>,

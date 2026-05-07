@@ -187,6 +187,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/shared-count-by-hour",       get(file_stats_shared_count_by_hour))
         .route("/api/v1/drive/files/stats/owner-count-by-weekday",     get(file_stats_owner_count_by_weekday))
         .route("/api/v1/drive/files/stats/owner-count-by-hour",        get(file_stats_owner_count_by_hour))
+        .route("/api/v1/drive/files/stats/tag-count-by-weekday",       get(file_stats_tag_count_by_weekday))
+        .route("/api/v1/drive/files/stats/tag-count-by-hour",          get(file_stats_tag_count_by_hour))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -6292,6 +6294,62 @@ async fn file_stats_shared_count_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "shared_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-count-by-weekday — COUNT tags aplicadas × DOW de created_at do arquivo. Sprint #1286.
+async fn file_stats_tag_count_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM f.created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(t.tag)::BIGINT AS tag_count \
+           FROM drive_files f \
+           JOIN drive_file_tags t ON t.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "tag_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-count-by-hour — COUNT tags aplicadas × hora-do-dia de created_at do arquivo. Sprint #1291.
+async fn file_stats_tag_count_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM f.created_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(t.tag)::BIGINT AS tag_count \
+           FROM drive_files f \
+           JOIN drive_file_tags t ON t.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "tag_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
