@@ -4633,6 +4633,46 @@ pub async fn segment_docs_above_p95_count(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"p95_docs": p95, "above_p95_count": above_count, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-p90-count — número de segmentos acima do P90 de disk_bytes. Sprint #1568.
+pub async fn segment_bytes_p90_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 { return Json(serde_json::json!({"p90_bytes": null, "above_p90_count": 0, "segment_count": n})); }
+    let bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    let mut sorted = bytes.clone();
+    sorted.sort_unstable();
+    let p90_idx = ((n as f64 - 1.0) * 0.90) as usize;
+    let p90 = sorted[p90_idx.min(n - 1)];
+    let above_count = bytes.iter().filter(|&&v| v > p90).count();
+    Json(serde_json::json!({"p90_bytes": p90, "above_p90_count": above_count, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/max-docs — segmento com maior num_docs. Sprint #1573.
+pub async fn segment_max_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() { return Json(serde_json::json!({"segment_id": null, "max_docs": null})); }
+    let (id, max_docs, _) = segs.iter().max_by_key(|(_, nd, _)| nd).unwrap();
+    Json(serde_json::json!({"segment_id": id, "max_docs": max_docs}))
+}
+
+/// GET /api/v1/search/index/segments/max-bytes — segmento com maior disk_bytes. Sprint #1578.
+pub async fn segment_max_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    if segs.is_empty() { return Json(serde_json::json!({"segment_id": null, "max_bytes": null})); }
+    let (id, _, max_bytes) = segs.iter().max_by_key(|(_, _, db)| db).unwrap();
+    Json(serde_json::json!({"segment_id": id, "max_bytes": max_bytes}))
+}
+
+/// GET /api/v1/search/index/segments/avg-bytes-per-segment — média de disk_bytes por segmento. Sprint #1583.
+pub async fn segment_avg_bytes_per_segment(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"avg_bytes": null, "segment_count": 0})); }
+    let total: u64 = segs.iter().map(|(_, _, db)| db).sum();
+    let avg = total / n as u64;
+    Json(serde_json::json!({"avg_bytes": avg, "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
