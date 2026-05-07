@@ -3942,6 +3942,43 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/count-skewness — skewness de (num_docs + disk_bytes) nos segmentos. Sprint #1423.
+pub async fn segment_count_skewness(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"count_skewness": null, "segment_count": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, db)| *nd as f64 + *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let std_dev = variance.sqrt();
+    if std_dev == 0.0 {
+        return Json(serde_json::json!({"count_skewness": 0.0, "segment_count": n}));
+    }
+    let skewness = vals.iter().map(|v| ((v - mean) / std_dev).powi(3)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"count_skewness": skewness, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-p99-count — contagem de segmentos acima do P99 de num_docs. Sprint #1418.
+pub async fn segment_docs_p99_count(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p99_docs": null, "above_p99_count": 0, "segment_count": n}));
+    }
+    let mut sorted_docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    sorted_docs.sort_unstable();
+    let p99_idx = ((n as f64 - 1.0) * 0.99) as usize;
+    let p99 = sorted_docs[p99_idx.min(n - 1)];
+    let above_count = segs.iter().filter(|(_, nd, _)| *nd > p99).count();
+    Json(serde_json::json!({"p99_docs": p99, "above_p99_count": above_count, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-p99-count — contagem de segmentos acima do P99 de disk_bytes. Sprint #1413.
 pub async fn segment_bytes_p99_count(
     State(store): State<IndexStore>,
