@@ -239,6 +239,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/search/index/segments/bytes-per-doc-variance", get(api::segment_bytes_per_doc_variance))
         .route("/api/v1/search/index/segments/docs-entropy",           get(api::segment_docs_entropy))
         .route("/api/v1/search/index/segments/bytes-entropy",          get(api::segment_bytes_entropy))
+        .route("/api/v1/search/index/segments/count-gini",              get(api::segment_count_gini))
+        .route("/api/v1/search/index/segments/bytes-per-doc-gini",      get(api::segment_bytes_per_doc_gini))
         .route("/api/v1/search/index/segments/bytes-gini",              get(api::segment_bytes_gini))
         .route("/api/v1/search/index/segments/docs-gini",               get(api::segment_docs_gini))
         .route("/api/v1/search/index/segments/bytes-per-doc-kurtosis",  get(api::segment_bytes_per_doc_kurtosis))
