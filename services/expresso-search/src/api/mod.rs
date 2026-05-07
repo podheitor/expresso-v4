@@ -5518,6 +5518,84 @@ pub async fn segment_size_above_p95(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"p95_bytes": p95, "above_count": above_count, "above_ratio": ratio, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/size-above-p99 — ratio de segmentos com disk_bytes > P99. Sprint #1848.
+pub async fn segment_size_above_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_bytes": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p99 = bytes[(n * 99) / 100];
+    let above_count = segs.iter().filter(|(_, _, db)| *db > p99).count();
+    let ratio = above_count as f64 / n as f64;
+    Json(serde_json::json!({"p99_bytes": p99, "above_count": above_count, "above_ratio": ratio, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-p10 — ratio de segmentos com bytes/doc > P10. Sprint #1853.
+pub async fn segment_ratio_above_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p10_ratio": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut ratios: Vec<u64> = segs
+        .iter()
+        .map(|(_, nd, db)| if *nd > 0 { db / nd } else { *db })
+        .collect();
+    ratios.sort_unstable();
+    let p10 = ratios[(n * 10) / 100];
+    let above_count = segs
+        .iter()
+        .filter(|(_, nd, db)| {
+            let r = if *nd > 0 { db / nd } else { *db };
+            r > p10
+        })
+        .count();
+    let above_ratio = above_count as f64 / n as f64;
+    Json(serde_json::json!({"p10_ratio": p10, "above_count": above_count, "above_ratio": above_ratio, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-p25 — ratio de segmentos com bytes/doc > P25. Sprint #1858.
+pub async fn segment_ratio_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25_ratio": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut ratios: Vec<u64> = segs
+        .iter()
+        .map(|(_, nd, db)| if *nd > 0 { db / nd } else { *db })
+        .collect();
+    ratios.sort_unstable();
+    let p25 = ratios[(n * 25) / 100];
+    let above_count = segs
+        .iter()
+        .filter(|(_, nd, db)| {
+            let r = if *nd > 0 { db / nd } else { *db };
+            r > p25
+        })
+        .count();
+    let above_ratio = above_count as f64 / n as f64;
+    Json(serde_json::json!({"p25_ratio": p25, "above_count": above_count, "above_ratio": above_ratio, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-p99-ratio — ratio de segmentos com num_docs > P99. Sprint #1863.
+pub async fn segment_docs_above_p99_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_docs": null, "above_ratio": null, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p99 = docs[(n * 99) / 100];
+    let above_count = segs.iter().filter(|(_, nd, _)| *nd > p99).count();
+    let ratio = above_count as f64 / n as f64;
+    Json(serde_json::json!({"p99_docs": p99, "above_count": above_count, "above_ratio": ratio, "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

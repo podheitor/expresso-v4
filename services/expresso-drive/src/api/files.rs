@@ -299,6 +299,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/empty-count-by-hour",       get(file_stats_empty_count_by_hour))
         .route("/api/v1/drive/files/stats/empty-count-by-user",       get(file_stats_empty_count_by_user))
         .route("/api/v1/drive/files/stats/empty-count-by-weekday",    get(file_stats_empty_count_by_weekday))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-month",      get(file_stats_empty_ratio_by_month))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-hour",       get(file_stats_empty_ratio_by_hour))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-user",       get(file_stats_empty_ratio_by_user))
+        .route("/api/v1/drive/files/stats/empty-ratio-by-weekday",    get(file_stats_empty_ratio_by_weekday))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -9303,6 +9307,100 @@ async fn file_stats_empty_count_by_weekday(
             let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
             let ratio = if total > 0 { empty as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"day_of_week": dow, "day_name": name, "empty_count": empty, "total_count": total, "empty_ratio": ratio})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-month — ratio empty/total × month. Sprint #1846.
+async fn file_stats_empty_ratio_by_month(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, f64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, ratio)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "empty_ratio": ratio})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-hour — ratio empty/total × hour. Sprint #1851.
+async fn file_stats_empty_ratio_by_hour(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, f64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY hour ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(hour, ratio)| serde_json::json!({"hour": hour, "empty_ratio": ratio}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-user — ratio empty/total × user. Sprint #1856.
+async fn file_stats_empty_ratio_by_user(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS user_id, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY empty_ratio DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, ratio)| serde_json::json!({"user_id": uid, "empty_ratio": ratio}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-ratio-by-weekday — ratio empty/total × DOW. Sprint #1861.
+async fn file_stats_empty_ratio_by_weekday(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, f64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::FLOAT8 / NULLIF(COUNT(*), 0) AS empty_ratio \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, ratio)| {
+            let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
+            serde_json::json!({"day_of_week": dow, "day_name": name, "empty_ratio": ratio})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
