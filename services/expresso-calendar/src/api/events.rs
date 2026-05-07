@@ -709,6 +709,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_recurring_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-by-hour",
+            get(events_by_range_categories_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-by-dow",
+            get(events_by_range_categories_by_dow),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/recurring-by-dow",
             get(events_by_range_recurring_by_dow),
         )
@@ -5935,6 +5943,82 @@ async fn events_by_range_recurring_by_hour(
         .map(|(h, recurring, total)| {
             let rate = if total > 0 { recurring as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"hour_of_day": h, "recurring_count": recurring, "total_count": total, "recurring_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-by-hour — COUNT eventos com categories × hora de dtstart. Sprint #1344.
+async fn events_by_range_categories_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*) FILTER (WHERE categories IS NOT NULL AND array_length(categories, 1) > 0)::BIGINT AS with_categories, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, with_cat, total)| {
+            let rate = if total > 0 { with_cat as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"hour_of_day": h, "with_categories": with_cat, "total_count": total, "categories_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-by-dow — COUNT eventos com categories × DOW de dtstart. Sprint #1339.
+async fn events_by_range_categories_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*) FILTER (WHERE categories IS NOT NULL AND array_length(categories, 1) > 0)::BIGINT AS with_categories, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, with_cat, total)| {
+            let rate = if total > 0 { with_cat as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": d, "with_categories": with_cat, "total_count": total, "categories_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))

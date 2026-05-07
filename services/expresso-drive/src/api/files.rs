@@ -192,6 +192,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/mime-count-by-weekday",      get(file_stats_mime_count_by_weekday))
         .route("/api/v1/drive/files/stats/mime-count-by-hour",         get(file_stats_mime_count_by_hour))
         .route("/api/v1/drive/files/stats/ext-count-by-weekday",       get(file_stats_ext_count_by_weekday))
+        .route("/api/v1/drive/files/stats/owner-count-by-month",        get(file_stats_owner_count_by_month))
+        .route("/api/v1/drive/files/stats/tag-count-by-month",          get(file_stats_tag_count_by_month))
         .route("/api/v1/drive/files/stats/mime-count-by-month",         get(file_stats_mime_count_by_month))
         .route("/api/v1/drive/files/stats/ext-count-by-month",          get(file_stats_ext_count_by_month))
         .route("/api/v1/drive/files/stats/shared-by-hour",              get(file_stats_shared_by_hour))
@@ -6356,6 +6358,57 @@ async fn file_stats_shared_by_hour(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, count)| serde_json::json!({"hour_of_day": h, "shared_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/owner-count-by-month — COUNT DISTINCT owners × mês de created_at. Sprint #1341.
+async fn file_stats_owner_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(DISTINCT owner_user_id)::BIGINT AS owner_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| serde_json::json!({"month": m, "owner_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/tag-count-by-month — COUNT tags aplicadas × mês de created_at do arquivo. Sprint #1336.
+async fn file_stats_tag_count_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM f.created_at AT TIME ZONE 'UTC')::INT AS month, \
+            COUNT(t.tag)::BIGINT AS tag_count \
+           FROM drive_files f \
+           JOIN drive_file_tags t ON t.file_id = f.id \
+          WHERE f.tenant_id = $1 AND f.deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, count)| serde_json::json!({"month": m, "tag_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
