@@ -221,6 +221,8 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/locked-count-by-dow",         get(file_stats_locked_count_by_dow))
         .route("/api/v1/drive/files/stats/trashed-count-by-dow",        get(file_stats_trashed_count_by_dow))
         .route("/api/v1/drive/files/stats/shared-count-by-dow",         get(file_stats_shared_count_by_dow))
+        .route("/api/v1/drive/files/stats/trashed-count-by-hour",       get(file_stats_trashed_count_by_hour))
+        .route("/api/v1/drive/files/stats/trashed-count-by-weekday",    get(file_stats_trashed_count_by_weekday))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -7138,6 +7140,60 @@ async fn file_stats_locked_count_by_dow(
 
 /// GET /api/v1/drive/files/stats/trashed-count-by-dow — COUNT arquivos com deleted_at (trashed) × DOW de created_at. Sprint #1446.
 async fn file_stats_trashed_count_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+            COUNT(*)::BIGINT AS trashed_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+          GROUP BY dow \
+          ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, count)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": day_name, "trashed_count": count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/trashed-count-by-hour — COUNT arquivos com deleted_at × hora-do-dia de created_at. Sprint #1456.
+async fn file_stats_trashed_count_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour, \
+            COUNT(*)::BIGINT AS trashed_count \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NOT NULL \
+          GROUP BY hour \
+          ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(hour, count)| serde_json::json!({"hour": hour, "trashed_count": count}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/trashed-count-by-weekday — COUNT arquivos com deleted_at × DOW (nome) de created_at. Sprint #1461.
+async fn file_stats_trashed_count_by_weekday(
     State(state): State<AppState>,
     ctx:          RequestCtx,
 ) -> Result<Json<serde_json::Value>> {

@@ -3993,6 +3993,49 @@ pub async fn segment_count_p95_count(
     Json(serde_json::json!({"p95_count": p95, "above_p95_count": above_count, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-above-p95 — segmentos com bytes/doc > P95. Sprint #1458.
+pub async fn segment_bytes_per_doc_above_p95(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 5 {
+        return Json(serde_json::json!({"p95_bytes_per_doc": null, "above_p95": [], "segment_count": n}));
+    }
+    let bpd: Vec<(String, u64, u64, u64)> = segs.iter()
+        .map(|(id, nd, db)| (id.clone(), *nd, *db, if *nd > 0 { db / nd } else { 0 }))
+        .collect();
+    let mut sorted_bpd: Vec<u64> = bpd.iter().map(|(_, _, _, v)| *v).collect();
+    sorted_bpd.sort_unstable();
+    let p95_idx = ((n as f64 - 1.0) * 0.95) as usize;
+    let p95 = sorted_bpd[p95_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = bpd.iter()
+        .filter(|(_, _, _, v)| *v > p95)
+        .map(|(id, nd, db, v)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": v}))
+        .collect();
+    Json(serde_json::json!({"p95_bytes_per_doc": p95, "above_p95": above, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-p99 — segmentos com (num_docs+disk_bytes) > P99. Sprint #1463.
+pub async fn segment_count_above_p99(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 10 {
+        return Json(serde_json::json!({"p99_count": null, "above_p99": [], "segment_count": n}));
+    }
+    let mut sorted_counts: Vec<u64> = segs.iter().map(|(_, nd, db)| nd + db).collect();
+    sorted_counts.sort_unstable();
+    let p99_idx = ((n as f64 - 1.0) * 0.99) as usize;
+    let p99 = sorted_counts[p99_idx.min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, db)| nd + db > p99)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "count": nd + db}))
+        .collect();
+    Json(serde_json::json!({"p99_count": p99, "above_p99": above, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-above-p95 — segmentos com disk_bytes > P95. Sprint #1438.
 pub async fn segment_bytes_above_p95(
     State(store): State<IndexStore>,

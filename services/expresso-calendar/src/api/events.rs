@@ -741,6 +741,14 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_category_count_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/category-count-by-class",
+            get(events_by_range_category_count_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-attendees-by-class",
+            get(events_by_range_has_attendees_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/has-attendees-by-weekday",
             get(events_by_range_has_attendees_by_weekday),
         )
@@ -6382,6 +6390,81 @@ async fn events_by_range_category_count_by_hour(
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, unique_cat)| {
             serde_json::json!({"hour": h, "unique_category_count": unique_cat})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/category-count-by-class — COUNT DISTINCT categorias × CLASS. Sprint #1459.
+async fn events_by_range_category_count_by_class(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            class, \
+            COUNT(DISTINCT cat)::BIGINT AS unique_category_count, \
+            COUNT(*)::BIGINT AS event_count \
+           FROM calendar_events, unnest(categories) AS cat \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND categories IS NOT NULL AND cardinality(categories) > 0 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY class \
+          ORDER BY event_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(cls, unique_cat, event_count)| {
+            serde_json::json!({"class": cls, "unique_category_count": unique_cat, "event_count": event_count})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-attendees-by-class — with/without attendees × CLASS. Sprint #1464.
+async fn events_by_range_has_attendees_by_class(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be < before".into())); }
+    }
+    let pool = state.db_or_unavailable()?;
+    let mut tx = begin_tenant_tx(pool, ctx.tenant_id).await?;
+
+    let rows: Vec<(Option<String>, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            class, \
+            COUNT(*) FILTER (WHERE attendees IS NOT NULL AND jsonb_array_length(attendees) > 0)::BIGINT AS with_attendees, \
+            COUNT(*) FILTER (WHERE attendees IS NULL OR jsonb_array_length(attendees) = 0)::BIGINT AS without_attendees \
+           FROM calendar_events \
+          WHERE tenant_id = $1 AND calendar_id = $2 \
+            AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+            AND ($4::timestamptz IS NULL OR dtstart <  $4) \
+          GROUP BY class \
+          ORDER BY with_attendees DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(cls, with_att, without_att)| {
+            serde_json::json!({"class": cls, "with_attendees": with_att, "without_attendees": without_att})
         })
         .collect();
     Ok(Json(serde_json::json!({"calendar_id": cal_id, "rows": result})))
