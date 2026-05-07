@@ -5884,6 +5884,78 @@ pub async fn segment_count_below_p90(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"p90_count": p90, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/count-below-p95 — segments whose num_docs ≤ p95. Sprint #1948.
+pub async fn segment_count_below_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_count": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut counts: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    counts.sort_unstable();
+    let p95 = counts[(n * 95) / 100];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd <= p95)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p95_count": p95, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/count-below-p99 — segments whose num_docs ≤ p99. Sprint #1953.
+pub async fn segment_count_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_count": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut counts: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    counts.sort_unstable();
+    let p99 = counts[(n * 99) / 100];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd <= p99)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p99_count": p99, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-p25 — segments whose num_docs > p25. Sprint #1958.
+pub async fn segment_count_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25_count": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut counts: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    counts.sort_unstable();
+    let p25 = counts[(n * 25) / 100];
+    let above: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd > p25)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p25_count": p25, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-p50 — segments whose num_docs > p50. Sprint #1963.
+pub async fn segment_count_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_count": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut counts: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    counts.sort_unstable();
+    let p50 = counts[n / 2];
+    let above: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd > p50)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p50_count": p50, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
