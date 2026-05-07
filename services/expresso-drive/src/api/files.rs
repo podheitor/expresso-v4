@@ -279,6 +279,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/starred-count-by-dow",      get(file_stats_starred_count_by_dow))
         .route("/api/v1/drive/files/stats/locked-by-dow",             get(file_stats_locked_by_dow))
         .route("/api/v1/drive/files/stats/trashed-by-dow",            get(file_stats_trashed_by_dow))
+        .route("/api/v1/drive/files/stats/orphan-by-dow",             get(file_stats_orphan_by_dow))
+        .route("/api/v1/drive/files/stats/zero-size-by-dow",          get(file_stats_zero_size_by_dow))
+        .route("/api/v1/drive/files/stats/empty-by-dow",              get(file_stats_empty_by_dow))
+        .route("/api/v1/drive/files/stats/starred-size-by-dow",       get(file_stats_starred_size_by_dow))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -8766,6 +8770,115 @@ async fn file_stats_trashed_by_dow(
         .map(|(dow, cnt)| {
             let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": name, "trashed_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/orphan-by-dow — orphan file count × DOW. Sprint #1746.
+async fn file_stats_orphan_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*)::BIGINT AS orphan_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND folder_id IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "orphan_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/zero-size-by-dow — zero-byte file count × DOW. Sprint #1751.
+async fn file_stats_zero_size_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*)::BIGINT AS zero_size_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND size_bytes = 0 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "zero_size_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/empty-by-dow — empty file count × DOW (size_bytes <= 1). Sprint #1756.
+async fn file_stats_empty_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*)::BIGINT AS empty_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL AND size_bytes <= 1 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "empty_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/stats/starred-size-by-dow — total size of starred files × DOW. Sprint #1761.
+async fn file_stats_starred_size_by_dow(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         SUM(size_bytes) FILTER (WHERE starred = true)::BIGINT AS starred_size, \
+         COUNT(*) FILTER (WHERE starred = true)::BIGINT AS starred_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool)
+    .await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, size, cnt)| {
+            let name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"dow": dow, "day_name": name, "starred_size_bytes": size, "starred_count": cnt})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

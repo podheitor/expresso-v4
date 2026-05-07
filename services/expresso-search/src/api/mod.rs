@@ -5185,6 +5185,84 @@ pub async fn segment_docs_below_p95(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"p95_docs": p95, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-below-p95 — segments with disk_bytes <= P95. Sprint #1748.
+pub async fn segment_bytes_below_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p95 = bytes[(n * 19) / 20];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= p95)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p95_bytes": p95, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-below-p95 — segments with bytes/doc <= P95 ratio. Sprint #1753.
+pub async fn segment_ratio_below_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<(usize, u64)> = segs.iter().enumerate()
+        .filter(|(_, (_, nd, _))| *nd > 0)
+        .map(|(i, (_, nd, db))| (i, db / nd))
+        .collect();
+    let n = ratios.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut sorted_ratios: Vec<u64> = ratios.iter().map(|(_, r)| *r).collect();
+    sorted_ratios.sort_unstable();
+    let p95 = sorted_ratios[(n * 19) / 20];
+    let below: Vec<serde_json::Value> = ratios.iter()
+        .filter(|(_, r)| *r <= p95)
+        .map(|(i, r)| {
+            let (id, nd, db) = &segs[*i];
+            serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r})
+        })
+        .collect();
+    Json(serde_json::json!({"p95_ratio": p95, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/docs-below-p99 — segments with num_docs <= P99. Sprint #1758.
+pub async fn segment_docs_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_docs": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p99 = docs[(n * 99) / 100];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd <= p99)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p99_docs": p99, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-below-p99 — segments with disk_bytes <= P99. Sprint #1763.
+pub async fn segment_bytes_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p99 = bytes[(n * 99) / 100];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= p99)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p99_bytes": p99, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
