@@ -4709,6 +4709,50 @@ pub async fn segment_total_count(State(store): State<IndexStore>) -> Json<serde_
     Json(serde_json::json!({"total_segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-p50 — percentil 50 (mediana) de bytes/doc. Sprint #1608.
+pub async fn segment_bytes_per_doc_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut ratios: Vec<u64> = segs.iter().filter(|(_, nd, _)| *nd > 0).map(|(_, nd, db)| db / nd).collect();
+    let n = ratios.len();
+    if n == 0 { return Json(serde_json::json!({"p50_bytes_per_doc": null})); }
+    ratios.sort_unstable();
+    let p50 = ratios[n / 2];
+    Json(serde_json::json!({"p50_bytes_per_doc": p50, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-p50 — mediana de num_docs dos segmentos. Sprint #1613.
+pub async fn segment_docs_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p50_docs": null, "segment_count": 0})); }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p50 = docs[n / 2];
+    Json(serde_json::json!({"p50_docs": p50, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-p50 — mediana de disk_bytes dos segmentos. Sprint #1618.
+pub async fn segment_bytes_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p50_bytes": null, "segment_count": 0})); }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p50 = bytes[n / 2];
+    Json(serde_json::json!({"p50_bytes": p50, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/top-segments-by-docs — top-5 segmentos por num_docs. Sprint #1623.
+pub async fn segment_top_by_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    let top: Vec<serde_json::Value> = sorted.into_iter().take(5)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"top_segments": top}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

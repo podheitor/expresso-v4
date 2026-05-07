@@ -237,6 +237,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/reply-to-count-by-dow",        get(reply_to_count_by_dow_stats))
         .route("/mail/messages/stats/has-in-reply-to-by-hour",      get(has_in_reply_to_by_hour_stats))
         .route("/mail/messages/stats/has-in-reply-to-by-weekday",   get(has_in_reply_to_by_weekday_stats))
+        .route("/mail/messages/stats/has-in-reply-to-by-month",     get(has_in_reply_to_by_month_stats))
+        .route("/mail/messages/stats/subject-length-by-dow",        get(subject_length_by_dow_stats))
+        .route("/mail/messages/stats/body-size-by-dow",             get(body_size_by_dow_stats))
+        .route("/mail/messages/stats/size-by-month",                get(size_by_month_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -8592,6 +8596,98 @@ async fn has_in_reply_to_by_weekday_stats(
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, with_irt, without_irt)| {
         let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
         serde_json::json!({"dow": d, "day_name": day_name, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/has-in-reply-to-by-month — COUNT mensagens com/sem in_reply_to × mês. Sprint #1607.
+async fn has_in_reply_to_by_month_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NOT NULL AND m.in_reply_to <> '')::BIGINT AS with_in_reply_to, \
+         COUNT(*) FILTER (WHERE m.in_reply_to IS NULL OR m.in_reply_to = '')::BIGINT AS without_in_reply_to \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY month ORDER BY month ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(m, with_irt, without_irt)| {
+        let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"month": m, "month_name": month_name, "with_in_reply_to": with_irt, "without_in_reply_to": without_irt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-by-dow — AVG/MAX LENGTH(subject) × DOW. Sprint #1612.
+async fn subject_length_by_dow_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         AVG(COALESCE(LENGTH(m.subject), 0))::FLOAT8 AS avg_subject_len, \
+         MAX(COALESCE(LENGTH(m.subject), 0))::BIGINT AS max_subject_len \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, avg, max)| {
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"dow": d, "day_name": day_name, "avg_subject_len": avg, "max_subject_len": max})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-size-by-dow — AVG/SUM body_size × DOW de received_at. Sprint #1617.
+async fn body_size_by_dow_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         AVG(COALESCE(m.body_size, 0))::FLOAT8 AS avg_body_size, \
+         SUM(COALESCE(m.body_size, 0))::BIGINT AS total_body_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, avg, total)| {
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"dow": d, "day_name": day_name, "avg_body_size": avg, "total_body_size": total})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-by-month — AVG/SUM size_bytes × mês de received_at. Sprint #1622.
+async fn size_by_month_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM m.received_at AT TIME ZONE 'UTC')::INT AS month, \
+         AVG(COALESCE(m.size, 0))::FLOAT8 AS avg_size, \
+         SUM(COALESCE(m.size, 0))::BIGINT AS total_size \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY month ORDER BY month ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(m, avg, total)| {
+        let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"month": m, "month_name": month_name, "avg_size": avg, "total_size": total})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
