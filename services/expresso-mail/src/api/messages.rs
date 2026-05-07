@@ -177,6 +177,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flagged-by-dow",              get(flagged_by_dow_stats))
         .route("/mail/messages/stats/read-by-dow",                 get(read_by_dow_stats))
         .route("/mail/messages/stats/unread-by-dow",               get(unread_by_dow_stats))
+        .route("/mail/messages/stats/deleted-by-dow",              get(deleted_by_dow_stats))
+        .route("/mail/messages/stats/size-by-dow",                 get(size_by_dow_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -5540,6 +5542,72 @@ async fn attachment_count_by_hour_stats(
 
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(h, msgs_with, rate)| serde_json::json!({"hour_of_day": h, "messages_with_attachments": msgs_with, "attachment_rate": rate}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/deleted-by-dow — COUNT mensagens deletadas × dia-da-semana. Sprint #1307.
+async fn deleted_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            COUNT(*) FILTER (WHERE m.deleted_at IS NOT NULL)::BIGINT AS deleted_count, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY day_of_week \
+          ORDER BY day_of_week ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, deleted, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { deleted as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"day_of_week": d, "day_name": day_name, "deleted_count": deleted, "total_count": total, "rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-by-dow — AVG/SUM size × dia-da-semana de received_at. Sprint #1312.
+async fn size_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, f64, i64, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS day_of_week, \
+            COALESCE(AVG(m.size), 0.0)::FLOAT8 AS avg_size, \
+            COALESCE(MAX(m.size), 0)::BIGINT AS max_size, \
+            COUNT(*)::BIGINT AS total_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+          GROUP BY day_of_week \
+          ORDER BY day_of_week ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, avg_sz, max_sz, total)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"day_of_week": d, "day_name": day_name, "avg_size": avg_sz, "max_size": max_sz, "total_count": total})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

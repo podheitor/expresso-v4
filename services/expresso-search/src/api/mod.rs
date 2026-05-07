@@ -3615,6 +3615,52 @@ pub async fn segment_docs_entropy(
     Json(serde_json::json!({"docs_entropy": entropy, "total_docs": total, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-entropy — entropia de Shannon de disk_bytes. Sprint #1308.
+pub async fn segment_bytes_entropy(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_entropy": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"bytes_entropy": 0.0, "segment_count": n}));
+    }
+    let entropy: f64 = segs.iter()
+        .filter(|(_, _, db)| *db > 0)
+        .map(|(_, _, db)| {
+            let p = *db as f64 / total as f64;
+            -p * p.ln()
+        })
+        .sum();
+    Json(serde_json::json!({"bytes_entropy": entropy, "total_bytes": total, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-entropy — entropia de Shannon de bytes/doc. Sprint #1313.
+pub async fn segment_bytes_per_doc_entropy(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_entropy": null, "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| if *nd == 0 { 0.0 } else { *db as f64 / *nd as f64 })
+        .collect();
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"bytes_per_doc_entropy": 0.0, "segment_count": n}));
+    }
+    let entropy: f64 = vals.iter()
+        .filter(|&&v| v > 0.0)
+        .map(|&v| { let p = v / total; -p * p.ln() })
+        .sum();
+    Json(serde_json::json!({"bytes_per_doc_entropy": entropy, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-p99 — 99th percentile de disk_bytes nos segmentos. Sprint #1268.
 pub async fn segment_bytes_p99(
     State(store): State<IndexStore>,
