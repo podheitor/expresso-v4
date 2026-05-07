@@ -5956,6 +5956,78 @@ pub async fn segment_count_above_p50(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"p50_count": p50, "above_count": above.len(), "segment_count": n, "segments": above}))
 }
 
+/// GET /api/v1/search/index/segments/count-above-p95 — segments whose num_docs > p95. Sprint #1968.
+pub async fn segment_count_above_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_count": null, "above_count": 0, "segment_count": 0}));
+    }
+    let mut counts: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    counts.sort_unstable();
+    let p95 = counts[(n * 95) / 100];
+    let above: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd > p95)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p95_count": p95, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/size-below-p99 — segments whose disk_bytes ≤ p99. Sprint #1973.
+pub async fn segment_size_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p99 = bytes[(n * 99) / 100];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= p99)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p99_bytes": p99, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-below-p25 — segments whose bytes/doc ratio ≤ p25. Sprint #1978.
+pub async fn segment_bytes_per_doc_below_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *nd > 0 { *db as f64 / *nd as f64 } else { 0.0 }).collect();
+    let mut sorted = ratios.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p25 = sorted[(n * 25) / 100];
+    let below: Vec<serde_json::Value> = segs.iter().zip(ratios.iter())
+        .filter(|(_, &r)| r <= p25)
+        .map(|((id, nd, db), &r)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r}))
+        .collect();
+    Json(serde_json::json!({"p25_ratio": p25, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-below-p50 — segments whose bytes/doc ratio ≤ p50. Sprint #1983.
+pub async fn segment_bytes_per_doc_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *nd > 0 { *db as f64 / *nd as f64 } else { 0.0 }).collect();
+    let mut sorted = ratios.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let p50 = sorted[n / 2];
+    let below: Vec<serde_json::Value> = segs.iter().zip(ratios.iter())
+        .filter(|(_, &r)| r <= p50)
+        .map(|((id, nd, db), &r)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r}))
+        .collect();
+    Json(serde_json::json!({"p50_ratio": p50, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

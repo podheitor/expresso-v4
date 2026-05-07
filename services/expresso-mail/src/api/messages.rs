@@ -309,6 +309,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/read-rate-by-tier",            get(read_rate_by_tier_stats))
         .route("/mail/messages/stats/starred-rate-by-tier",         get(starred_rate_by_tier_stats))
         .route("/mail/messages/stats/deleted-rate-by-tier",         get(deleted_rate_by_tier_stats))
+        .route("/mail/messages/stats/flagged-rate-by-tier",         get(flagged_rate_by_tier_stats))
+        .route("/mail/messages/stats/unread-rate-by-tier",          get(unread_rate_by_tier_stats))
+        .route("/mail/messages/stats/attachment-rate-by-tier",      get(attachment_rate_by_tier_stats))
+        .route("/mail/messages/stats/bcc-rate-by-tier",             get(bcc_rate_by_tier_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -10769,6 +10773,126 @@ async fn deleted_rate_by_tier_stats(
         .map(|(tier, del_cnt, total)| {
             let rate = if total > 0 { del_cnt as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"tier": tier, "deleted_count": del_cnt, "message_count": total, "deleted_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-tier — taxa flagged × tier. Sprint #1967.
+async fn flagged_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE m.flagged)::BIGINT AS flagged_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, flagged_cnt, total)| {
+            let rate = if total > 0 { flagged_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "flagged_count": flagged_cnt, "message_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/unread-rate-by-tier — taxa não lidas × tier. Sprint #1972.
+async fn unread_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE NOT m.seen)::BIGINT AS unread_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, unread_cnt, total)| {
+            let rate = if total > 0 { unread_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "unread_count": unread_cnt, "message_count": total, "unread_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-rate-by-tier — taxa com anexos × tier. Sprint #1977.
+async fn attachment_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE m.has_attachments)::BIGINT AS attachment_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, att_cnt, total)| {
+            let rate = if total > 0 { att_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "attachment_count": att_cnt, "message_count": total, "attachment_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-rate-by-tier — taxa com bcc × tier. Sprint #1982.
+async fn bcc_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE m.bcc_addrs IS NOT NULL AND array_length(m.bcc_addrs, 1) > 0)::BIGINT AS bcc_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY tier ORDER BY message_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, bcc_cnt, total)| {
+            let rate = if total > 0 { bcc_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "bcc_count": bcc_cnt, "message_count": total, "bcc_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

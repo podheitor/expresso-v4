@@ -1360,6 +1360,22 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/calendars/:cal_id/events-by-range/multi-attendee-rate-by-weekday",
             get(events_by_range_multi_attendee_rate_by_weekday),
         )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/all-day-rate-by-month",
+            get(events_by_range_all_day_rate_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/all-day-rate-by-weekday",
+            get(events_by_range_all_day_rate_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-location-rate-by-month",
+            get(events_by_range_has_location_rate_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/has-description-rate-by-month",
+            get(events_by_range_has_description_rate_by_month),
+        )
 }
 
 /// POST body is raw iCalendar (VCALENDAR wrapping one VEVENT).
@@ -10056,6 +10072,146 @@ async fn events_by_range_multi_attendee_rate_by_weekday(
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             let rate = if total > 0 { multi_cnt as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"dow": dow, "day_name": day_name, "multi_attendee_count": multi_cnt, "event_count": total, "multi_attendee_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/all-day-rate-by-month — taxa eventos all-day × mês. Sprint #1969.
+async fn events_by_range_all_day_rate_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE all_day)::BIGINT AS all_day_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, all_day_cnt, total)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { all_day_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": name, "all_day_count": all_day_cnt, "event_count": total, "all_day_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/all-day-rate-by-weekday — taxa eventos all-day × DOW. Sprint #1974.
+async fn events_by_range_all_day_rate_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE all_day)::BIGINT AS all_day_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, all_day_cnt, total)| {
+            let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { all_day_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"dow": dow, "day_name": day_name, "all_day_count": all_day_cnt, "event_count": total, "all_day_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-location-rate-by-month — taxa eventos com local × mês. Sprint #1979.
+async fn events_by_range_has_location_rate_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE location IS NOT NULL AND location <> '')::BIGINT AS has_location_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, loc_cnt, total)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { loc_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": name, "has_location_count": loc_cnt, "event_count": total, "has_location_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/has-description-rate-by-month — taxa eventos com descrição × mês. Sprint #1984.
+async fn events_by_range_has_description_rate_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE description IS NOT NULL AND description <> '')::BIGINT AS has_description_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, desc_cnt, total)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            let rate = if total > 0 { desc_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"month": month, "month_name": name, "has_description_count": desc_cnt, "event_count": total, "has_description_rate": rate})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
