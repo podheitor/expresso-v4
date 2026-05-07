@@ -171,6 +171,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/deleted-by-hour",             get(deleted_by_hour_stats))
         .route("/mail/messages/stats/has-attachments-by-hour",     get(has_attachments_by_hour_stats))
         .route("/mail/messages/stats/attachment-count-by-hour",    get(attachment_count_by_hour_stats))
+        .route("/mail/messages/stats/sender-domain-by-hour",       get(sender_domain_by_hour_stats))
+        .route("/mail/messages/stats/reply-to-by-hour",            get(reply_to_by_hour_stats))
         .route("/mail/messages/stats/has-reply-to-by-hour",        get(has_reply_to_by_hour_stats))
         .route("/mail/messages/stats/in-reply-to-by-hour",         get(in_reply_to_by_hour_stats))
         .route("/mail/messages/stats/starred-by-dow",              get(starred_by_dow_stats))
@@ -6138,6 +6140,68 @@ async fn flagged_by_dow_stats(
             let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"day_of_week": d, "day_name": day_name, "flagged_count": flagged, "total_count": total, "rate": rate})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/sender-domain-by-hour — COUNT por (domínio remetente, hora-do-dia). Sprint #1382.
+async fn sender_domain_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            LOWER(NULLIF(SPLIT_PART(m.from_addr, '@', 2), '')) AS domain, \
+            COUNT(*)::BIGINT AS count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.received_at IS NOT NULL \
+            AND m.from_addr IS NOT NULL AND m.from_addr LIKE '%@%' \
+          GROUP BY hour_of_day, domain \
+          ORDER BY hour_of_day ASC, count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let mut by_hour: std::collections::BTreeMap<i32, Vec<serde_json::Value>> = std::collections::BTreeMap::new();
+    for (hour, domain, count) in rows {
+        by_hour.entry(hour).or_default().push(serde_json::json!({"domain": domain, "count": count}));
+    }
+    let result: Vec<serde_json::Value> = by_hour.into_iter()
+        .map(|(h, domains)| serde_json::json!({"hour_of_day": h, "domains": domains}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/reply-to-by-hour — COUNT mensagens com reply_to (não nulo/vazio) × hora-do-dia. Sprint #1377.
+async fn reply_to_by_hour_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM m.received_at AT TIME ZONE 'UTC')::INT AS hour_of_day, \
+            COUNT(*)::BIGINT AS reply_to_count \
+           FROM messages m \
+           JOIN mailboxes mb ON mb.id = m.mailbox_id \
+          WHERE m.tenant_id = $1 AND mb.user_id = $2 \
+            AND m.reply_to IS NOT NULL AND m.reply_to <> '' \
+          GROUP BY hour_of_day \
+          ORDER BY hour_of_day ASC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, count)| serde_json::json!({"hour_of_day": h, "reply_to_count": count}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

@@ -3942,6 +3942,52 @@ pub async fn segment_docs_p99(
     Json(serde_json::json!({"docs_p99": vals[idx], "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-theil — índice de Theil (entropia generalizada T0) de disk_bytes. Sprint #1383.
+pub async fn segment_bytes_theil(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_theil": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"bytes_theil": 0.0, "segment_count": n}));
+    }
+    let mean = total as f64 / n as f64;
+    let theil: f64 = segs.iter()
+        .map(|(_, _, db)| {
+            let x = *db as f64;
+            if x == 0.0 { 0.0 } else { (x / mean) * (x / mean).ln() }
+        })
+        .sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_theil": theil, "segment_count": n, "total_bytes": total}))
+}
+
+/// GET /api/v1/search/index/segments/docs-theil — índice de Theil (entropia generalizada T0) de num_docs. Sprint #1378.
+pub async fn segment_docs_theil(
+    State(store): State<IndexStore>,
+) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_theil": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"docs_theil": 0.0, "segment_count": n}));
+    }
+    let mean = total as f64 / n as f64;
+    let theil: f64 = segs.iter()
+        .map(|(_, nd, _)| {
+            let x = *nd as f64;
+            if x == 0.0 { 0.0 } else { (x / mean) * (x / mean).ln() }
+        })
+        .sum::<f64>() / n as f64;
+    Json(serde_json::json!({"docs_theil": theil, "segment_count": n, "total_docs": total}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
