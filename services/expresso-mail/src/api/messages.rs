@@ -277,6 +277,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-rate-by-folder",    get(attachment_rate_by_folder_stats))
         .route("/mail/messages/stats/read-rate-by-folder",          get(read_rate_by_folder_stats))
         .route("/mail/messages/stats/starred-rate-by-folder",       get(starred_rate_by_folder_stats))
+        .route("/mail/messages/stats/deleted-rate-by-folder",       get(deleted_rate_by_folder_stats))
+        .route("/mail/messages/stats/starred-rate-by-dow",          get(starred_rate_by_dow_stats))
+        .route("/mail/messages/stats/read-rate-by-dow",             get(read_rate_by_dow_stats))
+        .route("/mail/messages/stats/attachment-rate-by-dow",       get(attachment_rate_by_dow_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -9777,6 +9781,140 @@ async fn starred_rate_by_folder_stats(
         .map(|(folder, starred, total)| {
             let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
             serde_json::json!({"folder": folder, "starred_count": starred, "total_count": total, "starred_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/deleted-rate-by-folder — taxa deletadas por pasta. Sprint #1807.
+async fn deleted_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.deleted = true)::BIGINT AS deleted_count, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY total_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(folder, del, total)| {
+            let rate = if total > 0 { del as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"folder": folder, "deleted_count": del, "total_count": total, "deleted_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/starred-rate-by-dow — taxa flagged × DOW. Sprint #1812.
+async fn starred_rate_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.flagged = true)::BIGINT AS starred_count, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, starred, total)| {
+            let rate = if total > 0 { starred as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({
+                "day_of_week": dow,
+                "day_name": DAY_NAMES[dow as usize % 7],
+                "starred_count": starred,
+                "total_count": total,
+                "starred_rate": rate,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/read-rate-by-dow — taxa seen × DOW. Sprint #1817.
+async fn read_rate_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.seen = true)::BIGINT AS read_count, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, read_cnt, total)| {
+            let rate = if total > 0 { read_cnt as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({
+                "day_of_week": dow,
+                "day_name": DAY_NAMES[dow as usize % 7],
+                "read_count": read_cnt,
+                "total_count": total,
+                "read_rate": rate,
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-rate-by-dow — taxa has_attachments × DOW (alias). Sprint #1822.
+async fn attachment_rate_by_dow_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM m.received_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE m.has_attachments = true)::BIGINT AS with_attachments, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .bind(ctx.user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, with_att, total)| {
+            let rate = if total > 0 { with_att as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({
+                "day_of_week": dow,
+                "day_name": DAY_NAMES[dow as usize % 7],
+                "with_attachments": with_att,
+                "total_count": total,
+                "attachment_rate": rate,
+            })
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))

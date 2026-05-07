@@ -291,6 +291,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/zero-size-by-hour",         get(file_stats_zero_size_by_hour))
         .route("/api/v1/drive/files/stats/zero-size-by-user",         get(file_stats_zero_size_by_user))
         .route("/api/v1/drive/files/stats/zero-size-by-weekday",      get(file_stats_zero_size_by_weekday))
+        .route("/api/v1/drive/files/stats/empty-size-by-month",       get(file_stats_empty_size_by_month))
+        .route("/api/v1/drive/files/stats/empty-size-by-hour",        get(file_stats_empty_size_by_hour))
+        .route("/api/v1/drive/files/stats/empty-size-by-user",        get(file_stats_empty_size_by_user))
+        .route("/api/v1/drive/files/stats/empty-size-by-weekday",     get(file_stats_empty_size_by_weekday))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -9087,6 +9091,108 @@ async fn file_stats_zero_size_by_weekday(
         .map(|(dow, cnt)| {
             let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
             serde_json::json!({"day_of_week": dow, "day_name": name, "zero_size_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-size-by-month — empty files (size_bytes=0) total vs non-empty × month. Sprint #1806.
+async fn file_stats_empty_size_by_month(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT AS empty_count, \
+         COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes > 0), 0)::BIGINT AS non_empty_bytes \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY month ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(month, empty, nonempty)| {
+            let name = MONTH_NAMES.get((month - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": month, "month_name": name, "empty_count": empty, "non_empty_bytes": nonempty})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-size-by-hour — empty files COUNT × hour. Sprint #1811.
+async fn file_stats_empty_size_by_hour(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT AS empty_count, \
+         COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes > 0), 0)::BIGINT AS non_empty_bytes \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY hour ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(hour, empty, nonempty)| {
+            serde_json::json!({"hour": hour, "empty_count": empty, "non_empty_bytes": nonempty})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-size-by-user — empty files COUNT × user. Sprint #1816.
+async fn file_stats_empty_size_by_user(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS user_id, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT AS empty_count, \
+         COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes > 0), 0)::BIGINT AS non_empty_bytes \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY empty_count DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(uid, empty, nonempty)| {
+            serde_json::json!({"user_id": uid, "empty_count": empty, "non_empty_bytes": nonempty})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/empty-size-by-weekday — empty files COUNT × DOW. Sprint #1821.
+async fn file_stats_empty_size_by_weekday(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM created_at AT TIME ZONE 'UTC')::INT AS dow, \
+         COUNT(*) FILTER (WHERE size_bytes = 0)::BIGINT AS empty_count, \
+         COALESCE(SUM(size_bytes) FILTER (WHERE size_bytes > 0), 0)::BIGINT AS non_empty_bytes \
+         FROM drive_files WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(dow, empty, nonempty)| {
+            let name = DAY_NAMES.get(dow as usize % 7).copied().unwrap_or("Unknown");
+            serde_json::json!({"day_of_week": dow, "day_name": name, "empty_count": empty, "non_empty_bytes": nonempty})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
