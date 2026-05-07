@@ -4947,6 +4947,82 @@ pub async fn segment_docs_below_avg(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"avg_docs": avg, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-below-avg — segments with disk_bytes <= avg. Sprint #1688.
+pub async fn segment_bytes_below_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| db).sum();
+    let avg = total / n as u64;
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= avg)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"avg_bytes": avg, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-below-avg — segments with bytes/doc <= avg ratio. Sprint #1693.
+pub async fn segment_ratio_below_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let ratios: Vec<(usize, u64)> = segs.iter().enumerate()
+        .filter(|(_, (_, nd, _))| *nd > 0)
+        .map(|(i, (_, nd, db))| (i, db / nd))
+        .collect();
+    let n = ratios.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let total: u64 = ratios.iter().map(|(_, r)| r).sum();
+    let avg = total / n as u64;
+    let below: Vec<serde_json::Value> = ratios.iter()
+        .filter(|(_, r)| *r <= avg)
+        .map(|(i, r)| {
+            let (id, nd, db) = &segs[*i];
+            serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "bytes_per_doc": r})
+        })
+        .collect();
+    Json(serde_json::json!({"avg_ratio": avg, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/docs-below-p50 — segments with num_docs <= P50. Sprint #1698.
+pub async fn segment_docs_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_docs": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p50 = docs[n / 2];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, nd, _)| *nd <= p50)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p50_docs": p50, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-below-p50 — segments with disk_bytes <= P50. Sprint #1703.
+pub async fn segment_bytes_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_bytes": null, "below_count": 0, "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p50 = bytes[n / 2];
+    let below: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, db)| *db <= p50)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p50_bytes": p50, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
