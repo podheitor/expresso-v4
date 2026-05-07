@@ -231,6 +231,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/avg-size-by-weekday",        get(file_stats_avg_size_by_weekday))
         .route("/api/v1/drive/files/stats/size-p95-by-weekday",        get(file_stats_size_p95_by_weekday))
         .route("/api/v1/drive/files/stats/size-p99-by-weekday",        get(file_stats_size_p99_by_weekday))
+        .route("/api/v1/drive/files/stats/size-p95-by-hour",           get(file_stats_size_p95_by_hour))
+        .route("/api/v1/drive/files/stats/size-p99-by-hour",           get(file_stats_size_p99_by_hour))
+        .route("/api/v1/drive/files/stats/size-p95-by-month",          get(file_stats_size_p95_by_month))
+        .route("/api/v1/drive/files/stats/size-p99-by-month",          get(file_stats_size_p99_by_month))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -7694,6 +7698,106 @@ async fn file_stats_size_p99_by_weekday(
         .map(|(dow, p99)| {
             let day_name = DAY_NAMES.get(dow as usize).copied().unwrap_or("Unknown");
             serde_json::json!({"dow": dow, "day_name": day_name, "p99_size": p99})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p95-by-hour — P95 de size_bytes × hora-do-dia de created_at. Sprint #1506.
+async fn file_stats_size_p95_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour, \
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p95_size \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY hour \
+          ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, p95)| serde_json::json!({"hour": h, "p95_size": p95}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p99-by-hour — P99 de size_bytes × hora-do-dia de created_at. Sprint #1511.
+async fn file_stats_size_p99_by_hour(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INT AS hour, \
+            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p99_size \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY hour \
+          ORDER BY hour ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, p99)| serde_json::json!({"hour": h, "p99_size": p99}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p95-by-month — P95 de size_bytes × mês de created_at. Sprint #1516.
+async fn file_stats_size_p95_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p95_size \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, p95)| {
+            let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": m, "month_name": month_name, "p95_size": p95})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p99-by-month — P99 de size_bytes × mês de created_at. Sprint #1521.
+async fn file_stats_size_p99_by_month(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let pool = state.db_or_unavailable()?;
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT \
+            EXTRACT(MONTH FROM created_at AT TIME ZONE 'UTC')::INT AS month, \
+            PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p99_size \
+           FROM drive_files \
+          WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+          GROUP BY month \
+          ORDER BY month ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(pool).await?;
+    const MONTH_NAMES: [&str; 12] = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(m, p99)| {
+            let month_name = MONTH_NAMES.get((m - 1) as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"month": m, "month_name": month_name, "p99_size": p99})
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
