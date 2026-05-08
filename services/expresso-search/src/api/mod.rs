@@ -6418,6 +6418,80 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/hhi-bytes — índice Herfindahl-Hirschman de bytes entre segmentos. Sprint #2668.
+pub async fn segment_hhi_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"hhi_bytes": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    let hhi = if total > 0 {
+        segs.iter().fold(0.0_f64, |acc, (_, _, b)| {
+            let s = *b as f64 / total as f64;
+            acc + s * s
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"hhi_bytes": hhi, "total_bytes": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/hhi-docs — índice Herfindahl-Hirschman de docs entre segmentos. Sprint #2673.
+pub async fn segment_hhi_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"hhi_docs": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    let hhi = if total > 0 {
+        segs.iter().fold(0.0_f64, |acc, (_, d, _)| {
+            let s = *d as f64 / total as f64;
+            acc + s * s
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"hhi_docs": hhi, "total_docs": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/lorenz-bytes — ponto Lorenz (razão cumulativa) de bytes entre segmentos. Sprint #2678.
+pub async fn segment_lorenz_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_bytes": [], "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let total: u64 = vals.iter().sum();
+    let lorenz: Vec<serde_json::Value> = if total > 0 {
+        let mut cumsum = 0u64;
+        vals.iter().enumerate().map(|(i, v)| {
+            cumsum += v;
+            serde_json::json!({"pop_pct": (i + 1) as f64 / n as f64, "bytes_pct": cumsum as f64 / total as f64})
+        }).collect()
+    } else { vec![] };
+    Json(serde_json::json!({"lorenz_bytes": lorenz, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/lorenz-docs — ponto Lorenz (razão cumulativa) de docs entre segmentos. Sprint #2683.
+pub async fn segment_lorenz_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_docs": [], "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let total: u64 = vals.iter().sum();
+    let lorenz: Vec<serde_json::Value> = if total > 0 {
+        let mut cumsum = 0u64;
+        vals.iter().enumerate().map(|(i, v)| {
+            cumsum += v;
+            serde_json::json!({"pop_pct": (i + 1) as f64 / n as f64, "docs_pct": cumsum as f64 / total as f64})
+        }).collect()
+    } else { vec![] };
+    Json(serde_json::json!({"lorenz_docs": lorenz, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/entropy-bytes — entropia de Shannon de bytes entre segmentos. Sprint #2648.
 pub async fn segment_entropy_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
