@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-max-by-owner",       get(file_stats_name_length_max_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-max-by-ext",         get(file_stats_name_length_max_by_ext))
+        .route("/api/v1/drive/files/stats/name-length-max-by-mime",        get(file_stats_name_length_max_by_mime))
+        .route("/api/v1/drive/files/stats/name-length-min-by-kind",        get(file_stats_name_length_min_by_kind))
         .route("/api/v1/drive/files/stats/count-by-shared",               get(file_stats_count_by_shared))
         .route("/api/v1/drive/files/stats/name-length-avg-by-kind",       get(file_stats_name_length_avg_by_kind))
         .route("/api/v1/drive/files/stats/name-length-avg-by-owner",      get(file_stats_name_length_avg_by_owner))
@@ -10244,6 +10248,83 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-max-by-owner — máximo comprimento de nome por owner. Sprint #2346.
+async fn file_stats_name_length_max_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, MAX(LENGTH(name))::BIGINT AS max_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY max_name_len DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(owner, max_len, cnt)| serde_json::json!({"owner_id": owner, "max_name_length": max_len, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-max-by-ext — máximo comprimento de nome por extensão. Sprint #2351.
+async fn file_stats_name_length_max_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                MAX(LENGTH(name))::BIGINT AS max_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY max_name_len DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(ext, max_len, cnt)| serde_json::json!({"ext": ext, "max_name_length": max_len, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-max-by-mime — máximo comprimento de nome por mime_type. Sprint #2356.
+async fn file_stats_name_length_max_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, MAX(LENGTH(name))::BIGINT AS max_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY max_name_len DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(mime, max_len, cnt)| serde_json::json!({"mime_type": mime, "max_name_length": max_len, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-min-by-kind — mínimo comprimento de nome por kind. Sprint #2361.
+async fn file_stats_name_length_min_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, MIN(LENGTH(name))::BIGINT AS min_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY min_name_len ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(kind, min_len, cnt)| serde_json::json!({"kind": kind, "min_name_length": min_len, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

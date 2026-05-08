@@ -6372,6 +6372,76 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/count-below-avg — segmentos com docs abaixo da média. Sprint #2348.
+pub async fn segment_count_below_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_below_avg": 0, "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let mean = total_docs as f64 / n as f64;
+    let below = segs.iter().filter(|(_, d, _)| (*d as f64) < mean).count();
+    Json(serde_json::json!({"count_below_avg": below, "total_segments": n, "mean_docs": mean}))
+}
+
+/// GET /api/v1/search/index/segments/density-rank — ranking de segmentos por densidade (docs/byte). Sprint #2353.
+pub async fn segment_density_rank(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ranked": [], "total_segments": 0}));
+    }
+    let mut ranked: Vec<(String, f64)> = segs
+        .iter()
+        .map(|(id, docs, bytes)| {
+            let density = if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 };
+            (id.clone(), density)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let result: Vec<serde_json::Value> = ranked
+        .into_iter()
+        .enumerate()
+        .map(|(i, (id, density))| serde_json::json!({"rank": i + 1, "segment_id": id, "docs_per_byte": density}))
+        .collect();
+    Json(serde_json::json!({"ranked": result, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/efficiency — razão docs/byte normalizada pelo máximo. Sprint #2358.
+pub async fn segment_efficiency(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs
+        .iter()
+        .map(|(_, docs, bytes)| if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 })
+        .collect();
+    let max_density = densities.iter().cloned().fold(0.0_f64, f64::max);
+    let result: Vec<serde_json::Value> = segs
+        .iter()
+        .zip(densities.iter())
+        .map(|((id, docs, bytes), density)| {
+            let efficiency = if max_density > 0.0 { density / max_density } else { 0.0 };
+            serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes, "efficiency": efficiency})
+        })
+        .collect();
+    Json(serde_json::json!({"segments": result, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/compaction-score — score de compactação: 1 - (n_segs / max_segs). Sprint #2363.
+pub async fn segment_compaction_score(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let max_segs: usize = 100;
+    let score = if n >= max_segs { 0.0 } else { 1.0 - (n as f64 / max_segs as f64) };
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    Json(serde_json::json!({"compaction_score": score, "segment_count": n, "total_docs": total_docs, "total_bytes": total_bytes}))
+}
+
 /// GET /api/v1/search/index/segments/top-heavy — segmentos que concentram a maior parte dos docs. Sprint #2328.
 pub async fn segment_top_heavy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
