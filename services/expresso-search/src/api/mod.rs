@@ -6418,6 +6418,58 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/p95-bytes — P95 de bytes entre segmentos. Sprint #2608.
+pub async fn segment_p95_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_bytes": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = (n * 19 / 20).min(n - 1);
+    Json(serde_json::json!({"p95_bytes": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/p95-docs — P95 de docs entre segmentos. Sprint #2613.
+pub async fn segment_p95_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_docs": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = (n * 19 / 20).min(n - 1);
+    Json(serde_json::json!({"p95_docs": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/p99-bytes — P99 de bytes entre segmentos. Sprint #2618.
+pub async fn segment_p99_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_bytes": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = (n * 99 / 100).min(n - 1);
+    Json(serde_json::json!({"p99_bytes": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/p99-docs — P99 de docs entre segmentos. Sprint #2623.
+pub async fn segment_p99_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_docs": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = (n * 99 / 100).min(n - 1);
+    Json(serde_json::json!({"p99_docs": vals[idx], "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

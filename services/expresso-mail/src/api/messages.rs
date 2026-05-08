@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-p95-by-folder",         get(recipient_count_p95_by_folder_stats))
+        .route("/mail/messages/stats/recipient-count-p99-by-folder",         get(recipient_count_p99_by_folder_stats))
+        .route("/mail/messages/stats/recipient-count-p95-by-tier",           get(recipient_count_p95_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-p99-by-tier",           get(recipient_count_p99_by_tier_stats))
         .route("/mail/messages/stats/attachment-count-count-by-tier",       get(attachment_count_count_by_tier_stats))
         .route("/mail/messages/stats/recipient-count-count-by-folder",     get(recipient_count_count_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-count-by-tier",       get(recipient_count_count_by_tier_stats))
@@ -12343,6 +12347,110 @@ async fn size_cv_by_tier_stats(
             let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
             serde_json::json!({"tier": tier, "cv_size": cv, "stddev_bytes": stddev, "avg_bytes": avg, "message_count": cnt})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-p95-by-folder — P95 de recipient_count por pasta. Sprint #2607.
+async fn recipient_count_p95_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY m.recipient_count)::FLOAT8 AS p95_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.recipient_count IS NOT NULL \
+         GROUP BY mb.name ORDER BY p95_rc DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, p95, cnt)| serde_json::json!({"folder": folder, "p95_recipient_count": p95, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-p99-by-folder — P99 de recipient_count por pasta. Sprint #2612.
+async fn recipient_count_p99_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY m.recipient_count)::FLOAT8 AS p99_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.recipient_count IS NOT NULL \
+         GROUP BY mb.name ORDER BY p99_rc DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, p99, cnt)| serde_json::json!({"folder": folder, "p99_recipient_count": p99, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-p95-by-tier — P95 de recipient_count por tier. Sprint #2617.
+async fn recipient_count_p95_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY m.recipient_count)::FLOAT8 AS p95_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.recipient_count IS NOT NULL \
+         GROUP BY mb.tier ORDER BY p95_rc DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p95, cnt)| serde_json::json!({"tier": tier, "p95_recipient_count": p95, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-p99-by-tier — P99 de recipient_count por tier. Sprint #2622.
+async fn recipient_count_p99_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY m.recipient_count)::FLOAT8 AS p99_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.recipient_count IS NOT NULL \
+         GROUP BY mb.tier ORDER BY p99_rc DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p99, cnt)| serde_json::json!({"tier": tier, "p99_recipient_count": p99, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
