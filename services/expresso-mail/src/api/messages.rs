@@ -338,6 +338,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/subject-length-p50-by-tier",   get(subject_length_p50_by_tier_stats))
         .route("/mail/messages/stats/size-range-by-folder",             get(size_range_by_folder_stats))
         .route("/mail/messages/stats/size-range-by-tier",               get(size_range_by_tier_stats))
+        .route("/mail/messages/stats/body-length-range-by-folder",      get(body_length_range_by_folder_stats))
+        .route("/mail/messages/stats/body-length-range-by-tier",        get(body_length_range_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-range-by-folder",  get(recipient_count_range_by_folder_stats))
+        .route("/mail/messages/stats/recipient-count-range-by-tier",    get(recipient_count_range_by_tier_stats))
         .route("/mail/messages/stats/body-length-cv-by-folder",         get(body_length_cv_by_folder_stats))
         .route("/mail/messages/stats/body-length-cv-by-tier",           get(body_length_cv_by_tier_stats))
         .route("/mail/messages/stats/attachment-count-cv-by-folder",    get(attachment_count_cv_by_folder_stats))
@@ -11604,6 +11608,114 @@ async fn size_range_by_tier_stats(
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(tier, max_sz, min_sz, cnt)| serde_json::json!({"tier": tier, "range_bytes": max_sz - min_sz, "max_bytes": max_sz, "min_bytes": min_sz, "message_count": cnt}))
         .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-range-by-folder — range do comprimento do body por pasta. Sprint #2467.
+async fn body_length_range_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MAX(m.body_length)::BIGINT AS max_bl, \
+                MIN(m.body_length)::BIGINT AS min_bl, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, max_bl, min_bl, cnt)| {
+        serde_json::json!({"folder": folder, "range_body_length": max_bl - min_bl, "max": max_bl, "min": min_bl, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-range-by-tier — range do comprimento do body por tier. Sprint #2472.
+async fn body_length_range_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                MAX(m.body_length)::BIGINT AS max_bl, \
+                MIN(m.body_length)::BIGINT AS min_bl, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, max_bl, min_bl, cnt)| {
+        serde_json::json!({"tier": tier, "range_body_length": max_bl - min_bl, "max": max_bl, "min": min_bl, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-range-by-folder — range de destinatários por pasta. Sprint #2477.
+async fn recipient_count_range_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MAX(m.recipient_count)::BIGINT AS max_rc, \
+                MIN(m.recipient_count)::BIGINT AS min_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, max_rc, min_rc, cnt)| {
+        serde_json::json!({"folder": folder, "range_recipient_count": max_rc - min_rc, "max": max_rc, "min": min_rc, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-range-by-tier — range de destinatários por tier. Sprint #2482.
+async fn recipient_count_range_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                MAX(m.recipient_count)::BIGINT AS max_rc, \
+                MIN(m.recipient_count)::BIGINT AS min_rc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, max_rc, min_rc, cnt)| {
+        serde_json::json!({"tier": tier, "range_recipient_count": max_rc - min_rc, "max": max_rc, "min": min_rc, "message_count": cnt})
+    }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
