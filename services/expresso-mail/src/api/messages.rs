@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/size-lorenz-by-folder",                    get(size_lorenz_by_folder_stats))
+        .route("/mail/messages/stats/size-lorenz-by-tier",                      get(size_lorenz_by_tier_stats))
+        .route("/mail/messages/stats/body-length-lorenz-by-folder",             get(body_length_lorenz_by_folder_stats))
+        .route("/mail/messages/stats/body-length-lorenz-by-tier",               get(body_length_lorenz_by_tier_stats))
         .route("/mail/messages/stats/size-hhi-by-folder",                       get(size_hhi_by_folder_stats))
         .route("/mail/messages/stats/size-hhi-by-tier",                         get(size_hhi_by_tier_stats))
         .route("/mail/messages/stats/body-length-hhi-by-folder",                get(body_length_hhi_by_folder_stats))
@@ -12377,6 +12381,110 @@ async fn size_cv_by_tier_stats(
         })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-lorenz-by-folder — curva de Lorenz de size por pasta. Sprint #2767.
+async fn size_lorenz_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, SUM(m.size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY total_size ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let mut cum_size = 0i64;
+    let result: Vec<serde_json::Value> = rows.iter().map(|(folder, size, cnt)| {
+        cum_size += size;
+        let cum_share = if grand_total > 0 { cum_size as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"folder": folder, "cumulative_share": cum_share, "total_size": size, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz": result, "grand_total_size": grand_total})))
+}
+
+/// GET /mail/messages/stats/size-lorenz-by-tier — curva de Lorenz de size por tier (recipient_count). Sprint #2772.
+async fn size_lorenz_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(recipient_count, 0) AS tier, SUM(size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages \
+         WHERE tenant_id = $1 AND user_id = $2 AND size IS NOT NULL \
+         GROUP BY tier ORDER BY total_size ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let mut cum_size = 0i64;
+    let result: Vec<serde_json::Value> = rows.iter().map(|(tier, size, cnt)| {
+        cum_size += size;
+        let cum_share = if grand_total > 0 { cum_size as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"tier": tier, "cumulative_share": cum_share, "total_size": size, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz": result, "grand_total_size": grand_total})))
+}
+
+/// GET /mail/messages/stats/body-length-lorenz-by-folder — curva de Lorenz de body_length por pasta. Sprint #2777.
+async fn body_length_lorenz_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, SUM(m.body_length)::BIGINT AS total_body, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY total_body ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, b, _)| b).sum();
+    let mut cum_body = 0i64;
+    let result: Vec<serde_json::Value> = rows.iter().map(|(folder, body, cnt)| {
+        cum_body += body;
+        let cum_share = if grand_total > 0 { cum_body as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"folder": folder, "cumulative_share": cum_share, "total_body_length": body, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz": result, "grand_total_body_length": grand_total})))
+}
+
+/// GET /mail/messages/stats/body-length-lorenz-by-tier — curva de Lorenz de body_length por tier. Sprint #2782.
+async fn body_length_lorenz_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(recipient_count, 0) AS tier, SUM(body_length)::BIGINT AS total_body, COUNT(*)::BIGINT AS msg_count \
+         FROM messages \
+         WHERE tenant_id = $1 AND user_id = $2 AND body_length IS NOT NULL \
+         GROUP BY tier ORDER BY total_body ASC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, b, _)| b).sum();
+    let mut cum_body = 0i64;
+    let result: Vec<serde_json::Value> = rows.iter().map(|(tier, body, cnt)| {
+        cum_body += body;
+        let cum_share = if grand_total > 0 { cum_body as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"tier": tier, "cumulative_share": cum_share, "total_body_length": body, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz": result, "grand_total_body_length": grand_total})))
 }
 
 /// GET /mail/messages/stats/size-hhi-by-folder — índice HHI de size por pasta. Sprint #2747.

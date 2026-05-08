@@ -1521,6 +1521,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_range),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-gini-by-weekday",
+            get(events_by_range_summary_length_gini_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-gini-by-month",
+            get(events_by_range_summary_length_gini_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-hhi-by-class",
+            get(events_by_range_summary_length_hhi_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-hhi-by-weekday",
+            get(events_by_range_summary_length_hhi_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -11753,6 +11769,122 @@ async fn events_by_range_duration_range(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let range = match (row.0, row.1) { (Some(mx), Some(mn)) => mx - mn, _ => 0.0 };
     Ok(Json(serde_json::json!({"range_duration_seconds": range, "max": row.0, "min": row.1, "event_count": row.2})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-gini-by-weekday — Gini de summary_length por dia da semana. Sprint #2769.
+async fn events_by_range_summary_length_gini_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(dow, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let gini = if n > 1 && total > 0.0 {
+            let num: f64 = vals.iter().enumerate().map(|(i, v)| (2 * (i + 1) - n - 1) as f64 * v).sum();
+            num / (n as f64 * total)
+        } else { 0.0 };
+        serde_json::json!({"weekday": dow, "gini_summary_length": gini, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-gini-by-month — Gini de summary_length por mês. Sprint #2774.
+async fn events_by_range_summary_length_gini_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let gini = if n > 1 && total > 0.0 {
+            let num: f64 = vals.iter().enumerate().map(|(i, v)| (2 * (i + 1) - n - 1) as f64 * v).sum();
+            num / (n as f64 * total)
+        } else { 0.0 };
+        serde_json::json!({"month": month, "gini_summary_length": gini, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-hhi-by-class — HHI de summary_length por classe. Sprint #2779.
+async fn events_by_range_summary_length_hhi_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                COALESCE(SUM(LENGTH(summary)), 0.0)::FLOAT8 AS total_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: f64 = rows.iter().map(|(_, tl, _)| tl).sum();
+    let result: Vec<serde_json::Value> = rows.iter().map(|(class, total_len, cnt)| {
+        let share = if grand_total > 0.0 { total_len / grand_total } else { 0.0 };
+        serde_json::json!({"class": class, "share": share, "total_len": total_len, "event_count": cnt})
+    }).collect();
+    let hhi: f64 = result.iter().map(|r| r["share"].as_f64().unwrap_or(0.0).powi(2)).sum();
+    Ok(Json(serde_json::json!({"hhi": hhi, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-hhi-by-weekday — HHI de summary_length por dia da semana. Sprint #2784.
+async fn events_by_range_summary_length_hhi_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                COALESCE(SUM(LENGTH(summary)), 0.0)::FLOAT8 AS total_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: f64 = rows.iter().map(|(_, tl, _)| tl).sum();
+    let result: Vec<serde_json::Value> = rows.iter().map(|(dow, total_len, cnt)| {
+        let share = if grand_total > 0.0 { total_len / grand_total } else { 0.0 };
+        serde_json::json!({"weekday": dow, "share": share, "total_len": total_len, "event_count": cnt})
+    }).collect();
+    let hhi: f64 = result.iter().map(|r| r["share"].as_f64().unwrap_or(0.0).powi(2)).sum();
+    Ok(Json(serde_json::json!({"hhi": hhi, "rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class — curtose de summary_length por classe. Sprint #2749.
