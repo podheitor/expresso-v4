@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/version-min-by-kind",               get(file_stats_version_min_by_kind))
+        .route("/api/v1/drive/files/stats/version-max-by-owner",              get(file_stats_version_max_by_owner))
+        .route("/api/v1/drive/files/stats/version-min-by-owner",              get(file_stats_version_min_by_owner))
+        .route("/api/v1/drive/files/stats/version-max-by-ext",                get(file_stats_version_max_by_ext))
         .route("/api/v1/drive/files/stats/name-length-stddev-by-owner",      get(file_stats_name_length_stddev_by_owner))
         .route("/api/v1/drive/files/stats/name-length-stddev-by-ext",        get(file_stats_name_length_stddev_by_ext))
         .route("/api/v1/drive/files/stats/name-length-stddev-by-mime",       get(file_stats_name_length_stddev_by_mime))
@@ -10256,6 +10260,83 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-min-by-kind — versão mínima por kind. Sprint #2406.
+async fn file_stats_version_min_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, MIN(version)::BIGINT AS min_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY min_version ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(kind, min_v, cnt)| serde_json::json!({"kind": kind, "min_version": min_v, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-max-by-owner — versão máxima por owner. Sprint #2411.
+async fn file_stats_version_max_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, MAX(version)::BIGINT AS max_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY max_version DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(owner, max_v, cnt)| serde_json::json!({"owner_id": owner, "max_version": max_v, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-min-by-owner — versão mínima por owner. Sprint #2416.
+async fn file_stats_version_min_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, MIN(version)::BIGINT AS min_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY min_version ASC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(owner, min_v, cnt)| serde_json::json!({"owner_id": owner, "min_version": min_v, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-max-by-ext — versão máxima por extensão. Sprint #2421.
+async fn file_stats_version_max_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                MAX(version)::BIGINT AS max_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY max_version DESC",
+    )
+    .bind(ctx.tenant_id)
+    .fetch_all(state.db())
+    .await
+    .map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(ext, max_v, cnt)| serde_json::json!({"ext": ext, "max_version": max_v, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
