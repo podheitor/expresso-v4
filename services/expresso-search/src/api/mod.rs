@@ -6418,6 +6418,80 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/theil-bytes — índice Theil T de desigualdade de bytes entre segmentos. Sprint #2688.
+pub async fn segment_theil_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"theil_bytes": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    let theil = if total > 0 && n > 1 {
+        let mean = total as f64 / n as f64;
+        segs.iter().fold(0.0_f64, |acc, (_, _, b)| {
+            let x = *b as f64;
+            if x > 0.0 { acc + (x / total as f64) * (x / mean).ln() } else { acc }
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"theil_bytes": theil, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/theil-docs — índice Theil T de desigualdade de docs entre segmentos. Sprint #2693.
+pub async fn segment_theil_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"theil_docs": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    let theil = if total > 0 && n > 1 {
+        let mean = total as f64 / n as f64;
+        segs.iter().fold(0.0_f64, |acc, (_, d, _)| {
+            let x = *d as f64;
+            if x > 0.0 { acc + (x / total as f64) * (x / mean).ln() } else { acc }
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"theil_docs": theil, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/atkinson-bytes — índice Atkinson (ε=0.5) de bytes entre segmentos. Sprint #2698.
+pub async fn segment_atkinson_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"atkinson_bytes": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    let atkinson = if total > 0 && n > 1 {
+        let mean = total as f64 / n as f64;
+        let epsilon: f64 = 0.5;
+        let ede = segs.iter().fold(0.0_f64, |acc, (_, _, b)| {
+            acc + (*b as f64).powf(1.0 - epsilon)
+        }).powf(1.0 / (1.0 - epsilon)) / n as f64;
+        1.0 - ede / mean
+    } else { 0.0 };
+    Json(serde_json::json!({"atkinson_bytes": atkinson, "epsilon": 0.5, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/atkinson-docs — índice Atkinson (ε=0.5) de docs entre segmentos. Sprint #2703.
+pub async fn segment_atkinson_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"atkinson_docs": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    let atkinson = if total > 0 && n > 1 {
+        let mean = total as f64 / n as f64;
+        let epsilon: f64 = 0.5;
+        let ede = segs.iter().fold(0.0_f64, |acc, (_, d, _)| {
+            acc + (*d as f64).powf(1.0 - epsilon)
+        }).powf(1.0 / (1.0 - epsilon)) / n as f64;
+        1.0 - ede / mean
+    } else { 0.0 };
+    Json(serde_json::json!({"atkinson_docs": atkinson, "epsilon": 0.5, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/hhi-bytes — índice Herfindahl-Hirschman de bytes entre segmentos. Sprint #2668.
 pub async fn segment_hhi_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

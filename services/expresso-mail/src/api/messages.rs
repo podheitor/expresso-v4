@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/size-skewness-by-folder",                  get(size_skewness_by_folder_stats))
+        .route("/mail/messages/stats/size-skewness-by-tier",                    get(size_skewness_by_tier_stats))
+        .route("/mail/messages/stats/body-length-skewness-by-folder",           get(body_length_skewness_by_folder_stats))
+        .route("/mail/messages/stats/body-length-skewness-by-tier",             get(body_length_skewness_by_tier_stats))
         .route("/mail/messages/stats/body-length-p95-by-tier",                  get(body_length_p95_by_tier_stats))
         .route("/mail/messages/stats/body-length-p99-by-tier",                  get(body_length_p99_by_tier_stats))
         .route("/mail/messages/stats/size-entropy-count-by-tier",               get(size_entropy_count_by_tier_stats))
@@ -12360,6 +12364,122 @@ async fn size_cv_by_tier_stats(
             serde_json::json!({"tier": tier, "cv_size": cv, "stddev_bytes": stddev, "avg_bytes": avg, "message_count": cnt})
         })
         .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-skewness-by-folder — assimetria (skewness) de size por pasta. Sprint #2687.
+async fn size_skewness_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                COALESCE(AVG(m.size), 0.0)::FLOAT8 AS avg_s, \
+                COALESCE(STDDEV(m.size), 0.0)::FLOAT8 AS stddev_s, \
+                COALESCE(AVG(POWER(m.size - (SELECT AVG(m2.size) FROM messages m2 WHERE m2.mailbox_id = m.mailbox_id), 3)), 0.0)::FLOAT8 AS m3, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY mb.name",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"folder": folder, "skewness_size": skewness, "avg": avg, "stddev": stddev, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-skewness-by-tier — assimetria (skewness) de size por tier. Sprint #2692.
+async fn size_skewness_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                COALESCE(AVG(m.size), 0.0)::FLOAT8 AS avg_s, \
+                COALESCE(STDDEV(m.size), 0.0)::FLOAT8 AS stddev_s, \
+                COALESCE(AVG(POWER(m.size - (SELECT AVG(m2.size) FROM messages m2 JOIN mailboxes mb2 ON m2.mailbox_id = mb2.id WHERE mb2.tier = mb.tier AND m2.tenant_id = m.tenant_id), 3)), 0.0)::FLOAT8 AS m3, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size IS NOT NULL \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"tier": tier, "skewness_size": skewness, "avg": avg, "stddev": stddev, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-skewness-by-folder — assimetria (skewness) de body_length por pasta. Sprint #2697.
+async fn body_length_skewness_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                COALESCE(AVG(m.body_length), 0.0)::FLOAT8 AS avg_bl, \
+                COALESCE(STDDEV(m.body_length), 0.0)::FLOAT8 AS stddev_bl, \
+                COALESCE(AVG(POWER(m.body_length - (SELECT AVG(m2.body_length) FROM messages m2 WHERE m2.mailbox_id = m.mailbox_id), 3)), 0.0)::FLOAT8 AS m3, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY mb.name",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"folder": folder, "skewness_body_length": skewness, "avg": avg, "stddev": stddev, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-skewness-by-tier — assimetria (skewness) de body_length por tier. Sprint #2702.
+async fn body_length_skewness_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                COALESCE(AVG(m.body_length), 0.0)::FLOAT8 AS avg_bl, \
+                COALESCE(STDDEV(m.body_length), 0.0)::FLOAT8 AS stddev_bl, \
+                COALESCE(AVG(POWER(m.body_length - (SELECT AVG(m2.body_length) FROM messages m2 JOIN mailboxes mb2 ON m2.mailbox_id = mb2.id WHERE mb2.tier = mb.tier AND m2.tenant_id = m.tenant_id), 3)), 0.0)::FLOAT8 AS m3, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"tier": tier, "skewness_body_length": skewness, "avg": avg, "stddev": stddev, "message_count": cnt})
+    }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
