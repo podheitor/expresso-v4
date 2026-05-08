@@ -6418,6 +6418,70 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/kurtosis-bytes — excesso de curtose de bytes entre segmentos. Sprint #2748.
+pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"kurtosis_bytes": null, "total_segments": n}));
+    }
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = bytes.iter().sum::<f64>() / n as f64;
+    let stddev = (bytes.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let kurtosis = if stddev > 0.0 {
+        bytes.iter().map(|x| ((x - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0
+    } else { 0.0 };
+    Json(serde_json::json!({"kurtosis_bytes": kurtosis, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/kurtosis-docs — excesso de curtose de docs entre segmentos. Sprint #2753.
+pub async fn segment_kurtosis_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"kurtosis_docs": null, "total_segments": n}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let stddev = (docs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let kurtosis = if stddev > 0.0 {
+        docs.iter().map(|x| ((x - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0
+    } else { 0.0 };
+    Json(serde_json::json!({"kurtosis_docs": kurtosis, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/skewness-bytes — assimetria de bytes entre segmentos. Sprint #2758.
+pub async fn segment_skewness_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"skewness_bytes": null, "total_segments": n}));
+    }
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = bytes.iter().sum::<f64>() / n as f64;
+    let stddev = (bytes.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let skewness = if stddev > 0.0 {
+        bytes.iter().map(|x| ((x - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"skewness_bytes": skewness, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/skewness-docs — assimetria de docs entre segmentos. Sprint #2763.
+pub async fn segment_skewness_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"skewness_docs": null, "total_segments": n}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let stddev = (docs.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let skewness = if stddev > 0.0 {
+        docs.iter().map(|x| ((x - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"skewness_docs": skewness, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/mad-bytes — desvio absoluto mediano de bytes entre segmentos. Sprint #2728.
 pub async fn segment_mad_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
