@@ -7008,6 +7008,86 @@ pub async fn segment_ratio_trimmed_mean(State(store): State<IndexStore>) -> Json
     Json(serde_json::json!({"ratio_trimmed_mean": trimmed_mean, "total_segments": n, "trimmed_count": trimmed.len()}))
 }
 
+/// GET /api/v1/search/index/segments/ratio-harmonic-mean — média harmônica de bytes/docs por segmento. Sprint #2828.
+pub async fn segment_ratio_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_harmonic_mean": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let nonzero: Vec<f64> = ratios.iter().copied().filter(|&r| r > 0.0).collect();
+    let harmonic_mean = if nonzero.is_empty() {
+        0.0
+    } else {
+        let recip_sum: f64 = nonzero.iter().map(|r| 1.0 / r).sum();
+        nonzero.len() as f64 / recip_sum
+    };
+    Json(serde_json::json!({"ratio_harmonic_mean": harmonic_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-geometric-mean — média geométrica de bytes/docs por segmento. Sprint #2833.
+pub async fn segment_ratio_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_geometric_mean": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let nonzero: Vec<f64> = ratios.iter().copied().filter(|&r| r > 0.0).collect();
+    let geometric_mean = if nonzero.is_empty() {
+        0.0
+    } else {
+        let log_sum: f64 = nonzero.iter().map(|r| r.ln()).sum();
+        (log_sum / nonzero.len() as f64).exp()
+    };
+    Json(serde_json::json!({"ratio_geometric_mean": geometric_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-winsorized-mean — média winsorizada (10%–90%) de bytes/docs por segmento. Sprint #2838.
+pub async fn segment_ratio_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_winsorized_mean": null, "total_segments": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo = (n as f64 * 0.10).floor() as usize;
+    let hi = (n as f64 * 0.90).ceil() as usize;
+    let hi = hi.min(n);
+    let winsorized_mean = if lo < hi {
+        let slice = &ratios[lo..hi];
+        slice.iter().sum::<f64>() / slice.len() as f64
+    } else {
+        ratios[n / 2]
+    };
+    Json(serde_json::json!({"ratio_winsorized_mean": winsorized_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-coefficient-of-variation — coeficiente de variação de bytes/docs por segmento. Sprint #2843.
+pub async fn segment_ratio_coefficient_of_variation(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_cv": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let variance = ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let cv = if mean.abs() > 0.0 { stddev / mean } else { 0.0 };
+    Json(serde_json::json!({"ratio_cv": cv, "ratio_mean": mean, "ratio_stddev": stddev, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
