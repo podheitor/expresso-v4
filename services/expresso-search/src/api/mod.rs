@@ -6418,6 +6418,51 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/avg-docs — média de docs por segmento. Sprint #2528.
+pub async fn segment_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_docs": 0.0, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    Json(serde_json::json!({"avg_docs": total as f64 / n as f64, "total_docs": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/stddev-bytes — stddev de bytes entre segmentos. Sprint #2533.
+pub async fn segment_stddev_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"stddev_bytes": 0.0, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"stddev_bytes": variance.sqrt(), "mean_bytes": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/stddev-docs — stddev de docs entre segmentos. Sprint #2538.
+pub async fn segment_stddev_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"stddev_docs": 0.0, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"stddev_docs": variance.sqrt(), "mean_docs": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-empty — número de segmentos sem documentos. Sprint #2543.
+pub async fn segment_count_empty(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total = segs.len();
+    let empty = segs.iter().filter(|(_, docs, _)| *docs == 0).count();
+    Json(serde_json::json!({"empty_segments": empty, "total_segments": total, "pct_empty": if total > 0 { empty as f64 / total as f64 * 100.0 } else { 0.0 }}))
+}
+
 /// GET /api/v1/search/index/segments/docs-count-by-size-bucket — contagem de segmentos por bucket de tamanho. Sprint #2508.
 pub async fn segment_docs_count_by_size_bucket(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
