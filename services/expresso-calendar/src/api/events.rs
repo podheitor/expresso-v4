@@ -1489,6 +1489,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_category_count_p50_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-max-by-weekday",
+            get(events_by_range_attendee_count_max_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-min-by-weekday",
+            get(events_by_range_attendee_count_min_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-stddev-by-weekday",
+            get(events_by_range_attendee_count_stddev_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/category-count-max-by-class",
+            get(events_by_range_category_count_max_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p90-by-weekday",
             get(events_by_range_summary_length_p90_by_weekday),
         )
@@ -11138,6 +11154,126 @@ async fn events_by_range_attendee_count_p50_by_month(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(month, p50, cnt)| serde_json::json!({"month": month, "p50_attendees": p50, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-max-by-weekday — MAX participantes × dia da semana. Sprint #2229.
+async fn events_by_range_attendee_count_max_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS dow, \
+         MAX(jsonb_array_length(COALESCE(attendees, '[]'::jsonb)))::BIGINT AS max_attendee_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, max_att, cnt)| serde_json::json!({"dow": dow, "max_attendee_count": max_att, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-min-by-weekday — MIN participantes × dia da semana. Sprint #2234.
+async fn events_by_range_attendee_count_min_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS dow, \
+         MIN(jsonb_array_length(COALESCE(attendees, '[]'::jsonb)))::BIGINT AS min_attendee_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, min_att, cnt)| serde_json::json!({"dow": dow, "min_attendee_count": min_att, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-stddev-by-weekday — STDDEV participantes × dia da semana. Sprint #2239.
+async fn events_by_range_attendee_count_stddev_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS dow, \
+         STDDEV(jsonb_array_length(COALESCE(attendees, '[]'::jsonb))) AS stddev_attendee_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, stddev, cnt)| serde_json::json!({"dow": dow, "stddev_attendee_count": stddev, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/category-count-max-by-class — MAX contagem de categorias × class. Sprint #2244.
+async fn events_by_range_category_count_max_by_class(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+         MAX(COALESCE(array_length(categories, 1), 0))::BIGINT AS max_category_count, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY class ORDER BY max_category_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(cls, max_cat, cnt)| serde_json::json!({"class": cls, "max_category_count": max_cat, "event_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

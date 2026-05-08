@@ -6372,6 +6372,64 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/cold — segmentos com 0 docs (frios, sem conteúdo indexado). Sprint #2228.
+pub async fn segment_cold(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let cold: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd == 0)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"cold_segments": cold, "count": cold.len(), "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/idle — segmentos com menos de 10 docs (idle, pouco uso). Sprint #2233.
+pub async fn segment_idle(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let idle: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd < 10)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"idle_segments": idle, "count": idle.len(), "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/density — docs por byte médio de cada segmento (densidade de indexação). Sprint #2238.
+pub async fn segment_density(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_density": null, "segment_count": 0}));
+    }
+    let densities: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 })
+        .collect();
+    let mean = densities.iter().sum::<f64>() / n as f64;
+    let per_segment: Vec<serde_json::Value> = segs.iter().zip(densities.iter())
+        .map(|((id, nd, db), d)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "density": d}))
+        .collect();
+    Json(serde_json::json!({"mean_density": mean, "segments": per_segment, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/anomaly — segmentos com ratio > mean+2σ (outliers de densidade). Sprint #2243.
+pub async fn segment_anomaly(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"anomalies": [], "threshold": null, "segment_count": n}));
+    }
+    let ratios: Vec<f64> = segs.iter()
+        .map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 })
+        .collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let variance = ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let threshold = mean + 2.0 * stddev;
+    let anomalies: Vec<serde_json::Value> = segs.iter().zip(ratios.iter())
+        .filter(|(_, r)| **r > threshold)
+        .map(|((id, nd, db), r)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "ratio": r}))
+        .collect();
+    Json(serde_json::json!({"anomalies": anomalies, "threshold": threshold, "mean_ratio": mean, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/lease — segmentos com ratio > 1 (mais docs que bytes: candidatos a lease/merge). Sprint #2208.
 pub async fn segment_lease(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
