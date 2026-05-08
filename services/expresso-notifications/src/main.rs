@@ -6138,6 +6138,85 @@ async fn dlq_stats_by_day_and_dow(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-payload-size-min — mínimo do tamanho do payload por kind. Sprint #2425.
+async fn dlq_by_kind_payload_size_min(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, MIN(LENGTH(payload))::BIGINT AS min_payload_size, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY min_payload_size ASC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, min_sz, cnt)| json!({"kind": kind, "min_payload_size": min_sz, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-range — range (MAX-MIN) do comprimento do error. Sprint #2430.
+async fn dlq_error_length_range(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (i64, i64, i64) = sqlx::query_as(
+        "SELECT MAX(LENGTH(last_error))::BIGINT AS max_len, MIN(LENGTH(last_error))::BIGINT AS min_len, COUNT(*)::BIGINT AS total \
+         FROM notification_dlq \
+         WHERE last_error IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"range": row.0 - row.1, "max": row.0, "min": row.1, "total": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-payload-size-max — máximo do tamanho do payload por user_id. Sprint #2435.
+async fn dlq_by_user_payload_size_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, MAX(LENGTH(payload))::BIGINT AS max_payload_size, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY max_payload_size DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, max_sz, cnt)| json!({"user_id": uid, "max_payload_size": max_sz, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-payload-size-max — máximo do tamanho do payload por tenant_id. Sprint #2440.
+async fn dlq_by_tenant_payload_size_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, MAX(LENGTH(payload))::BIGINT AS max_payload_size, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY max_payload_size DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, max_sz, cnt)| json!({"tenant_id": tid, "max_payload_size": max_sz, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/payload-size-range — range (MAX-MIN) do tamanho do payload. Sprint #2405.
 async fn dlq_payload_size_range(
     State(st): State<AppState>,
@@ -12227,6 +12306,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-and-dow",             get(dlq_stats_by_kind_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-dow",           get(dlq_stats_by_tenant_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-user-and-dow",             get(dlq_stats_by_user_and_dow))
+        .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-min",     get(dlq_by_kind_payload_size_min))
+        .route("/api/v1/notifications/dlq/stats/error-length-range",           get(dlq_error_length_range))
+        .route("/api/v1/notifications/dlq/stats/by-user-payload-size-max",    get(dlq_by_user_payload_size_max))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-max",  get(dlq_by_tenant_payload_size_max))
         .route("/api/v1/notifications/dlq/stats/payload-size-range",           get(dlq_payload_size_range))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-min",        get(dlq_by_kind_attempts_min))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-min",        get(dlq_by_user_attempts_min))
