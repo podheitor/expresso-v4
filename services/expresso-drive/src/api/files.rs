@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/version-stddev-by-owner",            get(file_stats_version_stddev_by_owner))
+        .route("/api/v1/drive/files/stats/version-stddev-by-ext",              get(file_stats_version_stddev_by_ext))
+        .route("/api/v1/drive/files/stats/version-stddev-by-mime",             get(file_stats_version_stddev_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-avg-by-owner",          get(file_stats_size_deleted_avg_by_owner))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -10264,6 +10268,67 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-stddev-by-owner — desvio padrão da versão por owner. Sprint #2446.
+async fn file_stats_version_stddev_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, COALESCE(STDDEV(version), 0.0)::FLOAT8 AS stddev_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY stddev_version DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, stddev, cnt)| serde_json::json!({"owner_id": owner, "stddev_version": stddev, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-stddev-by-ext — desvio padrão da versão por extensão. Sprint #2451.
+async fn file_stats_version_stddev_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                COALESCE(STDDEV(version), 0.0)::FLOAT8 AS stddev_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY stddev_version DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, stddev, cnt)| serde_json::json!({"ext": ext, "stddev_version": stddev, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-stddev-by-mime — desvio padrão da versão por mime_type. Sprint #2456.
+async fn file_stats_version_stddev_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, COALESCE(STDDEV(version), 0.0)::FLOAT8 AS stddev_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY stddev_version DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, stddev, cnt)| serde_json::json!({"mime_type": mime, "stddev_version": stddev, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-avg-by-owner — tamanho médio de arquivos deletados por owner. Sprint #2461.
+async fn file_stats_size_deleted_avg_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, AVG(size_bytes)::FLOAT8 AS avg_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY avg_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, avg, cnt)| serde_json::json!({"owner_id": owner, "avg_deleted_size_bytes": avg, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

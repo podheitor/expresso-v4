@@ -1489,6 +1489,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_category_count_p50_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-class",
+            get(events_by_range_summary_length_range_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-weekday",
+            get(events_by_range_summary_length_range_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-month",
+            get(events_by_range_summary_length_range_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-range-by-class",
+            get(events_by_range_attendee_count_range_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/category-count-iqr-by-month",
             get(events_by_range_category_count_iqr_by_month),
         )
@@ -11314,6 +11330,111 @@ async fn events_by_range_attendee_count_p50_by_month(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(month, p50, cnt)| serde_json::json!({"month": month, "p50_attendees": p50, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-class — range comprimento summary × class. Sprint #2445.
+async fn events_by_range_summary_length_range_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                MAX(LENGTH(summary))::BIGINT AS max_len, MIN(LENGTH(summary))::BIGINT AS min_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND summary IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, max_l, min_l, cnt)| serde_json::json!({"class": class, "range_summary_length": max_l - min_l, "max": max_l, "min": min_l, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-weekday — range comprimento summary × dia semana. Sprint #2450.
+async fn events_by_range_summary_length_range_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                MAX(LENGTH(summary))::BIGINT AS max_len, MIN(LENGTH(summary))::BIGINT AS min_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND summary IS NOT NULL \
+         GROUP BY weekday ORDER BY weekday",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, max_l, min_l, cnt)| serde_json::json!({"weekday": dow, "range_summary_length": max_l - min_l, "max": max_l, "min": min_l, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-range-by-month — range comprimento summary × mês. Sprint #2455.
+async fn events_by_range_summary_length_range_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                MAX(LENGTH(summary))::BIGINT AS max_len, MIN(LENGTH(summary))::BIGINT AS min_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND summary IS NOT NULL \
+         GROUP BY month ORDER BY month",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, max_l, min_l, cnt)| serde_json::json!({"month": month, "range_summary_length": max_l - min_l, "max": max_l, "min": min_l, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-range-by-class — range de attendees × class. Sprint #2460.
+async fn events_by_range_attendee_count_range_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                MAX(jsonb_array_length(attendees))::BIGINT AS max_att, \
+                MIN(jsonb_array_length(attendees))::BIGINT AS min_att, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND attendees IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(class, max_a, min_a, cnt)| serde_json::json!({"class": class, "range_attendees": max_a - min_a, "max": max_a, "min": min_a, "event_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
