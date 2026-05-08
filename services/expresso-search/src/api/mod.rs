@@ -7224,6 +7224,83 @@ pub async fn segment_bytes_geometric_mean(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"bytes_geometric_mean": geometric_mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-density-lorenz — curva de Lorenz de densidade docs/byte. Sprint #2948.
+pub async fn segment_docs_density_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_curve": [], "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let total: f64 = vals.iter().sum();
+    let lorenz: Vec<serde_json::Value> = vals.iter().enumerate().scan(0.0f64, |acc, (i, v)| {
+        *acc += v;
+        Some(serde_json::json!({
+            "cumulative_population": (i + 1) as f64 / n as f64,
+            "cumulative_share": if total > 0.0 { *acc / total } else { 0.0 }
+        }))
+    }).collect();
+    Json(serde_json::json!({"lorenz_curve": lorenz, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-theil — índice Theil de densidade docs/byte. Sprint #2953.
+pub async fn segment_docs_density_theil(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_theil": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let theil = if mean > 0.0 {
+        vals.iter().map(|&x| if x > 0.0 { (x / mean) * (x / mean).ln() } else { 0.0 }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_density_theil": theil, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-mad — MAD da densidade docs/byte. Sprint #2958.
+pub async fn segment_docs_density_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = if n % 2 == 1 { vals[n / 2] } else { (vals[n / 2 - 1] + vals[n / 2]) / 2.0 };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|v| (v - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 1 { abs_devs[n / 2] } else { (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0 };
+    Json(serde_json::json!({"docs_density_mad": mad, "docs_density_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-entropy — entropia de densidade docs/byte. Sprint #2963.
+pub async fn segment_docs_density_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_entropy": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = vals.iter().sum();
+    let entropy = if total > 0.0 {
+        vals.iter().map(|&v| {
+            let p = v / total;
+            if p > 0.0 { -p * p.ln() } else { 0.0 }
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_density_entropy": entropy, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-iqr — IQR de bytes/doc entre segmentos. Sprint #2928.
 pub async fn segment_bytes_per_doc_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
