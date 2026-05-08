@@ -6372,6 +6372,54 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/pressure — razão bytes totais / número de segmentos (pressão por segmento). Sprint #2248.
+pub async fn segment_pressure(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"pressure_bytes_per_segment": null, "segment_count": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let pressure = total_bytes as f64 / n as f64;
+    Json(serde_json::json!({"pressure_bytes_per_segment": pressure, "total_bytes": total_bytes, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bloat — bytes desperdiçados: segmentos com ratio < 0.1 (poucos docs por byte). Sprint #2253.
+pub async fn segment_bloat(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let bloated: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, db)| *db > 0 && (*nd as f64 / *db as f64) < 0.1)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "ratio": *nd as f64 / *db as f64}))
+        .collect();
+    Json(serde_json::json!({"bloated_segments": bloated, "count": bloated.len(), "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/saturation — % de segmentos com mais de 10 000 docs (saturados). Sprint #2258.
+pub async fn segment_saturation(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"saturation_pct": null, "saturated_count": 0, "segment_count": 0}));
+    }
+    let saturated = segs.iter().filter(|(_, nd, _)| *nd > 10_000).count();
+    let pct = saturated as f64 / n as f64 * 100.0;
+    Json(serde_json::json!({"saturation_pct": pct, "saturated_count": saturated, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/balance — coeficiente de variação dos docs entre segmentos (0=perfeito, >1=desequilíbrio). Sprint #2263.
+pub async fn segment_balance(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"cv_docs": null, "segment_count": n}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let variance = docs.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / n as f64;
+    let cv = if mean > 0.0 { variance.sqrt() / mean } else { 0.0 };
+    Json(serde_json::json!({"cv_docs": cv, "mean_docs": mean, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/cold — segmentos com 0 docs (frios, sem conteúdo indexado). Sprint #2228.
 pub async fn segment_cold(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
