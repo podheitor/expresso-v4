@@ -7224,6 +7224,87 @@ pub async fn segment_bytes_geometric_mean(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"bytes_geometric_mean": geometric_mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-harmonic-mean — média harmônica de bytes/doc. Sprint #2888.
+pub async fn segment_bytes_per_doc_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_harmonic_mean": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    let m = ratios.len();
+    let harmonic_mean = if m == 0 { 0.0 } else {
+        let recip_sum: f64 = ratios.iter().map(|v| 1.0 / v).sum();
+        m as f64 / recip_sum
+    };
+    Json(serde_json::json!({"bytes_per_doc_harmonic_mean": harmonic_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-trimmed-mean — média aparada de bytes/doc. Sprint #2893.
+pub async fn segment_bytes_per_doc_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_trimmed_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = vals.len();
+    let trimmed_mean = if m == 0 {
+        0.0
+    } else {
+        let lo = (m as f64 * 0.10).floor() as usize;
+        let hi = ((m as f64 * 0.90).ceil() as usize).min(m);
+        if lo < hi { vals[lo..hi].iter().sum::<f64>() / (hi - lo) as f64 } else { vals[m / 2] }
+    };
+    Json(serde_json::json!({"bytes_per_doc_trimmed_mean": trimmed_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-winsorized-mean — média winsorizada de bytes/doc. Sprint #2898.
+pub async fn segment_bytes_per_doc_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_winsorized_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = vals.len();
+    let winsorized_mean = if m == 0 {
+        0.0
+    } else {
+        let lo_val = vals[((m as f64 * 0.10).floor() as usize).min(m - 1)];
+        let hi_val = vals[((m as f64 * 0.90).ceil() as usize).saturating_sub(1).min(m - 1)];
+        let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+        clamped.iter().sum::<f64>() / m as f64
+    };
+    Json(serde_json::json!({"bytes_per_doc_winsorized_mean": winsorized_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-geometric-mean — média geométrica de bytes/doc. Sprint #2903.
+pub async fn segment_bytes_per_doc_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_geometric_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).filter(|&v| v > 0.0).collect();
+    let m = vals.len();
+    let geo_mean = if m == 0 { 0.0 } else {
+        let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+        (log_sum / m as f64).exp()
+    };
+    Json(serde_json::json!({"bytes_per_doc_geometric_mean": geo_mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

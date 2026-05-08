@@ -1617,6 +1617,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summary_length_p95_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-harmonic-mean-by-class",
+            get(events_by_range_summary_length_harmonic_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-geometric-mean-by-class",
+            get(events_by_range_summary_length_geometric_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-trimmed-mean-by-class",
+            get(events_by_range_summary_length_trimmed_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-winsorized-mean-by-class",
+            get(events_by_range_summary_length_winsorized_mean_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -1655,6 +1671,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p99-by-class",
             get(events_by_range_summary_length_p99_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-harmonic-mean-by-class",
+            get(events_by_range_summary_length_harmonic_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-geometric-mean-by-class",
+            get(events_by_range_summary_length_geometric_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-trimmed-mean-by-class",
+            get(events_by_range_summary_length_trimmed_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-winsorized-mean-by-class",
+            get(events_by_range_summary_length_winsorized_mean_by_class),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -12534,6 +12566,129 @@ async fn events_by_range_summary_length_p95_by_class(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, p95, cnt)| {
         serde_json::json!({"class": class, "p95_summary_length": p95, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-harmonic-mean-by-class — média harmônica de summary_length por classe. Sprint #2889.
+async fn events_by_range_summary_length_harmonic_mean_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let harmonic_mean = if m == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|v| 1.0 / v).sum();
+            m as f64 / recip_sum
+        };
+        serde_json::json!({"class": class, "harmonic_mean_summary_length": harmonic_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-geometric-mean-by-class — média geométrica de summary_length por classe. Sprint #2894.
+async fn events_by_range_summary_length_geometric_mean_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let geo_mean = if m == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / m as f64).exp()
+        };
+        serde_json::json!({"class": class, "geometric_mean_summary_length": geo_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-trimmed-mean-by-class — média aparada de summary_length por classe. Sprint #2899.
+async fn events_by_range_summary_length_trimmed_mean_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let trimmed_mean = if m == 0 {
+            0.0
+        } else {
+            let lo = (m as f64 * 0.10).floor() as usize;
+            let hi = ((m as f64 * 0.90).ceil() as usize).min(m);
+            if lo < hi { vals[lo..hi].iter().sum::<f64>() / (hi - lo) as f64 } else { vals[m / 2] }
+        };
+        serde_json::json!({"class": class, "trimmed_mean_summary_length": trimmed_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-winsorized-mean-by-class — média winsorizada de summary_length por classe. Sprint #2904.
+async fn events_by_range_summary_length_winsorized_mean_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let winsorized_mean = if m == 0 {
+            0.0
+        } else {
+            let lo_val = vals[((m as f64 * 0.10).floor() as usize).min(m - 1)];
+            let hi_val = vals[((m as f64 * 0.90).ceil() as usize).saturating_sub(1).min(m - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+            clamped.iter().sum::<f64>() / m as f64
+        };
+        serde_json::json!({"class": class, "winsorized_mean_summary_length": winsorized_mean, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

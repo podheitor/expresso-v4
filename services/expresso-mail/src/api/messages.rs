@@ -388,6 +388,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-winsorized-mean-by-tier",             get(size_winsorized_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-winsorized-mean-by-folder",    get(body_length_winsorized_mean_by_folder_stats))
         .route("/mail/messages/stats/body-length-winsorized-mean-by-tier",      get(body_length_winsorized_mean_by_tier_stats))
+        .route("/mail/messages/stats/size-geometric-mean-by-folder",            get(size_geometric_mean_by_folder_stats))
+        .route("/mail/messages/stats/size-geometric-mean-by-tier",              get(size_geometric_mean_by_tier_stats))
+        .route("/mail/messages/stats/body-length-geometric-mean-by-folder",     get(body_length_geometric_mean_by_folder_stats))
+        .route("/mail/messages/stats/body-length-geometric-mean-by-tier",       get(body_length_geometric_mean_by_tier_stats))
         .route("/mail/messages/stats/size-hhi-by-folder",                       get(size_hhi_by_folder_stats))
         .route("/mail/messages/stats/size-hhi-by-tier",                         get(size_hhi_by_tier_stats))
         .route("/mail/messages/stats/body-length-hhi-by-folder",                get(body_length_hhi_by_folder_stats))
@@ -13121,6 +13125,110 @@ async fn body_length_winsorized_mean_by_tier_stats(
             clamped.iter().sum::<f64>() / n as f64
         };
         serde_json::json!({"tier": tier, "winsorized_mean_body_length": winsorized_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-geometric-mean-by-folder — média geométrica de size por pasta. Sprint #2887.
+async fn size_geometric_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geo_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        serde_json::json!({"folder": folder, "geometric_mean_size": geo_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-geometric-mean-by-tier — média geométrica de size por tier. Sprint #2892.
+async fn size_geometric_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geo_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        serde_json::json!({"tier": tier, "geometric_mean_size": geo_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-geometric-mean-by-folder — média geométrica de body_length por pasta. Sprint #2897.
+async fn body_length_geometric_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geo_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        serde_json::json!({"folder": folder, "geometric_mean_body_length": geo_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-geometric-mean-by-tier — média geométrica de body_length por tier. Sprint #2902.
+async fn body_length_geometric_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geo_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        serde_json::json!({"tier": tier, "geometric_mean_body_length": geo_mean, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

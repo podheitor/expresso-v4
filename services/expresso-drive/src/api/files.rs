@@ -392,6 +392,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-theil-by-kind",             get(file_stats_size_active_theil_by_kind))
         .route("/api/v1/drive/files/stats/active-size-theil-by-mime",             get(file_stats_size_active_theil_by_mime))
         .route("/api/v1/drive/files/stats/active-size-theil-by-owner",            get(file_stats_size_active_theil_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-atkinson-by-kind",          get(file_stats_size_active_atkinson_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-atkinson-by-mime",          get(file_stats_size_active_atkinson_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-atkinson-by-owner",         get(file_stats_size_active_atkinson_by_owner))
+        .route("/api/v1/drive/files/stats/count-active-by-kind",                  get(file_stats_count_active_by_kind))
         .route("/api/v1/drive/files/stats/active-size-p95-by-mime",                get(file_stats_size_active_p95_by_mime))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-kind",               get(file_stats_size_active_iqr_by_kind))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-mime",               get(file_stats_size_active_iqr_by_mime))
@@ -11223,6 +11227,89 @@ async fn file_stats_size_active_theil_by_owner(State(state): State<AppState>, ct
         serde_json::json!({"owner_id": owner_id, "size_share": share, "total_size": total, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-atkinson-by-kind — índice Atkinson de size por kind. Sprint #2886.
+async fn file_stats_size_active_atkinson_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(size_bytes::FLOAT8 ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n > 1 {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = {
+                let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+                (log_sum / n as f64).exp()
+            };
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        } else { 0.0 };
+        serde_json::json!({"kind": kind, "atkinson_active_size": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-atkinson-by-mime — índice Atkinson de size por mime_type. Sprint #2891.
+async fn file_stats_size_active_atkinson_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mime_type, ARRAY_AGG(size_bytes::FLOAT8 ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n > 1 {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = {
+                let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+                (log_sum / n as f64).exp()
+            };
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        } else { 0.0 };
+        serde_json::json!({"mime_type": mime, "atkinson_active_size": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-atkinson-by-owner — índice Atkinson de size por owner. Sprint #2896.
+async fn file_stats_size_active_atkinson_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT owner_id, ARRAY_AGG(size_bytes::FLOAT8 ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner_id, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n > 1 {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = {
+                let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+                (log_sum / n as f64).exp()
+            };
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        } else { 0.0 };
+        serde_json::json!({"owner_id": owner_id, "atkinson_active_size": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-active-by-kind — contagem de arquivos ativos por kind. Sprint #2901.
+async fn file_stats_count_active_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, cnt)| {
+        serde_json::json!({"kind": kind, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_active": total, "rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/active-size-p95-by-mime — P95 do tamanho de arquivos ativos por mime_type. Sprint #2746.
