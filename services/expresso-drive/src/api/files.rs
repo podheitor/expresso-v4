@@ -376,6 +376,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-entropy-by-owner",           get(file_stats_size_active_entropy_by_owner))
         .route("/api/v1/drive/files/stats/active-size-skewness-by-kind",           get(file_stats_size_active_skewness_by_kind))
         .route("/api/v1/drive/files/stats/active-size-skewness-by-mime",           get(file_stats_size_active_skewness_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-skewness-by-owner",          get(file_stats_size_active_skewness_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-kurtosis-by-kind",           get(file_stats_size_active_kurtosis_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-kurtosis-by-mime",           get(file_stats_size_active_kurtosis_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-kurtosis-by-owner",          get(file_stats_size_active_kurtosis_by_owner))
         .route("/api/v1/drive/files/stats/active-size-p95-by-mime",                get(file_stats_size_active_p95_by_mime))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-kind",               get(file_stats_size_active_iqr_by_kind))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-mime",               get(file_stats_size_active_iqr_by_mime))
@@ -10855,6 +10859,86 @@ async fn file_stats_size_active_skewness_by_mime(State(state): State<AppState>, 
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, _avg, stddev, m3, cnt)| {
         let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
         serde_json::json!({"mime_type": mime, "skewness_active_size": skewness, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-skewness-by-owner — assimetria de tamanho de arquivos ativos por owner_id. Sprint #2806.
+async fn file_stats_size_active_skewness_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_size, \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_size, \
+                COALESCE(AVG(POWER(size_bytes - (SELECT AVG(f2.size_bytes) FROM drive_files f2 WHERE f2.tenant_id = drive_files.tenant_id AND f2.owner_id = drive_files.owner_id AND f2.deleted_at IS NULL), 3)), 0.0)::FLOAT8 AS m3, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, _avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"owner_id": owner, "skewness_active_size": skewness, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-kurtosis-by-kind — curtose de tamanho de arquivos ativos por kind. Sprint #2811.
+async fn file_stats_size_active_kurtosis_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_size, \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_size, \
+                COALESCE(AVG(POWER(size_bytes - (SELECT AVG(f2.size_bytes) FROM drive_files f2 WHERE f2.tenant_id = drive_files.tenant_id AND f2.kind = drive_files.kind AND f2.deleted_at IS NULL), 4)), 0.0)::FLOAT8 AS m4, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, _avg, stddev, m4, cnt)| {
+        let kurtosis = if stddev > 0.0 { m4 / stddev.powi(4) - 3.0 } else { 0.0 };
+        serde_json::json!({"kind": kind, "kurtosis_active_size": kurtosis, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-kurtosis-by-mime — curtose de tamanho de arquivos ativos por mime_type. Sprint #2816.
+async fn file_stats_size_active_kurtosis_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_size, \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_size, \
+                COALESCE(AVG(POWER(size_bytes - (SELECT AVG(f2.size_bytes) FROM drive_files f2 WHERE f2.tenant_id = drive_files.tenant_id AND f2.mime_type = drive_files.mime_type AND f2.deleted_at IS NULL), 4)), 0.0)::FLOAT8 AS m4, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, _avg, stddev, m4, cnt)| {
+        let kurtosis = if stddev > 0.0 { m4 / stddev.powi(4) - 3.0 } else { 0.0 };
+        serde_json::json!({"mime_type": mime, "kurtosis_active_size": kurtosis, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-kurtosis-by-owner — curtose de tamanho de arquivos ativos por owner_id. Sprint #2821.
+async fn file_stats_size_active_kurtosis_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_size, \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_size, \
+                COALESCE(AVG(POWER(size_bytes - (SELECT AVG(f2.size_bytes) FROM drive_files f2 WHERE f2.tenant_id = drive_files.tenant_id AND f2.owner_id = drive_files.owner_id AND f2.deleted_at IS NULL), 4)), 0.0)::FLOAT8 AS m4, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, _avg, stddev, m4, cnt)| {
+        let kurtosis = if stddev > 0.0 { m4 / stddev.powi(4) - 3.0 } else { 0.0 };
+        serde_json::json!({"owner_id": owner, "kurtosis_active_size": kurtosis, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

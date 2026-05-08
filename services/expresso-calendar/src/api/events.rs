@@ -1553,6 +1553,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summary_length_theil_by_month),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-class",
+            get(events_by_range_summary_length_atkinson_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-weekday",
+            get(events_by_range_summary_length_atkinson_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-month",
+            get(events_by_range_summary_length_atkinson_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-mad-by-class",
+            get(events_by_range_summary_length_mad_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -12027,6 +12043,137 @@ async fn events_by_range_summary_length_theil_by_month(
         serde_json::json!({"month": month, "total_len": tl, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-class — índice de Atkinson de summary_length por classe. Sprint #2809.
+async fn events_by_range_summary_length_atkinson_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                COALESCE(SUM(LENGTH(summary)), 0.0)::FLOAT8 AS total_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: f64 = rows.iter().map(|(_, tl, _)| tl).sum();
+    let n = rows.len();
+    let atkinson = if grand_total > 0.0 && n > 0 {
+        let mean = grand_total / n as f64;
+        let log_sum: f64 = rows.iter().map(|(_, tl, _)| if *tl > 0.0 { tl.ln() } else { 0.0 }).sum();
+        let geo_mean = (log_sum / n as f64).exp();
+        if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, tl, cnt)| {
+        serde_json::json!({"class": class, "total_len": tl, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"atkinson": atkinson, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-weekday — índice de Atkinson de summary_length por dia da semana. Sprint #2814.
+async fn events_by_range_summary_length_atkinson_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                COALESCE(SUM(LENGTH(summary)), 0.0)::FLOAT8 AS total_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: f64 = rows.iter().map(|(_, tl, _)| tl).sum();
+    let n = rows.len();
+    let atkinson = if grand_total > 0.0 && n > 0 {
+        let mean = grand_total / n as f64;
+        let log_sum: f64 = rows.iter().map(|(_, tl, _)| if *tl > 0.0 { tl.ln() } else { 0.0 }).sum();
+        let geo_mean = (log_sum / n as f64).exp();
+        if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(dow, tl, cnt)| {
+        serde_json::json!({"weekday": dow, "total_len": tl, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"atkinson": atkinson, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-atkinson-by-month — índice de Atkinson de summary_length por mês. Sprint #2819.
+async fn events_by_range_summary_length_atkinson_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                COALESCE(SUM(LENGTH(summary)), 0.0)::FLOAT8 AS total_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: f64 = rows.iter().map(|(_, tl, _)| tl).sum();
+    let n = rows.len();
+    let atkinson = if grand_total > 0.0 && n > 0 {
+        let mean = grand_total / n as f64;
+        let log_sum: f64 = rows.iter().map(|(_, tl, _)| if *tl > 0.0 { tl.ln() } else { 0.0 }).sum();
+        let geo_mean = (log_sum / n as f64).exp();
+        if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, tl, cnt)| {
+        serde_json::json!({"month": month, "total_len": tl, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"atkinson": atkinson, "rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-mad-by-class — MAD de summary_length por classe. Sprint #2824.
+async fn events_by_range_summary_length_mad_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(LENGTH(summary)::FLOAT8 ORDER BY LENGTH(summary)) AS lengths, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND summary IS NOT NULL \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, lengths_opt, cnt)| {
+        let mut vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let m = vals.len();
+        let median = if m == 0 { 0.0 } else if m % 2 == 0 {
+            (vals[m / 2 - 1] + vals[m / 2]) / 2.0
+        } else { vals[m / 2] };
+        let mut abs_devs: Vec<f64> = vals.iter().map(|v| (v - median).abs()).collect();
+        abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+        let mad = if m == 0 { 0.0 } else if m % 2 == 0 {
+            (abs_devs[m / 2 - 1] + abs_devs[m / 2]) / 2.0
+        } else { abs_devs[m / 2] };
+        serde_json::json!({"class": class, "mad_summary_length": mad, "median": median, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class — curtose de summary_length por classe. Sprint #2749.

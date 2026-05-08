@@ -6936,6 +6936,78 @@ pub async fn segment_ratio_lorenz(State(store): State<IndexStore>) -> Json<serde
     Json(serde_json::json!({"ratio_lorenz": lorenz, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/ratio-theil — índice de Theil da razão bytes/doc entre segmentos. Sprint #2808.
+pub async fn segment_ratio_theil(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_theil": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let theil = if mean > 0.0 {
+        ratios.iter().map(|&r| {
+            if r > 0.0 { (r / mean) * (r / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"ratio_theil": theil, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-atkinson — índice de Atkinson da razão bytes/doc entre segmentos. Sprint #2813.
+pub async fn segment_ratio_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_atkinson": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let log_sum: f64 = ratios.iter().map(|&r| if r > 0.0 { r.ln() } else { 0.0 }).sum();
+    let geo_mean = (log_sum / n as f64).exp();
+    let atkinson = if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 };
+    Json(serde_json::json!({"ratio_atkinson": atkinson, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-variance — variância da razão bytes/doc entre segmentos. Sprint #2818.
+pub async fn segment_ratio_variance(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"ratio_variance": null, "total_segments": n}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let variance = ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"ratio_variance": variance, "ratio_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-trimmed-mean — média aparada (10%) da razão bytes/doc entre segmentos. Sprint #2823.
+pub async fn segment_ratio_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_trimmed_mean": null, "total_segments": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let trim = (n as f64 * 0.1) as usize;
+    let trimmed = &ratios[trim..n.saturating_sub(trim)];
+    let trimmed_mean = if trimmed.is_empty() {
+        ratios.iter().sum::<f64>() / n as f64
+    } else {
+        trimmed.iter().sum::<f64>() / trimmed.len() as f64
+    };
+    Json(serde_json::json!({"ratio_trimmed_mean": trimmed_mean, "total_segments": n, "trimmed_count": trimmed.len()}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
