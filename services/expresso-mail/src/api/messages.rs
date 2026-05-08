@@ -380,6 +380,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-mad-by-tier",                         get(size_mad_by_tier_stats))
         .route("/mail/messages/stats/body-length-mad-by-folder",                get(body_length_mad_by_folder_stats))
         .route("/mail/messages/stats/body-length-mad-by-tier",                  get(body_length_mad_by_tier_stats))
+        .route("/mail/messages/stats/size-trimmed-mean-by-folder",              get(size_trimmed_mean_by_folder_stats))
+        .route("/mail/messages/stats/size-trimmed-mean-by-tier",                get(size_trimmed_mean_by_tier_stats))
+        .route("/mail/messages/stats/body-length-trimmed-mean-by-folder",       get(body_length_trimmed_mean_by_folder_stats))
+        .route("/mail/messages/stats/body-length-trimmed-mean-by-tier",         get(body_length_trimmed_mean_by_tier_stats))
         .route("/mail/messages/stats/size-hhi-by-folder",                       get(size_hhi_by_folder_stats))
         .route("/mail/messages/stats/size-hhi-by-tier",                         get(size_hhi_by_tier_stats))
         .route("/mail/messages/stats/body-length-hhi-by-folder",                get(body_length_hhi_by_folder_stats))
@@ -12861,6 +12865,138 @@ async fn body_length_mad_by_tier_stats(
         abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mad = if m == 0 { 0.0 } else if m % 2 == 1 { abs_devs[m / 2] } else { (abs_devs[m / 2 - 1] + abs_devs[m / 2]) / 2.0 };
         serde_json::json!({"tier": tier, "mad_body_length": mad, "median_body_length": median, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-trimmed-mean-by-folder — média aparada (10%–90%) de size por pasta. Sprint #2847.
+async fn size_trimmed_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let trimmed_mean = if n == 0 {
+            0.0
+        } else {
+            let lo = (n as f64 * 0.10).floor() as usize;
+            let hi = (n as f64 * 0.90).ceil() as usize;
+            let hi = hi.min(n);
+            if lo < hi {
+                let slice = &vals[lo..hi];
+                slice.iter().sum::<f64>() / slice.len() as f64
+            } else { vals[n / 2] }
+        };
+        serde_json::json!({"folder": folder, "trimmed_mean_size": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-trimmed-mean-by-tier — média aparada (10%–90%) de size por tier. Sprint #2852.
+async fn size_trimmed_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let trimmed_mean = if n == 0 {
+            0.0
+        } else {
+            let lo = (n as f64 * 0.10).floor() as usize;
+            let hi = (n as f64 * 0.90).ceil() as usize;
+            let hi = hi.min(n);
+            if lo < hi {
+                let slice = &vals[lo..hi];
+                slice.iter().sum::<f64>() / slice.len() as f64
+            } else { vals[n / 2] }
+        };
+        serde_json::json!({"tier": tier, "trimmed_mean_size": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-trimmed-mean-by-folder — média aparada (10%–90%) de body_length por pasta. Sprint #2857.
+async fn body_length_trimmed_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let trimmed_mean = if n == 0 {
+            0.0
+        } else {
+            let lo = (n as f64 * 0.10).floor() as usize;
+            let hi = (n as f64 * 0.90).ceil() as usize;
+            let hi = hi.min(n);
+            if lo < hi {
+                let slice = &vals[lo..hi];
+                slice.iter().sum::<f64>() / slice.len() as f64
+            } else { vals[n / 2] }
+        };
+        serde_json::json!({"folder": folder, "trimmed_mean_body_length": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-trimmed-mean-by-tier — média aparada (10%–90%) de body_length por tier. Sprint #2862.
+async fn body_length_trimmed_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let trimmed_mean = if n == 0 {
+            0.0
+        } else {
+            let lo = (n as f64 * 0.10).floor() as usize;
+            let hi = (n as f64 * 0.90).ceil() as usize;
+            let hi = hi.min(n);
+            if lo < hi {
+                let slice = &vals[lo..hi];
+                slice.iter().sum::<f64>() / slice.len() as f64
+            } else { vals[n / 2] }
+        };
+        serde_json::json!({"tier": tier, "trimmed_mean_body_length": trimmed_mean, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

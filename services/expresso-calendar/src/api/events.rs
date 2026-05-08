@@ -1585,6 +1585,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summary_length_lorenz_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-lorenz-by-month",
+            get(events_by_range_summary_length_lorenz_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-class",
+            get(events_by_range_summary_length_cv_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-weekday",
+            get(events_by_range_summary_length_cv_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-month",
+            get(events_by_range_summary_length_cv_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -12308,6 +12324,110 @@ async fn events_by_range_summary_length_lorenz_by_weekday(
         }))
     }).collect();
     Ok(Json(serde_json::json!({"lorenz_curve": lorenz_points, "total_length": grand_total})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-lorenz-by-month — curva de Lorenz de summary_length por mês. Sprint #2849.
+async fn events_by_range_summary_length_lorenz_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, SUM(LENGTH(summary))::BIGINT AS total_length, COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY month ORDER BY total_length ASC",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let lorenz_points: Vec<serde_json::Value> = rows.iter().enumerate().scan(0i64, |acc, (i, (month, length, cnt))| {
+        *acc += length;
+        Some(serde_json::json!({
+            "month": month,
+            "cumulative_population": (i + 1) as f64 / n as f64,
+            "cumulative_share": if grand_total > 0 { *acc as f64 / grand_total as f64 } else { 0.0 },
+            "event_count": cnt
+        }))
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz_curve": lorenz_points, "total_length": grand_total})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-class — coeficiente de variação de summary_length por classe. Sprint #2854.
+async fn events_by_range_summary_length_cv_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, f64, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                COALESCE(AVG(LENGTH(summary)), 0.0)::FLOAT8 AS avg_len, \
+                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, avg, stddev, cnt)| {
+        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
+        serde_json::json!({"class": class, "cv_summary_length": cv, "avg_summary_length": avg, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-weekday — coeficiente de variação de summary_length por dia da semana. Sprint #2859.
+async fn events_by_range_summary_length_cv_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                COALESCE(AVG(LENGTH(summary)), 0.0)::FLOAT8 AS avg_len, \
+                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(weekday, avg, stddev, cnt)| {
+        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
+        serde_json::json!({"weekday": weekday, "cv_summary_length": cv, "avg_summary_length": avg, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-month — coeficiente de variação de summary_length por mês. Sprint #2864.
+async fn events_by_range_summary_length_cv_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                COALESCE(AVG(LENGTH(summary)), 0.0)::FLOAT8 AS avg_len, \
+                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, avg, stddev, cnt)| {
+        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
+        serde_json::json!({"month": month, "cv_summary_length": cv, "avg_summary_length": avg, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class — curtose de summary_length por classe. Sprint #2749.

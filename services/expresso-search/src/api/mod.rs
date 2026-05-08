@@ -7088,6 +7088,74 @@ pub async fn segment_ratio_coefficient_of_variation(State(store): State<IndexSto
     Json(serde_json::json!({"ratio_cv": cv, "ratio_mean": mean, "ratio_stddev": stddev, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-p95 — P95 de disk_bytes entre segmentos. Sprint #2848.
+pub async fn segment_bytes_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p95": null, "total_segments": 0}));
+    }
+    let mut bytes_vals: Vec<f64> = segs.iter().map(|(_, _, bytes)| *bytes as f64).collect();
+    bytes_vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"bytes_p95": bytes_vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-hhi — índice HHI de disk_bytes entre segmentos. Sprint #2853.
+pub async fn segment_bytes_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_hhi": null, "total_segments": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    let hhi = if total_bytes > 0 {
+        segs.iter().map(|(_, _, b)| {
+            let share = *b as f64 / total_bytes as f64;
+            share * share
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"bytes_hhi": hhi, "total_bytes": total_bytes, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-lorenz — curva de Lorenz de disk_bytes entre segmentos. Sprint #2858.
+pub async fn segment_bytes_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_curve": [], "total_segments": 0}));
+    }
+    let mut bytes_vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    bytes_vals.sort_unstable();
+    let total: u64 = bytes_vals.iter().sum();
+    let lorenz_points: Vec<serde_json::Value> = bytes_vals.iter().enumerate().scan(0u64, |acc, (i, b)| {
+        *acc += b;
+        Some(serde_json::json!({
+            "cumulative_population": (i + 1) as f64 / n as f64,
+            "cumulative_share": if total > 0 { *acc as f64 / total as f64 } else { 0.0 }
+        }))
+    }).collect();
+    Json(serde_json::json!({"lorenz_curve": lorenz_points, "total_bytes": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-atkinson — índice de Atkinson de disk_bytes entre segmentos. Sprint #2863.
+pub async fn segment_bytes_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_atkinson": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let nonzero: Vec<f64> = vals.iter().copied().filter(|&v| v > 0.0).collect();
+    let atkinson = if mean > 0.0 && !nonzero.is_empty() {
+        let log_sum: f64 = nonzero.iter().map(|v| v.ln()).sum();
+        let geo_mean = (log_sum / n as f64).exp();
+        1.0 - geo_mean / mean
+    } else { 0.0 };
+    Json(serde_json::json!({"bytes_atkinson": atkinson, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
