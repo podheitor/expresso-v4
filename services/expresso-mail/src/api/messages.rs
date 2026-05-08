@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/size-count-by-folder",              get(size_count_by_folder_stats))
+        .route("/mail/messages/stats/size-entropy-by-folder",            get(size_entropy_by_folder_stats))
+        .route("/mail/messages/stats/size-entropy-by-tier",              get(size_entropy_by_tier_stats))
+        .route("/mail/messages/stats/message-count-by-folder",           get(message_count_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-max-by-folder",   get(attachment_count_max_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-max-by-tier",     get(attachment_count_max_by_tier_stats))
         .route("/mail/messages/stats/attachment-count-range-by-folder", get(attachment_count_range_by_folder_stats))
@@ -12331,6 +12335,118 @@ async fn size_cv_by_tier_stats(
             let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
             serde_json::json!({"tier": tier, "cv_size": cv, "stddev_bytes": stddev, "avg_bytes": avg, "message_count": cnt})
         })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-by-folder — contagem de mensagens por pasta com size não nulo. Sprint #2547.
+async fn size_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size IS NOT NULL \
+         GROUP BY mb.name ORDER BY msg_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, cnt)| serde_json::json!({"folder": folder, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-entropy-by-folder — entropia de Shannon do tamanho por pasta. Sprint #2552.
+async fn size_entropy_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, SUM(m.size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, sz, _)| sz).sum();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, sz, _)| {
+            let p = *sz as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, sz, cnt)| {
+        let p = if grand_total > 0 { sz as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"folder": folder, "total_size": sz, "message_count": cnt, "size_share": p})
+    }).collect();
+    Ok(Json(serde_json::json!({"entropy": entropy, "rows": result})))
+}
+
+/// GET /mail/messages/stats/size-entropy-by-tier — entropia de Shannon do tamanho por tier. Sprint #2557.
+async fn size_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, SUM(m.size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, sz, _)| sz).sum();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, sz, _)| {
+            let p = *sz as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, sz, cnt)| {
+        let p = if grand_total > 0 { sz as f64 / grand_total as f64 } else { 0.0 };
+        serde_json::json!({"tier": tier, "total_size": sz, "message_count": cnt, "size_share": p})
+    }).collect();
+    Ok(Json(serde_json::json!({"entropy": entropy, "rows": result})))
+}
+
+/// GET /mail/messages/stats/message-count-by-folder — total de mensagens por pasta. Sprint #2562.
+async fn message_count_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY msg_count DESC",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, cnt)| serde_json::json!({"folder": folder, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

@@ -6418,6 +6418,64 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/cv-bytes — CV de bytes entre segmentos. Sprint #2548.
+pub async fn segment_cv_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"cv_bytes": 0.0, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+    Json(serde_json::json!({"cv_bytes": cv, "stddev": stddev, "mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/cv-docs — CV de docs entre segmentos. Sprint #2553.
+pub async fn segment_cv_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"cv_docs": 0.0, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+    Json(serde_json::json!({"cv_docs": cv, "stddev": stddev, "mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/iqr-bytes — IQR de bytes entre segmentos. Sprint #2558.
+pub async fn segment_iqr_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"iqr_bytes": 0.0, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let q1 = vals[n / 4];
+    let q3 = vals[3 * n / 4];
+    Json(serde_json::json!({"iqr_bytes": q3 - q1, "q1": q1, "q3": q3, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/iqr-docs — IQR de docs entre segmentos. Sprint #2563.
+pub async fn segment_iqr_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"iqr_docs": 0.0, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let q1 = vals[n / 4];
+    let q3 = vals[3 * n / 4];
+    Json(serde_json::json!({"iqr_docs": q3 - q1, "q1": q1, "q3": q3, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/avg-docs — média de docs por segmento. Sprint #2528.
 pub async fn segment_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
