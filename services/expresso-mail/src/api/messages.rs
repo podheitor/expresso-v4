@@ -392,6 +392,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-geometric-mean-by-tier",              get(size_geometric_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-geometric-mean-by-folder",     get(body_length_geometric_mean_by_folder_stats))
         .route("/mail/messages/stats/body-length-geometric-mean-by-tier",       get(body_length_geometric_mean_by_tier_stats))
+        .route("/mail/messages/stats/size-sum-by-folder",                       get(size_sum_by_folder_stats))
+        .route("/mail/messages/stats/size-sum-by-tier",                         get(size_sum_by_tier_stats))
+        .route("/mail/messages/stats/body-length-sum-by-folder",                get(body_length_sum_by_folder_stats))
+        .route("/mail/messages/stats/body-length-sum-by-tier",                  get(body_length_sum_by_tier_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -13235,6 +13239,90 @@ async fn body_length_geometric_mean_by_tier_stats(
         serde_json::json!({"tier": tier, "geometric_mean_body_length": geo_mean, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-sum-by-folder — soma de size por pasta. Sprint #2927.
+async fn size_sum_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, COALESCE(SUM(m.size), 0)::BIGINT AS total_size, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, total, cnt)| {
+        serde_json::json!({"folder": folder, "total_size": total, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"grand_total_size": grand_total, "rows": result})))
+}
+
+/// GET /mail/messages/stats/size-sum-by-tier — soma de size por tier. Sprint #2932.
+async fn size_sum_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, COALESCE(SUM(m.size), 0)::BIGINT AS total_size, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, total, cnt)| {
+        serde_json::json!({"tier": tier, "total_size": total, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"grand_total_size": grand_total, "rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-sum-by-folder — soma de body_length por pasta. Sprint #2937.
+async fn body_length_sum_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, COALESCE(SUM(m.body_length), 0)::BIGINT AS total_body_length, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, total, cnt)| {
+        serde_json::json!({"folder": folder, "total_body_length": total, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"grand_total_body_length": grand_total, "rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-sum-by-tier — soma de body_length por tier. Sprint #2942.
+async fn body_length_sum_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, COALESCE(SUM(m.body_length), 0)::BIGINT AS total_body_length, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, total, cnt)| {
+        serde_json::json!({"tier": tier, "total_body_length": total, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"grand_total_body_length": grand_total, "rows": result})))
 }
 
 /// GET /mail/messages/stats/size-harmonic-mean-by-folder — média harmônica de size por pasta. Sprint #2907.

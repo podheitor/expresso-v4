@@ -400,6 +400,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/count-active-by-owner",                 get(file_stats_count_active_by_owner))
         .route("/api/v1/drive/files/stats/size-deleted-sum-by-kind",              get(file_stats_size_deleted_sum_by_kind))
         .route("/api/v1/drive/files/stats/size-deleted-sum-by-mime",              get(file_stats_size_deleted_sum_by_mime))
+        .route("/api/v1/drive/files/stats/size-deleted-sum-by-owner",             get(file_stats_size_deleted_sum_by_owner))
+        .route("/api/v1/drive/files/stats/count-deleted-by-kind",                 get(file_stats_count_deleted_by_kind))
+        .route("/api/v1/drive/files/stats/count-deleted-by-mime",                 get(file_stats_count_deleted_by_mime))
+        .route("/api/v1/drive/files/stats/count-deleted-by-owner",                get(file_stats_count_deleted_by_owner))
         .route("/api/v1/drive/files/stats/active-size-p95-by-mime",                get(file_stats_size_active_p95_by_mime))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-kind",               get(file_stats_size_active_iqr_by_kind))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-mime",               get(file_stats_size_active_iqr_by_mime))
@@ -11314,6 +11318,62 @@ async fn file_stats_count_active_by_kind(State(state): State<AppState>, ctx: Req
         serde_json::json!({"kind": kind, "active_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"total_active": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-deleted-sum-by-owner — soma de size de arquivos deletados por owner. Sprint #2926.
+async fn file_stats_size_deleted_sum_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id, COALESCE(SUM(size_bytes), 0)::BIGINT AS total_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner_id, total, cnt)| {
+        serde_json::json!({"owner_id": owner_id, "total_deleted_size": total, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"grand_total_deleted_size": grand_total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-deleted-by-kind — contagem de arquivos deletados por kind. Sprint #2931.
+async fn file_stats_count_deleted_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, cnt)| {
+        serde_json::json!({"kind": kind, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_deleted": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-deleted-by-mime — contagem de arquivos deletados por mime_type. Sprint #2936.
+async fn file_stats_count_deleted_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT mime_type, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, cnt)| {
+        serde_json::json!({"mime_type": mime, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_deleted": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-deleted-by-owner — contagem de arquivos deletados por owner. Sprint #2941.
+async fn file_stats_count_deleted_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, i64)> = sqlx::query_as(
+        "SELECT owner_id, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner_id, cnt)| {
+        serde_json::json!({"owner_id": owner_id, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_deleted": total, "rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/count-active-by-mime — contagem de arquivos ativos por mime_type. Sprint #2906.

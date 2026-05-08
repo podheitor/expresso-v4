@@ -7224,6 +7224,85 @@ pub async fn segment_bytes_geometric_mean(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"bytes_geometric_mean": geometric_mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-iqr — IQR de bytes/doc entre segmentos. Sprint #2928.
+pub async fn segment_bytes_per_doc_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"bytes_per_doc_iqr": null, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = vals.len();
+    if m < 4 {
+        return Json(serde_json::json!({"bytes_per_doc_iqr": null, "total_segments": n}));
+    }
+    let q1 = vals[m / 4];
+    let q3 = vals[3 * m / 4];
+    Json(serde_json::json!({"bytes_per_doc_iqr": q3 - q1, "q1": q1, "q3": q3, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-gini — índice Gini de densidade docs/byte. Sprint #2933.
+pub async fn segment_docs_density_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_gini": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let sum: f64 = vals.iter().sum();
+    let gini = if n > 1 && sum > 0.0 {
+        let mut rank_sum = 0.0f64;
+        for (i, v) in vals.iter().enumerate() {
+            rank_sum += (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v;
+        }
+        rank_sum / (n as f64 * sum)
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_density_gini": gini, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-hhi — índice HHI de densidade docs/byte. Sprint #2938.
+pub async fn segment_docs_density_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_hhi": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = vals.iter().sum();
+    let hhi = if total > 0.0 {
+        vals.iter().map(|v| (v / total).powi(2)).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_density_hhi": hhi, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-atkinson — índice Atkinson de densidade docs/byte. Sprint #2943.
+pub async fn segment_docs_density_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_atkinson": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).filter(|&v| v > 0.0).collect();
+    let m = vals.len();
+    let atkinson = if m > 1 {
+        let mean = vals.iter().sum::<f64>() / m as f64;
+        let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+        let geo_mean = (log_sum / m as f64).exp();
+        if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_density_atkinson": atkinson, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-mad — MAD de bytes/doc. Sprint #2908.
 pub async fn segment_bytes_per_doc_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

@@ -1649,6 +1649,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendee_count_gini_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-hhi-by-class",
+            get(events_by_range_attendee_count_hhi_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-class",
+            get(events_by_range_attendee_count_atkinson_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-mad-by-class",
+            get(events_by_range_attendee_count_mad_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-class",
+            get(events_by_range_attendee_count_lorenz_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -1719,6 +1735,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-class",
             get(events_by_range_attendee_count_gini_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-hhi-by-class",
+            get(events_by_range_attendee_count_hhi_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-class",
+            get(events_by_range_attendee_count_atkinson_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-mad-by-class",
+            get(events_by_range_attendee_count_mad_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-class",
+            get(events_by_range_attendee_count_lorenz_by_class),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -12691,6 +12723,126 @@ async fn events_by_range_attendee_count_gini_by_class(
             } else { 0.0 }
         } else { 0.0 };
         serde_json::json!({"class": class, "gini_attendee_count": gini, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-hhi-by-class — HHI de attendee count por classe. Sprint #2929.
+async fn events_by_range_attendee_count_hhi_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        let total: f64 = vals.iter().sum();
+        let hhi = if total > 0.0 { vals.iter().map(|v| (v / total).powi(2)).sum::<f64>() } else { 0.0 };
+        serde_json::json!({"class": class, "hhi_attendee_count": hhi, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-class — Atkinson de attendee count por classe. Sprint #2934.
+async fn events_by_range_attendee_count_atkinson_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let atkinson = if m > 1 {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            let geo_mean = (log_sum / m as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        } else { 0.0 };
+        serde_json::json!({"class": class, "atkinson_attendee_count": atkinson, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-mad-by-class — MAD de attendee count por classe. Sprint #2939.
+async fn events_by_range_attendee_count_mad_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let mut vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let m = vals.len();
+        let median = if m == 0 { 0.0 } else if m % 2 == 1 { vals[m / 2] } else { (vals[m / 2 - 1] + vals[m / 2]) / 2.0 };
+        let mut abs_devs: Vec<f64> = vals.iter().map(|v| (v - median).abs()).collect();
+        abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let mad = if m == 0 { 0.0 } else if m % 2 == 1 { abs_devs[m / 2] } else { (abs_devs[m / 2 - 1] + abs_devs[m / 2]) / 2.0 };
+        serde_json::json!({"class": class, "mad_attendee_count": mad, "median_attendee_count": median, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-class — curva de Lorenz de attendee count por classe. Sprint #2944.
+async fn events_by_range_attendee_count_lorenz_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<serde_json::Value> = vals.iter().enumerate().scan(0.0f64, |acc, (i, v)| {
+            *acc += v;
+            Some(serde_json::json!({
+                "cumulative_population": (i + 1) as f64 / m as f64,
+                "cumulative_share": if total > 0.0 { *acc / total } else { 0.0 }
+            }))
+        }).collect();
+        serde_json::json!({"class": class, "lorenz_curve": lorenz, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
