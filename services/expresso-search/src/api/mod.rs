@@ -6372,6 +6372,43 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+pub async fn segment_ratio_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_ratio": null, "segment_count": 0}));
+    }
+    let max = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).fold(f64::MIN, f64::max);
+    Json(serde_json::json!({"max_ratio": max, "segment_count": n}))
+}
+
+pub async fn segment_docs_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_docs": null, "segment_count": 0}));
+    }
+    let mean = segs.iter().map(|(_, nd, _)| *nd as f64).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"mean_docs": mean, "segment_count": n}))
+}
+
+pub async fn segment_bytes_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_bytes": null, "segment_count": 0}));
+    }
+    let mean = segs.iter().map(|(_, _, db)| *db as f64).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"mean_bytes": mean, "segment_count": n}))
+}
+
+pub async fn segment_size_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    Json(serde_json::json!({"segment_count": segs.len()}))
+}
+
 pub async fn segment_ratio_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
