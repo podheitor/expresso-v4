@@ -1697,6 +1697,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_lorenz_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-theil-by-class",
+            get(events_by_range_duration_theil_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-gini-by-class",
+            get(events_by_range_duration_gini_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-class",
+            get(events_by_range_duration_hhi_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-class",
+            get(events_by_range_duration_entropy_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -1815,6 +1831,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-class",
             get(events_by_range_duration_lorenz_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-theil-by-class",
+            get(events_by_range_duration_theil_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-gini-by-class",
+            get(events_by_range_duration_gini_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-class",
+            get(events_by_range_duration_hhi_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-class",
+            get(events_by_range_duration_entropy_by_class),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -13035,6 +13067,134 @@ async fn events_by_range_duration_lorenz_by_class(
             }).collect()
         } else { vec![] };
         serde_json::json!({"class": class, "lorenz_curve": lorenz_points, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-theil-by-class — índice Theil de duração por classe. Sprint #2989.
+async fn events_by_range_duration_theil_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) AS durations, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, durs_opt, cnt)| {
+        let vals: Vec<f64> = durs_opt.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let theil = if m == 0 {
+            0.0
+        } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / m as f64
+            } else { 0.0 }
+        };
+        serde_json::json!({"class": class, "duration_theil": theil, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-gini-by-class — coeficiente de Gini de duração por classe. Sprint #2994.
+async fn events_by_range_duration_gini_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) AS durations, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, durs_opt, cnt)| {
+        let mut vals: Vec<f64> = durs_opt.into_iter().flatten().filter(|&v| v >= 0.0).collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let m = vals.len();
+        let gini = if m == 0 {
+            0.0
+        } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                let sum_abs_diff: f64 = vals.iter().flat_map(|&a| vals.iter().map(move |&b| (a - b).abs())).sum();
+                sum_abs_diff / (2.0 * m as f64 * m as f64 * mean)
+            } else { 0.0 }
+        };
+        serde_json::json!({"class": class, "duration_gini": gini, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-class — HHI de duração por classe. Sprint #2999.
+async fn events_by_range_duration_hhi_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) AS durations, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, durs_opt, cnt)| {
+        let vals: Vec<f64> = durs_opt.into_iter().flatten().filter(|&v| v >= 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let hhi = if total > 0.0 {
+            vals.iter().map(|&v| { let s = v / total; s * s }).sum::<f64>()
+        } else { 0.0 };
+        serde_json::json!({"class": class, "duration_hhi": hhi, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-class — entropia de duração por classe. Sprint #3004.
+async fn events_by_range_duration_entropy_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) AS durations, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, durs_opt, cnt)| {
+        let vals: Vec<f64> = durs_opt.into_iter().flatten().filter(|&v| v >= 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let entropy = if total > 0.0 {
+            vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum::<f64>()
+        } else { 0.0 };
+        serde_json::json!({"class": class, "duration_entropy": entropy, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
