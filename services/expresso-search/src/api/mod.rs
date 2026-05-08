@@ -6418,6 +6418,62 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-density-p75 — p75 da densidade docs/byte. Sprint #2488.
+pub async fn segment_docs_density_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_docs_per_byte": 0.0, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p75 = densities[3 * n / 4];
+    Json(serde_json::json!({"p75_docs_per_byte": p75, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-p90 — p90 da densidade docs/byte. Sprint #2493.
+pub async fn segment_docs_density_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p90_docs_per_byte": 0.0, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = (9 * n / 10).min(n - 1);
+    Json(serde_json::json!({"p90_docs_per_byte": densities[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-min — mínimo da densidade docs/byte. Sprint #2498.
+pub async fn segment_docs_density_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_docs_per_byte": 0.0, "total_segments": 0}));
+    }
+    let min = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).fold(f64::MAX, f64::min);
+    Json(serde_json::json!({"min_docs_per_byte": min, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-max — máximo da densidade docs/byte. Sprint #2503.
+pub async fn segment_docs_density_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_docs_per_byte": 0.0, "total_segments": 0}));
+    }
+    let max = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).fold(f64::MIN, f64::max);
+    Json(serde_json::json!({"max_docs_per_byte": max, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-density-range — range da densidade docs/byte. Sprint #2465.
 pub async fn segment_docs_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
