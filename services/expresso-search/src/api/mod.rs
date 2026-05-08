@@ -6372,6 +6372,71 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/top-heavy — segmentos que concentram a maior parte dos docs. Sprint #2328.
+pub async fn segment_top_heavy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    if total_docs == 0 {
+        return Json(serde_json::json!({"top_heavy_segments": [], "total_docs": 0}));
+    }
+    let threshold = total_docs / 2;
+    let mut cumulative: u64 = 0;
+    let mut top_heavy: Vec<serde_json::Value> = Vec::new();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    for (id, docs, bytes) in sorted {
+        if cumulative >= threshold { break; }
+        cumulative += docs;
+        top_heavy.push(serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}));
+    }
+    Json(serde_json::json!({"top_heavy_segments": top_heavy, "total_docs": total_docs, "covers_docs": cumulative}))
+}
+
+/// GET /api/v1/search/index/segments/largest — segmento com maior tamanho em bytes. Sprint #2333.
+pub async fn segment_largest(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segment": null, "total_segments": 0}));
+    }
+    let largest = segs.iter().max_by_key(|(_, _, b)| b);
+    match largest {
+        Some((id, docs, bytes)) => Json(serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes, "total_segments": n})),
+        None => Json(serde_json::json!({"segment": null, "total_segments": n})),
+    }
+}
+
+/// GET /api/v1/search/index/segments/smallest — segmento com menor tamanho em bytes. Sprint #2338.
+pub async fn segment_smallest(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segment": null, "total_segments": 0}));
+    }
+    let smallest = segs.iter().min_by_key(|(_, _, b)| b);
+    match smallest {
+        Some((id, docs, bytes)) => Json(serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes, "total_segments": n})),
+        None => Json(serde_json::json!({"segment": null, "total_segments": n})),
+    }
+}
+
+/// GET /api/v1/search/index/segments/median-bytes — mediana do tamanho em bytes dos segmentos. Sprint #2343.
+pub async fn segment_median_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"median_bytes": null, "total_segments": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    sizes.sort_unstable();
+    let median = if n % 2 == 1 {
+        sizes[n / 2] as f64
+    } else {
+        (sizes[n / 2 - 1] + sizes[n / 2]) as f64 / 2.0
+    };
+    Json(serde_json::json!({"median_bytes": median, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/age — segmento mais antigo pelo id lexicográfico (proxy de idade). Sprint #2308.
 pub async fn segment_age(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
