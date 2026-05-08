@@ -6138,6 +6138,83 @@ async fn dlq_stats_by_day_and_dow(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/error-length-max — comprimento máximo do campo last_error. Sprint #2285.
+async fn dlq_error_length_max(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT MAX(LENGTH(last_error))::BIGINT AS max_error_length, \
+         COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::BIGINT AS with_error \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"max_error_length": row.0, "with_error": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-p90 — P90 do comprimento de last_error. Sprint #2290.
+async fn dlq_error_length_p90(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(last_error))::BIGINT AS p90_error_length, \
+         COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::BIGINT AS with_error \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p90_error_length": row.0, "with_error": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-p50 — P50 do comprimento de last_error. Sprint #2295.
+async fn dlq_error_length_p50(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(last_error))::BIGINT AS p50_error_length, \
+         COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::BIGINT AS with_error \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p50_error_length": row.0, "with_error": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/with-error-rate — proporção de entradas com last_error preenchido. Sprint #2300.
+async fn dlq_with_error_rate(
+    State(st): State<AppState>,
+    Query(q):  Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '')::BIGINT AS with_error, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+         AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let rate = if row.1 > 0 { row.0 as f64 / row.1 as f64 } else { 0.0 };
+    Ok(Json(json!({"with_error_rate": rate, "with_error": row.0, "total_count": row.1})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-p50 — P50 de tentativas. Sprint #2265.
 async fn dlq_attempts_p50(
     State(st): State<AppState>,
@@ -11670,6 +11747,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-and-dow",             get(dlq_stats_by_kind_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-dow",           get(dlq_stats_by_tenant_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-user-and-dow",             get(dlq_stats_by_user_and_dow))
+        .route("/api/v1/notifications/dlq/stats/error-length-max",           get(dlq_error_length_max))
+        .route("/api/v1/notifications/dlq/stats/error-length-p90",           get(dlq_error_length_p90))
+        .route("/api/v1/notifications/dlq/stats/error-length-p50",           get(dlq_error_length_p50))
+        .route("/api/v1/notifications/dlq/stats/with-error-rate",            get(dlq_with_error_rate))
         .route("/api/v1/notifications/dlq/stats/attempts-p50",                get(dlq_attempts_p50))
         .route("/api/v1/notifications/dlq/stats/attempts-p90",                get(dlq_attempts_p90))
         .route("/api/v1/notifications/dlq/stats/attempts-stddev",              get(dlq_attempts_stddev))

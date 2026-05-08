@@ -6372,6 +6372,45 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/fragility — segmentos de um único doc (frágeis, risco de perda total). Sprint #2288.
+pub async fn segment_fragility(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let fragile: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd == 1)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"fragile_segments": fragile, "count": fragile.len(), "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/footprint — bytes totais do índice (footprint de disco). Sprint #2293.
+pub async fn segment_footprint(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    Json(serde_json::json!({"total_bytes": total_bytes, "total_docs": total_docs, "segment_count": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/load — docs totais do índice (carga de dados indexados). Sprint #2298.
+pub async fn segment_load(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let max_docs = segs.iter().map(|(_, nd, _)| *nd).max().unwrap_or(0);
+    let n = segs.len();
+    Json(serde_json::json!({"total_docs": total_docs, "max_segment_docs": max_docs, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/coverage — % de segmentos não-vazios (cobertura de indexação). Sprint #2303.
+pub async fn segment_coverage(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"coverage_pct": null, "segment_count": 0}));
+    }
+    let nonempty = segs.iter().filter(|(_, nd, _)| *nd > 0).count();
+    let pct = nonempty as f64 / n as f64 * 100.0;
+    Json(serde_json::json!({"coverage_pct": pct, "nonempty_count": nonempty, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/imbalance — diferença entre max e min docs entre segmentos. Sprint #2268.
 pub async fn segment_imbalance(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
