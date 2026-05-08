@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/size-range-by-owner",           get(file_stats_size_range_by_owner))
+        .route("/api/v1/drive/files/stats/size-range-by-ext",             get(file_stats_size_range_by_ext))
+        .route("/api/v1/drive/files/stats/size-range-by-kind",            get(file_stats_size_range_by_kind))
+        .route("/api/v1/drive/files/stats/size-range-by-mime",            get(file_stats_size_range_by_mime))
         .route("/api/v1/drive/files/stats/size-iqr-by-owner",             get(file_stats_size_iqr_by_owner))
         .route("/api/v1/drive/files/stats/size-iqr-by-ext",               get(file_stats_size_iqr_by_ext))
         .route("/api/v1/drive/files/stats/size-iqr-by-kind",              get(file_stats_size_iqr_by_kind))
@@ -10236,6 +10240,64 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-range-by-owner — range (MAX-MIN) de size_bytes por owner. Sprint #2306.
+async fn file_stats_size_range_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, MAX(size_bytes)::BIGINT AS max_size, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, max_sz, min_sz, cnt)| serde_json::json!({"owner_id": owner, "range_size_bytes": max_sz - min_sz, "max": max_sz, "min": min_sz, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-range-by-ext — range de size_bytes por extensão. Sprint #2311.
+async fn file_stats_size_range_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(LOWER(REGEXP_REPLACE(name, '^.*\\.', '')), 'no-ext') AS ext, \
+         MAX(size_bytes)::BIGINT AS max_size, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, max_sz, min_sz, cnt)| serde_json::json!({"ext": ext, "range_size_bytes": max_sz - min_sz, "max": max_sz, "min": min_sz, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-range-by-kind — range de size_bytes por kind. Sprint #2316.
+async fn file_stats_size_range_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT kind::TEXT, MAX(size_bytes)::BIGINT AS max_size, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, max_sz, min_sz, cnt)| serde_json::json!({"kind": kind, "range_size_bytes": max_sz - min_sz, "max": max_sz, "min": min_sz, "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-range-by-mime — range de size_bytes por mime_type. Sprint #2321.
+async fn file_stats_size_range_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown') AS mime_type, \
+         MAX(size_bytes)::BIGINT AS max_size, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, max_sz, min_sz, cnt)| serde_json::json!({"mime_type": mime, "range_size_bytes": max_sz - min_sz, "max": max_sz, "min": min_sz, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

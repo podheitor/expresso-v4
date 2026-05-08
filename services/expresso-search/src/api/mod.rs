@@ -6372,6 +6372,56 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/age — segmento mais antigo pelo id lexicográfico (proxy de idade). Sprint #2308.
+pub async fn segment_age(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"oldest_segment_id": null, "segment_count": 0}));
+    }
+    let oldest = segs.iter().min_by(|a, b| a.0.cmp(&b.0));
+    let newest = segs.iter().max_by(|a, b| a.0.cmp(&b.0));
+    Json(serde_json::json!({
+        "oldest_segment_id": oldest.map(|(id, _, _)| id),
+        "newest_segment_id": newest.map(|(id, _, _)| id),
+        "segment_count": n
+    }))
+}
+
+/// GET /api/v1/search/index/segments/churn — segmentos com 0 bytes (descartados/esvaziados). Sprint #2313.
+pub async fn segment_churn(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let churned: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db == 0)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"churned_segments": churned, "count": churned.len(), "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/waste — bytes em segmentos vazios (desperdício de disco). Sprint #2318.
+pub async fn segment_waste(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let waste_bytes: u64 = segs.iter()
+        .filter(|(_, nd, _)| *nd == 0)
+        .map(|(_, _, db)| *db)
+        .sum();
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let pct = if total_bytes > 0 { waste_bytes as f64 / total_bytes as f64 * 100.0 } else { 0.0 };
+    Json(serde_json::json!({"waste_bytes": waste_bytes, "waste_pct": pct, "total_bytes": total_bytes, "segment_count": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/throughput — docs por byte em segmentos não-vazios (throughput médio de indexação). Sprint #2323.
+pub async fn segment_throughput(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let active: Vec<_> = segs.iter().filter(|(_, nd, db)| *nd > 0 && *db > 0).collect();
+    let n = active.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_docs_per_byte": null, "active_segments": 0, "total_segments": segs.len()}));
+    }
+    let avg = active.iter().map(|(_, nd, db)| *nd as f64 / *db as f64).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"avg_docs_per_byte": avg, "active_segments": n, "total_segments": segs.len()}))
+}
+
 /// GET /api/v1/search/index/segments/fragility — segmentos de um único doc (frágeis, risco de perda total). Sprint #2288.
 pub async fn segment_fragility(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

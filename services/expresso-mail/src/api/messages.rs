@@ -336,6 +336,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/subject-length-p90-by-tier",   get(subject_length_p90_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p75-by-tier",   get(subject_length_p75_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p50-by-tier",   get(subject_length_p50_by_tier_stats))
+        .route("/mail/messages/stats/size-stddev-by-folder",          get(size_stddev_by_folder_stats))
+        .route("/mail/messages/stats/size-stddev-by-tier",            get(size_stddev_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-max-by-folder",  get(recipient_count_max_by_folder_stats))
+        .route("/mail/messages/stats/recipient-count-max-by-tier",    get(recipient_count_max_by_tier_stats))
         .route("/mail/messages/stats/size-max-by-folder",             get(size_max_by_folder_stats))
         .route("/mail/messages/stats/size-max-by-tier",               get(size_max_by_tier_stats))
         .route("/mail/messages/stats/size-min-by-folder",             get(size_min_by_folder_stats))
@@ -11527,6 +11531,97 @@ async fn attachment_count_p90_by_folder_stats(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(folder, p90, cnt)| serde_json::json!({"folder_name": folder, "p90_attachment_count": p90, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-stddev-by-folder — desvio padrão de tamanho por pasta. Sprint #2307.
+async fn size_stddev_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, STDDEV(m.size)::FLOAT8 AS stddev_size, COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY stddev_size DESC NULLS LAST",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, stddev, cnt)| serde_json::json!({"folder_name": folder, "stddev_size": stddev, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-stddev-by-tier — desvio padrão de tamanho por tier. Sprint #2312.
+async fn size_stddev_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         STDDEV(m.size)::FLOAT8 AS stddev_size, COUNT(*)::BIGINT AS message_count \
+         FROM messages m \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, stddev, cnt)| serde_json::json!({"tier": tier, "stddev_size": stddev, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-max-by-folder — MAX destinatários por pasta. Sprint #2317.
+async fn recipient_count_max_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         MAX(jsonb_array_length(COALESCE(m.recipients, '[]'::jsonb)))::BIGINT AS max_recipient_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY max_recipient_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, max_rc, cnt)| serde_json::json!({"folder_name": folder, "max_recipient_count": max_rc, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-max-by-tier — MAX destinatários por tier. Sprint #2322.
+async fn recipient_count_max_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         MAX(jsonb_array_length(COALESCE(m.recipients, '[]'::jsonb)))::BIGINT AS max_recipient_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, max_rc, cnt)| serde_json::json!({"tier": tier, "max_recipient_count": max_rc, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
