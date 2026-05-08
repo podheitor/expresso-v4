@@ -1713,6 +1713,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_entropy_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-class",
+            get(events_by_range_duration_atkinson_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-weekday",
+            get(events_by_range_duration_lorenz_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-theil-by-weekday",
+            get(events_by_range_attendee_count_theil_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-weekday",
+            get(events_by_range_attendee_count_gini_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -1847,6 +1863,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-class",
             get(events_by_range_duration_entropy_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-class",
+            get(events_by_range_duration_atkinson_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-weekday",
+            get(events_by_range_duration_lorenz_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-theil-by-weekday",
+            get(events_by_range_attendee_count_theil_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-weekday",
+            get(events_by_range_attendee_count_gini_by_weekday),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -13166,6 +13198,136 @@ async fn events_by_range_duration_hhi_by_class(
             vals.iter().map(|&v| { let s = v / total; s * s }).sum::<f64>()
         } else { 0.0 };
         serde_json::json!({"class": class, "duration_hhi": hhi, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-weekday — Gini de attendee count por dia da semana. Sprint #3024.
+async fn events_by_range_attendee_count_gini_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                ARRAY_AGG(JSONB_ARRAY_LENGTH(attendees) ORDER BY dtstart) FILTER (WHERE attendees IS NOT NULL) AS counts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(DOW FROM dtstart) ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().flatten().collect();
+        let m = vals.len();
+        let gini = if m == 0 {
+            0.0
+        } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                let sum_abs_diff: f64 = vals.iter().flat_map(|&a| vals.iter().map(move |&b| (a - b).abs())).sum();
+                sum_abs_diff / (2.0 * m as f64 * m as f64 * mean)
+            } else { 0.0 }
+        };
+        serde_json::json!({"weekday": wd, "gini": gini, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-theil-by-weekday — Theil de attendee count por dia da semana. Sprint #3019.
+async fn events_by_range_attendee_count_theil_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                ARRAY_AGG(JSONB_ARRAY_LENGTH(attendees) ORDER BY dtstart) FILTER (WHERE attendees IS NOT NULL) AS counts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(DOW FROM dtstart) ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().flatten().collect();
+        let m = vals.len();
+        let theil = if m == 0 {
+            0.0
+        } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                vals.iter().filter(|&&v| v > 0.0).map(|&v| (v / mean) * (v / mean).ln()).sum::<f64>() / m as f64
+            } else { 0.0 }
+        };
+        serde_json::json!({"weekday": wd, "theil": theil, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-weekday — curva de Lorenz de duração por dia da semana. Sprint #3014.
+async fn events_by_range_duration_lorenz_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(DOW FROM dtstart) ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().flatten().collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<f64> = if total > 0.0 {
+            vals.iter().scan(0.0, |acc, &v| { *acc += v / total; Some(*acc) }).collect()
+        } else {
+            vec![0.0; vals.len()]
+        };
+        serde_json::json!({"weekday": wd, "lorenz_curve": lorenz, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-class — índice de Atkinson de duração por classe. Sprint #3009.
+async fn events_by_range_duration_atkinson_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY COALESCE(class, 'PUBLIC') ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().flatten().filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let atkinson = if m == 0 {
+            0.0
+        } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                let geo_mean = (vals.iter().map(|v| v.ln()).sum::<f64>() / m as f64).exp();
+                1.0 - (geo_mean / mean)
+            } else { 0.0 }
+        };
+        serde_json::json!({"class": class, "atkinson": atkinson, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

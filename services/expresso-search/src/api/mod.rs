@@ -7301,6 +7301,47 @@ pub async fn segment_docs_density_entropy(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"docs_density_entropy": entropy, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-count — contagem de segmentos com bytes_per_doc > 0. Sprint #3023.
+pub async fn segment_bytes_per_doc_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let count = segs.iter().filter(|(_, docs, bytes)| *docs > 0 && *bytes > 0).count();
+    Json(serde_json::json!({"bytes_per_doc_nonzero_count": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-sum — soma de bytes_per_doc por segmento. Sprint #3018.
+pub async fn segment_bytes_per_doc_sum(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let sum: f64 = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).sum();
+    Json(serde_json::json!({"bytes_per_doc_sum": sum, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-stddev — desvio padrão de bytes_per_doc. Sprint #3013.
+pub async fn segment_bytes_per_doc_stddev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_stddev": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"bytes_per_doc_stddev": variance.sqrt(), "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-count — contagem de segmentos com docs_density > 0. Sprint #3008.
+pub async fn segment_docs_density_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let count = segs.iter().filter(|(_, docs, bytes)| *docs > 0 && *bytes > 0).count();
+    Json(serde_json::json!({"docs_density_nonzero_count": count, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-density-sum — soma de densidade docs/byte. Sprint #3003.
 pub async fn segment_docs_density_sum(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
