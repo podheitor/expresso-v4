@@ -6858,6 +6858,84 @@ pub async fn segment_ratio_mad(State(store): State<IndexStore>) -> Json<serde_js
     Json(serde_json::json!({"ratio_mad": mad, "ratio_median": median, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/ratio-entropy — entropia de Shannon da razão bytes/doc entre segmentos. Sprint #2788.
+pub async fn segment_ratio_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_entropy": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = ratios.iter().sum();
+    let entropy = if total > 0.0 {
+        ratios.iter().map(|&r| {
+            let p = r / total;
+            if p > 0.0 { -p * p.ln() } else { 0.0 }
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"ratio_entropy": entropy, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-gini — coeficiente de Gini da razão bytes/doc entre segmentos. Sprint #2793.
+pub async fn segment_ratio_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_gini": null, "total_segments": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let total: f64 = ratios.iter().sum();
+    let gini = if total > 0.0 {
+        let num: f64 = ratios.iter().enumerate().map(|(i, v)| (2 * (i + 1) - n - 1) as f64 * v).sum();
+        num / (n as f64 * total)
+    } else { 0.0 };
+    Json(serde_json::json!({"ratio_gini": gini, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-hhi — índice Herfindahl-Hirschman da razão bytes/doc entre segmentos. Sprint #2798.
+pub async fn segment_ratio_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_hhi": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = ratios.iter().sum();
+    let hhi = if total > 0.0 {
+        ratios.iter().map(|&r| { let s = r / total; s * s }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"ratio_hhi": hhi, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-lorenz — curva de Lorenz da razão bytes/doc entre segmentos. Sprint #2803.
+pub async fn segment_ratio_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_lorenz": [], "total_segments": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let total: f64 = ratios.iter().sum();
+    let lorenz: Vec<serde_json::Value> = if total > 0.0 {
+        let mut cum = 0.0f64;
+        ratios.iter().enumerate().map(|(i, &r)| {
+            cum += r;
+            serde_json::json!({"rank": i + 1, "cumulative_share": cum / total})
+        }).collect()
+    } else { vec![] };
+    Json(serde_json::json!({"ratio_lorenz": lorenz, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

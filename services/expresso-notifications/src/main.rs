@@ -6230,6 +6230,98 @@ async fn dlq_by_kind_attempts_p75(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-p75 — P75 de attempts por user_id. Sprint #2785.
+async fn dlq_by_user_attempts_p75(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, f64, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY attempts), 0.0)::FLOAT8 AS p75_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, p75, cnt)| {
+        json!({"user_id": uid, "p75_attempts": p75, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-attempts-p75 — P75 de attempts por tenant_id. Sprint #2790.
+async fn dlq_by_tenant_attempts_p75(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, f64, i64)> = sqlx::query_as(
+        "SELECT tenant_id, \
+                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY attempts), 0.0)::FLOAT8 AS p75_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, p75, cnt)| {
+        json!({"tenant_id": tid, "p75_attempts": p75, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-attempts-p90 — P90 de attempts por kind. Sprint #2795.
+async fn dlq_by_kind_attempts_p90(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY attempts), 0.0)::FLOAT8 AS p90_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, p90, cnt)| {
+        json!({"kind": kind, "p90_attempts": p90, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-p90 — P90 de attempts por user_id. Sprint #2800.
+async fn dlq_by_user_attempts_p90(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, f64, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY attempts), 0.0)::FLOAT8 AS p90_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, p90, cnt)| {
+        json!({"user_id": uid, "p90_attempts": p90, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-attempts-stddev — stddev de attempts por kind. Sprint #2725.
 async fn dlq_by_kind_attempts_stddev(
     State(st): State<AppState>,
@@ -13644,6 +13736,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-p50",       get(dlq_by_user_attempts_p50))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-p50",     get(dlq_by_tenant_attempts_p50))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-p75",       get(dlq_by_kind_attempts_p75))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-p75",       get(dlq_by_user_attempts_p75))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-p75",     get(dlq_by_tenant_attempts_p75))
+        .route("/api/v1/notifications/dlq/stats/by-kind-attempts-p90",       get(dlq_by_kind_attempts_p90))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-p90",       get(dlq_by_user_attempts_p90))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-range",     get(dlq_by_kind_attempts_range))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-range",     get(dlq_by_user_attempts_range))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-range",   get(dlq_by_tenant_attempts_range))

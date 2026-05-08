@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/size-theil-by-folder",                     get(size_theil_by_folder_stats))
+        .route("/mail/messages/stats/size-theil-by-tier",                       get(size_theil_by_tier_stats))
+        .route("/mail/messages/stats/body-length-theil-by-folder",              get(body_length_theil_by_folder_stats))
+        .route("/mail/messages/stats/body-length-theil-by-tier",                get(body_length_theil_by_tier_stats))
         .route("/mail/messages/stats/size-lorenz-by-folder",                    get(size_lorenz_by_folder_stats))
         .route("/mail/messages/stats/size-lorenz-by-tier",                      get(size_lorenz_by_tier_stats))
         .route("/mail/messages/stats/body-length-lorenz-by-folder",             get(body_length_lorenz_by_folder_stats))
@@ -12485,6 +12489,130 @@ async fn body_length_lorenz_by_tier_stats(
         serde_json::json!({"tier": tier, "cumulative_share": cum_share, "total_body_length": body, "msg_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"lorenz": result, "grand_total_body_length": grand_total})))
+}
+
+/// GET /mail/messages/stats/size-theil-by-folder — índice de Theil de size por pasta. Sprint #2787.
+async fn size_theil_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, SUM(m.size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let theil = if grand_total > 0 && n > 0 {
+        let mean = grand_total as f64 / n as f64;
+        rows.iter().map(|(_, s, _)| {
+            let x = *s as f64;
+            if x > 0.0 && mean > 0.0 { (x / mean) * (x / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, s, cnt)| {
+        serde_json::json!({"folder": folder, "total_size": s, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /mail/messages/stats/size-theil-by-tier — índice de Theil de size por tier. Sprint #2792.
+async fn size_theil_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(recipient_count, 0) AS tier, SUM(size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages \
+         WHERE tenant_id = $1 AND user_id = $2 AND size IS NOT NULL \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let theil = if grand_total > 0 && n > 0 {
+        let mean = grand_total as f64 / n as f64;
+        rows.iter().map(|(_, s, _)| {
+            let x = *s as f64;
+            if x > 0.0 && mean > 0.0 { (x / mean) * (x / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, s, cnt)| {
+        serde_json::json!({"tier": tier, "total_size": s, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-theil-by-folder — índice de Theil de body_length por pasta. Sprint #2797.
+async fn body_length_theil_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, SUM(m.body_length)::BIGINT AS total_body, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.name, m.mailbox_id ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, b, _)| b).sum();
+    let n = rows.len();
+    let theil = if grand_total > 0 && n > 0 {
+        let mean = grand_total as f64 / n as f64;
+        rows.iter().map(|(_, b, _)| {
+            let x = *b as f64;
+            if x > 0.0 && mean > 0.0 { (x / mean) * (x / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, b, cnt)| {
+        serde_json::json!({"folder": folder, "total_body_length": b, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-theil-by-tier — índice de Theil de body_length por tier. Sprint #2802.
+async fn body_length_theil_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(i32, i64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(recipient_count, 0) AS tier, SUM(body_length)::BIGINT AS total_body, COUNT(*)::BIGINT AS msg_count \
+         FROM messages \
+         WHERE tenant_id = $1 AND user_id = $2 AND body_length IS NOT NULL \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(tx.as_mut()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, b, _)| b).sum();
+    let n = rows.len();
+    let theil = if grand_total > 0 && n > 0 {
+        let mean = grand_total as f64 / n as f64;
+        rows.iter().map(|(_, b, _)| {
+            let x = *b as f64;
+            if x > 0.0 && mean > 0.0 { (x / mean) * (x / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, b, cnt)| {
+        serde_json::json!({"tier": tier, "total_body_length": b, "msg_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
 }
 
 /// GET /mail/messages/stats/size-hhi-by-folder — índice HHI de size por pasta. Sprint #2747.
