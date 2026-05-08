@@ -6372,6 +6372,71 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/merge-candidates — segmentos candidatos a merge (abaixo de 10% da média). Sprint #2365.
+pub async fn segment_merge_candidates(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"merge_candidates": [], "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let mean = total_docs as f64 / n as f64;
+    let threshold = mean * 0.10;
+    let candidates: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, docs, _)| (*docs as f64) < threshold)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    Json(serde_json::json!({"merge_candidates": candidates, "total_segments": n, "threshold_docs": threshold as u64}))
+}
+
+/// GET /api/v1/search/index/segments/hot-ratio — fração de segmentos com docs acima da média. Sprint #2370.
+pub async fn segment_hot_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"hot_ratio": 0.0, "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let mean = total_docs as f64 / n as f64;
+    let hot = segs.iter().filter(|(_, d, _)| (*d as f64) > mean).count();
+    let ratio = hot as f64 / n as f64;
+    Json(serde_json::json!({"hot_ratio": ratio, "hot_count": hot, "total_segments": n, "mean_docs": mean}))
+}
+
+/// GET /api/v1/search/index/segments/cold-ratio — fração de segmentos com docs abaixo de 50% da média. Sprint #2375.
+pub async fn segment_cold_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"cold_ratio": 0.0, "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let mean = total_docs as f64 / n as f64;
+    let cold = segs.iter().filter(|(_, d, _)| (*d as f64) < mean * 0.5).count();
+    let ratio = cold as f64 / n as f64;
+    Json(serde_json::json!({"cold_ratio": ratio, "cold_count": cold, "total_segments": n, "mean_docs": mean}))
+}
+
+/// GET /api/v1/search/index/segments/anomaly-score — score de anomalia baseado em z-score máximo. Sprint #2380.
+pub async fn segment_anomaly_score(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"anomaly_score": 0.0, "total_segments": n}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let variance = docs.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let max_zscore = if stddev > 0.0 {
+        docs.iter().map(|d| ((d - mean) / stddev).abs()).fold(0.0_f64, f64::max)
+    } else {
+        0.0
+    };
+    Json(serde_json::json!({"anomaly_score": max_zscore, "mean_docs": mean, "stddev_docs": stddev, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/count-below-avg — segmentos com docs abaixo da média. Sprint #2348.
 pub async fn segment_count_below_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
