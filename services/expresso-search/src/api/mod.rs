@@ -6372,6 +6372,82 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-above-avg — segmentos com bytes acima da média. Sprint #2385.
+pub async fn segment_bytes_above_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    let mean = total_bytes as f64 / n as f64;
+    let above: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, b)| (*b as f64) > mean)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let count = above.len();
+    Json(serde_json::json!({"segments": above, "count": count, "total_segments": n, "mean_bytes": mean}))
+}
+
+/// GET /api/v1/search/index/segments/docs-above-avg — segmentos com docs acima da média. Sprint #2390.
+pub async fn segment_docs_above_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| d).sum();
+    let mean = total_docs as f64 / n as f64;
+    let above: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, d, _)| (*d as f64) > mean)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let count = above.len();
+    Json(serde_json::json!({"segments": above, "count": count, "total_segments": n, "mean_docs": mean}))
+}
+
+/// GET /api/v1/search/index/segments/size-outliers — segmentos com bytes > média + 2*stddev. Sprint #2395.
+pub async fn segment_size_outliers(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"outliers": [], "total_segments": n}));
+    }
+    let bytes: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = bytes.iter().sum::<f64>() / n as f64;
+    let variance = bytes.iter().map(|b| (b - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let threshold = mean + 2.0 * stddev;
+    let outliers: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, _, b)| (*b as f64) > threshold)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    Json(serde_json::json!({"outliers": outliers, "threshold_bytes": threshold as u64, "mean_bytes": mean, "stddev_bytes": stddev, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-outliers — segmentos com docs > média + 2*stddev. Sprint #2400.
+pub async fn segment_docs_outliers(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"outliers": [], "total_segments": n}));
+    }
+    let docs: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = docs.iter().sum::<f64>() / n as f64;
+    let variance = docs.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let threshold = mean + 2.0 * stddev;
+    let outliers: Vec<serde_json::Value> = segs
+        .iter()
+        .filter(|(_, d, _)| (*d as f64) > threshold)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    Json(serde_json::json!({"outliers": outliers, "threshold_docs": threshold as u64, "mean_docs": mean, "stddev_docs": stddev, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/merge-candidates — segmentos candidatos a merge (abaixo de 10% da média). Sprint #2365.
 pub async fn segment_merge_candidates(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

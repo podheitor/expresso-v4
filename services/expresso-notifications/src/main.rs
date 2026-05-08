@@ -6138,6 +6138,87 @@ async fn dlq_stats_by_day_and_dow(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-payload-size-max — máximo do tamanho do payload por kind. Sprint #2385.
+async fn dlq_by_kind_payload_size_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, MAX(LENGTH(payload))::BIGINT AS max_payload_size, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY max_payload_size DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, max_sz, cnt)| json!({"kind": kind, "max_payload_size": max_sz, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-max — máximo de tentativas por user_id. Sprint #2390.
+async fn dlq_by_user_attempts_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, MAX(attempts)::INT AS max_attempts, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY max_attempts DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, max_a, cnt)| json!({"user_id": uid, "max_attempts": max_a, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-attempts-max — máximo de tentativas por tenant_id. Sprint #2395.
+async fn dlq_by_tenant_attempts_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i32, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, MAX(attempts)::INT AS max_attempts, COUNT(*)::BIGINT AS count \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY max_attempts DESC",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, max_a, cnt)| json!({"tenant_id": tid, "max_attempts": max_a, "count": cnt})).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-cv — coeficiente de variação das tentativas. Sprint #2400.
+async fn dlq_attempts_cv(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (f64, f64, i64) = sqlx::query_as(
+        "SELECT COALESCE(STDDEV(attempts), 0.0)::FLOAT8 AS stddev_att, \
+                COALESCE(AVG(attempts), 0.0)::FLOAT8 AS avg_att, \
+                COUNT(*)::BIGINT AS total \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) \
+           AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool.as_ref()).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let cv = if row.1 > 0.0 { row.0 / row.1 } else { 0.0 };
+    Ok(Json(json!({"cv": cv, "stddev": row.0, "mean": row.1, "total": row.2})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-iqr — IQR do comprimento do error (P75-P25). Sprint #2365.
 async fn dlq_error_length_iqr(
     State(st): State<AppState>,
@@ -12068,6 +12149,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-and-dow",             get(dlq_stats_by_kind_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-tenant-and-dow",           get(dlq_stats_by_tenant_and_dow))
         .route("/api/v1/notifications/dlq/stats/by-user-and-dow",             get(dlq_stats_by_user_and_dow))
+        .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-max",     get(dlq_by_kind_payload_size_max))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-max",        get(dlq_by_user_attempts_max))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-max",      get(dlq_by_tenant_attempts_max))
+        .route("/api/v1/notifications/dlq/stats/attempts-cv",                 get(dlq_attempts_cv))
         .route("/api/v1/notifications/dlq/stats/error-length-iqr",            get(dlq_error_length_iqr))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-max",        get(dlq_by_kind_attempts_max))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-avg",    get(dlq_by_user_error_length_avg))
