@@ -336,6 +336,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/subject-length-p90-by-tier",   get(subject_length_p90_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p75-by-tier",   get(subject_length_p75_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p50-by-tier",   get(subject_length_p50_by_tier_stats))
+        .route("/mail/messages/stats/forwarded-rate-by-folder",      get(forwarded_rate_by_folder_stats))
+        .route("/mail/messages/stats/forwarded-rate-by-tier",        get(forwarded_rate_by_tier_stats))
+        .route("/mail/messages/stats/flagged-rate-by-folder",        get(flagged_rate_by_folder_stats))
+        .route("/mail/messages/stats/flagged-rate-by-tier",          get(flagged_rate_by_tier_stats))
         .route("/mail/messages/stats/attachment-count-p90-by-folder",get(attachment_count_p90_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-p90-by-tier",  get(attachment_count_p90_by_tier_stats))
         .route("/mail/messages/stats/has-attachment-rate-by-folder", get(has_attachment_rate_by_folder_stats))
@@ -11513,6 +11517,112 @@ async fn attachment_count_p90_by_folder_stats(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(folder, p90, cnt)| serde_json::json!({"folder_name": folder, "p90_attachment_count": p90, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/forwarded-rate-by-folder — taxa de encaminhamento por pasta. Sprint #2207.
+async fn forwarded_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.flags @> ARRAY['\\\\Forwarded'])::BIGINT AS forwarded_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY forwarded_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, fwd, total)| {
+            let rate = if total > 0 { fwd as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"folder_name": folder, "forwarded_count": fwd, "message_count": total, "forwarded_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/forwarded-rate-by-tier — taxa de encaminhamento por tier de tamanho. Sprint #2212.
+async fn forwarded_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE m.flags @> ARRAY['\\\\Forwarded'])::BIGINT AS forwarded_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, fwd, total)| {
+            let rate = if total > 0 { fwd as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "forwarded_count": fwd, "message_count": total, "forwarded_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-folder — taxa de marcação por pasta. Sprint #2217.
+async fn flagged_rate_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         COUNT(*) FILTER (WHERE m.flags @> ARRAY['\\\\Flagged'])::BIGINT AS flagged_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 \
+         GROUP BY mb.name ORDER BY flagged_count DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, flagged, total)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"folder_name": folder, "flagged_count": flagged, "message_count": total, "flagged_rate": rate})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/flagged-rate-by-tier — taxa de marcação por tier de tamanho. Sprint #2222.
+async fn flagged_rate_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     WHEN m.size < 1048576 THEN 'large' \
+                     ELSE 'huge' END AS tier, \
+         COUNT(*) FILTER (WHERE m.flags @> ARRAY['\\\\Flagged'])::BIGINT AS flagged_count, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, flagged, total)| {
+            let rate = if total > 0 { flagged as f64 / total as f64 } else { 0.0 };
+            serde_json::json!({"tier": tier, "flagged_count": flagged, "message_count": total, "flagged_rate": rate})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

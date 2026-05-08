@@ -6372,6 +6372,55 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/lease — segmentos com ratio > 1 (mais docs que bytes: candidatos a lease/merge). Sprint #2208.
+pub async fn segment_lease(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let lease: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, db)| *db > 0 && (*nd as f64 / *db as f64) > 1.0)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db, "ratio": *nd as f64 / *db as f64}))
+        .collect();
+    Json(serde_json::json!({"lease_candidates": lease, "count": lease.len()}))
+}
+
+/// GET /api/v1/search/index/segments/merge-candidate — segmentos abaixo de 1 000 docs (candidatos a merge). Sprint #2213.
+pub async fn segment_merge_candidate(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let candidates: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd < 1_000)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"merge_candidates": candidates, "count": candidates.len()}))
+}
+
+/// GET /api/v1/search/index/segments/defrag — segmentos com bytes acima de p90 (candidatos a defrag). Sprint #2218.
+pub async fn segment_defrag(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"defrag_candidates": [], "p90_bytes": null, "segment_count": 0}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes_sorted.sort_unstable();
+    let p90_idx = ((n as f64 * 0.90) as usize).min(n - 1);
+    let p90 = bytes_sorted[p90_idx];
+    let candidates: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db > p90)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"defrag_candidates": candidates, "p90_bytes": p90, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/hotspot — top-3 segmentos por docs (hotspot de leitura). Sprint #2223.
+pub async fn segment_hotspot(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut sorted = segs.clone();
+    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    let top: Vec<serde_json::Value> = sorted.iter().take(3)
+        .map(|(id, nd, db)| serde_json::json!({"id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"hotspots": top, "segment_count": segs.len()}))
+}
+
 pub async fn segment_ratio_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
