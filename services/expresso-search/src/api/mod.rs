@@ -6418,6 +6418,69 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-count-by-size-bucket — contagem de segmentos por bucket de tamanho. Sprint #2508.
+pub async fn segment_docs_count_by_size_bucket(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let mut tiny = 0u64;
+    let mut small = 0u64;
+    let mut medium = 0u64;
+    let mut large = 0u64;
+    for (_, _, bytes) in &segs {
+        match bytes {
+            b if *b < 1_048_576 => tiny += 1,
+            b if *b < 10_485_760 => small += 1,
+            b if *b < 104_857_600 => medium += 1,
+            _ => large += 1,
+        }
+    }
+    Json(serde_json::json!({"buckets": {"tiny_lt1mb": tiny, "small_1mb_10mb": small, "medium_10mb_100mb": medium, "large_ge100mb": large}, "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/size-bucket-distribution — distribuição percentual por bucket de bytes. Sprint #2513.
+pub async fn segment_size_bucket_distribution(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len() as f64;
+    let (mut tiny, mut small, mut medium, mut large) = (0u64, 0u64, 0u64, 0u64);
+    for (_, _, bytes) in &segs {
+        match bytes {
+            b if *b < 1_048_576 => tiny += 1,
+            b if *b < 10_485_760 => small += 1,
+            b if *b < 104_857_600 => medium += 1,
+            _ => large += 1,
+        }
+    }
+    let pct = |v: u64| if n > 0.0 { v as f64 / n * 100.0 } else { 0.0 };
+    Json(serde_json::json!({"distribution_pct": {"tiny_lt1mb": pct(tiny), "small_1mb_10mb": pct(small), "medium_10mb_100mb": pct(medium), "large_ge100mb": pct(large)}, "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/doc-bucket-distribution — distribuição percentual por bucket de docs. Sprint #2518.
+pub async fn segment_doc_bucket_distribution(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len() as f64;
+    let (mut sparse, mut light, mut dense, mut heavy) = (0u64, 0u64, 0u64, 0u64);
+    for (_, docs, _) in &segs {
+        match docs {
+            d if *d < 1_000 => sparse += 1,
+            d if *d < 100_000 => light += 1,
+            d if *d < 10_000_000 => dense += 1,
+            _ => heavy += 1,
+        }
+    }
+    let pct = |v: u64| if n > 0.0 { v as f64 / n * 100.0 } else { 0.0 };
+    Json(serde_json::json!({"distribution_pct": {"sparse_lt1k": pct(sparse), "light_1k_100k": pct(light), "dense_100k_10m": pct(dense), "heavy_ge10m": pct(heavy)}, "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/avg-bytes — média de bytes por segmento. Sprint #2523.
+pub async fn segment_avg_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_bytes": 0.0, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, b)| b).sum();
+    Json(serde_json::json!({"avg_bytes": total as f64 / n as f64, "total_bytes": total, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-density-p75 — p75 da densidade docs/byte. Sprint #2488.
 pub async fn segment_docs_density_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

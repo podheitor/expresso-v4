@@ -1505,6 +1505,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendee_count_range_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/top-attendee-domain",
+            get(events_by_range_top_attendee_domain),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/class-pct-by-weekday",
+            get(events_by_range_class_pct_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/category-entropy",
+            get(events_by_range_category_entropy),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/busiest-weekday",
+            get(events_by_range_busiest_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/category-count-range-by-month",
             get(events_by_range_category_count_range_by_month),
         )
@@ -11467,6 +11483,109 @@ async fn events_by_range_attendee_count_range_by_class(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(class, max_a, min_a, cnt)| serde_json::json!({"class": class, "range_attendees": max_a - min_a, "max": max_a, "min": min_a, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/top-attendee-domain — domínio de e-mail mais frequente nos attendees. Sprint #2509.
+async fn events_by_range_top_attendee_domain(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT LOWER(SPLIT_PART(att->>'email', '@', 2)) AS domain, COUNT(*)::BIGINT AS attendee_count \
+         FROM calendar_events, JSONB_ARRAY_ELEMENTS(attendees) AS att \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND attendees IS NOT NULL \
+           AND att->>'email' LIKE '%@%' \
+         GROUP BY domain ORDER BY attendee_count DESC LIMIT 10",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(domain, cnt)| serde_json::json!({"domain": domain, "attendee_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/class-pct-by-weekday — percentual por class × dia semana. Sprint #2514.
+async fn events_by_range_class_pct_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, String, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                COALESCE(class, 'PUBLIC') AS class, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday, class ORDER BY weekday, event_count DESC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let total: i64 = rows.iter().map(|(_, _, cnt)| cnt).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(dow, class, cnt)| {
+        let pct = if total > 0 { cnt as f64 / total as f64 * 100.0 } else { 0.0 };
+        serde_json::json!({"weekday": dow, "class": class, "event_count": cnt, "pct_of_total": pct})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/category-entropy — entropia de Shannon das categorias. Sprint #2519.
+async fn events_by_range_category_entropy(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT cat, COUNT(*)::BIGINT AS freq \
+         FROM calendar_events, UNNEST(categories) AS cat \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND categories IS NOT NULL \
+         GROUP BY cat",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let total: i64 = rows.iter().map(|(_, f)| f).sum();
+    let entropy = if total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, f)| {
+            let p = *f as f64 / total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "distinct_categories": rows.len(), "total_assignments": total})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/busiest-weekday — dia da semana com mais eventos. Sprint #2524.
+async fn events_by_range_busiest_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY weekday ORDER BY event_count DESC",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(dow, cnt)| serde_json::json!({"weekday": dow, "event_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
