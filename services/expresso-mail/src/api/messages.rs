@@ -384,6 +384,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-trimmed-mean-by-tier",                get(size_trimmed_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-trimmed-mean-by-folder",       get(body_length_trimmed_mean_by_folder_stats))
         .route("/mail/messages/stats/body-length-trimmed-mean-by-tier",         get(body_length_trimmed_mean_by_tier_stats))
+        .route("/mail/messages/stats/size-winsorized-mean-by-folder",           get(size_winsorized_mean_by_folder_stats))
+        .route("/mail/messages/stats/size-winsorized-mean-by-tier",             get(size_winsorized_mean_by_tier_stats))
+        .route("/mail/messages/stats/body-length-winsorized-mean-by-folder",    get(body_length_winsorized_mean_by_folder_stats))
+        .route("/mail/messages/stats/body-length-winsorized-mean-by-tier",      get(body_length_winsorized_mean_by_tier_stats))
         .route("/mail/messages/stats/size-hhi-by-folder",                       get(size_hhi_by_folder_stats))
         .route("/mail/messages/stats/size-hhi-by-tier",                         get(size_hhi_by_tier_stats))
         .route("/mail/messages/stats/body-length-hhi-by-folder",                get(body_length_hhi_by_folder_stats))
@@ -12997,6 +13001,126 @@ async fn body_length_trimmed_mean_by_tier_stats(
             } else { vals[n / 2] }
         };
         serde_json::json!({"tier": tier, "trimmed_mean_body_length": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-winsorized-mean-by-folder — média winsorizada (10%–90%) de size por pasta. Sprint #2867.
+async fn size_winsorized_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let winsorized_mean = if n == 0 {
+            0.0
+        } else {
+            let lo_val = vals[((n as f64 * 0.10).floor() as usize).min(n - 1)];
+            let hi_val = vals[((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+            clamped.iter().sum::<f64>() / n as f64
+        };
+        serde_json::json!({"folder": folder, "winsorized_mean_size": winsorized_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-winsorized-mean-by-tier — média winsorizada (10%–90%) de size por tier. Sprint #2872.
+async fn size_winsorized_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let winsorized_mean = if n == 0 {
+            0.0
+        } else {
+            let lo_val = vals[((n as f64 * 0.10).floor() as usize).min(n - 1)];
+            let hi_val = vals[((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+            clamped.iter().sum::<f64>() / n as f64
+        };
+        serde_json::json!({"tier": tier, "winsorized_mean_size": winsorized_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-winsorized-mean-by-folder — média winsorizada (10%–90%) de body_length por pasta. Sprint #2877.
+async fn body_length_winsorized_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let winsorized_mean = if n == 0 {
+            0.0
+        } else {
+            let lo_val = vals[((n as f64 * 0.10).floor() as usize).min(n - 1)];
+            let hi_val = vals[((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+            clamped.iter().sum::<f64>() / n as f64
+        };
+        serde_json::json!({"folder": folder, "winsorized_mean_body_length": winsorized_mean, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-winsorized-mean-by-tier — média winsorizada (10%–90%) de body_length por tier. Sprint #2882.
+async fn body_length_winsorized_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let winsorized_mean = if n == 0 {
+            0.0
+        } else {
+            let lo_val = vals[((n as f64 * 0.10).floor() as usize).min(n - 1)];
+            let hi_val = vals[((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(lo_val).min(hi_val)).collect();
+            clamped.iter().sum::<f64>() / n as f64
+        };
+        serde_json::json!({"tier": tier, "winsorized_mean_body_length": winsorized_mean, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
