@@ -6418,6 +6418,61 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/cv-ratio — coeficiente de variação da razão docs/bytes entre segmentos. Sprint #2708.
+pub async fn segment_cv_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"cv_ratio": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, d, b)| {
+        if *b > 0 { *d as f64 / *b as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let stddev = (ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+    Json(serde_json::json!({"cv_ratio": cv, "mean_ratio": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/range-bytes — range (max-min) de bytes entre segmentos. Sprint #2713.
+pub async fn segment_range_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"range_bytes": null, "total_segments": 0}));
+    }
+    let max_b = segs.iter().map(|(_, _, b)| *b).max().unwrap_or(0);
+    let min_b = segs.iter().map(|(_, _, b)| *b).min().unwrap_or(0);
+    Json(serde_json::json!({"range_bytes": max_b - min_b, "max_bytes": max_b, "min_bytes": min_b, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/range-docs — range (max-min) de docs entre segmentos. Sprint #2718.
+pub async fn segment_range_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"range_docs": null, "total_segments": 0}));
+    }
+    let max_d = segs.iter().map(|(_, d, _)| *d).max().unwrap_or(0);
+    let min_d = segs.iter().map(|(_, d, _)| *d).min().unwrap_or(0);
+    Json(serde_json::json!({"range_docs": max_d - min_d, "max_docs": max_d, "min_docs": min_d, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/stddev-ratio — desvio-padrão da razão docs/bytes entre segmentos. Sprint #2723.
+pub async fn segment_stddev_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"stddev_ratio": null, "total_segments": 0}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, d, b)| {
+        if *b > 0 { *d as f64 / *b as f64 } else { 0.0 }
+    }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let stddev = (ratios.iter().map(|r| (r - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    Json(serde_json::json!({"stddev_ratio": stddev, "mean_ratio": mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/theil-bytes — índice Theil T de desigualdade de bytes entre segmentos. Sprint #2688.
 pub async fn segment_theil_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
