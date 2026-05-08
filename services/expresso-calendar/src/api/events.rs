@@ -1521,20 +1521,20 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_range),
         )
         .route(
-            "/api/v1/calendars/:cal_id/events-by-range/summary-length-iqr-by-class",
-            get(events_by_range_summary_length_iqr_by_class),
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-month",
+            get(events_by_range_summary_length_p95_by_month),
         )
         .route(
-            "/api/v1/calendars/:cal_id/events-by-range/summary-length-iqr-by-weekday",
-            get(events_by_range_summary_length_iqr_by_weekday),
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-p99-by-month",
+            get(events_by_range_summary_length_p99_by_month),
         )
         .route(
-            "/api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-class",
-            get(events_by_range_summary_length_cv_by_class),
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-class",
+            get(events_by_range_summary_length_skewness_by_class),
         )
         .route(
-            "/api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-weekday",
-            get(events_by_range_summary_length_cv_by_weekday),
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-weekday",
+            get(events_by_range_summary_length_skewness_by_weekday),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-class",
@@ -11739,70 +11739,69 @@ async fn events_by_range_duration_range(
     Ok(Json(serde_json::json!({"range_duration_seconds": range, "max": row.0, "min": row.1, "event_count": row.2})))
 }
 
-/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-iqr-by-class — IQR do comprimento de summary por classe. Sprint #2709.
-async fn events_by_range_summary_length_iqr_by_class(
-    State(state): State<AppState>,
-    Path(cal_id): Path<uuid::Uuid>,
-    Query(q): Query<EventsByRangeRruleStatsQuery>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
-        "SELECT COALESCE(class, 'PUBLIC') AS class, \
-                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(summary)) - \
-                         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(summary)), 0.0)::FLOAT8 AS iqr, \
-                COUNT(*)::BIGINT AS event_count \
-         FROM calendar_events \
-         WHERE calendar_id = $1 \
-           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
-           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
-           AND summary IS NOT NULL \
-         GROUP BY class ORDER BY class",
-    )
-    .bind(cal_id).bind(q.after).bind(q.before)
-    .fetch_all(state.db()).await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
-    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, iqr, cnt)| {
-        serde_json::json!({"class": class, "iqr_summary_length": iqr, "event_count": cnt})
-    }).collect();
-    Ok(Json(serde_json::json!({"rows": result})))
-}
-
-/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-iqr-by-weekday — IQR do comprimento de summary por dia da semana. Sprint #2714.
-async fn events_by_range_summary_length_iqr_by_weekday(
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-month — P95 do comprimento de summary por mês. Sprint #2729.
+async fn events_by_range_summary_length_p95_by_month(
     State(state): State<AppState>,
     Path(cal_id): Path<uuid::Uuid>,
     Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
     let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
-        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
-                COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(summary)) - \
-                         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(summary)), 0.0)::FLOAT8 AS iqr, \
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(summary))::FLOAT8 AS p95, \
                 COUNT(*)::BIGINT AS event_count \
          FROM calendar_events \
          WHERE calendar_id = $1 \
            AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
            AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
            AND summary IS NOT NULL \
-         GROUP BY weekday ORDER BY weekday",
+         GROUP BY month ORDER BY month",
     )
     .bind(cal_id).bind(q.after).bind(q.before)
     .fetch_all(state.db()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
-    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, iqr, cnt)| {
-        serde_json::json!({"weekday": wd, "iqr_summary_length": iqr, "event_count": cnt})
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, p95, cnt)| {
+        serde_json::json!({"month": month, "p95_summary_length": p95, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
-/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-class — CV do comprimento de summary por classe. Sprint #2719.
-async fn events_by_range_summary_length_cv_by_class(
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-p99-by-month — P99 do comprimento de summary por mês. Sprint #2734.
+async fn events_by_range_summary_length_p99_by_month(
     State(state): State<AppState>,
     Path(cal_id): Path<uuid::Uuid>,
     Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let rows: Vec<(String, f64, f64, i64)> = sqlx::query_as(
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(summary))::FLOAT8 AS p99, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND summary IS NOT NULL \
+         GROUP BY month ORDER BY month",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, p99, cnt)| {
+        serde_json::json!({"month": month, "p99_summary_length": p99, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-class — assimetria de summary_length por classe. Sprint #2739.
+async fn events_by_range_summary_length_skewness_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
         "SELECT COALESCE(class, 'PUBLIC') AS class, \
-                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
                 COALESCE(AVG(LENGTH(summary)), 0.0)::FLOAT8 AS avg_len, \
+                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
+                COALESCE(AVG(POWER(LENGTH(summary) - (SELECT AVG(LENGTH(s2.summary)) FROM calendar_events s2 WHERE s2.calendar_id = calendar_events.calendar_id AND COALESCE(s2.class,'PUBLIC') = COALESCE(calendar_events.class,'PUBLIC')), 3)), 0.0)::FLOAT8 AS m3, \
                 COUNT(*)::BIGINT AS event_count \
          FROM calendar_events \
          WHERE calendar_id = $1 \
@@ -11814,23 +11813,24 @@ async fn events_by_range_summary_length_cv_by_class(
     .bind(cal_id).bind(q.after).bind(q.before)
     .fetch_all(state.db()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
-    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, stddev, avg, cnt)| {
-        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
-        serde_json::json!({"class": class, "cv_summary_length": cv, "event_count": cnt})
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, _avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"class": class, "skewness_summary_length": skewness, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
-/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-cv-by-weekday — CV do comprimento de summary por dia da semana. Sprint #2724.
-async fn events_by_range_summary_length_cv_by_weekday(
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-weekday — assimetria de summary_length por dia da semana. Sprint #2744.
+async fn events_by_range_summary_length_skewness_by_weekday(
     State(state): State<AppState>,
     Path(cal_id): Path<uuid::Uuid>,
     Query(q): Query<EventsByRangeRruleStatsQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
-    let rows: Vec<(i32, f64, f64, i64)> = sqlx::query_as(
+    let rows: Vec<(i32, f64, f64, f64, i64)> = sqlx::query_as(
         "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
-                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
                 COALESCE(AVG(LENGTH(summary)), 0.0)::FLOAT8 AS avg_len, \
+                COALESCE(STDDEV(LENGTH(summary)), 0.0)::FLOAT8 AS stddev_len, \
+                COALESCE(AVG(POWER(LENGTH(summary) - (SELECT AVG(LENGTH(s2.summary)) FROM calendar_events s2 WHERE s2.calendar_id = calendar_events.calendar_id AND EXTRACT(DOW FROM s2.dtstart) = EXTRACT(DOW FROM calendar_events.dtstart)), 3)), 0.0)::FLOAT8 AS m3, \
                 COUNT(*)::BIGINT AS event_count \
          FROM calendar_events \
          WHERE calendar_id = $1 \
@@ -11842,9 +11842,9 @@ async fn events_by_range_summary_length_cv_by_weekday(
     .bind(cal_id).bind(q.after).bind(q.before)
     .fetch_all(state.db()).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
-    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, stddev, avg, cnt)| {
-        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
-        serde_json::json!({"weekday": wd, "cv_summary_length": cv, "event_count": cnt})
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, _avg, stddev, m3, cnt)| {
+        let skewness = if stddev > 0.0 { m3 / stddev.powi(3) } else { 0.0 };
+        serde_json::json!({"weekday": wd, "skewness_summary_length": skewness, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
