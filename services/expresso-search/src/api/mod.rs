@@ -6372,6 +6372,50 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+pub async fn segment_ratio_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_ratio": null, "segment_count": 0}));
+    }
+    let mean = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"mean_ratio": mean, "segment_count": n}))
+}
+
+pub async fn segment_size_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_size": null, "segment_count": 0}));
+    }
+    let min = segs.iter().map(|(_, _, db)| *db).min().unwrap();
+    Json(serde_json::json!({"min_size": min, "segment_count": n}))
+}
+
+pub async fn segment_ratio_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_ratio": null, "segment_count": 0}));
+    }
+    let min = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).fold(f64::MAX, f64::min);
+    Json(serde_json::json!({"min_ratio": min, "segment_count": n}))
+}
+
+pub async fn segment_size_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_size": null, "segment_count": 0}));
+    }
+    let max = segs.iter().map(|(_, _, db)| *db).max().unwrap();
+    Json(serde_json::json!({"max_size": max, "segment_count": n}))
+}
+
 pub async fn segment_ratio_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
