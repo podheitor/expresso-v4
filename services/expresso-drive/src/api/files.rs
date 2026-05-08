@@ -408,6 +408,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-sum-by-mime",               get(file_stats_size_active_sum_by_mime))
         .route("/api/v1/drive/files/stats/active-size-min-by-kind",               get(file_stats_size_active_min_by_kind))
         .route("/api/v1/drive/files/stats/active-size-sum-by-owner",              get(file_stats_size_active_sum_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-max-by-mime",               get(file_stats_size_active_max_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-max-by-kind",               get(file_stats_size_active_max_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-min-by-owner",              get(file_stats_size_active_min_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-min-by-mime",               get(file_stats_size_active_min_by_mime))
         .route("/api/v1/drive/files/stats/active-size-p95-by-mime",                get(file_stats_size_active_p95_by_mime))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-kind",               get(file_stats_size_active_iqr_by_kind))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-mime",               get(file_stats_size_active_iqr_by_mime))
@@ -11489,6 +11493,58 @@ async fn file_stats_size_deleted_sum_by_mime(State(state): State<AppState>, ctx:
         serde_json::json!({"mime_type": mime, "total_deleted_size": total, "deleted_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"grand_total_deleted_size": grand_total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-max-by-mime — máximo de size ativo por mime_type. Sprint #2981.
+async fn file_stats_size_active_max_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, COALESCE(MAX(size_bytes), 0)::BIGINT AS max_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, max, cnt)| {
+        serde_json::json!({"mime_type": mime, "max_active_size": max, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-max-by-kind — máximo de size ativo por kind. Sprint #2976.
+async fn file_stats_size_active_max_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, COALESCE(MAX(size_bytes), 0)::BIGINT AS max_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, max, cnt)| {
+        serde_json::json!({"kind": kind, "max_active_size": max, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-min-by-owner — mínimo de size ativo por owner. Sprint #2971.
+async fn file_stats_size_active_min_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id, COALESCE(MIN(size_bytes), 0)::BIGINT AS min_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner_id, min, cnt)| {
+        serde_json::json!({"owner_id": owner_id, "min_active_size": min, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-min-by-mime — mínimo de size ativo por mime_type. Sprint #2966.
+async fn file_stats_size_active_min_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, COALESCE(MIN(size_bytes), 0)::BIGINT AS min_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, min, cnt)| {
+        serde_json::json!({"mime_type": mime, "min_active_size": min, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/active-size-p95-by-mime — P95 do tamanho de arquivos ativos por mime_type. Sprint #2746.

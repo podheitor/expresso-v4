@@ -7301,6 +7301,72 @@ pub async fn segment_docs_density_entropy(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"docs_density_entropy": entropy, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-density-harmonic-mean — média harmônica de densidade docs/byte. Sprint #2983.
+pub async fn segment_docs_density_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_harmonic_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    let recip_sum: f64 = vals.iter().map(|&v| if v > 0.0 { 1.0 / v } else { 0.0 }).sum();
+    let harmonic_mean = if recip_sum > 0.0 { n as f64 / recip_sum } else { 0.0 };
+    Json(serde_json::json!({"docs_density_harmonic_mean": harmonic_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-geometric-mean — média geométrica de densidade docs/byte. Sprint #2978.
+pub async fn segment_docs_density_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_geometric_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    let log_sum: f64 = vals.iter().map(|&v| if v > 0.0 { v.ln() } else { f64::NEG_INFINITY }).sum();
+    let geometric_mean = if log_sum.is_finite() { (log_sum / n as f64).exp() } else { 0.0 };
+    Json(serde_json::json!({"docs_density_geometric_mean": geometric_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-winsorized-mean — média winsorizada (10%) de densidade docs/byte. Sprint #2973.
+pub async fn segment_docs_density_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_winsorized_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let trim = (n as f64 * 0.1).floor() as usize;
+    let lo = if trim < n { vals[trim] } else { vals[0] };
+    let hi = if trim < n { vals[n - 1 - trim] } else { vals[n - 1] };
+    let winsorized: Vec<f64> = vals.iter().map(|&v| v.max(lo).min(hi)).collect();
+    let mean = winsorized.iter().sum::<f64>() / n as f64;
+    Json(serde_json::json!({"docs_density_winsorized_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-density-trimmed-mean — média aparada (10%) de densidade docs/byte. Sprint #2968.
+pub async fn segment_docs_density_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_density_trimmed_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *bytes > 0 { *docs as f64 / *bytes as f64 } else { 0.0 }
+    }).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let trim = (n as f64 * 0.1).floor() as usize;
+    let trimmed: &[f64] = if 2 * trim < n { &vals[trim..n - trim] } else { &vals };
+    let trimmed_mean = if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 };
+    Json(serde_json::json!({"docs_density_trimmed_mean": trimmed_mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-iqr — IQR de bytes/doc entre segmentos. Sprint #2928.
 pub async fn segment_bytes_per_doc_iqr(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
