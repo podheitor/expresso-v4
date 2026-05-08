@@ -368,6 +368,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-cv-by-kind",             get(file_stats_size_deleted_cv_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-iqr-by-kind",            get(file_stats_size_deleted_iqr_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-stddev-by-kind",         get(file_stats_size_deleted_stddev_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-p90-by-kind",              get(file_stats_size_deleted_p90_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-p90-by-mime",              get(file_stats_size_deleted_p90_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-p95-by-owner",             get(file_stats_size_deleted_p95_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-p95-by-ext",               get(file_stats_size_deleted_p95_by_ext))
         .route("/api/v1/drive/files/stats/deleted-size-p75-by-kind",              get(file_stats_size_deleted_p75_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-p75-by-mime",              get(file_stats_size_deleted_p75_by_mime))
         .route("/api/v1/drive/files/stats/deleted-size-p90-by-owner",             get(file_stats_size_deleted_p90_by_owner))
@@ -10660,6 +10664,74 @@ async fn file_stats_size_deleted_range_by_mime(State(state): State<AppState>, ct
     .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(mime, max, min, cnt)| serde_json::json!({"mime_type": mime, "range_deleted_size_bytes": max - min, "max": max, "min": min, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-p90-by-kind — P90 do tamanho de arquivos deletados por kind. Sprint #2646.
+async fn file_stats_size_deleted_p90_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p90_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY kind ORDER BY p90_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, p90, cnt)| serde_json::json!({"kind": kind, "p90_deleted_size_bytes": p90, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-p90-by-mime — P90 do tamanho de arquivos deletados por mime_type. Sprint #2651.
+async fn file_stats_size_deleted_p90_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p90_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY p90_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, p90, cnt)| serde_json::json!({"mime_type": mime, "p90_deleted_size_bytes": p90, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-p95-by-owner — P95 do tamanho de arquivos deletados por owner_id. Sprint #2656.
+async fn file_stats_size_deleted_p95_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p95_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY p95_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, p95, cnt)| serde_json::json!({"owner_id": owner, "p95_deleted_size_bytes": p95, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-p95-by-ext — P95 do tamanho de arquivos deletados por extensão. Sprint #2661.
+async fn file_stats_size_deleted_p95_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY size_bytes)::BIGINT AS p95_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY p95_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, p95, cnt)| serde_json::json!({"ext": ext, "p95_deleted_size_bytes": p95, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

@@ -6418,6 +6418,74 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/entropy-bytes — entropia de Shannon de bytes entre segmentos. Sprint #2648.
+pub async fn segment_entropy_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"entropy_bytes": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    let entropy = if total > 0 {
+        segs.iter().fold(0.0_f64, |acc, (_, _, b)| {
+            let p = *b as f64 / total as f64;
+            if p > 0.0 { acc - p * p.log2() } else { acc }
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"entropy_bytes": entropy, "total_bytes": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/entropy-docs — entropia de Shannon de docs entre segmentos. Sprint #2653.
+pub async fn segment_entropy_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"entropy_docs": null, "total_segments": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    let entropy = if total > 0 {
+        segs.iter().fold(0.0_f64, |acc, (_, d, _)| {
+            let p = *d as f64 / total as f64;
+            if p > 0.0 { acc - p * p.log2() } else { acc }
+        })
+    } else { 0.0 };
+    Json(serde_json::json!({"entropy_docs": entropy, "total_docs": total, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/gini-bytes — coeficiente de Gini de bytes entre segmentos. Sprint #2658.
+pub async fn segment_gini_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"gini_bytes": 0.0, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let sum: f64 = vals.iter().sum();
+    let gini = if sum > 0.0 {
+        let weighted: f64 = vals.iter().enumerate().map(|(i, v)| (2 * (i + 1) - n - 1) as f64 * v).sum();
+        weighted / (n as f64 * sum)
+    } else { 0.0 };
+    Json(serde_json::json!({"gini_bytes": gini, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/gini-docs — coeficiente de Gini de docs entre segmentos. Sprint #2663.
+pub async fn segment_gini_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"gini_docs": 0.0, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let sum: f64 = vals.iter().sum();
+    let gini = if sum > 0.0 {
+        let weighted: f64 = vals.iter().enumerate().map(|(i, v)| (2 * (i + 1) - n - 1) as f64 * v).sum();
+        weighted / (n as f64 * sum)
+    } else { 0.0 };
+    Json(serde_json::json!({"gini_docs": gini, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/skewness-bytes — assimetria (skewness) de bytes entre segmentos. Sprint #2628.
 pub async fn segment_skewness_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
