@@ -7224,6 +7224,89 @@ pub async fn segment_bytes_geometric_mean(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"bytes_geometric_mean": geometric_mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-per-doc-mad — MAD de bytes/doc. Sprint #2908.
+pub async fn segment_bytes_per_doc_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = vals.len();
+    if m == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_mad": null, "total_segments": n}));
+    }
+    let median = if m % 2 == 1 { vals[m / 2] } else { (vals[m / 2 - 1] + vals[m / 2]) / 2.0 };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|v| (v - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if m % 2 == 1 { abs_devs[m / 2] } else { (abs_devs[m / 2 - 1] + abs_devs[m / 2]) / 2.0 };
+    Json(serde_json::json!({"bytes_per_doc_mad": mad, "bytes_per_doc_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-atkinson — índice Atkinson de bytes/doc. Sprint #2913.
+pub async fn segment_bytes_per_doc_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_atkinson": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).filter(|&v| v > 0.0).collect();
+    let m = vals.len();
+    let atkinson = if m > 1 {
+        let mean = vals.iter().sum::<f64>() / m as f64;
+        let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+        let geo_mean = (log_sum / m as f64).exp();
+        if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+    } else { 0.0 };
+    Json(serde_json::json!({"bytes_per_doc_atkinson": atkinson, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-lorenz — curva de Lorenz de bytes/doc. Sprint #2918.
+pub async fn segment_bytes_per_doc_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_curve": [], "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let m = vals.len();
+    let total: f64 = vals.iter().sum();
+    let lorenz: Vec<serde_json::Value> = vals.iter().enumerate().scan(0.0f64, |acc, (i, v)| {
+        *acc += v;
+        Some(serde_json::json!({
+            "cumulative_population": (i + 1) as f64 / m as f64,
+            "cumulative_share": if total > 0.0 { *acc / total } else { 0.0 }
+        }))
+    }).collect();
+    Json(serde_json::json!({"lorenz_curve": lorenz, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc-hhi — índice HHI de bytes/doc. Sprint #2923.
+pub async fn segment_bytes_per_doc_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc_hhi": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| {
+        if *d > 0 { Some(*b as f64 / *d as f64) } else { None }
+    }).collect();
+    let m = vals.len();
+    let total: f64 = vals.iter().sum();
+    let hhi = if total > 0.0 {
+        vals.iter().map(|v| (v / total).powi(2)).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"bytes_per_doc_hhi": hhi, "total_segments": n, "segment_count_with_docs": m}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-per-doc-harmonic-mean — média harmônica de bytes/doc. Sprint #2888.
 pub async fn segment_bytes_per_doc_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

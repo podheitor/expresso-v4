@@ -1633,6 +1633,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_summary_length_winsorized_mean_by_class),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p95-by-class",
+            get(events_by_range_attendee_count_p95_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p99-by-class",
+            get(events_by_range_attendee_count_p99_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-mean-by-class",
+            get(events_by_range_attendee_count_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-class",
+            get(events_by_range_attendee_count_gini_by_class),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -1687,6 +1703,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-winsorized-mean-by-class",
             get(events_by_range_summary_length_winsorized_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p95-by-class",
+            get(events_by_range_attendee_count_p95_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-p99-by-class",
+            get(events_by_range_attendee_count_p99_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-mean-by-class",
+            get(events_by_range_attendee_count_mean_by_class),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-class",
+            get(events_by_range_attendee_count_gini_by_class),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -12543,6 +12575,122 @@ async fn events_by_range_summary_length_p90_by_class(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, p90, cnt)| {
         serde_json::json!({"class": class, "p90_summary_length": p90, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p95-by-class — P95 da contagem de attendees por classe. Sprint #2909.
+async fn events_by_range_attendee_count_p95_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let p95 = if m == 0 { 0.0 } else {
+            let idx = ((m as f64 * 0.95).ceil() as usize).saturating_sub(1).min(m - 1);
+            vals[idx]
+        };
+        serde_json::json!({"class": class, "p95_attendee_count": p95, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-p99-by-class — P99 da contagem de attendees por classe. Sprint #2914.
+async fn events_by_range_attendee_count_p99_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let p99 = if m == 0 { 0.0 } else {
+            let idx = ((m as f64 * 0.99).ceil() as usize).saturating_sub(1).min(m - 1);
+            vals[idx]
+        };
+        serde_json::json!({"class": class, "p99_attendee_count": p99, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-mean-by-class — média da contagem de attendees por classe. Sprint #2919.
+async fn events_by_range_attendee_count_mean_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                COALESCE(AVG(jsonb_array_length(attendees)::FLOAT8), 0.0)::FLOAT8 AS mean_count, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, mean, cnt)| {
+        serde_json::json!({"class": class, "mean_attendee_count": mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-gini-by-class — índice Gini de attendee count por classe. Sprint #2924.
+async fn events_by_range_attendee_count_gini_by_class(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(class, 'PUBLIC') AS class, \
+                ARRAY_AGG(jsonb_array_length(attendees)::FLOAT8 ORDER BY jsonb_array_length(attendees)) AS counts, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY class ORDER BY class",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(class, counts_opt, cnt)| {
+        let vals: Vec<f64> = counts_opt.into_iter().flatten().collect();
+        let m = vals.len();
+        let gini = if m > 1 {
+            let sum: f64 = vals.iter().sum();
+            if sum > 0.0 {
+                let mut rank_sum = 0.0f64;
+                for (i, v) in vals.iter().enumerate() {
+                    rank_sum += (2.0 * (i + 1) as f64 - m as f64 - 1.0) * v;
+                }
+                rank_sum / (m as f64 * sum)
+            } else { 0.0 }
+        } else { 0.0 };
+        serde_json::json!({"class": class, "gini_attendee_count": gini, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
