@@ -350,6 +350,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-by-kind",       get(file_stats_deleted_size_by_kind))
         .route("/api/v1/drive/files/stats/shared-count-by-owner",      get(file_stats_shared_count_by_owner))
         .route("/api/v1/drive/files/stats/shared-size-by-owner",       get(file_stats_shared_size_by_owner))
+        .route("/api/v1/drive/files/stats/size-cv-by-owner",              get(file_stats_size_cv_by_owner))
+        .route("/api/v1/drive/files/stats/size-cv-by-ext",                get(file_stats_size_cv_by_ext))
+        .route("/api/v1/drive/files/stats/size-cv-by-kind",               get(file_stats_size_cv_by_kind))
+        .route("/api/v1/drive/files/stats/size-cv-by-mime",               get(file_stats_size_cv_by_mime))
         .route("/api/v1/drive/files/stats/size-stddev-by-owner",          get(file_stats_size_stddev_by_owner))
         .route("/api/v1/drive/files/stats/size-stddev-by-ext",            get(file_stats_size_stddev_by_ext))
         .route("/api/v1/drive/files/stats/size-stddev-by-kind",           get(file_stats_size_stddev_by_kind))
@@ -10228,6 +10232,98 @@ async fn file_stats_shared_size_by_owner(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, size, cnt)| serde_json::json!({"owner_id": owner, "shared_size_bytes": size, "shared_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-cv-by-owner — coeficiente de variação de size_bytes por owner. Sprint #2266.
+async fn file_stats_size_cv_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+         STDDEV(size_bytes)::FLOAT8 AS stddev_size, \
+         AVG(size_bytes)::FLOAT8 AS avg_size, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, stddev, avg, cnt)| {
+            let cv = match (stddev, avg) {
+                (Some(s), Some(a)) if a > 0.0 => Some(s / a),
+                _ => None,
+            };
+            serde_json::json!({"owner_id": owner, "cv_size": cv, "file_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-cv-by-ext — coeficiente de variação de size_bytes por extensão. Sprint #2271.
+async fn file_stats_size_cv_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(LOWER(REGEXP_REPLACE(name, '^.*\\.', '')), 'no-ext') AS ext, \
+         STDDEV(size_bytes)::FLOAT8 AS stddev_size, \
+         AVG(size_bytes)::FLOAT8 AS avg_size, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, stddev, avg, cnt)| {
+            let cv = match (stddev, avg) {
+                (Some(s), Some(a)) if a > 0.0 => Some(s / a),
+                _ => None,
+            };
+            serde_json::json!({"ext": ext, "cv_size": cv, "file_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-cv-by-kind — coeficiente de variação de size_bytes por kind. Sprint #2276.
+async fn file_stats_size_cv_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind::TEXT, \
+         STDDEV(size_bytes)::FLOAT8 AS stddev_size, \
+         AVG(size_bytes)::FLOAT8 AS avg_size, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, stddev, avg, cnt)| {
+            let cv = match (stddev, avg) {
+                (Some(s), Some(a)) if a > 0.0 => Some(s / a),
+                _ => None,
+            };
+            serde_json::json!({"kind": kind, "cv_size": cv, "file_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-cv-by-mime — coeficiente de variação de size_bytes por mime_type. Sprint #2281.
+async fn file_stats_size_cv_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown') AS mime_type, \
+         STDDEV(size_bytes)::FLOAT8 AS stddev_size, \
+         AVG(size_bytes)::FLOAT8 AS avg_size, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND kind = 'file' AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY file_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, stddev, avg, cnt)| {
+            let cv = match (stddev, avg) {
+                (Some(s), Some(a)) if a > 0.0 => Some(s / a),
+                _ => None,
+            };
+            serde_json::json!({"mime_type": mime, "cv_size": cv, "file_count": cnt})
+        })
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

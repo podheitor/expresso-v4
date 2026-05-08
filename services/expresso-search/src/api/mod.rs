@@ -6372,6 +6372,56 @@ pub async fn segment_ratio_kurtosis(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"kurtosis_ratio": kurt, "mean_ratio": mean, "stddev_ratio": stddev, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/imbalance — diferença entre max e min docs entre segmentos. Sprint #2268.
+pub async fn segment_imbalance(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"imbalance": null, "segment_count": 0}));
+    }
+    let max_docs = segs.iter().map(|(_, nd, _)| *nd).max().unwrap_or(0);
+    let min_docs = segs.iter().map(|(_, nd, _)| *nd).min().unwrap_or(0);
+    Json(serde_json::json!({"imbalance": max_docs - min_docs, "max_docs": max_docs, "min_docs": min_docs, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/spread — range de bytes entre segmentos (max-min disk_bytes). Sprint #2273.
+pub async fn segment_spread(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"spread_bytes": null, "segment_count": 0}));
+    }
+    let max_bytes = segs.iter().map(|(_, _, db)| *db).max().unwrap_or(0);
+    let min_bytes = segs.iter().map(|(_, _, db)| *db).min().unwrap_or(0);
+    Json(serde_json::json!({"spread_bytes": max_bytes - min_bytes, "max_bytes": max_bytes, "min_bytes": min_bytes, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/concentration — % de docs no maior segmento (concentração de índice). Sprint #2278.
+pub async fn segment_concentration(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"concentration_pct": null, "segment_count": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let max_docs = segs.iter().map(|(_, nd, _)| *nd).max().unwrap_or(0);
+    let pct = if total_docs > 0 { max_docs as f64 / total_docs as f64 * 100.0 } else { 0.0 };
+    Json(serde_json::json!({"concentration_pct": pct, "max_segment_docs": max_docs, "total_docs": total_docs, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/overhead — bytes por doc em todo o índice (overhead de armazenamento). Sprint #2283.
+pub async fn segment_overhead(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_per_doc": null, "segment_count": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let bpd = if total_docs > 0 { total_bytes as f64 / total_docs as f64 } else { 0.0 };
+    Json(serde_json::json!({"bytes_per_doc": bpd, "total_bytes": total_bytes, "total_docs": total_docs, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/pressure — razão bytes totais / número de segmentos (pressão por segmento). Sprint #2248.
 pub async fn segment_pressure(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
