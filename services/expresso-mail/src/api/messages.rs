@@ -364,6 +364,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-iqr-by-tier",                 get(size_iqr_by_tier_stats))
         .route("/mail/messages/stats/size-cv-by-folder",                get(size_cv_by_folder_stats))
         .route("/mail/messages/stats/size-cv-by-tier",                  get(size_cv_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-entropy-by-tier",        get(recipient_count_entropy_by_tier_stats))
+        .route("/mail/messages/stats/body-length-entropy-by-folder",          get(body_length_entropy_by_folder_stats))
+        .route("/mail/messages/stats/body-length-entropy-by-tier",            get(body_length_entropy_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-entropy-by-folder",     get(attachment_count_entropy_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-p95-by-folder",         get(recipient_count_p95_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-p99-by-folder",         get(recipient_count_p99_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-p95-by-tier",           get(recipient_count_p95_by_tier_stats))
@@ -12348,6 +12352,146 @@ async fn size_cv_by_tier_stats(
             serde_json::json!({"tier": tier, "cv_size": cv, "stddev_bytes": stddev, "avg_bytes": avg, "message_count": cnt})
         })
         .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-entropy-by-tier — entropia de recipient_count por tier. Sprint #2627.
+async fn recipient_count_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, m.recipient_count::BIGINT AS rc, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.recipient_count IS NOT NULL \
+         GROUP BY mb.tier, m.recipient_count ORDER BY mb.tier, m.recipient_count",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut tier_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut tier_counts: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    for (tier, _rc, cnt) in &rows {
+        *tier_totals.entry(tier.clone()).or_insert(0) += cnt;
+        tier_counts.entry(tier.clone()).or_default().push(*cnt);
+    }
+    let result: Vec<serde_json::Value> = tier_totals.iter().map(|(tier, total)| {
+        let counts = &tier_counts[tier];
+        let entropy = counts.iter().fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / *total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        });
+        serde_json::json!({"tier": tier, "entropy_recipient_count": entropy, "total_messages": total})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-entropy-by-folder — entropia de body_length por pasta. Sprint #2632.
+async fn body_length_entropy_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, m.body_length::BIGINT AS bl, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.name, m.body_length ORDER BY mb.name, m.body_length",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut folder_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut folder_counts: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    for (folder, _bl, cnt) in &rows {
+        *folder_totals.entry(folder.clone()).or_insert(0) += cnt;
+        folder_counts.entry(folder.clone()).or_default().push(*cnt);
+    }
+    let result: Vec<serde_json::Value> = folder_totals.iter().map(|(folder, total)| {
+        let counts = &folder_counts[folder];
+        let entropy = counts.iter().fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / *total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        });
+        serde_json::json!({"folder": folder, "entropy_body_length": entropy, "total_messages": total})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-entropy-by-tier — entropia de body_length por tier. Sprint #2637.
+async fn body_length_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, m.body_length::BIGINT AS bl, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_length IS NOT NULL \
+         GROUP BY mb.tier, m.body_length ORDER BY mb.tier, m.body_length",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut tier_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut tier_counts: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    for (tier, _bl, cnt) in &rows {
+        *tier_totals.entry(tier.clone()).or_insert(0) += cnt;
+        tier_counts.entry(tier.clone()).or_default().push(*cnt);
+    }
+    let result: Vec<serde_json::Value> = tier_totals.iter().map(|(tier, total)| {
+        let counts = &tier_counts[tier];
+        let entropy = counts.iter().fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / *total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        });
+        serde_json::json!({"tier": tier, "entropy_body_length": entropy, "total_messages": total})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-entropy-by-folder — entropia de attachment_count por pasta. Sprint #2642.
+async fn attachment_count_entropy_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, m.attachment_count::BIGINT AS ac, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.attachment_count IS NOT NULL \
+         GROUP BY mb.name, m.attachment_count ORDER BY mb.name, m.attachment_count",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id)
+    .fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut folder_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut folder_counts: std::collections::HashMap<String, Vec<i64>> = std::collections::HashMap::new();
+    for (folder, _ac, cnt) in &rows {
+        *folder_totals.entry(folder.clone()).or_insert(0) += cnt;
+        folder_counts.entry(folder.clone()).or_default().push(*cnt);
+    }
+    let result: Vec<serde_json::Value> = folder_totals.iter().map(|(folder, total)| {
+        let counts = &folder_counts[folder];
+        let entropy = counts.iter().fold(0.0_f64, |acc, &c| {
+            let p = c as f64 / *total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        });
+        serde_json::json!({"folder": folder, "entropy_attachment_count": entropy, "total_messages": total})
+    }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
