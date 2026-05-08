@@ -6418,6 +6418,56 @@ pub async fn segment_docs_density_avg(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"avg_docs_per_byte": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/range-bytes — range de bytes entre segmentos. Sprint #2568.
+pub async fn segment_range_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"range_bytes": 0, "total_segments": 0}));
+    }
+    let max_b = segs.iter().map(|(_, _, b)| *b).max().unwrap_or(0);
+    let min_b = segs.iter().map(|(_, _, b)| *b).min().unwrap_or(0);
+    Json(serde_json::json!({"range_bytes": max_b.saturating_sub(min_b), "max_bytes": max_b, "min_bytes": min_b, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/range-docs — range de docs entre segmentos. Sprint #2573.
+pub async fn segment_range_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"range_docs": 0, "total_segments": 0}));
+    }
+    let max_d = segs.iter().map(|(_, d, _)| *d).max().unwrap_or(0);
+    let min_d = segs.iter().map(|(_, d, _)| *d).min().unwrap_or(0);
+    Json(serde_json::json!({"range_docs": max_d.saturating_sub(min_d), "max_docs": max_d, "min_docs": min_d, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/p50-bytes — mediana de bytes entre segmentos. Sprint #2578.
+pub async fn segment_p50_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_bytes": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let p50 = vals[n / 2];
+    Json(serde_json::json!({"p50_bytes": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/p50-docs — mediana de docs entre segmentos. Sprint #2583.
+pub async fn segment_p50_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p50_docs": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let p50 = vals[n / 2];
+    Json(serde_json::json!({"p50_docs": p50, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/cv-bytes — CV de bytes entre segmentos. Sprint #2548.
 pub async fn segment_cv_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

@@ -1521,6 +1521,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_range),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-iqr",
+            get(events_by_range_duration_iqr),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-p50",
+            get(events_by_range_duration_p50),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-p75",
+            get(events_by_range_duration_p75),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-p90",
+            get(events_by_range_duration_p90),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/busiest-month",
             get(events_by_range_busiest_month),
         )
@@ -11609,6 +11625,91 @@ async fn events_by_range_duration_range(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let range = match (row.0, row.1) { (Some(mx), Some(mn)) => mx - mn, _ => 0.0 };
     Ok(Json(serde_json::json!({"range_duration_seconds": range, "max": row.0, "min": row.1, "event_count": row.2})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-iqr — IQR da duração dos eventos em segundos. Sprint #2569.
+async fn events_by_range_duration_iqr(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT COALESCE(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) - \
+                         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))), 0.0)::FLOAT8 AS iqr_secs, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"iqr_duration_seconds": row.0, "event_count": row.1})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-p50 — P50 da duração dos eventos em segundos. Sprint #2574.
+async fn events_by_range_duration_p50(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p50_secs, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_duration_seconds": row.0, "event_count": row.1})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-p75 — P75 da duração dos eventos em segundos. Sprint #2579.
+async fn events_by_range_duration_p75(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p75_secs, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_duration_seconds": row.0, "event_count": row.1})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-p90 — P90 da duração dos eventos em segundos. Sprint #2584.
+async fn events_by_range_duration_p90(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p90_secs, \
+                COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL",
+    )
+    .bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_one(state.db()).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p90_duration_seconds": row.0, "event_count": row.1})))
 }
 
 /// GET /api/v1/calendars/:cal_id/events-by-range/busiest-month — mês com mais eventos. Sprint #2529.
