@@ -8510,6 +8510,64 @@ pub async fn segment_docs_ratio_below_p75(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"docs_ratio_below_p75": ratio, "count_below_p75": count_below, "docs_p75": p75, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-ratio-below-p75 — fração de segmentos com bytes abaixo de P75. Sprint #3637.
+pub async fn segment_bytes_ratio_below_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_ratio_below_p75": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let p75 = vals[(n * 75 / 100).min(n - 1)];
+    let count_below = vals.iter().filter(|&&v| v < p75).count();
+    let ratio = count_below as f64 / n as f64;
+    Json(serde_json::json!({"bytes_ratio_below_p75": ratio, "count_below_p75": count_below, "bytes_p75": p75, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-count-below-p90 — contagem de segmentos com docs abaixo de P90. Sprint #3638.
+pub async fn segment_docs_count_below_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_count_below_p90": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let p90 = vals[(n * 90 / 100).min(n - 1)];
+    let count_below = vals.iter().filter(|&&v| v < p90).count();
+    Json(serde_json::json!({"docs_count_below_p90": count_below, "docs_p90": p90, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-count-below-p90 — contagem de segmentos com bytes abaixo de P90. Sprint #3639.
+pub async fn segment_bytes_count_below_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_count_below_p90": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let p90 = vals[(n * 90 / 100).min(n - 1)];
+    let count_below = vals.iter().filter(|&&v| v < p90).count();
+    Json(serde_json::json!({"bytes_count_below_p90": count_below, "bytes_p90": p90, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-ratio-below-p90 — fração de segmentos com docs abaixo de P90. Sprint #3640.
+pub async fn segment_docs_ratio_below_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_ratio_below_p90": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let p90 = vals[(n * 90 / 100).min(n - 1)];
+    let count_below = vals.iter().filter(|&&v| v < p90).count();
+    let ratio = count_below as f64 / n as f64;
+    Json(serde_json::json!({"docs_ratio_below_p90": ratio, "count_below_p90": count_below, "docs_p90": p90, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
