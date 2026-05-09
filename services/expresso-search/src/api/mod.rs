@@ -9196,6 +9196,53 @@ pub async fn segment_total_bytes_count(State(store): State<IndexStore>) -> Json<
     Json(serde_json::json!({"total_bytes": total_bytes, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-std-dev — desvio padrão de docs entre segmentos. Sprint #3877.
+pub async fn segment_docs_std_dev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_std_dev": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let std_dev = variance.sqrt();
+    Json(serde_json::json!({"docs_std_dev": std_dev, "docs_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-std-dev — desvio padrão de bytes entre segmentos. Sprint #3878.
+pub async fn segment_bytes_std_dev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_std_dev": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let std_dev = variance.sqrt();
+    Json(serde_json::json!({"bytes_std_dev": std_dev, "bytes_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-active — número de segmentos ativos (docs > 0). Sprint #3879.
+pub async fn segment_count_active(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let active = segs.iter().filter(|(_, d, _)| *d > 0).count();
+    Json(serde_json::json!({"active_segments": active, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-avg — comprimento médio do nome dos segmentos. Sprint #3880.
+pub async fn segment_name_length_avg(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_name_length": null, "total_segments": 0}));
+    }
+    let avg_len = segs.iter().map(|(name, _, _)| name.len() as f64).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"avg_name_length": avg_len, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
