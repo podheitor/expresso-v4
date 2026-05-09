@@ -507,6 +507,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-normalized-entropy-by-folder", get(attachment_count_normalized_entropy_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-normalized-entropy-by-folder",  get(recipient_count_normalized_entropy_by_folder_stats))
         .route("/mail/messages/stats/size-entropy-by-tier",              get(size_entropy_by_tier_stats))
+        .route("/mail/messages/stats/size-normalized-entropy-by-tier",   get(size_normalized_entropy_by_tier_stats))
+        .route("/mail/messages/stats/body-length-normalized-entropy-by-tier", get(body_length_normalized_entropy_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-normalized-entropy-by-tier", get(attachment_count_normalized_entropy_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-normalized-entropy-by-tier",  get(recipient_count_normalized_entropy_by_tier_stats))
         .route("/mail/messages/stats/message-count-by-folder",           get(message_count_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-max-by-folder",   get(attachment_count_max_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-max-by-tier",     get(attachment_count_max_by_tier_stats))
@@ -16331,6 +16335,122 @@ async fn size_entropy_by_tier_stats(
         serde_json::json!({"tier": tier, "total_size": sz, "message_count": cnt, "size_share": p})
     }).collect();
     Ok(Json(serde_json::json!({"entropy": entropy, "rows": result})))
+}
+
+/// GET /mail/messages/stats/size-normalized-entropy-by-tier — entropia normalizada de size por tier. Sprint #3293.
+async fn size_normalized_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, SUM(m.size)::BIGINT AS total_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, sz, _)| sz).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, sz, _)| {
+            let p = *sz as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized_entropy, "tier_count": n})))
+}
+
+/// GET /mail/messages/stats/body-length-normalized-entropy-by-tier — entropia normalizada de body_length por tier. Sprint #3294.
+async fn body_length_normalized_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, SUM(m.body_length)::BIGINT AS total_body, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, bl, _)| bl).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, bl, _)| {
+            let p = *bl as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized_entropy, "tier_count": n})))
+}
+
+/// GET /mail/messages/stats/attachment-count-normalized-entropy-by-tier — entropia normalizada de attachment_count por tier. Sprint #3295.
+async fn attachment_count_normalized_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, SUM(m.attachment_count)::BIGINT AS total_attachments, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, att, _)| att).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, att, _)| {
+            let p = *att as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized_entropy, "tier_count": n})))
+}
+
+/// GET /mail/messages/stats/recipient-count-normalized-entropy-by-tier — entropia normalizada de recipient_count por tier. Sprint #3296.
+async fn recipient_count_normalized_entropy_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, SUM(m.recipient_count)::BIGINT AS total_recipients, COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    )
+    .bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, rc, _)| rc).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, rc, _)| {
+            let p = *rc as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized_entropy, "tier_count": n})))
 }
 
 /// GET /mail/messages/stats/message-count-by-folder — total de mensagens por pasta. Sprint #2562.

@@ -9081,6 +9081,74 @@ pub async fn segment_above_p25_bytes(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"segments": above, "p25_bytes": p25, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/above-p50-docs — segmentos com docs acima do P50. Sprint #3297.
+pub async fn segment_above_p50_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "p50_docs": null}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    docs_sorted.sort_unstable();
+    let p50 = if n % 2 == 0 { (docs_sorted[n/2 - 1] + docs_sorted[n/2]) as f64 / 2.0 } else { docs_sorted[n/2] as f64 };
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, d, _)| (*d as f64) > p50)
+        .map(|(id, d, b)| serde_json::json!({"segment_id": id, "docs": d, "bytes": b}))
+        .collect();
+    Json(serde_json::json!({"segments": above, "p50_docs": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/above-p50-bytes — segmentos com bytes acima do P50. Sprint #3298.
+pub async fn segment_above_p50_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "p50_bytes": null}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    bytes_sorted.sort_unstable();
+    let p50 = if n % 2 == 0 { (bytes_sorted[n/2 - 1] + bytes_sorted[n/2]) as f64 / 2.0 } else { bytes_sorted[n/2] as f64 };
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, b)| (*b as f64) > p50)
+        .map(|(id, d, b)| serde_json::json!({"segment_id": id, "docs": d, "bytes": b}))
+        .collect();
+    Json(serde_json::json!({"segments": above, "p50_bytes": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/below-p50-docs — segmentos com docs abaixo do P50. Sprint #3299.
+pub async fn segment_below_p50_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "p50_docs": null}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    docs_sorted.sort_unstable();
+    let p50 = if n % 2 == 0 { (docs_sorted[n/2 - 1] + docs_sorted[n/2]) as f64 / 2.0 } else { docs_sorted[n/2] as f64 };
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, d, _)| (*d as f64) < p50)
+        .map(|(id, d, b)| serde_json::json!({"segment_id": id, "docs": d, "bytes": b}))
+        .collect();
+    Json(serde_json::json!({"segments": below, "p50_docs": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/below-p50-bytes — segmentos com bytes abaixo do P50. Sprint #3300.
+pub async fn segment_below_p50_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "p50_bytes": null}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    bytes_sorted.sort_unstable();
+    let p50 = if n % 2 == 0 { (bytes_sorted[n/2 - 1] + bytes_sorted[n/2]) as f64 / 2.0 } else { bytes_sorted[n/2] as f64 };
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, b)| (*b as f64) < p50)
+        .map(|(id, d, b)| serde_json::json!({"segment_id": id, "docs": d, "bytes": b}))
+        .collect();
+    Json(serde_json::json!({"segments": below, "p50_bytes": p50, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
