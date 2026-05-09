@@ -471,6 +471,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-coeff-var-by-owner",          get(file_stats_size_active_coeff_var_by_owner))
         .route("/api/v1/drive/files/stats/active-size-coeff-var-by-ext",            get(file_stats_size_active_coeff_var_by_ext))
         .route("/api/v1/drive/files/stats/deleted-size-coeff-var-by-kind",          get(file_stats_size_deleted_coeff_var_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-mad-by-mime",               get(file_stats_size_active_mad_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-mad-by-owner",              get(file_stats_size_active_mad_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-mad-by-ext",                get(file_stats_size_active_mad_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-coeff-var-by-mime",        get(file_stats_size_deleted_coeff_var_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -13122,6 +13126,81 @@ async fn file_stats_size_deleted_coeff_var_by_kind(State(state): State<AppState>
             }
         };
         serde_json::json!({"kind": kind, "coeff_var_deleted_size": coeff_var, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-mad-by-mime — MAD de size ativo por mime. Sprint #3529.
+async fn file_stats_size_active_mad_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mad = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            vals.iter().map(|&v| (v - mean).abs()).sum::<f64>() / n as f64
+        };
+        serde_json::json!({"mime_type": mime, "mad_active_size": mad, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-mad-by-owner — MAD de size ativo por owner. Sprint #3530.
+async fn file_stats_size_active_mad_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(owner_id::TEXT, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mad = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            vals.iter().map(|&v| (v - mean).abs()).sum::<f64>() / n as f64
+        };
+        serde_json::json!({"owner_id": owner, "mad_active_size": mad, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-mad-by-ext — MAD de size ativo por ext. Sprint #3531.
+async fn file_stats_size_active_mad_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mad = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            vals.iter().map(|&v| (v - mean).abs()).sum::<f64>() / n as f64
+        };
+        serde_json::json!({"file_ext": ext, "mad_active_size": mad, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-coeff-var-by-mime — CV de size deletado por mime. Sprint #3532.
+async fn file_stats_size_deleted_coeff_var_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"mime_type": mime, "coeff_var_deleted_size": coeff_var, "deleted_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
