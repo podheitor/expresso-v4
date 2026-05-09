@@ -963,6 +963,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/tag-count-below-p90",                get(file_stats_tag_count_below_p90))
         .route("/api/v1/drive/files/stats/tag-count-above-p99",                get(file_stats_tag_count_above_p99))
         .route("/api/v1/drive/files/stats/tag-count-below-p99",                get(file_stats_tag_count_below_p99))
+        .route("/api/v1/drive/files/stats/tag-count-above-p95",                get(file_stats_tag_count_above_p95))
+        .route("/api/v1/drive/files/stats/tag-count-below-p95",                get(file_stats_tag_count_below_p95))
+        .route("/api/v1/drive/files/stats/tag-count-above-p01",                get(file_stats_tag_count_above_p01))
+        .route("/api/v1/drive/files/stats/tag-count-below-p01",                get(file_stats_tag_count_below_p01))
         .route("/api/v1/drive/files/stats/folder-file-count-above-p10",        get(file_stats_folder_file_count_above_p10))
         .route("/api/v1/drive/files/stats/folder-file-count-below-p10",        get(file_stats_folder_file_count_below_p10))
         .route("/api/v1/drive/files/stats/folder-file-count-above-p25",        get(file_stats_folder_file_count_above_p25))
@@ -20099,6 +20103,46 @@ async fn file_stats_tag_count_below_p99(State(state): State<AppState>, ctx: Requ
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p99_tag_count": row.0, "count_below_p99": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_tag_count_above_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tag_count)::FLOAT8 AS p95_tag_count, \
+                COUNT(*) FILTER (WHERE tag_count > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tag_count) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_tag_count": row.0, "count_above_p95": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_tag_count_below_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tag_count)::FLOAT8 AS p95_tag_count, \
+                COUNT(*) FILTER (WHERE tag_count < (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY tag_count) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_tag_count": row.0, "count_below_p95": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_tag_count_above_p01(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY tag_count)::FLOAT8 AS p01_tag_count, \
+                COUNT(*) FILTER (WHERE tag_count > (SELECT PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY tag_count) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p01, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p01_tag_count": row.0, "count_above_p01": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_tag_count_below_p01(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY tag_count)::FLOAT8 AS p01_tag_count, \
+                COUNT(*) FILTER (WHERE tag_count < (SELECT PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY tag_count) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p01, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p01_tag_count": row.0, "count_below_p01": row.1, "file_count": row.2})))
 }
 
 /// GET /api/v1/drive/files/stats/folder-file-count-above-p10 — pastas com file_count > P10. Sprint #5215.

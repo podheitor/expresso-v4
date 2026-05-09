@@ -9240,6 +9240,100 @@ pub async fn segment_bytes_per_doc_geometric_mean(State(store): State<IndexStore
     Json(serde_json::json!({"bytes_per_doc_geometric_mean": geo_mean, "total_segments": n}))
 }
 
+pub async fn segment_bytes_per_doc_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p01_bytes_per_doc": null, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p01 = vals[(m * 1).saturating_sub(1).min(m - 1) / 100];
+    Json(serde_json::json!({"p01_bytes_per_doc": p01, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p05_bytes_per_doc": null, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p05 = vals[((m * 5) / 100).min(m - 1)];
+    Json(serde_json::json!({"p05_bytes_per_doc": p05, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p01_bytes_per_doc": null, "above_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p01 = vals[((m * 1) / 100).min(m - 1)];
+    let above = vals.iter().filter(|&&v| v > p01).count();
+    Json(serde_json::json!({"p01_bytes_per_doc": p01, "above_count": above, "above_ratio": above as f64 / n as f64, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_above_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p05_bytes_per_doc": null, "above_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p05 = vals[((m * 5) / 100).min(m - 1)];
+    let above = vals.iter().filter(|&&v| v > p05).count();
+    Json(serde_json::json!({"p05_bytes_per_doc": p05, "above_count": above, "above_ratio": above as f64 / n as f64, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_above_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p10_bytes_per_doc": null, "above_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p10 = vals[((m * 10) / 100).min(m - 1)];
+    let above = vals.iter().filter(|&&v| v > p10).count();
+    Json(serde_json::json!({"p10_bytes_per_doc": p10, "above_count": above, "above_ratio": above as f64 / n as f64, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_below_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p01_bytes_per_doc": null, "below_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p01 = vals[((m * 1) / 100).min(m - 1)];
+    let below = vals.iter().filter(|&&v| v < p01).count();
+    Json(serde_json::json!({"p01_bytes_per_doc": p01, "below_count": below, "below_ratio": below as f64 / n as f64, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_below_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p05_bytes_per_doc": null, "below_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p05 = vals[((m * 5) / 100).min(m - 1)];
+    let below = vals.iter().filter(|&&v| v < p05).count();
+    Json(serde_json::json!({"p05_bytes_per_doc": p05, "below_count": below, "below_ratio": below as f64 / n as f64, "total_segments": n}))
+}
+
+pub async fn segment_bytes_per_doc_below_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p10_bytes_per_doc": null, "below_count": 0, "total_segments": 0})); }
+    let mut vals: Vec<f64> = segs.iter().filter_map(|(_, d, b)| if *d > 0 { Some(*b as f64 / *d as f64) } else { None }).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = vals.len();
+    let p10 = vals[((m * 10) / 100).min(m - 1)];
+    let below = vals.iter().filter(|&&v| v < p10).count();
+    Json(serde_json::json!({"p10_bytes_per_doc": p10, "below_count": below, "below_ratio": below as f64 / n as f64, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/kurtosis-bytes — curtose de bytes entre segmentos. Sprint #2638.
 pub async fn segment_kurtosis_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
