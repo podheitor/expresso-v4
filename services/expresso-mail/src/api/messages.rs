@@ -750,6 +750,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-mean-by-folder",       get(attachment_count_mean_by_folder))
         .route("/mail/messages/stats/attachment-count-var-by-folder",        get(attachment_count_var_by_folder))
         .route("/mail/messages/stats/attachment-count-sum-by-folder",        get(attachment_count_sum_by_folder))
+        .route("/mail/messages/stats/attachment-count-mode-by-folder",       get(attachment_count_mode_by_folder))
+        .route("/mail/messages/stats/attachment-count-p25-by-folder",        get(attachment_count_p25_by_folder))
+        .route("/mail/messages/stats/attachment-count-p10-by-folder",        get(attachment_count_p10_by_folder))
+        .route("/mail/messages/stats/attachment-count-harmonic-mean-by-folder", get(attachment_count_harmonic_mean_by_folder))
         .route("/mail/messages/stats/body-length-var-by-folder",             get(body_length_var_by_folder_stats))
         .route("/mail/messages/stats/body-length-mode-by-folder",            get(body_length_mode_by_folder_stats))
         .route("/mail/messages/stats/size-mean-by-folder",                   get(size_mean_by_folder_stats))
@@ -22141,6 +22145,89 @@ async fn cc_count_geometric_mean_by_folder_stats(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, geo, cnt)| serde_json::json!({"folder": folder, "geometric_mean_cc_count": geo, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-mode-by-folder — moda de contagem de anexos × folder. Sprint #4413.
+async fn attachment_count_mode_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MODE() WITHIN GROUP (ORDER BY COALESCE(array_length(m.attachments, 1), 0))::BIGINT AS mode_attachments, \
+                COUNT(*) FILTER (WHERE COALESCE(array_length(m.attachments, 1), 0) = \
+                    MODE() WITHIN GROUP (ORDER BY COALESCE(array_length(m.attachments, 1), 0)))::BIGINT AS mode_freq, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mode, mf, cnt)| serde_json::json!({"folder": folder, "mode_attachment_count": mode, "mode_frequency": mf, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p25-by-folder — P25 de contagem de anexos × folder. Sprint #4414.
+async fn attachment_count_p25_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE(array_length(m.attachments, 1), 0))::FLOAT8 AS p25_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p25, cnt)| serde_json::json!({"folder": folder, "p25_attachment_count": p25, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p10-by-folder — P10 de contagem de anexos × folder. Sprint #4415.
+async fn attachment_count_p10_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY COALESCE(array_length(m.attachments, 1), 0))::FLOAT8 AS p10_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p10, cnt)| serde_json::json!({"folder": folder, "p10_attachment_count": p10, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-harmonic-mean-by-folder — média harmônica de contagem de anexos × folder. Sprint #4416.
+async fn attachment_count_harmonic_mean_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                (COUNT(*) FILTER (WHERE COALESCE(array_length(m.attachments, 1), 0) > 0))::FLOAT8 \
+                    / NULLIF(SUM(1.0 / NULLIF(COALESCE(array_length(m.attachments, 1), 0), 0)), 0) AS harmonic_mean_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, hm, cnt)| serde_json::json!({"folder": folder, "harmonic_mean_attachment_count": hm, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

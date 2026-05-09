@@ -10701,6 +10701,58 @@ pub async fn segment_name_length_count_above_p50(State(store): State<IndexStore>
     Json(serde_json::json!({"count_above_p50": count, "p50_name_length": p50, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-p05 — P05 de comprimento de nome dos segmentos. Sprint #4417.
+pub async fn segment_name_length_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p05_name_length": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.05).ceil() as usize).min(n - 1);
+    Json(serde_json::json!({"p05_name_length": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-unique-chars — número de caracteres únicos em todos os nomes de segmentos. Sprint #4418.
+pub async fn segment_name_unique_chars(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let distinct: std::collections::HashSet<char> = segs.iter().flat_map(|(name, _, _)| name.chars()).collect();
+    Json(serde_json::json!({"unique_chars": distinct.len(), "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-avg-word-length — comprimento médio de palavra nos nomes dos segmentos. Sprint #4419.
+pub async fn segment_name_avg_word_length(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_word_length": null, "total_segments": 0}));
+    }
+    let words: Vec<usize> = segs.iter()
+        .flat_map(|(name, _, _)| name.split(|c: char| !c.is_alphabetic()).filter(|w| !w.is_empty()).map(|w| w.len()).collect::<Vec<_>>())
+        .collect();
+    let avg = if words.is_empty() { None } else { Some(words.iter().sum::<usize>() as f64 / words.len() as f64) };
+    Json(serde_json::json!({"avg_word_length": avg, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-cv — coeficiente de variação do comprimento de nome dos segmentos. Sprint #4420.
+pub async fn segment_name_length_cv(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"name_length_cv": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 {
+        return Json(serde_json::json!({"name_length_cv": null, "total_segments": n}));
+    }
+    let variance = vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let cv = variance.sqrt() / mean;
+    Json(serde_json::json!({"name_length_cv": cv, "mean_name_length": mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
