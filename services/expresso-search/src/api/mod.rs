@@ -7498,6 +7498,65 @@ pub async fn segment_docs_iqr_ratio(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"docs_iqr_ratio": iqr_ratio, "docs_q1": q1, "docs_q3": q3, "docs_median": median, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-iqr-ratio — razão IQR/mediana de disk_bytes entre segmentos. Sprint #3517.
+pub async fn segment_bytes_iqr_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_iqr_ratio": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let q1 = vals[((n as f64 * 0.25) as usize).min(n - 1)];
+    let q3 = vals[((n as f64 * 0.75) as usize).min(n - 1)];
+    let median = if n % 2 == 1 { vals[n / 2] } else { (vals[n / 2 - 1] + vals[n / 2]) / 2.0 };
+    let iqr_ratio = if median == 0.0 { 0.0 } else { (q3 - q1) / median };
+    Json(serde_json::json!({"bytes_iqr_ratio": iqr_ratio, "bytes_q1": q1, "bytes_q3": q3, "bytes_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-above-mean — soma de doc_count dos segmentos acima da média. Sprint #3518.
+pub async fn segment_docs_sum_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_above_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let sum_above: f64 = vals.iter().filter(|&&v| v > mean).sum();
+    let count_above = vals.iter().filter(|&&v| v > mean).count();
+    Json(serde_json::json!({"docs_sum_above_mean": sum_above, "docs_count_above_mean": count_above, "docs_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-mean — soma de disk_bytes dos segmentos acima da média. Sprint #3519.
+pub async fn segment_bytes_sum_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_above_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let sum_above: f64 = vals.iter().filter(|&&v| v > mean).sum();
+    let count_above = vals.iter().filter(|&&v| v > mean).count();
+    Json(serde_json::json!({"bytes_sum_above_mean": sum_above, "bytes_count_above_mean": count_above, "bytes_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-p99-bytes — fração de segmentos acima do P99 de disk_bytes. Sprint #3520.
+pub async fn segment_ratio_above_p99_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_above_p99_bytes": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p99 = vals[((n as f64 * 0.99) as usize).min(n - 1)];
+    let count_above = vals.iter().filter(|&&v| v > p99).count();
+    let ratio = count_above as f64 / n as f64;
+    Json(serde_json::json!({"ratio_above_p99_bytes": ratio, "count_above_p99": count_above, "bytes_p99": p99, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-trimmed-mean — média aparada (10%–90%) de disk_bytes entre segmentos. Sprint #2873.
 pub async fn segment_bytes_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
