@@ -540,6 +540,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-p75-by-ext",               get(file_stats_size_active_p75_by_ext))
         .route("/api/v1/drive/files/stats/active-size-p50-by-ext",               get(file_stats_size_active_p50_by_ext))
         .route("/api/v1/drive/files/stats/active-size-stddev-by-ext",            get(file_stats_size_active_stddev_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-skewness-by-ext",          get(file_stats_size_active_skewness_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-variance-by-ext",          get(file_stats_size_active_variance_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-kurtosis-by-ext",          get(file_stats_size_active_kurtosis_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-cv-by-ext",                get(file_stats_size_active_cv_by_ext))
         .route("/api/v1/drive/files/stats/active-size-cv-by-owner",               get(file_stats_size_active_cv_by_owner))
         .route("/api/v1/drive/files/stats/active-size-cv-by-kind",                get(file_stats_size_active_cv_by_kind))
         .route("/api/v1/drive/files/stats/active-size-cv-by-mime",                get(file_stats_size_active_cv_by_mime))
@@ -11981,6 +11985,84 @@ async fn file_stats_size_active_kurtosis_by_owner(State(state): State<AppState>,
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, _avg, stddev, m4, cnt)| {
         let kurtosis = if stddev > 0.0 { m4 / stddev.powi(4) - 3.0 } else { 0.0 };
         serde_json::json!({"owner_id": owner, "kurtosis_active_size": kurtosis, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-skewness-by-ext — assimetria de size ativo por extensão. Sprint #3609.
+async fn file_stats_size_active_skewness_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let skewness = if n < 3 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else {
+                vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+            }
+        };
+        serde_json::json!({"file_ext": ext, "skewness_active_size": skewness, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-variance-by-ext — variância de size ativo por extensão. Sprint #3610.
+async fn file_stats_size_active_variance_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), \
+                COALESCE(VARIANCE(size_bytes), 0.0)::FLOAT8 AS variance_active_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, var, cnt)| {
+        serde_json::json!({"file_ext": ext, "variance_active_size": var, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-kurtosis-by-ext — curtose de size ativo por extensão. Sprint #3611.
+async fn file_stats_size_active_kurtosis_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else {
+                vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0
+            }
+        };
+        serde_json::json!({"file_ext": ext, "kurtosis_active_size": kurtosis, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-cv-by-ext — CV de size ativo por extensão. Sprint #3612.
+async fn file_stats_size_active_cv_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_s, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_s, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, stddev, avg, cnt)| {
+        let cv = if avg > 0.0 { stddev / avg } else { 0.0 };
+        serde_json::json!({"file_ext": ext, "cv_active_size": cv, "active_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
