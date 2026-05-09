@@ -3156,6 +3156,132 @@ pub async fn segment_docs_below_p25(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"p25_docs": p25, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/size-count-above-mean — contagem de segmentos com disk_bytes > média global. Sprint #5165.
+pub async fn segment_size_count_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_bytes": null, "count_above": 0, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let mean = total as f64 / n as f64;
+    let count_above = segs.iter().filter(|(_, _, db)| (*db as f64) > mean).count();
+    Json(serde_json::json!({"mean_bytes": mean, "count_above": count_above, "ratio_above": count_above as f64 / n as f64, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-count-below-mean — contagem de segmentos com disk_bytes < média global. Sprint #5166.
+pub async fn segment_size_count_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_bytes": null, "count_below": 0, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let mean = total as f64 / n as f64;
+    let count_below = segs.iter().filter(|(_, _, db)| (*db as f64) < mean).count();
+    Json(serde_json::json!({"mean_bytes": mean, "count_below": count_below, "ratio_below": count_below as f64 / n as f64, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-ratio-above-mean — segmentos com disk_bytes/total > média das razões. Sprint #5167.
+pub async fn segment_size_ratio_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_ratio": null, "above_count": 0, "segment_count": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    if total_bytes == 0 {
+        return Json(serde_json::json!({"mean_ratio": 0.0, "above_count": 0, "segment_count": n}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64 / total_bytes as f64).collect();
+    let mean_ratio = ratios.iter().sum::<f64>() / n as f64;
+    let above: Vec<serde_json::Value> = segs.iter().zip(ratios.iter())
+        .filter(|(_, r)| *r > mean_ratio)
+        .map(|((id, nd, db), r)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "ratio": r}))
+        .collect();
+    Json(serde_json::json!({"mean_ratio": mean_ratio, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/size-ratio-below-mean — segmentos com disk_bytes/total < média das razões. Sprint #5168.
+pub async fn segment_size_ratio_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_ratio": null, "below_count": 0, "segment_count": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    if total_bytes == 0 {
+        return Json(serde_json::json!({"mean_ratio": 0.0, "below_count": 0, "segment_count": n}));
+    }
+    let ratios: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64 / total_bytes as f64).collect();
+    let mean_ratio = ratios.iter().sum::<f64>() / n as f64;
+    let below: Vec<serde_json::Value> = segs.iter().zip(ratios.iter())
+        .filter(|(_, r)| *r < mean_ratio)
+        .map(|((id, nd, db), r)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "ratio": r}))
+        .collect();
+    Json(serde_json::json!({"mean_ratio": mean_ratio, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/doc-density-above-mean — segmentos com docs/byte > média global. Sprint #5169.
+pub async fn segment_doc_density_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_density": null, "above_count": 0, "segment_count": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    let mean_density = densities.iter().sum::<f64>() / n as f64;
+    let above: Vec<serde_json::Value> = segs.iter().zip(densities.iter())
+        .filter(|(_, d)| *d > mean_density)
+        .map(|((id, nd, db), d)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "density": d}))
+        .collect();
+    Json(serde_json::json!({"mean_density": mean_density, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/doc-density-below-mean — segmentos com docs/byte < média global. Sprint #5170.
+pub async fn segment_doc_density_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_density": null, "below_count": 0, "segment_count": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    let mean_density = densities.iter().sum::<f64>() / n as f64;
+    let below: Vec<serde_json::Value> = segs.iter().zip(densities.iter())
+        .filter(|(_, d)| *d < mean_density)
+        .map(|((id, nd, db), d)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db, "density": d}))
+        .collect();
+    Json(serde_json::json!({"mean_density": mean_density, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/docs-count-above-mean-v2 — contagem de segmentos com num_docs > média (v2 sum-based). Sprint #5171.
+pub async fn segment_docs_count_above_mean_v2(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_docs": null, "count_above": 0, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, nd, _)| *nd).sum();
+    let mean = total as f64 / n as f64;
+    let count_above = segs.iter().filter(|(_, nd, _)| (*nd as f64) > mean).count();
+    let count_below = segs.iter().filter(|(_, nd, _)| (*nd as f64) < mean).count();
+    Json(serde_json::json!({"mean_docs": mean, "count_above": count_above, "count_below": count_below, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-count-above-mean-v2 — contagem de segmentos com disk_bytes > média (v2 sum-based). Sprint #5172.
+pub async fn segment_bytes_count_above_mean_v2(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean_bytes": null, "count_above": 0, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let mean = total as f64 / n as f64;
+    let count_above = segs.iter().filter(|(_, _, db)| (*db as f64) > mean).count();
+    let count_below = segs.iter().filter(|(_, _, db)| (*db as f64) < mean).count();
+    Json(serde_json::json!({"mean_bytes": mean, "count_above": count_above, "count_below": count_below, "segment_count": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-below-mean-zscore — segmentos com z-score de num_docs negativo (abaixo da média). Sprint #5145.
 pub async fn segment_docs_below_mean_zscore(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
