@@ -965,6 +965,12 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/tag-count-below-p99",                get(file_stats_tag_count_below_p99))
         .route("/api/v1/drive/files/stats/folder-file-count-above-p10",        get(file_stats_folder_file_count_above_p10))
         .route("/api/v1/drive/files/stats/folder-file-count-below-p10",        get(file_stats_folder_file_count_below_p10))
+        .route("/api/v1/drive/files/stats/folder-file-count-above-p25",        get(file_stats_folder_file_count_above_p25))
+        .route("/api/v1/drive/files/stats/folder-file-count-below-p25",        get(file_stats_folder_file_count_below_p25))
+        .route("/api/v1/drive/files/stats/folder-file-count-above-p50",        get(file_stats_folder_file_count_above_p50))
+        .route("/api/v1/drive/files/stats/folder-file-count-below-p50",        get(file_stats_folder_file_count_below_p50))
+        .route("/api/v1/drive/files/stats/folder-file-count-above-p75",        get(file_stats_folder_file_count_above_p75))
+        .route("/api/v1/drive/files/stats/folder-file-count-below-p75",        get(file_stats_folder_file_count_below_p75))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -20111,6 +20117,108 @@ async fn file_stats_folder_file_count_below_p10(State(state): State<AppState>, c
         FROM folder_counts",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p10_folder_file_count": row.0, "count_below_p10": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-above-p25 — pastas com file_count > P25. Sprint #5225.
+async fn file_stats_folder_file_count_above_p25(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p25_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count > (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_above_p25, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p25_folder_file_count": row.0, "count_above_p25": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-below-p25 — pastas com file_count < P25. Sprint #5226.
+async fn file_stats_folder_file_count_below_p25(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p25_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count < (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_below_p25, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p25_folder_file_count": row.0, "count_below_p25": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-above-p50 — pastas com file_count > P50. Sprint #5227.
+async fn file_stats_folder_file_count_above_p50(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p50_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count > (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_above_p50, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p50_folder_file_count": row.0, "count_above_p50": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-below-p50 — pastas com file_count < P50. Sprint #5228.
+async fn file_stats_folder_file_count_below_p50(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p50_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count < (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_below_p50, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p50_folder_file_count": row.0, "count_below_p50": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-above-p75 — pastas com file_count > P75. Sprint #5229.
+async fn file_stats_folder_file_count_above_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p75_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_above_p75, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_folder_file_count": row.0, "count_above_p75": row.1, "folder_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/folder-file-count-below-p75 — pastas com file_count < P75. Sprint #5230.
+async fn file_stats_folder_file_count_below_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "WITH folder_counts AS (
+            SELECT parent_id, COUNT(*) AS file_count
+            FROM drive_files
+            WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL
+            GROUP BY parent_id
+        )
+        SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY file_count)::FLOAT8 AS p75_folder_file_count, \
+               COUNT(*) FILTER (WHERE file_count < (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY fc2.file_count) FROM (SELECT COUNT(*) AS file_count FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND parent_id IS NOT NULL GROUP BY parent_id) fc2))::BIGINT AS count_below_p75, \
+               COUNT(*)::BIGINT AS folder_count \
+        FROM folder_counts",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_folder_file_count": row.0, "count_below_p75": row.1, "folder_count": row.2})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
