@@ -13191,6 +13191,83 @@ async fn dlq_error_length_count_above_mean(
     Ok(Json(json!({"mean_error_length": row.0, "count_above_mean": row.1, "count": row.2})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/error-length-count-below-mean — contagem global abaixo da média de comprimento de erro. Sprint #4505.
+async fn dlq_error_length_count_below_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT AVG(LENGTH(error_message))::FLOAT8 AS mean_len, \
+                COUNT(*) FILTER (WHERE LENGTH(error_message) < AVG(LENGTH(error_message)) OVER ())::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"mean_error_length": row.0, "count_below_mean": row.1, "count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-sum — soma global de comprimento de erro. Sprint #4506.
+async fn dlq_error_length_sum(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT SUM(LENGTH(error_message))::BIGINT AS sum_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"sum_error_length": row.0, "count": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-mean — média global de comprimento de erro. Sprint #4507.
+async fn dlq_error_length_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT AVG(LENGTH(error_message))::FLOAT8 AS mean_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"mean_error_length": row.0, "count": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-mode — moda global de retry lag. Sprint #4508.
+async fn dlq_retry_lag_mode(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let lags: Vec<(Option<f64>,)> = sqlx::query_as(
+        "SELECT EXTRACT(EPOCH FROM (now() - created_at)) AS lag \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let n = lags.len();
+    let mut freq: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+    for (lag,) in lags.into_iter() { if let Some(v) = lag { *freq.entry(v as i64).or_insert(0) += 1; } }
+    let (mode, mode_freq) = freq.into_iter().max_by_key(|&(_, c)| c).unwrap_or((0, 0));
+    Ok(Json(json!({"mode_retry_lag_secs": mode, "mode_frequency": mode_freq, "count": n})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-mode — moda do lag de retry por tenant. Sprint #4365.
 async fn dlq_by_tenant_retry_lag_mode(
     State(st): State<AppState>,
@@ -22124,6 +22201,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/retry-lag-count-above-mean",                 get(dlq_retry_lag_count_above_mean))
         .route("/api/v1/notifications/dlq/stats/retry-lag-count-below-mean",                 get(dlq_retry_lag_count_below_mean))
         .route("/api/v1/notifications/dlq/stats/error-length-count-above-mean",              get(dlq_error_length_count_above_mean))
+        .route("/api/v1/notifications/dlq/stats/error-length-count-below-mean",              get(dlq_error_length_count_below_mean))
+        .route("/api/v1/notifications/dlq/stats/error-length-sum",                           get(dlq_error_length_sum))
+        .route("/api/v1/notifications/dlq/stats/error-length-mean",                          get(dlq_error_length_mean))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-mode",                             get(dlq_retry_lag_mode))
         .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-mode",                  get(dlq_by_tenant_retry_lag_mode))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-mode",                get(dlq_by_kind_error_length_mode))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-mode",                get(dlq_by_user_error_length_mode))

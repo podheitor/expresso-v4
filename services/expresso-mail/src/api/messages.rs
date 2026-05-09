@@ -770,6 +770,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-p10-by-folder",                      get(size_p10_by_folder))
         .route("/mail/messages/stats/size-p25-by-folder",                      get(size_p25_by_folder))
         .route("/mail/messages/stats/size-mode-by-folder",                     get(size_mode_by_folder))
+        .route("/mail/messages/stats/size-harmonic-mean-by-folder",            get(size_harmonic_mean_by_folder))
+        .route("/mail/messages/stats/size-geometric-mean-by-folder",           get(size_geometric_mean_by_folder))
+        .route("/mail/messages/stats/size-stddev-by-folder",                   get(size_stddev_by_folder))
+        .route("/mail/messages/stats/size-p50-by-folder",                      get(size_p50_by_folder))
         .route("/mail/messages/stats/body-length-var-by-folder",             get(body_length_var_by_folder_stats))
         .route("/mail/messages/stats/body-length-mode-by-folder",            get(body_length_mode_by_folder_stats))
         .route("/mail/messages/stats/size-mean-by-folder",                   get(size_mean_by_folder_stats))
@@ -22575,6 +22579,86 @@ async fn size_mode_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, mode, mf, cnt)| serde_json::json!({"folder": folder, "mode_size": mode, "mode_frequency": mf, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-harmonic-mean-by-folder — média harmônica de tamanho × folder. Sprint #4513.
+async fn size_harmonic_mean_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                (COUNT(*) FILTER (WHERE m.size > 0))::FLOAT8 / NULLIF(SUM(1.0 / NULLIF(m.size, 0)), 0) AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, hm, cnt)| serde_json::json!({"folder": folder, "harmonic_mean_size": hm, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-geometric-mean-by-folder — média geométrica de tamanho × folder. Sprint #4514.
+async fn size_geometric_mean_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                EXP(AVG(LN(NULLIF(m.size, 0))))::FLOAT8 AS geometric_mean_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.size > 0 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, gm, cnt)| serde_json::json!({"folder": folder, "geometric_mean_size": gm, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-stddev-by-folder — desvio padrão de tamanho × folder. Sprint #4515.
+async fn size_stddev_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                STDDEV_POP(m.size)::FLOAT8 AS stddev_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, sd, cnt)| serde_json::json!({"folder": folder, "stddev_size": sd, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p50-by-folder — P50 de tamanho × folder. Sprint #4516.
+async fn size_p50_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY m.size)::FLOAT8 AS p50_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p50, cnt)| serde_json::json!({"folder": folder, "p50_size": p50, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
