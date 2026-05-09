@@ -11423,6 +11423,89 @@ async fn dlq_retry_lag_kurtosis(
     Ok(Json(json!({"kurtosis_retry_lag_seconds": kurtosis, "count": n})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/error-length-p05 — P05 de error_length na DLQ. Sprint #4065.
+async fn dlq_error_length_p05(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(error))::FLOAT8 AS p05_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((p05, cnt)) => Ok(Json(json!({"p05_error_length": p05, "count": cnt}))),
+        None => Ok(Json(json!({"p05_error_length": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-p10 — P10 de error_length na DLQ. Sprint #4066.
+async fn dlq_error_length_p10(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(error))::FLOAT8 AS p10_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((p10, cnt)) => Ok(Json(json!({"p10_error_length": p10, "count": cnt}))),
+        None => Ok(Json(json!({"p10_error_length": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-p25 — P25 de error_length na DLQ. Sprint #4067.
+async fn dlq_error_length_p25(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(error))::FLOAT8 AS p25_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((p25, cnt)) => Ok(Json(json!({"p25_error_length": p25, "count": cnt}))),
+        None => Ok(Json(json!({"p25_error_length": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-harmonic-mean — média harmônica de error_length na DLQ. Sprint #4068.
+async fn dlq_error_length_harmonic_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN SUM(1.0 / NULLIF(LENGTH(error), 0)) > 0 \
+                     THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(LENGTH(error), 0)) \
+                     ELSE NULL END AS harmonic_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((hm, cnt)) => Ok(Json(json!({"harmonic_mean_error_length": hm, "count": cnt}))),
+        None => Ok(Json(json!({"harmonic_mean_error_length": null, "count": 0}))),
+    }
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-coeff-var — coeficiente de variação de error_length na DLQ. Sprint #4045.
 async fn dlq_error_length_coeff_var(
     State(st): State<AppState>,
@@ -20078,6 +20161,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/error-length-trimmed-mean",               get(dlq_error_length_trimmed_mean))
         .route("/api/v1/notifications/dlq/stats/error-length-winsorized-mean",            get(dlq_error_length_winsorized_mean))
         .route("/api/v1/notifications/dlq/stats/error-length-geometric-mean",             get(dlq_error_length_geometric_mean))
+        .route("/api/v1/notifications/dlq/stats/error-length-p05",                        get(dlq_error_length_p05))
+        .route("/api/v1/notifications/dlq/stats/error-length-p10",                        get(dlq_error_length_p10))
+        .route("/api/v1/notifications/dlq/stats/error-length-p25",                        get(dlq_error_length_p25))
+        .route("/api/v1/notifications/dlq/stats/error-length-harmonic-mean",              get(dlq_error_length_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))

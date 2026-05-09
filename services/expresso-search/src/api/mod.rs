@@ -9622,6 +9622,50 @@ pub async fn segment_name_length_mad(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"name_length_mad": mad, "name_length_median": median, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-p95 — P95 de comprimento de nome de segmento. Sprint #4077.
+pub async fn segment_name_length_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_p95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"name_length_p95": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-p99 — P99 de comprimento de nome de segmento. Sprint #4078.
+pub async fn segment_name_length_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_p99": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"name_length_p99": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum — soma de comprimentos de nome de segmentos. Sprint #4079.
+pub async fn segment_name_length_sum(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let sum: usize = segs.iter().map(|(name, _, _)| name.len()).sum();
+    Json(serde_json::json!({"name_length_sum": sum, "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-mean — média de comprimento de nome de segmentos. Sprint #4080.
+pub async fn segment_name_length_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let mean = if n == 0 { None } else {
+        let sum: usize = segs.iter().map(|(name, _, _)| name.len()).sum();
+        Some(sum as f64 / n as f64)
+    };
+    Json(serde_json::json!({"name_length_mean": mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-p25 — P25 de comprimento de nome de segmento. Sprint #4057.
 pub async fn segment_name_length_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
