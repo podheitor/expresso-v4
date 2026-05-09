@@ -8764,6 +8764,118 @@ async fn dlq_by_user_payload_size_atkinson(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-payload-size-atkinson — Atkinson do tamanho de payload por tenant. Sprint #3405.
+async fn dlq_by_tenant_payload_size_atkinson(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, ARRAY_AGG(LENGTH(payload::TEXT)::BIGINT ORDER BY LENGTH(payload::TEXT)) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        json!({"tenant_id": tid, "atkinson_payload_size": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-attempts-normalized-entropy — entropia normalizada de attempts por kind. Sprint #3406.
+async fn dlq_by_kind_attempts_normalized_entropy(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_list, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        json!({"kind": kind, "normalized_entropy_attempts": norm_entropy, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-normalized-entropy — entropia normalizada de attempts por user. Sprint #3407.
+async fn dlq_by_user_attempts_normalized_entropy(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_list, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        json!({"user_id": uid, "normalized_entropy_attempts": norm_entropy, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-attempts-normalized-entropy — entropia normalizada de attempts por tenant. Sprint #3408.
+async fn dlq_by_tenant_attempts_normalized_entropy(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_list, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        json!({"tenant_id": tid, "normalized_entropy_attempts": norm_entropy, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-lorenz — curva de Lorenz de error_length por kind. Sprint #3386.
 async fn dlq_by_kind_error_length_lorenz(
     State(st): State<AppState>,
@@ -16745,6 +16857,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-hhi",      get(dlq_by_tenant_payload_size_hhi))
         .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-atkinson",   get(dlq_by_kind_payload_size_atkinson))
         .route("/api/v1/notifications/dlq/stats/by-user-payload-size-atkinson",   get(dlq_by_user_payload_size_atkinson))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-atkinson", get(dlq_by_tenant_payload_size_atkinson))
+        .route("/api/v1/notifications/dlq/stats/by-kind-attempts-normalized-entropy",   get(dlq_by_kind_attempts_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-normalized-entropy",   get(dlq_by_user_attempts_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-normalized-entropy", get(dlq_by_tenant_attempts_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-lorenz",     get(dlq_by_kind_error_length_lorenz))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-lorenz",     get(dlq_by_user_error_length_lorenz))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-lorenz",   get(dlq_by_tenant_error_length_lorenz))
