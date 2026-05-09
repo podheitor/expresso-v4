@@ -590,6 +590,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/uploads-by-weekday",                get(file_stats_uploads_by_weekday))
         .route("/api/v1/drive/files/stats/uploads-by-hour",                   get(file_stats_uploads_by_hour))
         .route("/api/v1/drive/files/stats/deletes-by-month",                  get(file_stats_deletes_by_month))
+        .route("/api/v1/drive/files/stats/deletes-by-weekday",                get(file_stats_deletes_by_weekday))
+        .route("/api/v1/drive/files/stats/deletes-by-hour",                   get(file_stats_deletes_by_hour))
+        .route("/api/v1/drive/files/stats/active-size-p50-by-kind",           get(file_stats_size_active_p50_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-stddev-by-mime",        get(file_stats_size_active_stddev_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -14784,6 +14788,70 @@ async fn file_stats_deletes_by_month(State(state): State<AppState>, ctx: Request
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(m, cnt)| serde_json::json!({"month": m, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deletes-by-weekday — contagem de deleções por dia da semana. Sprint #3649.
+async fn file_stats_deletes_by_weekday(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM deleted_at AT TIME ZONE 'UTC')::INT AS dow, COUNT(*)::BIGINT AS delete_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY dow ORDER BY dow ASC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(d, cnt)| {
+            let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+            serde_json::json!({"weekday": d, "weekday_name": day_name, "delete_count": cnt})
+        })
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deletes-by-hour — contagem de deleções por hora do dia. Sprint #3650.
+async fn file_stats_deletes_by_hour(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM deleted_at AT TIME ZONE 'UTC')::INT AS hour, COUNT(*)::BIGINT AS delete_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY hour ORDER BY hour ASC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(h, cnt)| serde_json::json!({"hour": h, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-p50-by-kind — P50 de size ativo por kind. Sprint #3651.
+async fn file_stats_size_active_p50_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p50_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, p50, cnt)| serde_json::json!({"kind": kind, "p50_active_size_bytes": p50, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-stddev-by-mime — desvio padrão de size ativo por mime_type. Sprint #3652.
+async fn file_stats_size_active_stddev_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(mime_type, 'unknown'), \
+                COALESCE(STDDEV(size_bytes), 0.0)::FLOAT8 AS stddev_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, stddev, cnt)| serde_json::json!({"mime_type": mime, "stddev_active_size_bytes": stddev, "active_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
