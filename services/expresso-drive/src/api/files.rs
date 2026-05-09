@@ -428,6 +428,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-count-by-mime",              get(file_stats_size_active_count_by_mime))
         .route("/api/v1/drive/files/stats/active-size-count-by-owner",             get(file_stats_size_active_count_by_owner))
         .route("/api/v1/drive/files/stats/active-size-p50-by-mime",                get(file_stats_size_active_p50_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-variance-by-kind",           get(file_stats_size_active_variance_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-variance-by-mime",           get(file_stats_size_active_variance_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-variance-by-owner",          get(file_stats_size_active_variance_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-mad-by-kind",                get(file_stats_size_active_mad_by_kind))
         .route("/api/v1/drive/files/stats/active-size-p95-by-mime",                get(file_stats_size_active_p95_by_mime))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-kind",               get(file_stats_size_active_iqr_by_kind))
         .route("/api/v1/drive/files/stats/active-size-iqr-by-mime",               get(file_stats_size_active_iqr_by_mime))
@@ -11863,6 +11867,67 @@ async fn file_stats_size_active_count_by_kind(State(state): State<AppState>, ctx
         serde_json::json!({"kind": kind, "active_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"total_active_count": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-variance-by-kind — variância do tamanho de arquivos ativos por kind. Sprint #3066.
+async fn file_stats_size_active_variance_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_active_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY variance_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, var, cnt)| {
+        serde_json::json!({"kind": kind, "variance_active_size_bytes": var, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-variance-by-mime — variância do tamanho de arquivos ativos por mime_type. Sprint #3071.
+async fn file_stats_size_active_variance_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_active_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY variance_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, var, cnt)| {
+        serde_json::json!({"mime_type": mime, "variance_active_size_bytes": var, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-variance-by-owner — variância do tamanho de arquivos ativos por owner_id. Sprint #3076.
+async fn file_stats_size_active_variance_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_active_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY variance_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner_id, var, cnt)| {
+        serde_json::json!({"owner_id": owner_id, "variance_active_size_bytes": var, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-mad-by-kind — MAD do tamanho de arquivos ativos por kind. Sprint #3081.
+async fn file_stats_size_active_mad_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                COALESCE(AVG(ABS(size_bytes - sub.avg_size)), 0.0)::FLOAT8 AS mad_active_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         JOIN (SELECT kind AS k, AVG(size_bytes) AS avg_size FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind) sub \
+           ON drive_files.kind = sub.k \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY drive_files.kind ORDER BY mad_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await
+    .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, mad, cnt)| {
+        serde_json::json!({"kind": kind, "mad_active_size_bytes": mad, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/active-size-count-by-mime — contagem de arquivos ativos por mime_type. Sprint #3051.

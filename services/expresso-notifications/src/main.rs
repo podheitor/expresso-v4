@@ -7360,6 +7360,86 @@ async fn dlq_by_tenant_payload_size_p95(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-payload-size-variance — variância do tamanho de payload por kind. Sprint #3065.
+async fn dlq_by_kind_payload_size_variance(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, COALESCE(VAR_POP(LENGTH(payload::TEXT)), 0.0)::FLOAT8 AS variance_payload_size, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, var, cnt)| {
+        json!({"kind": kind, "variance_payload_size": var, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-payload-size-variance — variância do tamanho de payload por user. Sprint #3070.
+async fn dlq_by_user_payload_size_variance(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, f64, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, COALESCE(VAR_POP(LENGTH(payload::TEXT)), 0.0)::FLOAT8 AS variance_payload_size, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, var, cnt)| {
+        json!({"user_id": uid, "variance_payload_size": var, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-payload-size-variance — variância do tamanho de payload por tenant. Sprint #3075.
+async fn dlq_by_tenant_payload_size_variance(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, f64, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, COALESCE(VAR_POP(LENGTH(payload::TEXT)), 0.0)::FLOAT8 AS variance_payload_size, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, var, cnt)| {
+        json!({"tenant_id": tid, "variance_payload_size": var, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-error-length-variance — variância de error_length por kind. Sprint #3080.
+async fn dlq_by_kind_error_length_variance(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, COALESCE(VAR_POP(LENGTH(last_error)), 0.0)::FLOAT8 AS variance_error_length, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, var, cnt)| {
+        json!({"kind": kind, "variance_error_length": var, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-payload-size-p99 — P99 do tamanho de payload por kind. Sprint #2900.
 async fn dlq_by_kind_payload_size_p99(
     State(st): State<AppState>,
@@ -14853,6 +14933,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-created-at-max",           get(dlq_by_user_created_at_max))
         .route("/api/v1/notifications/dlq/stats/by-tenant-created-at-min",         get(dlq_by_tenant_created_at_min))
         .route("/api/v1/notifications/dlq/stats/by-tenant-created-at-max",         get(dlq_by_tenant_created_at_max))
+        .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-variance",    get(dlq_by_kind_payload_size_variance))
+        .route("/api/v1/notifications/dlq/stats/by-user-payload-size-variance",    get(dlq_by_user_payload_size_variance))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-variance",  get(dlq_by_tenant_payload_size_variance))
+        .route("/api/v1/notifications/dlq/stats/by-kind-error-length-variance",    get(dlq_by_kind_error_length_variance))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-stddev",          get(dlq_by_kind_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-stddev",          get(dlq_by_user_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-stddev",        get(dlq_by_tenant_attempts_stddev))
