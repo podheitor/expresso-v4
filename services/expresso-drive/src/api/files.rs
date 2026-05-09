@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/size-p01",                            get(file_stats_size_p01))
+        .route("/api/v1/drive/files/stats/size-p75",                            get(file_stats_size_p75))
+        .route("/api/v1/drive/files/stats/size-p90",                            get(file_stats_size_p90))
+        .route("/api/v1/drive/files/stats/size-p99",                            get(file_stats_size_p99))
         .route("/api/v1/drive/files/stats/size-count-above-p75",               get(file_stats_size_count_above_p75))
         .route("/api/v1/drive/files/stats/size-count-below-p25",               get(file_stats_size_count_below_p25))
         .route("/api/v1/drive/files/stats/size-mode",                          get(file_stats_size_mode))
@@ -17479,6 +17483,42 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
 }
 
 /// GET /api/v1/drive/files/stats/size-count-above-p75 — contagem de arquivos com tamanho acima do P75. Sprint #4629.
+/// GET /api/v1/drive/files/stats/size-p01 — P01 de tamanho global. Sprint #4649.
+async fn file_stats_size_p01(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p01_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p01_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p75 — P75 de tamanho global. Sprint #4650.
+async fn file_stats_size_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p75_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p90 — P90 de tamanho global. Sprint #4651.
+async fn file_stats_size_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p90_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p99 — P99 de tamanho global. Sprint #4652.
+async fn file_stats_size_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p99_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_size": row.0, "file_count": row.1})))
+}
+
 async fn file_stats_size_count_above_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
     let row: (Option<f64>, i64, i64) = sqlx::query_as(
         "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p75_size, \
