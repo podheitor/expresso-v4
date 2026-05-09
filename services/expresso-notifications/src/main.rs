@@ -11423,6 +11423,101 @@ async fn dlq_retry_lag_kurtosis(
     Ok(Json(json!({"kurtosis_retry_lag_seconds": kurtosis, "count": n})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/error-length-coeff-var — coeficiente de variação de error_length na DLQ. Sprint #4045.
+async fn dlq_error_length_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT AVG(LENGTH(error))::FLOAT8 AS mean_len, STDDEV_POP(LENGTH(error))::FLOAT8 AS std_dev_len, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((Some(mean), Some(std), cnt)) if mean != 0.0 => Ok(Json(json!({"coeff_var_error_length": std / mean, "mean": mean, "std_dev": std, "count": cnt}))),
+        Some((_, _, cnt)) => Ok(Json(json!({"coeff_var_error_length": null, "count": cnt}))),
+        None => Ok(Json(json!({"coeff_var_error_length": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-trimmed-mean — média aparada P10–P90 de error_length na DLQ. Sprint #4046.
+async fn dlq_error_length_trimmed_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT LENGTH(error)::BIGINT FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) ORDER BY LENGTH(error)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let vals: Vec<f64> = rows.into_iter().map(|(v,)| v as f64).collect();
+    let n = vals.len();
+    let lo = ((n as f64 * 0.10).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.90).ceil() as usize).min(n);
+    let trimmed = &vals[lo..hi];
+    let mean = if trimmed.is_empty() { None } else {
+        Some(trimmed.iter().sum::<f64>() / trimmed.len() as f64)
+    };
+    Ok(Json(json!({"trimmed_mean_error_length": mean, "trimmed_count": trimmed.len(), "total_count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-winsorized-mean — média winsorizada P10–P90 de error_length na DLQ. Sprint #4047.
+async fn dlq_error_length_winsorized_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT LENGTH(error)::BIGINT FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) ORDER BY LENGTH(error)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let mut vals: Vec<f64> = rows.into_iter().map(|(v,)| v as f64).collect();
+    let n = vals.len();
+    if n == 0 {
+        return Ok(Json(json!({"winsorized_mean_error_length": null, "count": 0})));
+    }
+    let lo_idx = ((n as f64 * 0.10).ceil() as usize).saturating_sub(1).min(n - 1);
+    let hi_idx = ((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1);
+    let lo_val = vals[lo_idx];
+    let hi_val = vals[hi_idx];
+    for v in vals.iter_mut() {
+        if *v < lo_val { *v = lo_val; }
+        if *v > hi_val { *v = hi_val; }
+    }
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    Ok(Json(json!({"winsorized_mean_error_length": mean, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-geometric-mean — média geométrica de error_length na DLQ. Sprint #4048.
+async fn dlq_error_length_geometric_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXP(AVG(LN(NULLIF(LENGTH(error), 0))))::FLOAT8 AS geo_mean, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE error IS NOT NULL \
+         AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((geo_mean, cnt)) => Ok(Json(json!({"geometric_mean_error_length": geo_mean, "count": cnt}))),
+        None => Ok(Json(json!({"geometric_mean_error_length": null, "count": 0}))),
+    }
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-skewness — skewness do lag de retry por tenant. Sprint #4025.
 async fn dlq_by_tenant_retry_lag_skewness(
     State(st): State<AppState>,
@@ -19979,6 +20074,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-kurtosis",            get(dlq_by_tenant_retry_lag_kurtosis))
         .route("/api/v1/notifications/dlq/stats/error-length-skewness",                   get(dlq_error_length_skewness))
         .route("/api/v1/notifications/dlq/stats/error-length-kurtosis",                   get(dlq_error_length_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/error-length-coeff-var",                  get(dlq_error_length_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/error-length-trimmed-mean",               get(dlq_error_length_trimmed_mean))
+        .route("/api/v1/notifications/dlq/stats/error-length-winsorized-mean",            get(dlq_error_length_winsorized_mean))
+        .route("/api/v1/notifications/dlq/stats/error-length-geometric-mean",             get(dlq_error_length_geometric_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
