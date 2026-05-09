@@ -10660,6 +10660,70 @@ pub async fn segment_name_length_count_above_mean(State(store): State<IndexStore
     Json(serde_json::json!({"count_above_mean": count, "mean_name_length": mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-sum-below-p10 — soma de bytes dos segmentos abaixo do P10. Sprint #4597.
+pub async fn segment_bytes_sum_below_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_bytes_below_p10": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, bytes, _)| *bytes).collect();
+    vals.sort_unstable();
+    let p10_idx = ((n as f64 * 0.10).ceil() as usize).min(n - 1);
+    let p10 = vals[p10_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p10).sum();
+    let count = vals.iter().filter(|&&v| v < p10).count();
+    Json(serde_json::json!({"sum_bytes_below_p10": sum, "p10_bytes": p10, "count_below_p10": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-below-p05 — soma de bytes dos segmentos abaixo do P05. Sprint #4598.
+pub async fn segment_bytes_sum_below_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_bytes_below_p05": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, bytes, _)| *bytes).collect();
+    vals.sort_unstable();
+    let p05_idx = ((n as f64 * 0.05).ceil() as usize).min(n - 1);
+    let p05 = vals[p05_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p05).sum();
+    let count = vals.iter().filter(|&&v| v < p05).count();
+    Json(serde_json::json!({"sum_bytes_below_p05": sum, "p05_bytes": p05, "count_below_p05": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-p01 — soma de bytes dos segmentos acima do P01. Sprint #4599.
+pub async fn segment_bytes_sum_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_bytes_above_p01": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, bytes, _)| *bytes).collect();
+    vals.sort_unstable();
+    let p01_idx = ((n as f64 * 0.01).ceil() as usize).min(n - 1);
+    let p01 = vals[p01_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p01).sum();
+    let count = vals.iter().filter(|&&v| v > p01).count();
+    Json(serde_json::json!({"sum_bytes_above_p01": sum, "p01_bytes": p01, "count_above_p01": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-above-p10 — soma de docs dos segmentos acima do P10. Sprint #4600.
+pub async fn segment_docs_sum_above_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_docs_above_p10": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, docs)| *docs).collect();
+    vals.sort_unstable();
+    let p10_idx = ((n as f64 * 0.10).ceil() as usize).min(n - 1);
+    let p10 = vals[p10_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p10).sum();
+    let count = vals.iter().filter(|&&v| v > p10).count();
+    Json(serde_json::json!({"sum_docs_above_p10": sum, "p10_docs": p10, "count_above_p10": count, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-count-below-p90 — número de segmentos com nome abaixo do P90. Sprint #4577.
 pub async fn segment_name_length_count_below_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/version-kurtosis",                   get(file_stats_version_kurtosis))
+        .route("/api/v1/drive/files/stats/version-harmonic-mean",              get(file_stats_version_harmonic_mean))
+        .route("/api/v1/drive/files/stats/version-geometric-mean",             get(file_stats_version_geometric_mean))
+        .route("/api/v1/drive/files/stats/version-mean",                       get(file_stats_version_mean))
         .route("/api/v1/drive/files/stats/version-p99",                        get(file_stats_version_p99))
         .route("/api/v1/drive/files/stats/version-trimmed-mean",               get(file_stats_version_trimmed_mean))
         .route("/api/v1/drive/files/stats/version-winsorized-mean",            get(file_stats_version_winsorized_mean))
@@ -17464,6 +17468,47 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-kurtosis — curtose de versão global. Sprint #4589.
+async fn file_stats_version_kurtosis(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(version::FLOAT8 - AVG(version::FLOAT8) OVER (), 4)) OVER () / \
+                    NULLIF(POWER(VAR_POP(version::FLOAT8) OVER (), 2), 0) - 3.0)::FLOAT8 AS kurtosis_version, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"kurtosis_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-harmonic-mean — média harmônica de versão global. Sprint #4590.
+async fn file_stats_version_harmonic_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (COUNT(*) FILTER (WHERE version > 0)::FLOAT8 / \
+                    NULLIF(SUM(1.0 / NULLIF(version::FLOAT8, 0)), 0))::FLOAT8 AS harmonic_mean_version, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"harmonic_mean_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-geometric-mean — média geométrica de versão global. Sprint #4591.
+async fn file_stats_version_geometric_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT EXP(AVG(LN(NULLIF(version::FLOAT8, 0))))::FLOAT8 AS geometric_mean_version, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND version > 0",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"geometric_mean_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-mean — média aritmética de versão global. Sprint #4592.
+async fn file_stats_version_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT AVG(version)::FLOAT8 AS mean_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_version": row.0, "file_count": row.1})))
 }
 
 /// GET /api/v1/drive/files/stats/version-p99 — P99 de versão global. Sprint #4569.
