@@ -8060,6 +8060,120 @@ async fn dlq_by_kind_attempts_gini(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-gini — índice Gini de attempts por user. Sprint #3205.
+async fn dlq_by_user_attempts_gini(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_arr, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        json!({"user_id": uid, "gini_attempts": gini, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-attempts-gini — índice Gini de attempts por tenant. Sprint #3206.
+async fn dlq_by_tenant_attempts_gini(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_arr, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        json!({"tenant_id": tid, "gini_attempts": gini, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-attempts-theil — índice Theil de attempts por kind. Sprint #3207.
+async fn dlq_by_kind_attempts_theil(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_arr, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean > 0.0 { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 } else { 0.0 }
+        };
+        json!({"kind": kind, "theil_attempts": theil, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-theil — índice Theil de attempts por user. Sprint #3208.
+async fn dlq_by_user_attempts_theil(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS attempts_arr, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean > 0.0 { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 } else { 0.0 }
+        };
+        json!({"user_id": uid, "theil_attempts": theil, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-variance — variância de error_length por kind. Sprint #3080.
 async fn dlq_by_kind_error_length_variance(
     State(st): State<AppState>,
@@ -15601,6 +15715,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-mad",            get(dlq_by_user_attempts_mad))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-mad",          get(dlq_by_tenant_attempts_mad))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-gini",           get(dlq_by_kind_attempts_gini))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-gini",           get(dlq_by_user_attempts_gini))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-gini",         get(dlq_by_tenant_attempts_gini))
+        .route("/api/v1/notifications/dlq/stats/by-kind-attempts-theil",          get(dlq_by_kind_attempts_theil))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-theil",          get(dlq_by_user_attempts_theil))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-stddev",          get(dlq_by_kind_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-stddev",          get(dlq_by_user_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-stddev",        get(dlq_by_tenant_attempts_stddev))

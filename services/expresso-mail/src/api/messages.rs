@@ -448,6 +448,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/body-length-hhi-by-sender",                get(body_length_hhi_by_sender_stats))
         .route("/mail/messages/stats/size-atkinson-by-sender",                  get(size_atkinson_by_sender_stats))
         .route("/mail/messages/stats/body-length-atkinson-by-sender",           get(body_length_atkinson_by_sender_stats))
+        .route("/mail/messages/stats/size-lorenz-by-sender",                    get(size_lorenz_by_sender_stats))
+        .route("/mail/messages/stats/body-length-lorenz-by-sender",             get(body_length_lorenz_by_sender_stats))
+        .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
+        .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -14173,6 +14177,116 @@ async fn body_length_atkinson_by_sender_stats(
             if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
         };
         serde_json::json!({"sender": sender, "atkinson_body_length": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-lorenz-by-sender — curva Lorenz de size por remetente. Sprint #3213.
+async fn size_lorenz_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.size ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 50",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let mut cum_pop = 0.0f64;
+        let mut cum_size = 0.0f64;
+        let points: Vec<serde_json::Value> = vals.iter().map(|&v| {
+            cum_pop += 1.0 / n.max(1) as f64;
+            cum_size += if total > 0.0 { v / total } else { 0.0 };
+            serde_json::json!({"population_share": cum_pop, "size_share": cum_size})
+        }).collect();
+        serde_json::json!({"sender": sender, "lorenz_curve": points, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-lorenz-by-sender — curva Lorenz de body_length por remetente. Sprint #3214.
+async fn body_length_lorenz_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.body_length ORDER BY m.body_length) AS body_lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 50",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let mut cum_pop = 0.0f64;
+        let mut cum_bl = 0.0f64;
+        let points: Vec<serde_json::Value> = vals.iter().map(|&v| {
+            cum_pop += 1.0 / n.max(1) as f64;
+            cum_bl += if total > 0.0 { v / total } else { 0.0 };
+            serde_json::json!({"population_share": cum_pop, "body_length_share": cum_bl})
+        }).collect();
+        serde_json::json!({"sender": sender, "lorenz_curve": points, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-entropy-by-sender — entropia de size por remetente. Sprint #3215.
+async fn size_entropy_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        serde_json::json!({"sender": sender, "entropy_size": entropy, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-entropy-by-sender — entropia de body_length por remetente. Sprint #3216.
+async fn body_length_entropy_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.body_length) AS body_lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        serde_json::json!({"sender": sender, "entropy_body_length": entropy, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
