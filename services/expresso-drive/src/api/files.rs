@@ -927,10 +927,14 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-avg-by-owner",         get(file_stats_version_avg_by_owner))
         .route("/api/v1/drive/files/stats/version-avg-by-ext",           get(file_stats_version_avg_by_ext))
         .route("/api/v1/drive/files/stats/version-count-by-owner",     get(file_stats_version_count_by_owner))
-        .route("/api/v1/drive/files/stats/age-days-count-above-mean",  get(file_stats_age_days_count_above_mean))
-        .route("/api/v1/drive/files/stats/age-days-count-below-mean",  get(file_stats_age_days_count_below_mean))
-        .route("/api/v1/drive/files/stats/version-count-above-p10",    get(file_stats_version_count_above_p10))
-        .route("/api/v1/drive/files/stats/version-count-below-p10",    get(file_stats_version_count_below_p10))
+        .route("/api/v1/drive/files/stats/age-days-count-above-mean",   get(file_stats_age_days_count_above_mean))
+        .route("/api/v1/drive/files/stats/age-days-count-below-mean",   get(file_stats_age_days_count_below_mean))
+        .route("/api/v1/drive/files/stats/version-count-above-p10",     get(file_stats_version_count_above_p10))
+        .route("/api/v1/drive/files/stats/version-count-below-p10",     get(file_stats_version_count_below_p10))
+        .route("/api/v1/drive/files/stats/age-days-count-above-p10",    get(file_stats_age_days_count_above_p10))
+        .route("/api/v1/drive/files/stats/age-days-count-below-p10",    get(file_stats_age_days_count_below_p10))
+        .route("/api/v1/drive/files/stats/name-length-count-above-mean", get(file_stats_name_length_count_above_mean))
+        .route("/api/v1/drive/files/stats/name-length-count-below-mean", get(file_stats_name_length_count_below_mean))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -19635,6 +19639,50 @@ async fn file_stats_version_count_by_owner(State(state): State<AppState>, ctx: R
         .map(|(owner, versions, cnt)| serde_json::json!({"owner_id": owner, "total_versions": versions, "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-above-p10 — arquivos com age_days > P10. Sprint #5073.
+async fn file_stats_age_days_count_above_p10(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p10_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 > (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p10, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p10_age_days": row.0, "count_above_p10": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-below-p10 — arquivos com age_days < P10. Sprint #5074.
+async fn file_stats_age_days_count_below_p10(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p10_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 < (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p10, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p10_age_days": row.0, "count_below_p10": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-above-mean — arquivos com name_length > média. Sprint #5075.
+async fn file_stats_name_length_count_above_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT AVG(LENGTH(name))::FLOAT8 AS mean_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) > (SELECT AVG(LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_name_length": row.0, "count_above_mean": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-below-mean — arquivos com name_length < média. Sprint #5076.
+async fn file_stats_name_length_count_below_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT AVG(LENGTH(name))::FLOAT8 AS mean_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) < (SELECT AVG(LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_name_length": row.0, "count_below_mean": row.1, "file_count": row.2})))
 }
 
 /// GET /api/v1/drive/files/stats/age-days-count-above-mean — arquivos com age_days > média. Sprint #5053.
