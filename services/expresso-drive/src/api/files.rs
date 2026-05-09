@@ -626,6 +626,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/uploads-by-ext",                   get(file_stats_uploads_by_ext))
         .route("/api/v1/drive/files/stats/deletes-by-kind",                  get(file_stats_deletes_by_kind))
         .route("/api/v1/drive/files/stats/deletes-by-mime",                  get(file_stats_deletes_by_mime))
+        .route("/api/v1/drive/files/stats/deletes-by-ext",                   get(file_stats_deletes_by_ext))
+        .route("/api/v1/drive/files/stats/deletes-by-owner",                 get(file_stats_deletes_by_owner))
+        .route("/api/v1/drive/files/stats/uploads-by-owner",                 get(file_stats_uploads_by_owner))
+        .route("/api/v1/drive/files/stats/active-by-kind",                   get(file_stats_active_by_kind))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15382,6 +15386,62 @@ async fn file_stats_deletes_by_mime(State(state): State<AppState>, ctx: RequestC
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(mime, cnt)| serde_json::json!({"mime_type": mime, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deletes-by-ext — deleções por extensão de arquivo. Sprint #3829.
+async fn file_stats_deletes_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, COUNT(*)::BIGINT AS delete_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, cnt)| serde_json::json!({"ext": ext, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deletes-by-owner — deleções por proprietário. Sprint #3830.
+async fn file_stats_deletes_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS owner_id, COUNT(*)::BIGINT AS delete_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, cnt)| serde_json::json!({"owner_id": owner, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/uploads-by-owner — uploads por proprietário. Sprint #3831.
+async fn file_stats_uploads_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS owner_id, COUNT(*)::BIGINT AS upload_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, cnt)| serde_json::json!({"owner_id": owner, "upload_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-by-kind — arquivos ativos por kind. Sprint #3832.
+async fn file_stats_active_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, cnt)| serde_json::json!({"kind": kind, "active_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

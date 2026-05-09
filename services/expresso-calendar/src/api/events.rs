@@ -2201,6 +2201,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_sum_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-by-hour",
+            get(events_by_range_duration_count_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-sum-by-hour",
+            get(events_by_range_duration_sum_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/count-by-hour",
+            get(events_by_range_count_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/count-by-weekday",
+            get(events_by_range_count_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-month",
             get(events_by_range_duration_entropy_by_month),
         )
@@ -2687,6 +2703,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-sum-by-weekday",
             get(events_by_range_duration_sum_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-by-hour",
+            get(events_by_range_duration_count_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-sum-by-hour",
+            get(events_by_range_duration_sum_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/count-by-hour",
+            get(events_by_range_count_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/count-by-weekday",
+            get(events_by_range_count_by_weekday),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-month",
@@ -13509,6 +13541,89 @@ async fn events_by_range_duration_sum_by_weekday(
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, total, cnt)| {
         let day_name = day_names.get(d as usize).copied().unwrap_or("Unknown");
         serde_json::json!({"weekday": d, "weekday_name": day_name, "total_duration_seconds": total.unwrap_or(0.0), "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-count-by-hour — count de eventos com duração por hora. Sprint #3841.
+async fn events_by_range_duration_count_by_hour(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, cnt)| serde_json::json!({"hour": h, "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-sum-by-hour — soma de duração por hora. Sprint #3842.
+async fn events_by_range_duration_sum_by_hour(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                SUM(EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS total_seconds, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, total, cnt)| serde_json::json!({"hour": h, "total_duration_seconds": total.unwrap_or(0.0), "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/count-by-hour — count de todos eventos por hora. Sprint #3843.
+async fn events_by_range_count_by_hour(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, cnt)| serde_json::json!({"hour": h, "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/count-by-weekday — count de todos eventos por dia da semana. Sprint #3844.
+async fn events_by_range_count_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart)::INT AS weekday, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(DOW FROM dtstart) ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let day_names = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, cnt)| {
+        let day_name = day_names.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"weekday": d, "weekday_name": day_name, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

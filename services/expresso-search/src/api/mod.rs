@@ -9096,6 +9096,62 @@ pub async fn segment_docs_count_max(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"max_docs": max_docs, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-count-max — número de segmentos acima do max de bytes. Sprint #3837.
+pub async fn segment_bytes_count_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_bytes": null, "total_segments": 0}));
+    }
+    let max_bytes = segs.iter().map(|(_, _, b)| *b).max().unwrap_or(0);
+    Json(serde_json::json!({"max_bytes": max_bytes, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-ratio-min — ratio mínimo de docs entre segmentos. Sprint #3838.
+pub async fn segment_docs_ratio_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_ratio_min": null, "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    if total_docs == 0 {
+        return Json(serde_json::json!({"docs_ratio_min": 0.0, "total_segments": n}));
+    }
+    let min_ratio = segs.iter().map(|(_, d, _)| *d as f64 / total_docs as f64).fold(f64::INFINITY, f64::min);
+    Json(serde_json::json!({"docs_ratio_min": min_ratio, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-ratio-min — ratio mínimo de bytes entre segmentos. Sprint #3839.
+pub async fn segment_bytes_ratio_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_ratio_min": null, "total_segments": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    if total_bytes == 0 {
+        return Json(serde_json::json!({"bytes_ratio_min": 0.0, "total_segments": n}));
+    }
+    let min_ratio = segs.iter().map(|(_, _, b)| *b as f64 / total_bytes as f64).fold(f64::INFINITY, f64::min);
+    Json(serde_json::json!({"bytes_ratio_min": min_ratio, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-ratio-max — ratio máximo de docs entre segmentos. Sprint #3840.
+pub async fn segment_docs_ratio_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_ratio_max": null, "total_segments": 0}));
+    }
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    if total_docs == 0 {
+        return Json(serde_json::json!({"docs_ratio_max": 0.0, "total_segments": n}));
+    }
+    let max_ratio = segs.iter().map(|(_, d, _)| *d as f64 / total_docs as f64).fold(f64::NEG_INFINITY, f64::max);
+    Json(serde_json::json!({"docs_ratio_max": max_ratio, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
