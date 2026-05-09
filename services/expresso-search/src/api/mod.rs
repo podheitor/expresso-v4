@@ -8677,20 +8677,72 @@ pub async fn segment_byte_density_normalized_entropy(State(store): State<IndexSt
     Json(serde_json::json!({"normalized_entropy_byte_density": normalized, "raw_entropy": entropy, "total_segments": n}))
 }
 
-/// GET /api/v1/search/index/segments/byte-density-p75 — P75 de bytes/doc. Sprint #3160.
-pub async fn segment_byte_density_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+/// GET /api/v1/search/index/segments/below-avg-docs — segmentos abaixo da média de docs. Sprint #3177.
+pub async fn segment_below_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
     if n == 0 {
-        return Json(serde_json::json!({"p75_byte_density": null, "total_segments": 0}));
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "below_avg_count": 0}));
     }
-    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
-        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
-    }).collect();
-    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let idx = ((n as f64) * 0.75) as usize;
-    let p75 = densities[idx.min(n - 1)];
-    Json(serde_json::json!({"p75_byte_density": p75, "total_segments": n}))
+    let avg_docs = segs.iter().map(|(_, docs, _)| *docs as f64).sum::<f64>() / n as f64;
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, docs, _)| (*docs as f64) < avg_docs)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = below.len();
+    Json(serde_json::json!({"segments": below, "avg_docs": avg_docs, "below_avg_count": cnt, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/below-avg-bytes — segmentos abaixo da média de bytes. Sprint #3178.
+pub async fn segment_below_avg_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "below_avg_count": 0}));
+    }
+    let avg_bytes = segs.iter().map(|(_, _, bytes)| *bytes as f64).sum::<f64>() / n as f64;
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, bytes)| (*bytes as f64) < avg_bytes)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = below.len();
+    Json(serde_json::json!({"segments": below, "avg_bytes": avg_bytes, "below_avg_count": cnt, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/above-p75-docs — segmentos acima do P75 de docs. Sprint #3179.
+pub async fn segment_above_p75_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "above_p75_count": 0}));
+    }
+    let mut docs_sorted: Vec<u64> = segs.iter().map(|(_, docs, _)| *docs).collect();
+    docs_sorted.sort_unstable();
+    let p75 = docs_sorted[((n as f64 * 0.75) as usize).min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, docs, _)| *docs > p75)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = above.len();
+    Json(serde_json::json!({"segments": above, "p75_docs": p75, "above_p75_count": cnt, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/above-p75-bytes — segmentos acima do P75 de bytes. Sprint #3180.
+pub async fn segment_above_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "above_p75_count": 0}));
+    }
+    let mut bytes_sorted: Vec<u64> = segs.iter().map(|(_, _, bytes)| *bytes).collect();
+    bytes_sorted.sort_unstable();
+    let p75 = bytes_sorted[((n as f64 * 0.75) as usize).min(n - 1)];
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, bytes)| *bytes > p75)
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = above.len();
+    Json(serde_json::json!({"segments": above, "p75_bytes": p75, "above_p75_count": cnt, "total_segments": n}))
 }
 
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.

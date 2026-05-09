@@ -1841,6 +1841,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_attendee_count_winsorized_mean_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-month",
+            get(events_by_range_attendee_count_lorenz_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-month",
+            get(events_by_range_attendee_count_atkinson_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-trimmed-mean-by-month",
+            get(events_by_range_attendee_count_trimmed_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-winsorized-mean-by-month",
+            get(events_by_range_attendee_count_winsorized_mean_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -2103,6 +2119,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/attendee-count-winsorized-mean-by-weekday",
             get(events_by_range_attendee_count_winsorized_mean_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-month",
+            get(events_by_range_attendee_count_lorenz_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-month",
+            get(events_by_range_attendee_count_atkinson_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-trimmed-mean-by-month",
+            get(events_by_range_attendee_count_trimmed_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendee-count-winsorized-mean-by-month",
+            get(events_by_range_attendee_count_winsorized_mean_by_month),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -13692,6 +13724,123 @@ async fn events_by_range_attendee_count_winsorized_mean_by_weekday(
             vals.iter().map(|&v| v.max(lo).min(hi)).sum::<f64>() / n as f64
         };
         serde_json::json!({"weekday": weekday, "winsorized_mean_attendee_count": winsorized_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-lorenz-by-month — curva Lorenz de attendee_count por mês. Sprint #3181.
+async fn events_by_range_attendee_count_lorenz_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                AVG(COALESCE(array_length(attendees, 1), 0))::FLOAT8 AS avg_attendees, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY avg_attendees",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let total_attendees: f64 = rows.iter().map(|(_, avg, cnt)| avg * *cnt as f64).sum();
+    let total_cnt: i64 = rows.iter().map(|(_, _, c)| c).sum();
+    let mut cum_pop = 0.0f64;
+    let mut cum_att = 0.0f64;
+    let points: Vec<serde_json::Value> = rows.iter().map(|(month, avg, cnt)| {
+        cum_pop += *cnt as f64 / total_cnt.max(1) as f64;
+        cum_att += if total_attendees > 0.0 { avg * *cnt as f64 / total_attendees } else { 0.0 };
+        serde_json::json!({"month": month, "population_share": cum_pop, "attendee_share": cum_att, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz_curve": points})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-atkinson-by-month — índice Atkinson de attendee_count por mês. Sprint #3182.
+async fn events_by_range_attendee_count_atkinson_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(COALESCE(array_length(attendees, 1), 0)::BIGINT ORDER BY dtstart) AS counts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let atkinson = if m == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            let ln_sum: f64 = vals.iter().map(|&v| v.ln()).sum();
+            let geo_mean = (ln_sum / m as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"month": month, "atkinson_attendee_count": atkinson, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-trimmed-mean-by-month — média trimmed de attendee_count por mês. Sprint #3183.
+async fn events_by_range_attendee_count_trimmed_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(COALESCE(array_length(attendees, 1), 0)::BIGINT ORDER BY COALESCE(array_length(attendees, 1), 0)) AS counts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let m = vals.len();
+        let trimmed_mean = if m == 0 { 0.0 } else {
+            let trim = (m as f64 * 0.1) as usize;
+            let trimmed = &vals[trim..m.saturating_sub(trim)];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        serde_json::json!({"month": month, "trimmed_mean_attendee_count": trimmed_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendee-count-winsorized-mean-by-month — média winsorized de attendee_count por mês. Sprint #3184.
+async fn events_by_range_attendee_count_winsorized_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(COALESCE(array_length(attendees, 1), 0)::BIGINT ORDER BY COALESCE(array_length(attendees, 1), 0)) AS counts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let winsorized_mean = if n == 0 { 0.0 } else {
+            let trim = (n as f64 * 0.1) as usize;
+            let lo = vals[trim.min(n - 1)];
+            let hi = vals[n.saturating_sub(trim + 1)];
+            vals.iter().map(|&v| v.max(lo).min(hi)).sum::<f64>() / n as f64
+        };
+        serde_json::json!({"month": month, "winsorized_mean_attendee_count": winsorized_mean, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
