@@ -1889,6 +1889,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_sum_by_month),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-normalized-entropy-by-month",
+            get(events_by_range_duration_normalized_entropy_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-harmonic-mean-by-month",
+            get(events_by_range_duration_harmonic_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-geometric-mean-by-month",
+            get(events_by_range_duration_geometric_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-month",
+            get(events_by_range_duration_atkinson_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-variance-by-month",
             get(events_by_range_summary_length_variance_by_month),
         )
@@ -2263,6 +2279,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-sum-by-month",
             get(events_by_range_duration_sum_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-normalized-entropy-by-month",
+            get(events_by_range_duration_normalized_entropy_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-harmonic-mean-by-month",
+            get(events_by_range_duration_harmonic_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-geometric-mean-by-month",
+            get(events_by_range_duration_geometric_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-month",
+            get(events_by_range_duration_atkinson_by_month),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-variance-by-month",
@@ -14225,6 +14257,114 @@ async fn events_by_range_duration_sum_by_month(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, sum, cnt)| {
         serde_json::json!({"month": month, "sum_duration_seconds": sum, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-normalized-entropy-by-month — entropia normalizada de duração por mês. Sprint #3321.
+async fn events_by_range_duration_normalized_entropy_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let n = vals.len();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+        serde_json::json!({"month": month, "normalized_entropy_duration": normalized_entropy, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-harmonic-mean-by-month — média harmônica de duração por mês. Sprint #3322.
+async fn events_by_range_duration_harmonic_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                COALESCE(COUNT(*) / NULLIF(SUM(1.0 / NULLIF(EXTRACT(EPOCH FROM (dtend - dtstart)), 0)), 0), 0.0)::FLOAT8 AS harmonic_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL AND EXTRACT(EPOCH FROM (dtend - dtstart)) > 0 \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(month, hm, cnt)| serde_json::json!({"month": month, "harmonic_mean_duration_seconds": hm, "event_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-geometric-mean-by-month — média geométrica de duração por mês. Sprint #3323.
+async fn events_by_range_duration_geometric_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL AND EXTRACT(EPOCH FROM (dtend - dtstart)) > 0) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geo_mean = if n == 0 { 0.0 } else {
+            (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp()
+        };
+        serde_json::json!({"month": month, "geometric_mean_duration_seconds": geo_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-month — índice Atkinson de duração por mês. Sprint #3324.
+async fn events_by_range_duration_atkinson_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL AND EXTRACT(EPOCH FROM (dtend - dtstart)) > 0) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"month": month, "atkinson_duration": atkinson, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

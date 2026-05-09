@@ -468,6 +468,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-gini-by-tier",                        get(size_gini_by_tier_stats))
         .route("/mail/messages/stats/body-length-gini-by-folder",               get(body_length_gini_by_folder_stats))
         .route("/mail/messages/stats/body-length-gini-by-tier",                 get(body_length_gini_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-gini-by-tier",           get(attachment_count_gini_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-gini-by-tier",            get(recipient_count_gini_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-theil-by-tier",          get(attachment_count_theil_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-theil-by-tier",           get(recipient_count_theil_by_tier_stats))
         .route("/mail/messages/stats/size-kurtosis-by-folder",                  get(size_kurtosis_by_folder_stats))
         .route("/mail/messages/stats/size-kurtosis-by-tier",                    get(size_kurtosis_by_tier_stats))
         .route("/mail/messages/stats/body-length-kurtosis-by-folder",           get(body_length_kurtosis_by_folder_stats))
@@ -15245,6 +15249,132 @@ async fn body_length_gini_by_tier_stats(
             num / (n * total)
         } else { 0.0 };
         serde_json::json!({"tier": tier, "gini_body_length": gini, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-gini-by-tier — Gini de attachment_count por tier. Sprint #3313.
+async fn attachment_count_gini_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        serde_json::json!({"tier": tier, "gini_attachment_count": gini, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-gini-by-tier — Gini de recipient_count por tier. Sprint #3314.
+async fn recipient_count_gini_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        serde_json::json!({"tier": tier, "gini_recipient_count": gini, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-theil-by-tier — Theil de attachment_count por tier. Sprint #3315.
+async fn attachment_count_theil_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 }
+        };
+        serde_json::json!({"tier": tier, "theil_attachment_count": theil, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-theil-by-tier — Theil de recipient_count por tier. Sprint #3316.
+async fn recipient_count_theil_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 }
+        };
+        serde_json::json!({"tier": tier, "theil_recipient_count": theil, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

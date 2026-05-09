@@ -427,6 +427,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-gini-by-kind",               get(file_stats_size_active_gini_by_kind))
         .route("/api/v1/drive/files/stats/active-size-gini-by-mime",               get(file_stats_size_active_gini_by_mime))
         .route("/api/v1/drive/files/stats/active-size-gini-by-owner",              get(file_stats_size_active_gini_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-gini-by-ext",               get(file_stats_size_active_gini_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-hhi-by-ext",                get(file_stats_size_active_hhi_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-lorenz-by-ext",             get(file_stats_size_active_lorenz_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-theil-by-ext",              get(file_stats_size_active_theil_by_ext))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -12193,6 +12197,90 @@ async fn file_stats_size_active_theil_by_owner(State(state): State<AppState>, ct
         serde_json::json!({"owner_id": owner_id, "size_share": share, "total_size": total, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"theil": theil, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-gini-by-ext — Gini de size de arquivos ativos por extensão. Sprint #3309.
+async fn file_stats_size_active_gini_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        serde_json::json!({"extension": ext, "gini_active_size": gini, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-hhi-by-ext — HHI de size de arquivos ativos por extensão. Sprint #3310.
+async fn file_stats_size_active_hhi_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let total: f64 = vals.iter().sum();
+        let hhi = if total > 0.0 { vals.iter().map(|&v| (v / total).powi(2)).sum::<f64>() } else { 0.0 };
+        serde_json::json!({"extension": ext, "hhi_active_size": hhi, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-lorenz-by-ext — curva Lorenz de size ativo por extensão. Sprint #3311.
+async fn file_stats_size_active_lorenz_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let mut cum_pop = 0.0f64;
+        let mut cum_size = 0.0f64;
+        let points: Vec<serde_json::Value> = vals.iter().map(|&v| {
+            cum_pop += 1.0 / n.max(1) as f64;
+            cum_size += if total > 0.0 { v / total } else { 0.0 };
+            serde_json::json!({"population_share": cum_pop, "size_share": cum_size})
+        }).collect();
+        serde_json::json!({"extension": ext, "lorenz_curve": points, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-theil-by-ext — índice Theil de size ativo por extensão. Sprint #3312.
+async fn file_stats_size_active_theil_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 }
+        };
+        serde_json::json!({"extension": ext, "theil_active_size": theil, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
 }
 
 /// GET /api/v1/drive/files/stats/active-size-atkinson-by-kind — índice Atkinson de size por kind. Sprint #2886.
