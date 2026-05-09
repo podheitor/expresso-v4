@@ -718,6 +718,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-p10-by-mime",           get(file_stats_name_length_p10_by_mime))
         .route("/api/v1/drive/files/stats/name-length-p10-by-ext",            get(file_stats_name_length_p10_by_ext))
         .route("/api/v1/drive/files/stats/name-length-p90-by-kind",           get(file_stats_name_length_p90_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-sum-by-ext",             get(file_stats_name_length_sum_by_ext))
+        .route("/api/v1/drive/files/stats/name-length-range-by-kind",          get(file_stats_name_length_range_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-range-by-mime",          get(file_stats_name_length_range_by_mime))
+        .route("/api/v1/drive/files/stats/name-length-range-by-ext",           get(file_stats_name_length_range_by_ext))
         .route("/api/v1/drive/files/stats/name-length-p99-by-ext",             get(file_stats_name_length_p99_by_ext))
         .route("/api/v1/drive/files/stats/name-length-max-by-kind",            get(file_stats_name_length_max_by_kind))
         .route("/api/v1/drive/files/stats/name-length-sum-by-kind",            get(file_stats_name_length_sum_by_kind))
@@ -16748,6 +16752,57 @@ async fn file_stats_name_length_coeff_var_by_mime(State(state): State<AppState>,
         };
         serde_json::json!({"mime_type": mime, "coeff_var_name_length": cv, "file_count": cnt})
     }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-sum-by-ext — soma de comprimento de nome por extensão. Sprint #4329.
+async fn file_stats_name_length_sum_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                SUM(LENGTH(name))::BIGINT AS sum_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, sum, cnt)| serde_json::json!({"ext": ext, "sum_name_length": sum, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-range-by-kind — range de comprimento de nome por kind. Sprint #4330.
+async fn file_stats_name_length_range_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                MIN(LENGTH(name))::BIGINT AS min_name_len, \
+                MAX(LENGTH(name))::BIGINT AS max_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, mn, mx, cnt)| serde_json::json!({"kind": kind, "range_name_length": mx - mn, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-range-by-mime — range de comprimento de nome por MIME. Sprint #4331.
+async fn file_stats_name_length_range_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                MIN(LENGTH(name))::BIGINT AS min_name_len, \
+                MAX(LENGTH(name))::BIGINT AS max_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, mn, mx, cnt)| serde_json::json!({"mime_type": mime, "range_name_length": mx - mn, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-range-by-ext — range de comprimento de nome por extensão. Sprint #4332.
+async fn file_stats_name_length_range_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                MIN(LENGTH(name))::BIGINT AS min_name_len, \
+                MAX(LENGTH(name))::BIGINT AS max_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, mn, mx, cnt)| serde_json::json!({"ext": ext, "range_name_length": mx - mn, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

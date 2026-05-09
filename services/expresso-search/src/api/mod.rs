@@ -10367,6 +10367,55 @@ pub async fn segment_name_length_variance(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"name_length_variance": variance, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-count-above-mean-ratio — fração de segmentos com nome acima da média. Sprint #4337.
+pub async fn segment_name_length_count_above_mean_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_above_mean": null, "total_segments": 0}));
+    }
+    let mean = segs.iter().map(|(name, _, _)| name.len()).sum::<usize>() as f64 / n as f64;
+    let count = segs.iter().filter(|(name, _, _)| (name.len() as f64) > mean).count();
+    Json(serde_json::json!({"ratio_above_mean": count as f64 / n as f64, "mean_name_length": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-min-among-below-mean — mínimo de comprimento de nome entre segmentos abaixo da média. Sprint #4338.
+pub async fn segment_name_length_min_among_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_among_below_mean": null, "total_segments": 0}));
+    }
+    let mean = segs.iter().map(|(name, _, _)| name.len()).sum::<usize>() as f64 / n as f64;
+    let min = segs.iter().filter_map(|(name, _, _)| if (name.len() as f64) < mean { Some(name.len()) } else { None }).min();
+    Json(serde_json::json!({"min_among_below_mean": min, "mean_name_length": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-p10 — P10 de comprimento de nome dos segmentos. Sprint #4339.
+pub async fn segment_name_length_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p10_name_length": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.10).ceil() as usize).min(n - 1);
+    Json(serde_json::json!({"p10_name_length": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-count-below-mean-ratio — fração de segmentos com nome abaixo da média. Sprint #4340.
+pub async fn segment_name_length_count_below_mean_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_below_mean": null, "total_segments": 0}));
+    }
+    let mean = segs.iter().map(|(name, _, _)| name.len()).sum::<usize>() as f64 / n as f64;
+    let count = segs.iter().filter(|(name, _, _)| (name.len() as f64) < mean).count();
+    Json(serde_json::json!({"ratio_below_mean": count as f64 / n as f64, "mean_name_length": mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-count-below-p50 — número de segmentos com nome abaixo da mediana. Sprint #4317.
 pub async fn segment_name_length_count_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
