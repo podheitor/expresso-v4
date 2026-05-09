@@ -8899,6 +8899,76 @@ pub async fn segment_below_p10_bytes(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"segments": below, "p10_bytes": p10, "below_p10_count": cnt, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/below-p10-density — segmentos abaixo do P10 de densidade. Sprint #3237.
+pub async fn segment_below_p10_density(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "below_p10_count": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p10 = densities[((n as f64 * 0.10) as usize).min(n - 1)];
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, docs, bytes)| {
+            let d = if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 };
+            d < p10
+        })
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = below.len();
+    Json(serde_json::json!({"segments": below, "p10_density": p10, "below_p10_count": cnt, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/below-p25-density — segmentos abaixo do P25 de densidade. Sprint #3238.
+pub async fn segment_below_p25_density(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"segments": [], "total_segments": 0, "below_p25_count": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p25 = densities[((n as f64 * 0.25) as usize).min(n - 1)];
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, docs, bytes)| {
+            let d = if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 };
+            d < p25
+        })
+        .map(|(id, docs, bytes)| serde_json::json!({"segment_id": id, "num_docs": docs, "disk_bytes": bytes}))
+        .collect();
+    let cnt = below.len();
+    Json(serde_json::json!({"segments": below, "p25_density": p25, "below_p25_count": cnt, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-avg-docs — contagem de segmentos acima da média de docs. Sprint #3239.
+pub async fn segment_count_above_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_above_avg": 0, "total_segments": 0, "avg_docs": null}));
+    }
+    let avg = segs.iter().map(|(_, docs, _)| *docs as f64).sum::<f64>() / n as f64;
+    let count = segs.iter().filter(|(_, docs, _)| (*docs as f64) > avg).count();
+    Json(serde_json::json!({"count_above_avg": count, "avg_docs": avg, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-above-avg-bytes — contagem de segmentos acima da média de bytes. Sprint #3240.
+pub async fn segment_count_above_avg_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_above_avg": 0, "total_segments": 0, "avg_bytes": null}));
+    }
+    let avg = segs.iter().map(|(_, _, bytes)| *bytes as f64).sum::<f64>() / n as f64;
+    let count = segs.iter().filter(|(_, _, bytes)| (*bytes as f64) > avg).count();
+    Json(serde_json::json!({"count_above_avg": count, "avg_bytes": avg, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

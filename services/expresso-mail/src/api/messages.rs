@@ -452,6 +452,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/body-length-lorenz-by-sender",             get(body_length_lorenz_by_sender_stats))
         .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
         .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
+        .route("/mail/messages/stats/size-normalized-entropy-by-sender",        get(size_normalized_entropy_by_sender_stats))
+        .route("/mail/messages/stats/body-length-normalized-entropy-by-sender", get(body_length_normalized_entropy_by_sender_stats))
+        .route("/mail/messages/stats/size-harmonic-mean-by-sender",             get(size_harmonic_mean_by_sender_stats))
+        .route("/mail/messages/stats/body-length-harmonic-mean-by-sender",      get(body_length_harmonic_mean_by_sender_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -14287,6 +14291,106 @@ async fn body_length_entropy_by_sender_stats(
             vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
         };
         serde_json::json!({"sender": sender, "entropy_body_length": entropy, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-normalized-entropy-by-sender — entropia normalizada de size por remetente. Sprint #3233.
+async fn size_normalized_entropy_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        let max_entropy = if n > 1 { (n as f64).ln() } else { 1.0 };
+        let normalized = if max_entropy > 0.0 { entropy / max_entropy } else { 0.0 };
+        serde_json::json!({"sender": sender, "normalized_entropy_size": normalized, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-normalized-entropy-by-sender — entropia normalizada de body_length por remetente. Sprint #3234.
+async fn body_length_normalized_entropy_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.body_length) AS body_lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        let max_entropy = if n > 1 { (n as f64).ln() } else { 1.0 };
+        let normalized = if max_entropy > 0.0 { entropy / max_entropy } else { 0.0 };
+        serde_json::json!({"sender": sender, "normalized_entropy_body_length": normalized, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-harmonic-mean-by-sender — média harmônica de size por remetente. Sprint #3235.
+async fn size_harmonic_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE(COUNT(*) / NULLIF(SUM(1.0 / NULLIF(m.size::FLOAT8, 0)), 0), 0.0)::FLOAT8 AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY harmonic_mean_size DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, hm, cnt)| {
+        serde_json::json!({"sender": sender, "harmonic_mean_size": hm, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-harmonic-mean-by-sender — média harmônica de body_length por remetente. Sprint #3236.
+async fn body_length_harmonic_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE(COUNT(*) / NULLIF(SUM(1.0 / NULLIF(m.body_length::FLOAT8, 0)), 0), 0.0)::FLOAT8 AS harmonic_mean_body_length, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY harmonic_mean_body_length DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, hm, cnt)| {
+        serde_json::json!({"sender": sender, "harmonic_mean_body_length": hm, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
