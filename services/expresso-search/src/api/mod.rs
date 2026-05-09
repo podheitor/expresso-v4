@@ -8969,6 +8969,56 @@ pub async fn segment_count_above_avg_bytes(State(store): State<IndexStore>) -> J
     Json(serde_json::json!({"count_above_avg": count, "avg_bytes": avg, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/count-below-avg-docs — contagem de segmentos abaixo da média de docs. Sprint #3257.
+pub async fn segment_count_below_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_below_avg": 0, "total_segments": 0, "avg_docs": null}));
+    }
+    let avg = segs.iter().map(|(_, docs, _)| *docs as f64).sum::<f64>() / n as f64;
+    let count = segs.iter().filter(|(_, docs, _)| (*docs as f64) < avg).count();
+    Json(serde_json::json!({"count_below_avg": count, "avg_docs": avg, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-below-avg-bytes — contagem de segmentos abaixo da média de bytes. Sprint #3258.
+pub async fn segment_count_below_avg_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"count_below_avg": 0, "total_segments": 0, "avg_bytes": null}));
+    }
+    let avg = segs.iter().map(|(_, _, bytes)| *bytes as f64).sum::<f64>() / n as f64;
+    let count = segs.iter().filter(|(_, _, bytes)| (*bytes as f64) < avg).count();
+    Json(serde_json::json!({"count_below_avg": count, "avg_bytes": avg, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-avg-docs — fração de segmentos acima da média de docs. Sprint #3259.
+pub async fn segment_ratio_above_avg_docs(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_above_avg": null, "total_segments": 0}));
+    }
+    let avg = segs.iter().map(|(_, docs, _)| *docs as f64).sum::<f64>() / n as f64;
+    let above = segs.iter().filter(|(_, docs, _)| (*docs as f64) > avg).count();
+    let ratio = above as f64 / n as f64;
+    Json(serde_json::json!({"ratio_above_avg": ratio, "count_above_avg": above, "avg_docs": avg, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-above-avg-bytes — fração de segmentos acima da média de bytes. Sprint #3260.
+pub async fn segment_ratio_above_avg_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"ratio_above_avg": null, "total_segments": 0}));
+    }
+    let avg = segs.iter().map(|(_, _, bytes)| *bytes as f64).sum::<f64>() / n as f64;
+    let above = segs.iter().filter(|(_, _, bytes)| (*bytes as f64) > avg).count();
+    let ratio = above as f64 / n as f64;
+    Json(serde_json::json!({"ratio_above_avg": ratio, "count_above_avg": above, "avg_bytes": avg, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
