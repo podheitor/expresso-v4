@@ -690,6 +690,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-geometric-mean-by-owner", get(file_stats_name_length_geometric_mean_by_owner))
         .route("/api/v1/drive/files/stats/name-length-trimmed-mean-by-owner",   get(file_stats_name_length_trimmed_mean_by_owner))
         .route("/api/v1/drive/files/stats/name-length-winsorized-mean-by-owner",get(file_stats_name_length_winsorized_mean_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-mean-by-owner",          get(file_stats_name_length_mean_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-sum-by-owner",           get(file_stats_name_length_sum_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-range-by-owner",         get(file_stats_name_length_range_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-iqr-by-kind",            get(file_stats_name_length_iqr_by_kind))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -16227,6 +16231,52 @@ async fn file_stats_name_length_winsorized_mean_by_owner(State(state): State<App
         };
         serde_json::json!({"owner_id": owner, "winsorized_mean_name_length": mean, "file_count": cnt})
     }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-mean-by-owner — média de comprimento de nome por owner. Sprint #4149.
+async fn file_stats_name_length_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, AVG(LENGTH(name))::FLOAT8 AS mean_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, mean, cnt)| serde_json::json!({"owner_id": owner, "mean_name_length": mean.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-sum-by-owner — soma de comprimento de nome por owner. Sprint #4150.
+async fn file_stats_name_length_sum_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, SUM(LENGTH(name))::BIGINT AS sum_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, sum, cnt)| serde_json::json!({"owner_id": owner, "sum_name_length": sum.unwrap_or(0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-range-by-owner — range (max-min) de comprimento de nome por owner. Sprint #4151.
+async fn file_stats_name_length_range_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<i32>, Option<i32>, i64)> = sqlx::query_as(
+        "SELECT owner_id, MIN(LENGTH(name))::INT AS min_name_len, MAX(LENGTH(name))::INT AS max_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, min, max, cnt)| {
+        let range = match (min, max) { (Some(mn), Some(mx)) => Some(mx - mn), _ => None };
+        serde_json::json!({"owner_id": owner, "range_name_length": range, "min_name_length": min, "max_name_length": max, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-iqr-by-kind — IQR de comprimento de nome por kind. Sprint #4152.
+async fn file_stats_name_length_iqr_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p25_name_len, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p75_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, p25, p75, cnt)| serde_json::json!({"kind": kind, "iqr_name_length": p75 - p25, "p25_name_length": p25, "p75_name_length": p75, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

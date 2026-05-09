@@ -9856,6 +9856,64 @@ pub async fn segment_name_length_above_p50(State(store): State<IndexStore>) -> J
     Json(serde_json::json!({"above_p50_count": count, "total_segments": n, "p50_name_length": p50}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-below-mean — segmentos com nome mais curto que a média. Sprint #4157.
+pub async fn segment_name_length_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"below_mean_count": 0, "total_segments": 0, "mean_name_length": null}));
+    }
+    let mean = segs.iter().map(|(name, _, _)| name.len()).sum::<usize>() as f64 / n as f64;
+    let count = segs.iter().filter(|(name, _, _)| (name.len() as f64) < mean).count();
+    Json(serde_json::json!({"below_mean_count": count, "total_segments": n, "mean_name_length": mean}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-below-p50 — segmentos com nome mais curto que a mediana. Sprint #4158.
+pub async fn segment_name_length_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"below_p50_count": 0, "total_segments": 0, "p50_name_length": null}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let p50 = if n % 2 == 0 { (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0 } else { vals[n / 2] as f64 };
+    let count = vals.iter().filter(|&&v| (v as f64) < p50).count();
+    Json(serde_json::json!({"below_p50_count": count, "total_segments": n, "p50_name_length": p50}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-normalized — comprimentos de nome normalizados (min-max). Sprint #4159.
+pub async fn segment_name_length_normalized(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"normalized": [], "total_segments": 0}));
+    }
+    let lens: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    let min = lens.iter().copied().min().unwrap_or(0);
+    let max = lens.iter().copied().max().unwrap_or(0);
+    let range = (max - min) as f64;
+    if range == 0.0 {
+        return Json(serde_json::json!({"normalized": lens.iter().map(|_| 0.0).collect::<Vec<f64>>(), "min": min, "max": max, "total_segments": n}));
+    }
+    let normalized: Vec<f64> = lens.iter().map(|&v| (v - min) as f64 / range).collect();
+    Json(serde_json::json!({"normalized": normalized, "min_name_length": min, "max_name_length": max, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-rank-max — segmento com nome mais longo (rank 1). Sprint #4160.
+pub async fn segment_name_length_rank_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"rank_max_name": null, "rank_max_length": null, "total_segments": 0}));
+    }
+    let max_entry = segs.iter().max_by_key(|(name, _, _)| name.len());
+    match max_entry {
+        Some((name, docs, bytes)) => Json(serde_json::json!({"rank_max_name": name, "rank_max_length": name.len(), "docs": docs, "bytes": bytes, "total_segments": n})),
+        None => Json(serde_json::json!({"rank_max_name": null, "total_segments": n})),
+    }
+}
+
 /// GET /api/v1/search/index/segments/name-length-p25 — P25 de comprimento de nome de segmento. Sprint #4057.
 pub async fn segment_name_length_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
