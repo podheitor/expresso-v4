@@ -817,6 +817,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-count-below-p99-by-sender",             get(size_count_below_p99_by_sender_stats))
         .route("/mail/messages/stats/body-length-count-above-p25-by-sender",      get(body_length_count_above_p25_by_sender_stats))
         .route("/mail/messages/stats/body-length-count-below-p25-by-sender",      get(body_length_count_below_p25_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-above-p50-by-sender",      get(body_length_count_above_p50_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-below-p50-by-sender",      get(body_length_count_below_p50_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-above-p75-by-sender",      get(body_length_count_above_p75_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-below-p75-by-sender",      get(body_length_count_below_p75_by_sender_stats))
         .route("/mail/messages/stats/size-count-above-p90-by-sender",             get(size_count_above_p90_by_sender_stats))
         .route("/mail/messages/stats/size-count-below-p90-by-sender",             get(size_count_below_p90_by_sender_stats))
         .route("/mail/messages/stats/size-count-above-p95-by-sender",             get(size_count_above_p95_by_sender_stats))
@@ -23100,6 +23104,90 @@ async fn size_count_below_p50_by_sender_stats(
     let mut seen = std::collections::HashSet::new();
     let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
         .map(|(sender, p50, below, cnt)| serde_json::json!({"sender": sender, "p50_size": p50, "count_below_p50": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-above-p50-by-sender — contagem de msgs com comprimento de corpo acima do P50 × remetente. Sprint #4833.
+async fn body_length_count_above_p50_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(body))::FLOAT8 AS p50_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(body) > PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(body)) OVER (PARTITION BY sender))::BIGINT AS count_above_p50, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p50, above, cnt)| serde_json::json!({"sender": sender, "p50_body_length": p50, "count_above_p50": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-below-p50-by-sender — contagem de msgs com comprimento de corpo abaixo do P50 × remetente. Sprint #4834.
+async fn body_length_count_below_p50_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(body))::FLOAT8 AS p50_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(body) < PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(body)) OVER (PARTITION BY sender))::BIGINT AS count_below_p50, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p50, below, cnt)| serde_json::json!({"sender": sender, "p50_body_length": p50, "count_below_p50": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-above-p75-by-sender — contagem de msgs com comprimento de corpo acima do P75 × remetente. Sprint #4835.
+async fn body_length_count_above_p75_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(body))::FLOAT8 AS p75_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(body) > PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(body)) OVER (PARTITION BY sender))::BIGINT AS count_above_p75, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p75, above, cnt)| serde_json::json!({"sender": sender, "p75_body_length": p75, "count_above_p75": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-below-p75-by-sender — contagem de msgs com comprimento de corpo abaixo do P75 × remetente. Sprint #4836.
+async fn body_length_count_below_p75_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(body))::FLOAT8 AS p75_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(body) < PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(body)) OVER (PARTITION BY sender))::BIGINT AS count_below_p75, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p75, below, cnt)| serde_json::json!({"sender": sender, "p75_body_length": p75, "count_below_p75": below, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

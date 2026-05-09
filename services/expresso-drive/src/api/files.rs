@@ -799,6 +799,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-count-below-p25",             get(file_stats_version_count_below_p25))
         .route("/api/v1/drive/files/stats/version-count-above-p50",             get(file_stats_version_count_above_p50))
         .route("/api/v1/drive/files/stats/version-count-below-p50",             get(file_stats_version_count_below_p50))
+        .route("/api/v1/drive/files/stats/version-count-above-p75",             get(file_stats_version_count_above_p75))
+        .route("/api/v1/drive/files/stats/version-count-below-p75",             get(file_stats_version_count_below_p75))
+        .route("/api/v1/drive/files/stats/version-count-above-p90",             get(file_stats_version_count_above_p90))
+        .route("/api/v1/drive/files/stats/version-count-below-p90",             get(file_stats_version_count_below_p90))
         .route("/api/v1/drive/files/stats/version-range",                        get(file_stats_version_range))
         .route("/api/v1/drive/files/stats/version-gini",                         get(file_stats_version_gini))
         .route("/api/v1/drive/files/stats/version-mad",                         get(file_stats_version_mad))
@@ -17667,6 +17671,50 @@ async fn file_stats_version_count_below_p50(State(state): State<AppState>, ctx: 
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p50_version": row.0, "count_below_p50": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-above-p75 — contagem de arquivos com versão acima do P75. Sprint #4829.
+async fn file_stats_version_count_above_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p75_version, \
+                COUNT(*) FILTER (WHERE version > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY version) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p75, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_version": row.0, "count_above_p75": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-below-p75 — contagem de arquivos com versão abaixo do P75. Sprint #4830.
+async fn file_stats_version_count_below_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p75_version, \
+                COUNT(*) FILTER (WHERE version < (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY version) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p75, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_version": row.0, "count_below_p75": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-above-p90 — contagem de arquivos com versão acima do P90. Sprint #4831.
+async fn file_stats_version_count_above_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p90_version, \
+                COUNT(*) FILTER (WHERE version > (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_version": row.0, "count_above_p90": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-below-p90 — contagem de arquivos com versão abaixo do P90. Sprint #4832.
+async fn file_stats_version_count_below_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p90_version, \
+                COUNT(*) FILTER (WHERE version < (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_version": row.0, "count_below_p90": row.1, "file_count": row.2})))
 }
 
 /// GET /api/v1/drive/files/stats/version-range — range (max−min) de versão global. Sprint #4711.
