@@ -10648,6 +10648,70 @@ pub async fn segment_name_length_sum_above_p75(State(store): State<IndexStore>) 
     Json(serde_json::json!({"sum_above_p75": sum, "p75_name_length": p75, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-sum-below-p95 — soma de comprimento de nome dos segmentos abaixo do P95. Sprint #4757.
+pub async fn segment_name_length_sum_below_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_below_p95": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p95_idx = ((n as f64 * 0.95).ceil() as usize).min(n - 1);
+    let p95 = vals[p95_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p95).sum();
+    let count = vals.iter().filter(|&&v| v < p95).count();
+    Json(serde_json::json!({"sum_name_length_below_p95": sum, "p95_name_length": p95, "count_below_p95": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-below-p99 — soma de comprimento de nome dos segmentos abaixo do P99. Sprint #4758.
+pub async fn segment_name_length_sum_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_below_p99": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p99_idx = ((n as f64 * 0.99).ceil() as usize).min(n - 1);
+    let p99 = vals[p99_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p99).sum();
+    let count = vals.iter().filter(|&&v| v < p99).count();
+    Json(serde_json::json!({"sum_name_length_below_p99": sum, "p99_name_length": p99, "count_below_p99": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p95 — soma de comprimento de nome dos segmentos acima do P95. Sprint #4759.
+pub async fn segment_name_length_sum_above_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_above_p95": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p95_idx = ((n as f64 * 0.95).ceil() as usize).min(n - 1);
+    let p95 = vals[p95_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p95).sum();
+    let count = vals.iter().filter(|&&v| v > p95).count();
+    Json(serde_json::json!({"sum_name_length_above_p95": sum, "p95_name_length": p95, "count_above_p95": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p50 — soma de comprimento de nome dos segmentos acima do P50. Sprint #4760.
+pub async fn segment_name_length_sum_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_above_p50": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p50_idx = ((n as f64 * 0.50).ceil() as usize).min(n - 1);
+    let p50 = vals[p50_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p50).sum();
+    let count = vals.iter().filter(|&&v| v > p50).count();
+    Json(serde_json::json!({"sum_name_length_above_p50": sum, "p50_name_length": p50, "count_above_p50": count, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-sum-below-p99 — soma de bytes dos segmentos abaixo do P99. Sprint #4737.
 pub async fn segment_bytes_sum_below_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
