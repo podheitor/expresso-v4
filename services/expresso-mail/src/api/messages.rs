@@ -970,6 +970,14 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-below-p05-by-folder",    get(attachment_count_below_p05_by_folder_stats))
         .route("/mail/messages/stats/size-count-above-p10-by-sender",          get(size_count_above_p10_by_sender_stats))
         .route("/mail/messages/stats/size-count-below-p10-by-sender",          get(size_count_below_p10_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-above-mean-by-sender",   get(attachment_count_above_mean_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-below-mean-by-sender",   get(attachment_count_below_mean_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-above-mean-by-sender-v2", get(body_length_count_above_mean_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-below-mean-by-sender-v2", get(body_length_count_below_mean_by_sender_stats))
+        .route("/mail/messages/stats/size-count-above-mean-by-sender-v2",      get(size_count_above_mean_by_sender_stats))
+        .route("/mail/messages/stats/size-count-below-mean-by-sender-v2",      get(size_count_below_mean_by_sender_stats))
+        .route("/mail/messages/stats/size-count-above-p99-by-sender-v2",       get(size_count_above_p99_by_sender_stats_v2))
+        .route("/mail/messages/stats/size-count-below-p99-by-sender",          get(size_count_below_p99_by_sender_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -27952,6 +27960,182 @@ async fn size_count_below_p10_by_sender_stats(
     let result: Vec<serde_json::Value> = rows.into_iter()
         .filter(|(s, _, _, _)| seen.insert(s.clone()))
         .map(|(sender, p10, below, cnt)| serde_json::json!({"sender": sender, "p10_size": p10, "count_below_p10": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-above-mean-by-sender — contagem acima da média por remetente. Sprint #5217.
+async fn attachment_count_above_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(attachment_count)::FLOAT8 AS mean_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count > AVG(attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, above, cnt)| serde_json::json!({"sender": sender, "mean_attachment_count": mean, "count_above_mean": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-below-mean-by-sender — contagem abaixo da média por remetente. Sprint #5218.
+async fn attachment_count_below_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(attachment_count)::FLOAT8 AS mean_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count < AVG(attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, below, cnt)| serde_json::json!({"sender": sender, "mean_attachment_count": mean, "count_below_mean": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-above-mean-by-sender-v2 — body_length acima da média por remetente. Sprint #5219.
+async fn body_length_count_above_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(body_length)::FLOAT8 AS mean_body_length, \
+                COUNT(*) FILTER (WHERE body_length > AVG(body_length) OVER (PARTITION BY sender))::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, above, cnt)| serde_json::json!({"sender": sender, "mean_body_length": mean, "count_above_mean": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-below-mean-by-sender-v2 — body_length abaixo da média por remetente. Sprint #5220.
+async fn body_length_count_below_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(body_length)::FLOAT8 AS mean_body_length, \
+                COUNT(*) FILTER (WHERE body_length < AVG(body_length) OVER (PARTITION BY sender))::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, below, cnt)| serde_json::json!({"sender": sender, "mean_body_length": mean, "count_below_mean": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-above-mean-by-sender-v2 — size acima da média por remetente. Sprint #5221.
+async fn size_count_above_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(size)::FLOAT8 AS mean_size, \
+                COUNT(*) FILTER (WHERE size > AVG(size) OVER (PARTITION BY sender))::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, above, cnt)| serde_json::json!({"sender": sender, "mean_size": mean, "count_above_mean": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-below-mean-by-sender-v2 — size abaixo da média por remetente. Sprint #5222.
+async fn size_count_below_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(size)::FLOAT8 AS mean_size, \
+                COUNT(*) FILTER (WHERE size < AVG(size) OVER (PARTITION BY sender))::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mean, below, cnt)| serde_json::json!({"sender": sender, "mean_size": mean, "count_below_mean": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-above-p99-by-sender-v2 — size acima do P99 por remetente. Sprint #5223.
+async fn size_count_above_p99_by_sender_stats_v2(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p99_size, \
+                COUNT(*) FILTER (WHERE size > PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size) OVER (PARTITION BY sender))::BIGINT AS count_above_p99, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p99, above, cnt)| serde_json::json!({"sender": sender, "p99_size": p99, "count_above_p99": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-below-p99-by-sender — size abaixo do P99 por remetente. Sprint #5224.
+async fn size_count_below_p99_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p99_size, \
+                COUNT(*) FILTER (WHERE size < PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size) OVER (PARTITION BY sender))::BIGINT AS count_below_p99, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p99, below, cnt)| serde_json::json!({"sender": sender, "p99_size": p99, "count_below_p99": below, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

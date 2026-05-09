@@ -16103,6 +16103,95 @@ pub async fn segment_size_cv(State(store): State<IndexStore>) -> Json<serde_json
     Json(serde_json::json!({"cv_size": cv, "mean_size": mean, "stddev_size": stddev, "segment_count": n}))
 }
 
+pub async fn segment_size_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"geometric_mean_size": null, "segment_count": 0}));
+    }
+    let log_sum: f64 = segs.iter().map(|(_, _, db)| (*db as f64).ln()).sum();
+    let geo_mean = (log_sum / n as f64).exp();
+    Json(serde_json::json!({"geometric_mean_size": geo_mean, "segment_count": n}))
+}
+
+pub async fn segment_size_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"harmonic_mean_size": null, "segment_count": 0}));
+    }
+    let recip_sum: f64 = segs.iter().map(|(_, _, db)| if *db > 0 { 1.0 / *db as f64 } else { 0.0 }).sum();
+    let harm_mean = if recip_sum > 0.0 { n as f64 / recip_sum } else { 0.0 };
+    Json(serde_json::json!({"harmonic_mean_size": harm_mean, "segment_count": n}))
+}
+
+pub async fn segment_size_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"size_entropy": null, "segment_count": 0}));
+    }
+    let total: u64 = segs.iter().map(|(_, _, db)| *db).sum();
+    let entropy = if total > 0 {
+        segs.iter().filter(|(_, _, db)| *db > 0).map(|(_, _, db)| {
+            let p = *db as f64 / total as f64;
+            -p * p.ln()
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"size_entropy": entropy, "total_bytes": total, "segment_count": n}))
+}
+
+pub async fn segment_size_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"size_gini": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    sizes.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let mean = sizes.iter().sum::<f64>() / n as f64;
+    let gini = if mean > 0.0 {
+        let mut diff_sum = 0.0;
+        for i in 0..n {
+            for j in 0..n {
+                diff_sum += (sizes[i] - sizes[j]).abs();
+            }
+        }
+        diff_sum / (2.0 * n as f64 * n as f64 * mean)
+    } else { 0.0 };
+    Json(serde_json::json!({"size_gini": gini, "mean_size": mean, "segment_count": n}))
+}
+
+pub async fn segment_size_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"winsorized_mean_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    sizes.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let lo_idx = (n as f64 * 0.1) as usize;
+    let hi_idx = n.saturating_sub(1).saturating_sub(lo_idx);
+    let lo_val = sizes[lo_idx];
+    let hi_val = sizes[hi_idx];
+    let win_mean = sizes.iter().map(|&s| s.clamp(lo_val, hi_val)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"winsorized_mean_size": win_mean, "lo_clamp": lo_val, "hi_clamp": hi_val, "segment_count": n}))
+}
+
+pub async fn segment_size_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"trimmed_mean_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    sizes.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let trim = (n as f64 * 0.1) as usize;
+    let trimmed = &sizes[trim..n.saturating_sub(trim)];
+    let trim_mean = if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 };
+    Json(serde_json::json!({"trimmed_mean_size": trim_mean, "trim_count": trim, "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
