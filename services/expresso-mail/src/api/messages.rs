@@ -526,6 +526,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count-variance-by-folder",             get(cc_count_variance_by_folder_stats))
         .route("/mail/messages/stats/cc-count-skewness-by-tier",               get(cc_count_skewness_by_tier_stats))
         .route("/mail/messages/stats/cc-count-skewness-by-folder",             get(cc_count_skewness_by_folder_stats))
+        .route("/mail/messages/stats/cc-count-kurtosis-by-tier",               get(cc_count_kurtosis_by_tier_stats))
+        .route("/mail/messages/stats/cc-count-kurtosis-by-folder",             get(cc_count_kurtosis_by_folder_stats))
+        .route("/mail/messages/stats/cc-count-coeff-var-by-tier",              get(cc_count_coeff_var_by_tier_stats))
+        .route("/mail/messages/stats/cc-count-coeff-var-by-folder",            get(cc_count_coeff_var_by_folder_stats))
         .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
         .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
         .route("/mail/messages/stats/size-normalized-entropy-by-sender",        get(size_normalized_entropy_by_sender_stats))
@@ -20725,6 +20729,128 @@ async fn cc_count_skewness_by_folder_stats(
             if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64 }
         };
         serde_json::json!({"folder": folder, "skewness_cc_count": skewness, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count-kurtosis-by-tier — curtose do cc_count por tier. Sprint #3793.
+async fn cc_count_kurtosis_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.cc_count ORDER BY m.cc_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0 }
+        };
+        serde_json::json!({"tier": tier, "kurtosis_cc_count": kurtosis, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count-kurtosis-by-folder — curtose do cc_count por folder. Sprint #3794.
+async fn cc_count_kurtosis_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                ARRAY_AGG(m.cc_count ORDER BY m.cc_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0 }
+        };
+        serde_json::json!({"folder": folder, "kurtosis_cc_count": kurtosis, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count-coeff-var-by-tier — CV do cc_count por tier. Sprint #3795.
+async fn cc_count_coeff_var_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.cc_count ORDER BY m.cc_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else { (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt() };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        serde_json::json!({"tier": tier, "coeff_var_cc_count": cv, "mean_cc_count": mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/cc-count-coeff-var-by-folder — CV do cc_count por folder. Sprint #3796.
+async fn cc_count_coeff_var_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                ARRAY_AGG(m.cc_count ORDER BY m.cc_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else { (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt() };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        serde_json::json!({"folder": folder, "coeff_var_cc_count": cv, "mean_cc_count": mean, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
