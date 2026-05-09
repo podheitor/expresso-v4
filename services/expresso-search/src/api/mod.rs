@@ -9047,6 +9047,55 @@ pub async fn segment_docs_ratio_above_p99(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"docs_ratio_above_p99": ratio, "count_above_p99": count_above, "docs_p99": p99, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-ratio-above-p99 — Fração de segmentos com bytes acima do P99. Sprint #3817.
+pub async fn segment_bytes_ratio_above_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_ratio_above_p99": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p99 = vals[idx] as f64;
+    let count_above = vals.iter().filter(|&&v| v as f64 > p99).count();
+    let ratio = count_above as f64 / n as f64;
+    Json(serde_json::json!({"bytes_ratio_above_p99": ratio, "count_above_p99": count_above, "bytes_p99": p99, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-count-min — Segmento com mínimo de docs. Sprint #3818.
+pub async fn segment_docs_count_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_docs": null, "total_segments": 0}));
+    }
+    let min_docs = segs.iter().map(|(_, d, _)| *d).min().unwrap_or(0);
+    Json(serde_json::json!({"min_docs": min_docs, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-count-min — Segmento com mínimo de bytes. Sprint #3819.
+pub async fn segment_bytes_count_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"min_bytes": null, "total_segments": 0}));
+    }
+    let min_bytes = segs.iter().map(|(_, _, b)| *b).min().unwrap_or(0);
+    Json(serde_json::json!({"min_bytes": min_bytes, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-count-max — Segmento com máximo de docs. Sprint #3820.
+pub async fn segment_docs_count_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_docs": null, "total_segments": 0}));
+    }
+    let max_docs = segs.iter().map(|(_, d, _)| *d).max().unwrap_or(0);
+    Json(serde_json::json!({"max_docs": max_docs, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
