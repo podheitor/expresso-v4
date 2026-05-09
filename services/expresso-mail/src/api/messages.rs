@@ -756,6 +756,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-harmonic-mean-by-folder", get(attachment_count_harmonic_mean_by_folder))
         .route("/mail/messages/stats/attachment-count-geometric-mean-by-folder", get(attachment_count_geometric_mean_by_folder))
         .route("/mail/messages/stats/attachment-count-p99-by-folder",          get(attachment_count_p99_by_folder))
+        .route("/mail/messages/stats/attachment-count-p99-by-tier",           get(attachment_count_p99_by_tier))
+        .route("/mail/messages/stats/attachment-count-p01-by-folder",         get(attachment_count_p01_by_folder))
+        .route("/mail/messages/stats/attachment-count-p01-by-tier",           get(attachment_count_p01_by_tier))
+        .route("/mail/messages/stats/size-mode-by-tier",                       get(size_mode_by_tier))
         .route("/mail/messages/stats/attachment-count-count-above-mean-by-folder", get(attachment_count_count_above_mean_by_folder))
         .route("/mail/messages/stats/attachment-count-count-below-mean-by-folder", get(attachment_count_count_below_mean_by_folder))
         .route("/mail/messages/stats/body-length-count-above-mean-by-folder",  get(body_length_count_above_mean_by_folder))
@@ -22292,6 +22296,80 @@ async fn attachment_count_p99_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p99, cnt)| serde_json::json!({"folder": folder, "p99_attachment_count": p99, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p99-by-tier — P99 de contagem de anexos × tier. Sprint #4553.
+async fn attachment_count_p99_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(array_length(attachments, 1), 0))::FLOAT8 AS p99_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, cnt)| serde_json::json!({"tier": tier, "p99_attachment_count": p99, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p01-by-folder — P01 de contagem de anexos × folder. Sprint #4554.
+async fn attachment_count_p01_by_folder(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY COALESCE(array_length(m.attachments, 1), 0))::FLOAT8 AS p01_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p01, cnt)| serde_json::json!({"folder": folder, "p01_attachment_count": p01, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p01-by-tier — P01 de contagem de anexos × tier. Sprint #4555.
+async fn attachment_count_p01_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY COALESCE(array_length(attachments, 1), 0))::FLOAT8 AS p01_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p01, cnt)| serde_json::json!({"tier": tier, "p01_attachment_count": p01, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-mode-by-tier — moda de tamanho × tier. Sprint #4556.
+async fn size_mode_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                MODE() WITHIN GROUP (ORDER BY size)::FLOAT8 AS mode_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mode, cnt)| serde_json::json!({"tier": tier, "mode_size": mode, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

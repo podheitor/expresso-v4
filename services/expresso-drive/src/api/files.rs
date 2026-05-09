@@ -770,6 +770,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-kurtosis-by-kind",             get(file_stats_size_kurtosis_by_kind))
         .route("/api/v1/drive/files/stats/size-kurtosis-by-mime",             get(file_stats_size_kurtosis_by_mime))
         .route("/api/v1/drive/files/stats/size-kurtosis-by-ext",              get(file_stats_size_kurtosis_by_ext))
+        .route("/api/v1/drive/files/stats/version-mode",                       get(file_stats_version_mode))
+        .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
+        .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
+        .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17419,6 +17423,43 @@ async fn file_stats_size_kurtosis_by_ext(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(ext, ku, cnt)| serde_json::json!({"ext": ext, "kurtosis_size": ku, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/version-mode — moda de versão global. Sprint #4549.
+async fn file_stats_version_mode(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT MODE() WITHIN GROUP (ORDER BY version)::FLOAT8 AS mode_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mode_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-cv — coeficiente de variação de versão global. Sprint #4550.
+async fn file_stats_version_cv(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, Option<f64>, i64) = sqlx::query_as(
+        "SELECT AVG(version)::FLOAT8 AS mean_ver, STDDEV_POP(version)::FLOAT8 AS stddev_ver, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let cv = match (row.0, row.1) { (Some(m), Some(s)) if m != 0.0 => Some(s / m), _ => None };
+    Ok(Json(serde_json::json!({"cv_version": cv, "mean_version": row.0, "stddev_version": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-p75 — P75 de versão global. Sprint #4551.
+async fn file_stats_version_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p75_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-p90 — P90 de versão global. Sprint #4552.
+async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p90_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_version": row.0, "file_count": row.1})))
 }
 
 /// GET /api/v1/drive/files/stats/version-min-by-ext — versão mínima por extensão. Sprint #2426.
