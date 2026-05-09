@@ -750,6 +750,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-count-above-mean",              get(file_stats_size_count_above_mean))
         .route("/api/v1/drive/files/stats/size-count-below-mean",              get(file_stats_size_count_below_mean))
         .route("/api/v1/drive/files/stats/size-mode-by-kind",                  get(file_stats_size_mode_by_kind))
+        .route("/api/v1/drive/files/stats/size-mode-by-mime",                  get(file_stats_size_mode_by_mime))
+        .route("/api/v1/drive/files/stats/size-mode-by-ext",                   get(file_stats_size_mode_by_ext))
+        .route("/api/v1/drive/files/stats/size-harmonic-mean-by-kind",         get(file_stats_size_harmonic_mean_by_kind))
+        .route("/api/v1/drive/files/stats/size-harmonic-mean-by-mime",         get(file_stats_size_harmonic_mean_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17124,6 +17128,56 @@ async fn file_stats_size_mode_by_kind(State(state): State<AppState>, ctx: Reques
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(kind, mode, mf, cnt)| serde_json::json!({"kind": kind, "mode_size_bytes": mode, "mode_frequency": mf, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mode-by-mime — moda de tamanho de arquivo por MIME. Sprint #4449.
+async fn file_stats_size_mode_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                MODE() WITHIN GROUP (ORDER BY size)::BIGINT AS mode_size, \
+                COUNT(*) FILTER (WHERE size = MODE() WITHIN GROUP (ORDER BY size))::BIGINT AS mode_freq, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, mode, mf, cnt)| serde_json::json!({"mime_type": mime, "mode_size_bytes": mode, "mode_frequency": mf, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mode-by-ext — moda de tamanho de arquivo por extensão. Sprint #4450.
+async fn file_stats_size_mode_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                MODE() WITHIN GROUP (ORDER BY size)::BIGINT AS mode_size, \
+                COUNT(*) FILTER (WHERE size = MODE() WITHIN GROUP (ORDER BY size))::BIGINT AS mode_freq, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, mode, mf, cnt)| serde_json::json!({"ext": ext, "mode_size_bytes": mode, "mode_frequency": mf, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-harmonic-mean-by-kind — média harmônica de tamanho por kind. Sprint #4451.
+async fn file_stats_size_harmonic_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                (COUNT(*) FILTER (WHERE size > 0))::FLOAT8 / NULLIF(SUM(1.0 / NULLIF(size, 0)), 0) AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, hm, cnt)| serde_json::json!({"kind": kind, "harmonic_mean_size_bytes": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-harmonic-mean-by-mime — média harmônica de tamanho por MIME. Sprint #4452.
+async fn file_stats_size_harmonic_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                (COUNT(*) FILTER (WHERE size > 0))::FLOAT8 / NULLIF(SUM(1.0 / NULLIF(size, 0)), 0) AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, hm, cnt)| serde_json::json!({"mime_type": mime, "harmonic_mean_size_bytes": hm, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
