@@ -758,6 +758,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-geometric-mean-by-kind",       get(file_stats_size_geometric_mean_by_kind))
         .route("/api/v1/drive/files/stats/size-geometric-mean-by-mime",       get(file_stats_size_geometric_mean_by_mime))
         .route("/api/v1/drive/files/stats/size-geometric-mean-by-ext",        get(file_stats_size_geometric_mean_by_ext))
+        .route("/api/v1/drive/files/stats/size-trimmed-mean-by-kind",        get(file_stats_size_trimmed_mean_by_kind))
+        .route("/api/v1/drive/files/stats/size-trimmed-mean-by-mime",        get(file_stats_size_trimmed_mean_by_mime))
+        .route("/api/v1/drive/files/stats/size-trimmed-mean-by-ext",         get(file_stats_size_trimmed_mean_by_ext))
+        .route("/api/v1/drive/files/stats/size-winsorized-mean-by-kind",     get(file_stats_size_winsorized_mean_by_kind))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17230,6 +17234,76 @@ async fn file_stats_size_geometric_mean_by_ext(State(state): State<AppState>, ct
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(ext, gm, cnt)| serde_json::json!({"ext": ext, "geometric_mean_size_bytes": gm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trimmed-mean-by-kind — trimmed mean de tamanho por kind. Sprint #4489.
+async fn file_stats_size_trimmed_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(size ORDER BY size) AS sizes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, sizes, cnt)| {
+        let vals: Vec<f64> = sizes.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n > 0 {
+            let lo = (n as f64 * 0.10).ceil() as usize;
+            let hi = ((n as f64 * 0.90).floor() as usize).min(n.saturating_sub(1));
+            if lo <= hi { let s: f64 = vals[lo..=hi].iter().sum(); Some(s / (hi - lo + 1) as f64) } else { None }
+        } else { None };
+        serde_json::json!({"kind": kind, "trimmed_mean_size_bytes": mean, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trimmed-mean-by-mime — trimmed mean de tamanho por MIME. Sprint #4490.
+async fn file_stats_size_trimmed_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT mime_type, ARRAY_AGG(size ORDER BY size) AS sizes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, sizes, cnt)| {
+        let vals: Vec<f64> = sizes.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n > 0 {
+            let lo = (n as f64 * 0.10).ceil() as usize;
+            let hi = ((n as f64 * 0.90).floor() as usize).min(n.saturating_sub(1));
+            if lo <= hi { let s: f64 = vals[lo..=hi].iter().sum(); Some(s / (hi - lo + 1) as f64) } else { None }
+        } else { None };
+        serde_json::json!({"mime_type": mime, "trimmed_mean_size_bytes": mean, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trimmed-mean-by-ext — trimmed mean de tamanho por extensão. Sprint #4491.
+async fn file_stats_size_trimmed_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, ARRAY_AGG(size ORDER BY size) AS sizes, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, sizes, cnt)| {
+        let vals: Vec<f64> = sizes.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n > 0 {
+            let lo = (n as f64 * 0.10).ceil() as usize;
+            let hi = ((n as f64 * 0.90).floor() as usize).min(n.saturating_sub(1));
+            if lo <= hi { let s: f64 = vals[lo..=hi].iter().sum(); Some(s / (hi - lo + 1) as f64) } else { None }
+        } else { None };
+        serde_json::json!({"ext": ext, "trimmed_mean_size_bytes": mean, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-winsorized-mean-by-kind — winsorized mean de tamanho por kind. Sprint #4492.
+async fn file_stats_size_winsorized_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                AVG(GREATEST(LEAST(size::FLOAT8, PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size) OVER (PARTITION BY kind)), \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY size) OVER (PARTITION BY kind)))::FLOAT8 AS winsorized_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, wm, cnt)| serde_json::json!({"kind": kind, "winsorized_mean_size_bytes": wm, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
