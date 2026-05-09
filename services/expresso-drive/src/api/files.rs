@@ -754,6 +754,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-mode-by-ext",                   get(file_stats_size_mode_by_ext))
         .route("/api/v1/drive/files/stats/size-harmonic-mean-by-kind",         get(file_stats_size_harmonic_mean_by_kind))
         .route("/api/v1/drive/files/stats/size-harmonic-mean-by-mime",         get(file_stats_size_harmonic_mean_by_mime))
+        .route("/api/v1/drive/files/stats/size-harmonic-mean-by-ext",         get(file_stats_size_harmonic_mean_by_ext))
+        .route("/api/v1/drive/files/stats/size-geometric-mean-by-kind",       get(file_stats_size_geometric_mean_by_kind))
+        .route("/api/v1/drive/files/stats/size-geometric-mean-by-mime",       get(file_stats_size_geometric_mean_by_mime))
+        .route("/api/v1/drive/files/stats/size-geometric-mean-by-ext",        get(file_stats_size_geometric_mean_by_ext))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17178,6 +17182,54 @@ async fn file_stats_size_harmonic_mean_by_mime(State(state): State<AppState>, ct
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(mime, hm, cnt)| serde_json::json!({"mime_type": mime, "harmonic_mean_size_bytes": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-harmonic-mean-by-ext — média harmônica de tamanho por extensão. Sprint #4469.
+async fn file_stats_size_harmonic_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                (COUNT(*) FILTER (WHERE size > 0))::FLOAT8 / NULLIF(SUM(1.0 / NULLIF(size, 0)), 0) AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, hm, cnt)| serde_json::json!({"ext": ext, "harmonic_mean_size_bytes": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-geometric-mean-by-kind — média geométrica de tamanho por kind. Sprint #4470.
+async fn file_stats_size_geometric_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                EXP(AVG(LN(NULLIF(size, 0))))::FLOAT8 AS geometric_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, gm, cnt)| serde_json::json!({"kind": kind, "geometric_mean_size_bytes": gm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-geometric-mean-by-mime — média geométrica de tamanho por MIME. Sprint #4471.
+async fn file_stats_size_geometric_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                EXP(AVG(LN(NULLIF(size, 0))))::FLOAT8 AS geometric_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, gm, cnt)| serde_json::json!({"mime_type": mime, "geometric_mean_size_bytes": gm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-geometric-mean-by-ext — média geométrica de tamanho por extensão. Sprint #4472.
+async fn file_stats_size_geometric_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                EXP(AVG(LN(NULLIF(size, 0))))::FLOAT8 AS geometric_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, gm, cnt)| serde_json::json!({"ext": ext, "geometric_mean_size_bytes": gm, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
