@@ -8471,6 +8471,81 @@ pub async fn segment_byte_density_mad(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"mad_byte_density": mad, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/byte-density-entropy — entropia da densidade bytes/doc. Sprint #3108.
+pub async fn segment_byte_density_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"entropy_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = densities.iter().sum();
+    let entropy = if total > 0.0 {
+        densities.iter().map(|&d| {
+            let p = d / total;
+            if p > 0.0 { -p * p.ln() } else { 0.0 }
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"entropy_byte_density": entropy, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-gini — coeficiente Gini da densidade bytes/doc. Sprint #3113.
+pub async fn segment_byte_density_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"gini_byte_density": null, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let sum: f64 = densities.iter().sum();
+    let gini = if sum > 0.0 {
+        let weighted: f64 = densities.iter().enumerate().map(|(i, &d)| (2 * (i + 1) - n - 1) as f64 * d).sum();
+        weighted / (n as f64 * sum)
+    } else { 0.0 };
+    Json(serde_json::json!({"gini_byte_density": gini, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-hhi — índice HHI da densidade bytes/doc. Sprint #3118.
+pub async fn segment_byte_density_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"hhi_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = densities.iter().sum();
+    let hhi = if total > 0.0 {
+        densities.iter().map(|&d| (d / total).powi(2)).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"hhi_byte_density": hhi, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-theil — índice Theil da densidade bytes/doc. Sprint #3123.
+pub async fn segment_byte_density_theil(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"theil_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = densities.iter().sum::<f64>() / n as f64;
+    let theil = if mean > 0.0 {
+        densities.iter().map(|&d| {
+            if d > 0.0 { (d / mean) * (d / mean).ln() } else { 0.0 }
+        }).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"theil_byte_density": theil, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
