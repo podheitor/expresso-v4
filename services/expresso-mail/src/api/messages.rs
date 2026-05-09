@@ -476,6 +476,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/recipient-count-hhi-by-tier",             get(recipient_count_hhi_by_tier_stats))
         .route("/mail/messages/stats/attachment-count-atkinson-by-tier",       get(attachment_count_atkinson_by_tier_stats))
         .route("/mail/messages/stats/recipient-count-atkinson-by-tier",        get(recipient_count_atkinson_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-lorenz-by-tier",         get(attachment_count_lorenz_by_tier_stats))
+        .route("/mail/messages/stats/recipient-count-lorenz-by-tier",          get(recipient_count_lorenz_by_tier_stats))
         .route("/mail/messages/stats/size-kurtosis-by-folder",                  get(size_kurtosis_by_folder_stats))
         .route("/mail/messages/stats/size-kurtosis-by-tier",                    get(size_kurtosis_by_tier_stats))
         .route("/mail/messages/stats/body-length-kurtosis-by-folder",           get(body_length_kurtosis_by_folder_stats))
@@ -522,6 +524,8 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/recipient-count-hhi-by-folder",            get(recipient_count_hhi_by_folder_stats))
         .route("/mail/messages/stats/attachment-count-atkinson-by-folder",      get(attachment_count_atkinson_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-atkinson-by-folder",       get(recipient_count_atkinson_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-lorenz-by-folder",        get(attachment_count_lorenz_by_folder_stats))
+        .route("/mail/messages/stats/recipient-count-lorenz-by-folder",         get(recipient_count_lorenz_by_folder_stats))
         .route("/mail/messages/stats/size-entropy-by-tier",              get(size_entropy_by_tier_stats))
         .route("/mail/messages/stats/size-normalized-entropy-by-tier",   get(size_normalized_entropy_by_tier_stats))
         .route("/mail/messages/stats/body-length-normalized-entropy-by-tier", get(body_length_normalized_entropy_by_tier_stats))
@@ -15507,6 +15511,68 @@ async fn recipient_count_atkinson_by_tier_stats(
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
+/// GET /mail/messages/stats/attachment-count-lorenz-by-tier — curva de Lorenz de attachment_count por tier. Sprint #3395.
+async fn attachment_count_lorenz_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<[f64; 2]> = if total == 0.0 { vec![] } else {
+            let mut cum_val = 0.0f64;
+            vals.iter().enumerate().map(|(i, &v)| { cum_val += v; [(i + 1) as f64 / n as f64, cum_val / total] }).collect()
+        };
+        serde_json::json!({"tier": tier, "lorenz_attachment_count": lorenz, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-lorenz-by-tier — curva de Lorenz de recipient_count por tier. Sprint #3396.
+async fn recipient_count_lorenz_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<[f64; 2]> = if total == 0.0 { vec![] } else {
+            let mut cum_val = 0.0f64;
+            vals.iter().enumerate().map(|(i, &v)| { cum_val += v; [(i + 1) as f64 / n as f64, cum_val / total] }).collect()
+        };
+        serde_json::json!({"tier": tier, "lorenz_recipient_count": lorenz, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
 /// GET /mail/messages/stats/size-kurtosis-by-folder — curtose de size por pasta. Sprint #2707.
 async fn size_kurtosis_by_folder_stats(
     State(state): State<AppState>,
@@ -16322,6 +16388,68 @@ async fn recipient_count_atkinson_by_folder_stats(
             if mean == 0.0 { 0.0 } else { 1.0 - geo_mean / mean }
         };
         serde_json::json!({"folder": folder, "atkinson_recipient_count": atkinson, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-lorenz-by-folder — curva de Lorenz de attachment_count por pasta. Sprint #3393.
+async fn attachment_count_lorenz_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<[f64; 2]> = if total == 0.0 { vec![] } else {
+            let mut cum_val = 0.0f64;
+            vals.iter().enumerate().map(|(i, &v)| { cum_val += v; [(i + 1) as f64 / n as f64, cum_val / total] }).collect()
+        };
+        serde_json::json!({"folder": folder, "lorenz_attachment_count": lorenz, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-lorenz-by-folder — curva de Lorenz de recipient_count por pasta. Sprint #3394.
+async fn recipient_count_lorenz_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<[f64; 2]> = if total == 0.0 { vec![] } else {
+            let mut cum_val = 0.0f64;
+            vals.iter().enumerate().map(|(i, &v)| { cum_val += v; [(i + 1) as f64 / n as f64, cum_val / total] }).collect()
+        };
+        serde_json::json!({"folder": folder, "lorenz_recipient_count": lorenz, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

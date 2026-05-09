@@ -443,6 +443,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-winsorized-mean-by-kind",    get(file_stats_size_active_winsorized_mean_by_kind))
         .route("/api/v1/drive/files/stats/active-size-winsorized-mean-by-mime",    get(file_stats_size_active_winsorized_mean_by_mime))
         .route("/api/v1/drive/files/stats/active-size-winsorized-mean-by-owner",   get(file_stats_size_active_winsorized_mean_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-winsorized-mean-by-ext",    get(file_stats_size_active_winsorized_mean_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-harmonic-mean-by-kind",     get(file_stats_size_active_harmonic_mean_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-harmonic-mean-by-mime",     get(file_stats_size_active_harmonic_mean_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-harmonic-mean-by-owner",    get(file_stats_size_active_harmonic_mean_by_owner))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -12591,6 +12595,80 @@ async fn file_stats_size_active_winsorized_mean_by_owner(State(state): State<App
             clamped.iter().sum::<f64>() / clamped.len() as f64
         };
         serde_json::json!({"owner_id": owner, "winsorized_mean_active_size": winsorized_mean, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-winsorized-mean-by-ext — média winsorizada de size ativo por extensão. Sprint #3389.
+async fn file_stats_size_active_winsorized_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(Option<String>, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT extension, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY extension ORDER BY extension",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let winsorized_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let p10 = vals[(n as f64 * 0.10) as usize];
+            let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+            clamped.iter().sum::<f64>() / clamped.len() as f64
+        };
+        serde_json::json!({"extension": ext, "winsorized_mean_active_size": winsorized_mean, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-harmonic-mean-by-kind — média harmônica de size ativo por kind. Sprint #3390.
+async fn file_stats_size_active_harmonic_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+        };
+        serde_json::json!({"kind": kind, "harmonic_mean_active_size": harmonic_mean, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-harmonic-mean-by-mime — média harmônica de size ativo por mime_type. Sprint #3391.
+async fn file_stats_size_active_harmonic_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(Option<String>, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT mime_type, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+        };
+        serde_json::json!({"mime_type": mime, "harmonic_mean_active_size": harmonic_mean, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-harmonic-mean-by-owner — média harmônica de size ativo por owner. Sprint #3392.
+async fn file_stats_size_active_harmonic_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+        };
+        serde_json::json!({"owner_id": owner, "harmonic_mean_active_size": harmonic_mean, "active_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
