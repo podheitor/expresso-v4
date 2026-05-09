@@ -11435,6 +11435,58 @@ pub async fn segment_name_length_count_below_mean(State(store): State<IndexStore
     Json(serde_json::json!({"count_below_mean": count, "mean_name_length": mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-sum-p95 — P95 de bytes por segmento. Sprint #4817.
+pub async fn segment_bytes_sum_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"bytes_p95": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-p99 — P99 de bytes por segmento. Sprint #4818.
+pub async fn segment_bytes_sum_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p99": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"bytes_p99": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-p95 — P95 de docs por segmento. Sprint #4819.
+pub async fn segment_docs_sum_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_p95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"docs_p95": vals[idx], "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-p99 — P99 de docs por segmento. Sprint #4820.
+pub async fn segment_docs_sum_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_p99": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"docs_p99": vals[idx], "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-count-above-p95 — contagem de segmentos com comprimento de nome acima do P95. Sprint #4797.
 pub async fn segment_name_length_count_above_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
