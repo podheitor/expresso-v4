@@ -12835,6 +12835,97 @@ async fn dlq_by_user_error_length_p25(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-p25 — P25 do comprimento de erro por tenant. Sprint #4425.
+async fn dlq_by_tenant_error_length_p25(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT tenant_id, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(error_message))::FLOAT8 AS p25_len, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tid, p25, cnt)| json!({"tenant_id": tid, "p25_error_length": p25, "count": cnt})).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-error-length-count-above-mean — contagem acima da média de comprimento de erro por kind. Sprint #4426.
+async fn dlq_by_kind_error_length_count_above_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                AVG(LENGTH(error_message))::FLOAT8 AS mean_len, \
+                COUNT(*) FILTER (WHERE LENGTH(error_message) > AVG(LENGTH(error_message)) OVER ())::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(kind, mean, above, cnt)| json!({"kind": kind, "mean_error_length": mean, "count_above_mean": above, "count": cnt})).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-error-length-count-above-mean — contagem acima da média de comprimento de erro por user. Sprint #4427.
+async fn dlq_by_user_error_length_count_above_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                AVG(LENGTH(error_message))::FLOAT8 AS mean_len, \
+                COUNT(*) FILTER (WHERE LENGTH(error_message) > AVG(LENGTH(error_message)) OVER ())::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(uid, mean, above, cnt)| json!({"user_id": uid, "mean_error_length": mean, "count_above_mean": above, "count": cnt})).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-count-above-mean — contagem acima da média de comprimento de erro por tenant. Sprint #4428.
+async fn dlq_by_tenant_error_length_count_above_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT tenant_id, \
+                AVG(LENGTH(error_message))::FLOAT8 AS mean_len, \
+                COUNT(*) FILTER (WHERE LENGTH(error_message) > AVG(LENGTH(error_message)) OVER ())::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+           AND error_message IS NOT NULL \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tid, mean, above, cnt)| json!({"tenant_id": tid, "mean_error_length": mean, "count_above_mean": above, "count": cnt})).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-mode — moda do lag de retry por tenant. Sprint #4365.
 async fn dlq_by_tenant_retry_lag_mode(
     State(st): State<AppState>,
@@ -21752,6 +21843,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-p10",                 get(dlq_by_tenant_error_length_p10))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-p25",                   get(dlq_by_kind_error_length_p25))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-p25",                   get(dlq_by_user_error_length_p25))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-p25",                 get(dlq_by_tenant_error_length_p25))
+        .route("/api/v1/notifications/dlq/stats/by-kind-error-length-count-above-mean",      get(dlq_by_kind_error_length_count_above_mean))
+        .route("/api/v1/notifications/dlq/stats/by-user-error-length-count-above-mean",      get(dlq_by_user_error_length_count_above_mean))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-count-above-mean",    get(dlq_by_tenant_error_length_count_above_mean))
         .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-mode",                  get(dlq_by_tenant_retry_lag_mode))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-mode",                get(dlq_by_kind_error_length_mode))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-mode",                get(dlq_by_user_error_length_mode))
