@@ -7364,6 +7364,77 @@ pub async fn segment_docs_coeff_var(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"docs_coeff_var": coeff_var, "docs_mean": mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-coeff-var — coeficiente de variação de disk_bytes entre segmentos. Sprint #3477.
+pub async fn segment_bytes_coeff_var(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_coeff_var": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let coeff_var = if mean == 0.0 { 0.0 } else {
+        let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+        variance.sqrt() / mean
+    };
+    Json(serde_json::json!({"bytes_coeff_var": coeff_var, "bytes_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-winsorized-stdev — desvio padrão winsorizado de disk_bytes. Sprint #3478.
+pub async fn segment_bytes_winsorized_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_winsorized_stdev": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p10 = vals[(n as f64 * 0.10) as usize];
+    let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+    let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+    let mean = clamped.iter().sum::<f64>() / clamped.len() as f64;
+    let variance = clamped.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / clamped.len() as f64;
+    Json(serde_json::json!({"bytes_winsorized_stdev": variance.sqrt(), "bytes_winsorized_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-winsorized-stdev — desvio padrão winsorizado de doc_count. Sprint #3479.
+pub async fn segment_docs_winsorized_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_winsorized_stdev": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p10 = vals[(n as f64 * 0.10) as usize];
+    let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+    let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+    let mean = clamped.iter().sum::<f64>() / clamped.len() as f64;
+    let variance = clamped.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / clamped.len() as f64;
+    Json(serde_json::json!({"docs_winsorized_stdev": variance.sqrt(), "docs_winsorized_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-trimmed-stdev — desvio padrão aparado de doc_count. Sprint #3480.
+pub async fn segment_docs_trimmed_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_trimmed_stdev": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo = (n as f64 * 0.10).floor() as usize;
+    let hi = (n as f64 * 0.90).ceil() as usize;
+    let hi = hi.min(n);
+    let trimmed_stdev = if lo < hi {
+        let slice = &vals[lo..hi];
+        let mean = slice.iter().sum::<f64>() / slice.len() as f64;
+        let variance = slice.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / slice.len() as f64;
+        variance.sqrt()
+    } else { 0.0 };
+    Json(serde_json::json!({"docs_trimmed_stdev": trimmed_stdev, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-trimmed-mean — média aparada (10%–90%) de disk_bytes entre segmentos. Sprint #2873.
 pub async fn segment_bytes_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

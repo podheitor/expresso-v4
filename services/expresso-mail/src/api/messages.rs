@@ -462,6 +462,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/recipient-count-theil-by-sender",          get(recipient_count_theil_by_sender_stats))
         .route("/mail/messages/stats/recipient-count-hhi-by-sender",            get(recipient_count_hhi_by_sender_stats))
         .route("/mail/messages/stats/recipient-count-atkinson-by-sender",       get(recipient_count_atkinson_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-lorenz-by-sender",         get(recipient_count_lorenz_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-normalized-entropy-by-sender", get(recipient_count_normalized_entropy_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-harmonic-mean-by-sender",  get(recipient_count_harmonic_mean_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-geometric-mean-by-sender", get(recipient_count_geometric_mean_by_sender_stats))
         .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
         .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
         .route("/mail/messages/stats/size-normalized-entropy-by-sender",        get(size_normalized_entropy_by_sender_stats))
@@ -14792,6 +14796,136 @@ async fn recipient_count_atkinson_by_sender_stats(
             }
         };
         serde_json::json!({"sender": sender, "atkinson_recipient_count": atkinson, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-lorenz-by-sender — Lorenz de recipient_count por remetente. Sprint #3473.
+async fn recipient_count_lorenz_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<serde_json::Value> = if n == 0 || total == 0.0 {
+            vec![]
+        } else {
+            let mut cum_pop = 0.0f64;
+            let mut cum_val = 0.0f64;
+            vals.iter().map(|&v| {
+                cum_pop += 1.0 / n as f64;
+                cum_val += v / total;
+                serde_json::json!({"cumulative_population": cum_pop, "cumulative_recipient_count": cum_val})
+            }).collect()
+        };
+        serde_json::json!({"sender": sender, "lorenz_curve": lorenz, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-normalized-entropy-by-sender — entropia normalizada de recipient_count por remetente. Sprint #3474.
+async fn recipient_count_normalized_entropy_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        serde_json::json!({"sender": sender, "normalized_entropy_recipient_count": norm_entropy, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-harmonic-mean-by-sender — média harmônica de recipient_count por remetente. Sprint #3475.
+async fn recipient_count_harmonic_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let harmonic_mean = if m == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { m as f64 / recip_sum }
+        };
+        serde_json::json!({"sender": sender, "harmonic_mean_recipient_count": harmonic_mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-geometric-mean-by-sender — média geométrica de recipient_count por remetente. Sprint #3476.
+async fn recipient_count_geometric_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let m = vals.len();
+        let geometric_mean = if m == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|&v| v.ln()).sum();
+            (log_sum / m as f64).exp()
+        };
+        serde_json::json!({"sender": sender, "geometric_mean_recipient_count": geometric_mean, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
