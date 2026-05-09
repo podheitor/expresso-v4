@@ -404,6 +404,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-hhi-by-mime",              get(file_stats_size_deleted_hhi_by_mime))
         .route("/api/v1/drive/files/stats/deleted-size-hhi-by-owner",             get(file_stats_size_deleted_hhi_by_owner))
         .route("/api/v1/drive/files/stats/deleted-size-hhi-by-ext",               get(file_stats_size_deleted_hhi_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-atkinson-by-kind",          get(file_stats_size_deleted_atkinson_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-atkinson-by-mime",          get(file_stats_size_deleted_atkinson_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-atkinson-by-owner",         get(file_stats_size_deleted_atkinson_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-atkinson-by-ext",           get(file_stats_size_deleted_atkinson_by_ext))
         .route("/api/v1/drive/files/stats/active-size-range-by-kind",              get(file_stats_size_active_range_by_kind))
         .route("/api/v1/drive/files/stats/active-size-range-by-mime",              get(file_stats_size_active_range_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-owner",             get(file_stats_size_active_range_by_owner))
@@ -11427,6 +11431,91 @@ async fn file_stats_size_deleted_hhi_by_ext(State(state): State<AppState>, ctx: 
             if total > 0.0 { vals.iter().map(|&v| (v / total).powi(2)).sum::<f64>() } else { 0.0 }
         };
         serde_json::json!({"extension": ext, "hhi_deleted_size": hhi, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-atkinson-by-kind — Atkinson de tamanho deletado por kind. Sprint #3269.
+async fn file_stats_size_deleted_atkinson_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY kind ORDER BY deleted_count DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"kind": kind, "atkinson_deleted_size": atkinson, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-atkinson-by-mime — Atkinson de tamanho deletado por mime_type. Sprint #3270.
+async fn file_stats_size_deleted_atkinson_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT mime_type, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY deleted_count DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"mime_type": mime, "atkinson_deleted_size": atkinson, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-atkinson-by-owner — Atkinson de tamanho deletado por owner. Sprint #3271.
+async fn file_stats_size_deleted_atkinson_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY deleted_count DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"owner_id": owner, "atkinson_deleted_size": atkinson, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-atkinson-by-ext — Atkinson de tamanho deletado por extensão. Sprint #3272.
+async fn file_stats_size_deleted_atkinson_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY deleted_count DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"extension": ext, "atkinson_deleted_size": atkinson, "deleted_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
