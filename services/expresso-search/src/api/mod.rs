@@ -9334,6 +9334,59 @@ pub async fn segment_docs_sum_empty(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"empty_segment_count": empty_count, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-count-above-mean-ratio — ratio de segmentos com bytes acima da média. Sprint #3937.
+pub async fn segment_bytes_count_above_mean_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_above_mean_ratio": null, "total_segments": 0}));
+    }
+    let mean = segs.iter().map(|(_, _, b)| *b as f64).sum::<f64>() / n as f64;
+    let above = segs.iter().filter(|(_, _, b)| *b as f64 > mean).count();
+    let ratio = above as f64 / n as f64;
+    Json(serde_json::json!({"bytes_above_mean_ratio": ratio, "above_mean_count": above, "bytes_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-trimmed-p95 — média trimmed (5-95%) de docs entre segmentos. Sprint #3938.
+pub async fn segment_docs_trimmed_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_trimmed_mean_5_95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let lo = ((n as f64 * 0.05).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.95).floor() as usize).min(n);
+    let trimmed = &vals[lo..hi];
+    let mean = if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 };
+    Json(serde_json::json!({"docs_trimmed_mean_5_95": mean, "trimmed_count": trimmed.len(), "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/count-single-doc — número de segmentos com exatamente 1 documento. Sprint #3939.
+pub async fn segment_docs_count_single(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let single = segs.iter().filter(|(_, d, _)| *d == 1).count();
+    Json(serde_json::json!({"single_doc_segments": single, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-trimmed-p95 — média trimmed (5-95%) de bytes entre segmentos. Sprint #3940.
+pub async fn segment_bytes_trimmed_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_trimmed_mean_5_95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let lo = ((n as f64 * 0.05).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.95).floor() as usize).min(n);
+    let trimmed = &vals[lo..hi];
+    let mean = if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 };
+    Json(serde_json::json!({"bytes_trimmed_mean_5_95": mean, "trimmed_count": trimmed.len(), "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

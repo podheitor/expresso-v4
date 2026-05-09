@@ -646,6 +646,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/avg-size-by-ext",                  get(file_stats_avg_size_by_ext))
         .route("/api/v1/drive/files/stats/avg-size-by-owner",                get(file_stats_avg_size_by_owner))
         .route("/api/v1/drive/files/stats/total-size-by-ext",                get(file_stats_total_size_by_ext_v2))
+        .route("/api/v1/drive/files/stats/max-size-by-kind",                 get(file_stats_max_size_by_kind))
+        .route("/api/v1/drive/files/stats/max-size-by-mime",                 get(file_stats_max_size_by_mime))
+        .route("/api/v1/drive/files/stats/max-size-by-ext",                  get(file_stats_max_size_by_ext))
+        .route("/api/v1/drive/files/stats/max-size-by-owner",                get(file_stats_max_size_by_owner))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15658,6 +15662,62 @@ async fn file_stats_total_size_by_ext_v2(State(state): State<AppState>, ctx: Req
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(ext, size, cnt)| serde_json::json!({"ext": ext, "total_size_bytes": size.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/max-size-by-kind — tamanho máximo por kind. Sprint #3929.
+async fn file_stats_max_size_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT kind, MAX(size_bytes)::BIGINT AS max_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, max, cnt)| serde_json::json!({"kind": kind, "max_size_bytes": max.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/max-size-by-mime — tamanho máximo por tipo MIME. Sprint #3930.
+async fn file_stats_max_size_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, MAX(size_bytes)::BIGINT AS max_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, max, cnt)| serde_json::json!({"mime_type": mime, "max_size_bytes": max.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/max-size-by-ext — tamanho máximo por extensão. Sprint #3931.
+async fn file_stats_max_size_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, MAX(size_bytes)::BIGINT AS max_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, max, cnt)| serde_json::json!({"ext": ext, "max_size_bytes": max.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/max-size-by-owner — tamanho máximo por proprietário. Sprint #3932.
+async fn file_stats_max_size_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS owner_id, MAX(size_bytes)::BIGINT AS max_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, max, cnt)| serde_json::json!({"owner_id": owner, "max_size_bytes": max.unwrap_or(0), "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
