@@ -798,6 +798,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count-iqr-by-folder",              get(cc_count_iqr_by_folder_stats))
         .route("/mail/messages/stats/cc-count-harmonic-mean-by-folder",    get(cc_count_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/cc-count-geometric-mean-by-folder",   get(cc_count_geometric_mean_by_folder_stats))
+        .route("/mail/messages/stats/size-mean-by-tier",                      get(size_mean_by_tier))
+        .route("/mail/messages/stats/size-count-above-mean-by-tier",         get(size_count_above_mean_by_tier))
+        .route("/mail/messages/stats/size-count-below-mean-by-tier",         get(size_count_below_mean_by_tier))
+        .route("/mail/messages/stats/size-p01-by-tier",                       get(size_p01_by_tier))
         .route("/mail/messages/stats/body-length-count-above-mean-by-tier",  get(body_length_count_above_mean_by_tier))
         .route("/mail/messages/stats/body-length-count-below-mean-by-tier",  get(body_length_count_below_mean_by_tier))
         .route("/mail/messages/stats/body-length-p01-by-tier",               get(body_length_p01_by_tier))
@@ -22741,6 +22745,93 @@ async fn size_p50_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p50, cnt)| serde_json::json!({"folder": folder, "p50_size": p50, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-mean-by-tier — média de tamanho × tier. Sprint #4573.
+async fn size_mean_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                AVG(size)::FLOAT8 AS mean_size, COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, cnt)| serde_json::json!({"tier": tier, "mean_size": mean, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-above-mean-by-tier — contagem acima da média de tamanho × tier. Sprint #4574.
+async fn size_count_above_mean_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH tier_mean AS ( \
+             SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                    AVG(size)::FLOAT8 AS mean_size FROM messages \
+             WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, \
+                COUNT(*) FILTER (WHERE m.size > t.mean_size)::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN tier_mean t ON (CASE WHEN m.size < 10240 THEN 'small' WHEN m.size < 102400 THEN 'medium' ELSE 'large' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY t.tier ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, above, cnt)| serde_json::json!({"tier": tier, "count_above_mean_size": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-below-mean-by-tier — contagem abaixo da média de tamanho × tier. Sprint #4575.
+async fn size_count_below_mean_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH tier_mean AS ( \
+             SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                    AVG(size)::FLOAT8 AS mean_size FROM messages \
+             WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, \
+                COUNT(*) FILTER (WHERE m.size < t.mean_size)::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN tier_mean t ON (CASE WHEN m.size < 10240 THEN 'small' WHEN m.size < 102400 THEN 'medium' ELSE 'large' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY t.tier ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, below, cnt)| serde_json::json!({"tier": tier, "count_below_mean_size": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-p01-by-tier — P01 de tamanho × tier. Sprint #4576.
+async fn size_p01_by_tier(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN size < 10240 THEN 'small' WHEN size < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p01_size, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p01, cnt)| serde_json::json!({"tier": tier, "p01_size": p01, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

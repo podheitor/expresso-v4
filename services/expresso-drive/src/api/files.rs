@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/version-p99",                        get(file_stats_version_p99))
+        .route("/api/v1/drive/files/stats/version-trimmed-mean",               get(file_stats_version_trimmed_mean))
+        .route("/api/v1/drive/files/stats/version-winsorized-mean",            get(file_stats_version_winsorized_mean))
+        .route("/api/v1/drive/files/stats/version-skewness",                   get(file_stats_version_skewness))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17460,6 +17464,55 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-p99 — P99 de versão global. Sprint #4569.
+async fn file_stats_version_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY version)::FLOAT8 AS p99_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-trimmed-mean — média aparada de versão global. Sprint #4570.
+async fn file_stats_version_trimmed_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(Option<i64>,)> = sqlx::query_as(
+        "SELECT version FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY version",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let vals: Vec<f64> = rows.into_iter().flatten().map(|v| v as f64).collect();
+    let n = vals.len();
+    let mean = if n > 0 {
+        let lo = (n as f64 * 0.10).ceil() as usize;
+        let hi = ((n as f64 * 0.90).floor() as usize).min(n.saturating_sub(1));
+        if lo <= hi { let s: f64 = vals[lo..=hi].iter().sum(); Some(s / (hi - lo + 1) as f64) } else { None }
+    } else { None };
+    Ok(Json(serde_json::json!({"trimmed_mean_version": mean, "file_count": n})))
+}
+
+/// GET /api/v1/drive/files/stats/version-winsorized-mean — média winsorizada de versão global. Sprint #4571.
+async fn file_stats_version_winsorized_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH bounds AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY version)::FLOAT8 AS lo, \
+                    PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY version)::FLOAT8 AS hi \
+             FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL \
+         ) \
+         SELECT AVG(GREATEST(LEAST(f.version::FLOAT8, b.hi), b.lo))::FLOAT8 AS winsorized_mean, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files f, bounds b WHERE f.tenant_id = $1 AND f.deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"winsorized_mean_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-skewness — assimetria de versão global. Sprint #4572.
+async fn file_stats_version_skewness(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(version::FLOAT8 - AVG(version::FLOAT8) OVER (), 3)) OVER () / \
+                    NULLIF(POWER(STDDEV_POP(version::FLOAT8) OVER (), 3), 0))::FLOAT8 AS skewness_version, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"skewness_version": row.0, "file_count": row.1})))
 }
 
 /// GET /api/v1/drive/files/stats/version-min-by-ext — versão mínima por extensão. Sprint #2426.
