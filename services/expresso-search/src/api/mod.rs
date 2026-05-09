@@ -9666,6 +9666,64 @@ pub async fn segment_name_length_mean(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"name_length_mean": mean, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-mad — MAD de contagem de docs por segmento. Sprint #4097.
+pub async fn segment_docs_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let median = if n % 2 == 0 { (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0 } else { vals[n / 2] as f64 };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|&v| (v as f64 - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 0 { (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0 } else { abs_devs[n / 2] };
+    Json(serde_json::json!({"docs_mad": mad, "docs_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-mad — MAD de bytes por segmento. Sprint #4098.
+pub async fn segment_bytes_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let median = if n % 2 == 0 { (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0 } else { vals[n / 2] as f64 };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|&v| (v as f64 - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 0 { (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0 } else { abs_devs[n / 2] };
+    Json(serde_json::json!({"bytes_mad": mad, "bytes_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-range — range (max-min) de docs por segmento. Sprint #4099.
+pub async fn segment_docs_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_range": null, "total_segments": 0}));
+    }
+    let vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    let min = vals.iter().copied().min().unwrap_or(0);
+    let max = vals.iter().copied().max().unwrap_or(0);
+    Json(serde_json::json!({"docs_range": max - min, "docs_min": min, "docs_max": max, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-range — range (max-min) de bytes por segmento. Sprint #4100.
+pub async fn segment_bytes_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_range": null, "total_segments": 0}));
+    }
+    let vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    let min = vals.iter().copied().min().unwrap_or(0);
+    let max = vals.iter().copied().max().unwrap_or(0);
+    Json(serde_json::json!({"bytes_range": max - min, "bytes_min": min, "bytes_max": max, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-p25 — P25 de comprimento de nome de segmento. Sprint #4057.
 pub async fn segment_name_length_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
