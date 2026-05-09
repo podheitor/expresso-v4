@@ -9789,6 +9789,73 @@ pub async fn segment_name_length_theil(State(store): State<IndexStore>) -> Json<
     Json(serde_json::json!({"name_length_theil": theil, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-atkinson — índice Atkinson (ε=0.5) dos comprimentos de nome. Sprint #4137.
+pub async fn segment_name_length_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_atkinson": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 {
+        return Json(serde_json::json!({"name_length_atkinson": 0.0, "total_segments": n}));
+    }
+    let epsilon = 0.5_f64;
+    let geometric_part: f64 = vals.iter().map(|&v| if v == 0.0 { 0.0 } else { v.powf(1.0 - epsilon) }).sum::<f64>() / n as f64;
+    let atkinson = 1.0 - (geometric_part.powf(1.0 / (1.0 - epsilon))) / mean;
+    Json(serde_json::json!({"name_length_atkinson": atkinson, "total_segments": n, "epsilon": epsilon}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-lorenz — curva de Lorenz dos comprimentos de nome. Sprint #4138.
+pub async fn segment_name_length_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_curve": [], "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let total: f64 = vals.iter().sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"lorenz_curve": [], "total_segments": n}));
+    }
+    let curve: Vec<serde_json::Value> = vals.iter().enumerate().scan(0.0_f64, |cum, (i, &v)| {
+        *cum += v;
+        Some(serde_json::json!({
+            "population_share": (i + 1) as f64 / n as f64,
+            "name_length_share": *cum / total
+        }))
+    }).collect();
+    Json(serde_json::json!({"lorenz_curve": curve, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-above-mean — segmentos com nome mais longo que a média. Sprint #4139.
+pub async fn segment_name_length_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"above_mean_count": 0, "total_segments": 0, "mean_name_length": null}));
+    }
+    let mean = segs.iter().map(|(name, _, _)| name.len()).sum::<usize>() as f64 / n as f64;
+    let count = segs.iter().filter(|(name, _, _)| name.len() as f64 > mean).count();
+    Json(serde_json::json!({"above_mean_count": count, "total_segments": n, "mean_name_length": mean}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-above-p50 — segmentos com nome mais longo que a mediana. Sprint #4140.
+pub async fn segment_name_length_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"above_p50_count": 0, "total_segments": 0, "p50_name_length": null}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let p50 = if n % 2 == 0 { (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0 } else { vals[n / 2] as f64 };
+    let count = vals.iter().filter(|&&v| v as f64 > p50).count();
+    Json(serde_json::json!({"above_p50_count": count, "total_segments": n, "p50_name_length": p50}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-p25 — P25 de comprimento de nome de segmento. Sprint #4057.
 pub async fn segment_name_length_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

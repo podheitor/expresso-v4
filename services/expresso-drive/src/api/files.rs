@@ -686,6 +686,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-std-dev-by-owner",     get(file_stats_name_length_std_dev_by_owner))
         .route("/api/v1/drive/files/stats/name-length-iqr-by-owner",         get(file_stats_name_length_iqr_by_owner))
         .route("/api/v1/drive/files/stats/name-length-coeff-var-by-owner",   get(file_stats_name_length_coeff_var_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-harmonic-mean-by-owner",  get(file_stats_name_length_harmonic_mean_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-geometric-mean-by-owner", get(file_stats_name_length_geometric_mean_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-trimmed-mean-by-owner",   get(file_stats_name_length_trimmed_mean_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-winsorized-mean-by-owner",get(file_stats_name_length_winsorized_mean_by_owner))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -16158,6 +16162,70 @@ async fn file_stats_name_length_coeff_var_by_owner(State(state): State<AppState>
             _ => None,
         };
         serde_json::json!({"owner_id": owner, "coeff_var_name_length": cv, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-harmonic-mean-by-owner — média harmônica de comprimento de nome por owner. Sprint #4129.
+async fn file_stats_name_length_harmonic_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, \
+                CASE WHEN SUM(1.0 / NULLIF(LENGTH(name), 0)) > 0 THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(LENGTH(name), 0)) ELSE NULL END AS harmonic_mean_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, hm, cnt)| serde_json::json!({"owner_id": owner, "harmonic_mean_name_length": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-geometric-mean-by-owner — média geométrica de comprimento de nome por owner. Sprint #4130.
+async fn file_stats_name_length_geometric_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, EXP(AVG(LN(NULLIF(LENGTH(name), 0))))::FLOAT8 AS geometric_mean_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, gm, cnt)| serde_json::json!({"owner_id": owner, "geometric_mean_name_length": gm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-trimmed-mean-by-owner — média aparada P10–P90 de comprimento de nome por owner. Sprint #4131.
+async fn file_stats_name_length_trimmed_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT owner_id, ARRAY_AGG(LENGTH(name) ORDER BY LENGTH(name)) AS lens, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { None } else {
+            let lo = ((n as f64 * 0.10).ceil() as usize).min(n);
+            let hi = ((n as f64 * 0.90).ceil() as usize).min(n);
+            let trimmed = &vals[lo..hi];
+            if trimmed.is_empty() { None } else { Some(trimmed.iter().sum::<f64>() / trimmed.len() as f64) }
+        };
+        serde_json::json!({"owner_id": owner, "trimmed_mean_name_length": mean, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-winsorized-mean-by-owner — média winsorizada P10–P90 de comprimento de nome por owner. Sprint #4132.
+async fn file_stats_name_length_winsorized_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT owner_id, ARRAY_AGG(LENGTH(name) ORDER BY LENGTH(name)) AS lens, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { None } else {
+            let lo_idx = ((n as f64 * 0.10).ceil() as usize).saturating_sub(1).min(n - 1);
+            let hi_idx = ((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1);
+            let lo_val = vals[lo_idx];
+            let hi_val = vals[hi_idx];
+            for v in vals.iter_mut() { if *v < lo_val { *v = lo_val; } if *v > hi_val { *v = hi_val; } }
+            Some(vals.iter().sum::<f64>() / n as f64)
+        };
+        serde_json::json!({"owner_id": owner, "winsorized_mean_name_length": mean, "file_count": cnt})
     }).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }

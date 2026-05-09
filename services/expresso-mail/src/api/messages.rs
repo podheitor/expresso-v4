@@ -714,6 +714,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/bcc-count-iqr-by-folder",       get(bcc_count_iqr_by_folder_stats))
         .route("/mail/messages/stats/bcc-count-coeff-var-by-folder", get(bcc_count_coeff_var_by_folder_stats))
         .route("/mail/messages/stats/bcc-count-mad-by-folder",       get(bcc_count_mad_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-harmonic-mean-by-tier",  get(bcc_count_harmonic_mean_by_tier_stats))
+        .route("/mail/messages/stats/bcc-count-geometric-mean-by-tier", get(bcc_count_geometric_mean_by_tier_stats))
+        .route("/mail/messages/stats/bcc-count-trimmed-mean-by-tier",   get(bcc_count_trimmed_mean_by_tier_stats))
+        .route("/mail/messages/stats/bcc-count-winsorized-mean-by-tier",get(bcc_count_winsorized_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-p50-by-tier",       get(body_length_p50_by_tier_stats))
         .route("/mail/messages/stats/body-length-p75-by-tier",       get(body_length_p75_by_tier_stats))
         .route("/mail/messages/stats/body-length-p90-by-tier",       get(body_length_p90_by_tier_stats))
@@ -20598,6 +20602,106 @@ async fn bcc_count_mad_by_folder_stats(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, median, cnt)| serde_json::json!({"folder": folder, "mad_bcc_count": null::<f64>, "median_bcc_count": median, "message_count": cnt, "note": "MAD requires per-row deviation; returning median only"})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-harmonic-mean-by-tier — média harmônica de bcc_count × tier. Sprint #4133.
+async fn bcc_count_harmonic_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     ELSE 'large' END AS tier, \
+                CASE WHEN SUM(1.0 / NULLIF(COALESCE(array_length(m.bcc, 1), 0), 0)) > 0 \
+                     THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(COALESCE(array_length(m.bcc, 1), 0), 0)) \
+                     ELSE NULL END AS harmonic_mean_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, hm, cnt)| serde_json::json!({"tier": tier, "harmonic_mean_bcc_count": hm, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-geometric-mean-by-tier — média geométrica de bcc_count × tier. Sprint #4134.
+async fn bcc_count_geometric_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     ELSE 'large' END AS tier, \
+                EXP(AVG(LN(NULLIF(COALESCE(array_length(m.bcc, 1), 0), 0))))::FLOAT8 AS geometric_mean_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, gm, cnt)| serde_json::json!({"tier": tier, "geometric_mean_bcc_count": gm, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-trimmed-mean-by-tier — média aparada P10–P90 de bcc_count × tier. Sprint #4135.
+async fn bcc_count_trimmed_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     ELSE 'large' END AS tier, \
+                AVG(COALESCE(array_length(m.bcc, 1), 0)) FILTER ( \
+                    WHERE COALESCE(array_length(m.bcc, 1), 0) BETWEEN \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0)) OVER () AND \
+                    PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0)) OVER () \
+                )::FLOAT8 AS trimmed_mean_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, tm, cnt)| serde_json::json!({"tier": tier, "trimmed_mean_bcc_count": tm, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-winsorized-mean-by-tier — média winsorizada P10–P90 de bcc_count × tier. Sprint #4136.
+async fn bcc_count_winsorized_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN m.size = 0 THEN 'empty' \
+                     WHEN m.size < 1024 THEN 'tiny' \
+                     WHEN m.size < 10240 THEN 'small' \
+                     WHEN m.size < 102400 THEN 'medium' \
+                     ELSE 'large' END AS tier, \
+                AVG(GREATEST(PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0)) OVER (), \
+                    LEAST(PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0)) OVER (), \
+                          COALESCE(array_length(m.bcc, 1), 0))))::FLOAT8 AS winsorized_mean_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY tier ORDER BY tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, wm, cnt)| serde_json::json!({"tier": tier, "winsorized_mean_bcc_count": wm, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

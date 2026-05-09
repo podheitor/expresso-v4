@@ -11599,6 +11599,102 @@ async fn dlq_retry_lag_geometric_mean(
     }
 }
 
+/// GET /api/v1/notifications/dlq/stats/retry-lag-p25 — P25 do lag de retry na DLQ. Sprint #4125.
+async fn dlq_retry_lag_p25(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS p25_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((p25, cnt)) => Ok(Json(json!({"p25_retry_lag_seconds": p25, "count": cnt}))),
+        None => Ok(Json(json!({"p25_retry_lag_seconds": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-coeff-var — CV do lag de retry por kind. Sprint #4126.
+async fn dlq_by_kind_retry_lag_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(kind, std, mean, cnt)| {
+        let cv = match (std, mean) { (Some(s), Some(m)) if m != 0.0 => Some(s / m), _ => None };
+        json!({"kind": kind, "coeff_var_retry_lag": cv, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-retry-lag-coeff-var — CV do lag de retry por user. Sprint #4127.
+async fn dlq_by_user_retry_lag_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(uid, std, mean, cnt)| {
+        let cv = match (std, mean) { (Some(s), Some(m)) if m != 0.0 => Some(s / m), _ => None };
+        json!({"user_id": uid, "coeff_var_retry_lag": cv, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-coeff-var — CV do lag de retry por tenant. Sprint #4128.
+async fn dlq_by_tenant_retry_lag_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT tenant_id, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tid, std, mean, cnt)| {
+        let cv = match (std, mean) { (Some(s), Some(m)) if m != 0.0 => Some(s / m), _ => None };
+        json!({"tenant_id": tid, "coeff_var_retry_lag": cv, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-p05 — P05 de error_length na DLQ. Sprint #4065.
 async fn dlq_error_length_p05(
     State(st): State<AppState>,
@@ -20333,6 +20429,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/retry-lag-mad",                           get(dlq_retry_lag_mad))
         .route("/api/v1/notifications/dlq/stats/retry-lag-harmonic-mean",                 get(dlq_retry_lag_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/retry-lag-geometric-mean",                get(dlq_retry_lag_geometric_mean))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-p25",                           get(dlq_retry_lag_p25))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-coeff-var",             get(dlq_by_kind_retry_lag_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-coeff-var",             get(dlq_by_user_retry_lag_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-coeff-var",           get(dlq_by_tenant_retry_lag_coeff_var))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-skewness",              get(dlq_by_kind_retry_lag_skewness))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-kurtosis",              get(dlq_by_kind_retry_lag_kurtosis))
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-skewness",              get(dlq_by_user_retry_lag_skewness))

@@ -2393,6 +2393,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_categories_var_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-harmonic-mean-by-hour",
+            get(events_by_range_categories_harmonic_mean_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-geometric-mean-by-hour",
+            get(events_by_range_categories_geometric_mean_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees-p05",
+            get(events_by_range_attendees_p05),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees-iqr-by-hour",
+            get(events_by_range_attendees_iqr_by_hour),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/categories-iqr-by-weekday",
             get(events_by_range_categories_iqr_by_weekday),
         )
@@ -3119,6 +3135,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/categories-var-by-hour",
             get(events_by_range_categories_var_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-harmonic-mean-by-hour",
+            get(events_by_range_categories_harmonic_mean_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-geometric-mean-by-hour",
+            get(events_by_range_categories_geometric_mean_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees-p05",
+            get(events_by_range_attendees_p05),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/attendees-iqr-by-hour",
+            get(events_by_range_attendees_iqr_by_hour),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/categories-iqr-by-weekday",
@@ -15195,6 +15227,113 @@ async fn events_by_range_categories_var_by_hour(
     ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
     tx.commit().await?;
     let result = rows.into_iter().map(|(h, var, cnt)| serde_json::json!({"hour": h, "variance_categories": var.unwrap_or(0.0), "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-harmonic-mean-by-hour — média harmônica de categories × hora UTC. Sprint #4141.
+async fn events_by_range_categories_harmonic_mean_by_hour(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                CASE WHEN SUM(1.0 / NULLIF(COALESCE(array_length(categories, 1), 0), 0)) > 0 \
+                     THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(COALESCE(array_length(categories, 1), 0), 0)) \
+                     ELSE NULL END AS harmonic_mean_categories, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(h, hm, cnt)| serde_json::json!({"hour": h, "harmonic_mean_categories": hm, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-geometric-mean-by-hour — média geométrica de categories × hora UTC. Sprint #4142.
+async fn events_by_range_categories_geometric_mean_by_hour(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                EXP(AVG(LN(NULLIF(COALESCE(array_length(categories, 1), 0), 0))))::FLOAT8 AS geometric_mean_categories, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(h, gm, cnt)| serde_json::json!({"hour": h, "geometric_mean_categories": gm, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendees-p05 — P05 global de attendees count. Sprint #4143.
+async fn events_by_range_attendees_p05(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY COALESCE(array_length(attendees, 1), 0))::FLOAT8 AS p05_attendees, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4)",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
+    match row {
+        Some((p05, cnt)) => Ok(Json(serde_json::json!({"p05_attendees": p05, "event_count": cnt}))),
+        None => Ok(Json(serde_json::json!({"p05_attendees": null, "event_count": 0}))),
+    }
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/attendees-iqr-by-hour — IQR de attendees × hora UTC. Sprint #4144.
+async fn events_by_range_attendees_iqr_by_hour(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, f64, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE(array_length(attendees, 1), 0))::FLOAT8 AS p25_attendees, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(array_length(attendees, 1), 0))::FLOAT8 AS p75_attendees, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(h, p25, p75, cnt)| serde_json::json!({"hour": h, "iqr_attendees": p75 - p25, "p25_attendees": p25, "p75_attendees": p75, "event_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
