@@ -16272,6 +16272,70 @@ pub async fn segment_ratio_p05(State(store): State<IndexStore>) -> Json<serde_js
     Json(serde_json::json!({"p05_ratio": p05, "segment_count": n}))
 }
 
+pub async fn segment_size_count_above_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p10_size": null, "above_count": 0, "segment_count": 0})); }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let p10 = sizes[(n * 10) / 100];
+    let above = segs.iter().filter(|(_, _, db)| *db > p10).count();
+    Json(serde_json::json!({"p10_size": p10, "above_count": above, "above_ratio": above as f64 / n as f64, "segment_count": n}))
+}
+
+pub async fn segment_size_count_below_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p10_size": null, "below_count": 0, "segment_count": 0})); }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let p10 = sizes[(n * 10) / 100];
+    let below = segs.iter().filter(|(_, _, db)| *db < p10).count();
+    Json(serde_json::json!({"p10_size": p10, "below_count": below, "below_ratio": below as f64 / n as f64, "segment_count": n}))
+}
+
+pub async fn segment_ratio_count_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"mean_ratio": null, "above_count": 0, "segment_count": 0})); }
+    let ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let above = ratios.iter().filter(|&&r| r > mean).count();
+    Json(serde_json::json!({"mean_ratio": mean, "above_count": above, "above_ratio": above as f64 / n as f64, "segment_count": n}))
+}
+
+pub async fn segment_ratio_count_below_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"mean_ratio": null, "below_count": 0, "segment_count": 0})); }
+    let ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    let mean = ratios.iter().sum::<f64>() / n as f64;
+    let below = ratios.iter().filter(|&&r| r < mean).count();
+    Json(serde_json::json!({"mean_ratio": mean, "below_count": below, "below_ratio": below as f64 / n as f64, "segment_count": n}))
+}
+
+pub async fn segment_ratio_count_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p25_ratio": null, "above_count": 0, "segment_count": 0})); }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let p25 = ratios[(n * 25) / 100];
+    let above = ratios.iter().filter(|&&r| r > p25).count();
+    Json(serde_json::json!({"p25_ratio": p25, "above_count": above, "above_ratio": above as f64 / n as f64, "segment_count": n}))
+}
+
+pub async fn segment_ratio_count_below_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 { return Json(serde_json::json!({"p25_ratio": null, "below_count": 0, "segment_count": 0})); }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }).collect();
+    ratios.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let p25 = ratios[(n * 25) / 100];
+    let below = ratios.iter().filter(|&&r| r < p25).count();
+    Json(serde_json::json!({"p25_ratio": p25, "below_count": below, "below_ratio": below as f64 / n as f64, "segment_count": n}))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
