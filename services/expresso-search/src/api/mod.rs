@@ -9152,6 +9152,50 @@ pub async fn segment_docs_ratio_max(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"docs_ratio_max": max_ratio, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-ratio-max — ratio máximo de bytes entre segmentos. Sprint #3857.
+pub async fn segment_bytes_ratio_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_ratio_max": null, "total_segments": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    if total_bytes == 0 {
+        return Json(serde_json::json!({"bytes_ratio_max": 0.0, "total_segments": n}));
+    }
+    let max_ratio = segs.iter().map(|(_, _, b)| *b as f64 / total_bytes as f64).fold(f64::NEG_INFINITY, f64::max);
+    Json(serde_json::json!({"bytes_ratio_max": max_ratio, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-per-doc — média de bytes por documento entre segmentos. Sprint #3858.
+pub async fn segment_bytes_per_doc(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"avg_bytes_per_doc": null, "total_segments": 0}));
+    }
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    let avg = if total_docs == 0 { 0.0 } else { total_bytes as f64 / total_docs as f64 };
+    Json(serde_json::json!({"avg_bytes_per_doc": avg, "total_bytes": total_bytes, "total_docs": total_docs, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/total-docs-count — total de documentos em todos os segmentos. Sprint #3859.
+pub async fn segment_total_docs_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let total_docs: u64 = segs.iter().map(|(_, d, _)| *d).sum();
+    Json(serde_json::json!({"total_docs": total_docs, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/total-bytes-count — total de bytes em todos os segmentos. Sprint #3860.
+pub async fn segment_total_bytes_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let total_bytes: u64 = segs.iter().map(|(_, _, b)| *b).sum();
+    Json(serde_json::json!({"total_bytes": total_bytes, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
