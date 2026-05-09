@@ -9419,6 +9419,70 @@ pub async fn segment_docs_sum_above_p75(State(store): State<IndexStore>) -> Json
     Json(serde_json::json!({"docs_sum_above_p75": sum, "count_above_p75": count, "docs_p75": p75, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-sum-above-p50 — soma de bytes em segmentos acima do P50. Sprint #4777.
+pub async fn segment_bytes_sum_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_above_p50": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.50).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p50 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, _, b)| *b > p50).map(|(_, _, b)| *b).sum();
+    let count = segs.iter().filter(|(_, _, b)| *b > p50).count();
+    Json(serde_json::json!({"bytes_sum_above_p50": sum, "count_above_p50": count, "bytes_p50": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-below-p50 — soma de bytes em segmentos abaixo do P50. Sprint #4778.
+pub async fn segment_bytes_sum_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_below_p50": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.50).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p50 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, _, b)| *b < p50).map(|(_, _, b)| *b).sum();
+    let count = segs.iter().filter(|(_, _, b)| *b < p50).count();
+    Json(serde_json::json!({"bytes_sum_below_p50": sum, "count_below_p50": count, "bytes_p50": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-above-p50 — soma de docs em segmentos acima do P50. Sprint #4779.
+pub async fn segment_docs_sum_above_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_above_p50": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.50).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p50 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, d, _)| *d > p50).map(|(_, d, _)| *d).sum();
+    let count = segs.iter().filter(|(_, d, _)| *d > p50).count();
+    Json(serde_json::json!({"docs_sum_above_p50": sum, "count_above_p50": count, "docs_p50": p50, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-below-p50 — soma de docs em segmentos abaixo do P50. Sprint #4780.
+pub async fn segment_docs_sum_below_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_below_p50": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.50).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p50 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, d, _)| *d < p50).map(|(_, d, _)| *d).sum();
+    let count = segs.iter().filter(|(_, d, _)| *d < p50).count();
+    Json(serde_json::json!({"docs_sum_below_p50": sum, "count_below_p50": count, "docs_p50": p50, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-sum-above-p75 — soma de bytes em segmentos acima do P75. Sprint #3960.
 pub async fn segment_bytes_sum_above_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

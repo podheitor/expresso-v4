@@ -778,6 +778,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-count-below-p75",               get(file_stats_size_count_below_p75))
         .route("/api/v1/drive/files/stats/size-count-above-p10",               get(file_stats_size_count_above_p10))
         .route("/api/v1/drive/files/stats/size-count-below-p10",               get(file_stats_size_count_below_p10))
+        .route("/api/v1/drive/files/stats/size-count-above-p50",               get(file_stats_size_count_above_p50))
+        .route("/api/v1/drive/files/stats/size-count-below-p50",               get(file_stats_size_count_below_p50))
+        .route("/api/v1/drive/files/stats/size-count-above-p90",               get(file_stats_size_count_above_p90))
+        .route("/api/v1/drive/files/stats/size-count-below-p90",               get(file_stats_size_count_below_p90))
         .route("/api/v1/drive/files/stats/size-winsorized-mean",                get(file_stats_size_winsorized_mean))
         .route("/api/v1/drive/files/stats/size-skewness",                       get(file_stats_size_skewness))
         .route("/api/v1/drive/files/stats/size-kurtosis",                       get(file_stats_size_kurtosis))
@@ -17741,6 +17745,50 @@ async fn file_stats_size_count_below_p10(State(state): State<AppState>, ctx: Req
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p10_size": row.0, "count_below_p10": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-above-p50 — contagem de arquivos com tamanho acima do P50. Sprint #4769.
+async fn file_stats_size_count_above_p50(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p50_size, \
+                COUNT(*) FILTER (WHERE size > (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p50, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p50_size": row.0, "count_above_p50": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-below-p50 — contagem de arquivos com tamanho abaixo do P50. Sprint #4770.
+async fn file_stats_size_count_below_p50(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p50_size, \
+                COUNT(*) FILTER (WHERE size < (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p50, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p50_size": row.0, "count_below_p50": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-above-p90 — contagem de arquivos com tamanho acima do P90. Sprint #4771.
+async fn file_stats_size_count_above_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p90_size, \
+                COUNT(*) FILTER (WHERE size > (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_size": row.0, "count_above_p90": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-below-p90 — contagem de arquivos com tamanho abaixo do P90. Sprint #4772.
+async fn file_stats_size_count_below_p90(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p90_size, \
+                COUNT(*) FILTER (WHERE size < (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p90_size": row.0, "count_below_p90": row.1, "file_count": row.2})))
 }
 
 /// GET /api/v1/drive/files/stats/size-p01 — P01 de tamanho global. Sprint #4649.

@@ -14728,6 +14728,117 @@ async fn dlq_by_kind_retry_lag_cv(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-gini — Gini de retry_lag × kind. Sprint #4765.
+async fn dlq_by_kind_retry_lag_gini(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, SUM(EXTRACT(EPOCH FROM (retry_at - created_at)))::BIGINT AS total_lag, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE retry_at IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY total_lag",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let grand_total: i64 = rows.iter().map(|(_, t, _)| t).sum();
+    if grand_total == 0 { return Ok(Json(json!({"gini": null, "count": 0i64}))); }
+    let n = rows.len() as f64;
+    let mut cumulative = 0.0f64;
+    let mut lorenz_area = 0.0f64;
+    let mut pop_cum = 0.0f64;
+    for (_, total_lag, cnt) in &rows {
+        let prev_pop = pop_cum;
+        pop_cum += *cnt as f64;
+        let prev_val = cumulative;
+        cumulative += *total_lag as f64 / grand_total as f64;
+        lorenz_area += (prev_val + cumulative) / 2.0 * (*cnt as f64 / n);
+    }
+    let _ = pop_cum;
+    let gini = 1.0 - 2.0 * lorenz_area;
+    Ok(Json(json!({"gini_retry_lag_by_kind": gini, "kind_count": n as i64})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-theil — índice de Theil de retry_lag × kind. Sprint #4766.
+async fn dlq_by_kind_retry_lag_theil(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, AVG(EXTRACT(EPOCH FROM (retry_at - created_at)))::FLOAT8 AS kind_mean, \
+                AVG(AVG(EXTRACT(EPOCH FROM (retry_at - created_at)))) OVER()::FLOAT8 AS global_mean, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE retry_at IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind LIMIT 1",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let rows2: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, AVG(EXTRACT(EPOCH FROM (retry_at - created_at)))::FLOAT8 AS kind_mean, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE retry_at IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let global_mean: f64 = rows2.iter().filter_map(|(_, m, _)| *m).sum::<f64>() / rows2.len().max(1) as f64;
+    let n = rows2.len() as f64;
+    let theil: f64 = rows2.iter().filter_map(|(_, m, cnt)| {
+        let v = (*m)?;
+        if global_mean == 0.0 || v == 0.0 { return Some(0.0); }
+        Some((v / global_mean) * (v / global_mean).ln() / n)
+    }).sum();
+    Ok(Json(json!({"theil_retry_lag_by_kind": theil, "kind_count": rows2.len() as i64})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-hhi — HHI de retry_lag × kind. Sprint #4767.
+async fn dlq_by_kind_retry_lag_hhi(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, COUNT(*)::BIGINT AS cnt, SUM(COUNT(*)) OVER()::BIGINT AS total \
+         FROM notification_dlq WHERE retry_at IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total = rows.first().map(|(_, _, t)| *t).unwrap_or(0);
+    if total == 0 { return Ok(Json(json!({"hhi_retry_lag_by_kind": null, "kind_count": 0i64}))); }
+    let hhi: f64 = rows.iter().map(|(_, cnt, _)| { let s = *cnt as f64 / total as f64; s * s }).sum();
+    Ok(Json(json!({"hhi_retry_lag_by_kind": hhi, "kind_count": rows.len() as i64})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-atkinson — índice de Atkinson de retry_lag × kind. Sprint #4768.
+async fn dlq_by_kind_retry_lag_atkinson(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, AVG(EXTRACT(EPOCH FROM (retry_at - created_at)))::FLOAT8 AS kind_mean, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE retry_at IS NOT NULL \
+           AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let means: Vec<f64> = rows.iter().filter_map(|(_, m, _)| *m).collect();
+    let n = means.len() as f64;
+    if n == 0.0 { return Ok(Json(json!({"atkinson_retry_lag_by_kind": null, "kind_count": 0i64}))); }
+    let arith_mean = means.iter().sum::<f64>() / n;
+    let geo_mean = (means.iter().map(|v| v.ln()).sum::<f64>() / n).exp();
+    let atkinson = if arith_mean == 0.0 { None } else { Some(1.0 - geo_mean / arith_mean) };
+    Ok(Json(json!({"atkinson_retry_lag_by_kind": atkinson, "kind_count": n as i64})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-atkinson — índice de Atkinson de error_length. Sprint #4725.
 async fn dlq_error_length_atkinson(
     State(st): State<AppState>,
@@ -23313,6 +23424,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/retry-lag-atkinson",               get(dlq_retry_lag_atkinson))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-lorenz",         get(dlq_by_kind_retry_lag_lorenz))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-cv",             get(dlq_by_kind_retry_lag_cv))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-gini",           get(dlq_by_kind_retry_lag_gini))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-theil",          get(dlq_by_kind_retry_lag_theil))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-hhi",            get(dlq_by_kind_retry_lag_hhi))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-atkinson",       get(dlq_by_kind_retry_lag_atkinson))
         .route("/api/v1/notifications/dlq/stats/error-length-mad",                 get(dlq_error_length_mad))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean",   get(dlq_by_kind_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean",   get(dlq_by_user_attempts_harmonic_mean))
