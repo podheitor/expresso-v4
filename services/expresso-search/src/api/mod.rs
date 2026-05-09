@@ -9549,6 +9549,79 @@ pub async fn segment_name_length_min(State(store): State<IndexStore>) -> Json<se
     Json(serde_json::json!({"name_length_min": min, "total_segments": segs.len()}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-skewness — skewness de comprimento de nome de segmento. Sprint #4037.
+pub async fn segment_name_length_skewness(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 3 {
+        return Json(serde_json::json!({"name_length_skewness": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let skewness = if stddev == 0.0 { 0.0 } else {
+        vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+    };
+    Json(serde_json::json!({"name_length_skewness": skewness, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-kurtosis — kurtosis de comprimento de nome de segmento. Sprint #4038.
+pub async fn segment_name_length_kurtosis(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"name_length_kurtosis": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let kurtosis = if stddev == 0.0 { 0.0 } else {
+        vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0
+    };
+    Json(serde_json::json!({"name_length_kurtosis": kurtosis, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-coeff-var — coeficiente de variação de comprimento de nome. Sprint #4039.
+pub async fn segment_name_length_coeff_var(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"name_length_coeff_var": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let stddev = variance.sqrt();
+    let coeff_var = if mean == 0.0 { None } else { Some(stddev / mean) };
+    Json(serde_json::json!({"name_length_coeff_var": coeff_var, "name_length_mean": mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-mad — MAD de comprimento de nome de segmento. Sprint #4040.
+pub async fn segment_name_length_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let median = if n % 2 == 0 {
+        (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0
+    } else {
+        vals[n / 2] as f64
+    };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|&v| (v as f64 - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 0 {
+        (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0
+    } else {
+        abs_devs[n / 2]
+    };
+    Json(serde_json::json!({"name_length_mad": mad, "name_length_median": median, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-trimmed-mean — média aparada P10–P90 de docs. Sprint #4017.
 pub async fn segment_docs_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

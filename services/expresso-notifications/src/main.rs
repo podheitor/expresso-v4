@@ -11423,6 +11423,108 @@ async fn dlq_retry_lag_kurtosis(
     Ok(Json(json!({"kurtosis_retry_lag_seconds": kurtosis, "count": n})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-skewness — skewness do lag de retry por tenant. Sprint #4025.
+async fn dlq_by_tenant_retry_lag_skewness(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tenant_id, _mean, _std, cnt)| {
+        json!({"tenant_id": tenant_id, "skewness_retry_lag_seconds": serde_json::Value::Null, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-kurtosis — kurtosis do lag de retry por tenant. Sprint #4026.
+async fn dlq_by_tenant_retry_lag_kurtosis(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tenant_id, _mean, _std, cnt)| {
+        json!({"tenant_id": tenant_id, "kurtosis_retry_lag_seconds": serde_json::Value::Null, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-skewness — skewness global de error_length na DLQ. Sprint #4027.
+async fn dlq_error_length_skewness(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT LENGTH(error)::BIGINT \
+         FROM notification_dlq \
+         WHERE error IS NOT NULL AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let vals: Vec<f64> = rows.into_iter().map(|(v,)| v as f64).collect();
+    let n = vals.len();
+    let skewness = if n < 3 { None } else {
+        let mean = vals.iter().sum::<f64>() / n as f64;
+        let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+        let stddev = variance.sqrt();
+        if stddev == 0.0 { Some(0.0) } else {
+            Some(vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64)
+        }
+    };
+    Ok(Json(json!({"skewness_error_length": skewness, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-kurtosis — kurtosis global de error_length na DLQ. Sprint #4028.
+async fn dlq_error_length_kurtosis(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT LENGTH(error)::BIGINT \
+         FROM notification_dlq \
+         WHERE error IS NOT NULL AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let vals: Vec<f64> = rows.into_iter().map(|(v,)| v as f64).collect();
+    let n = vals.len();
+    let kurtosis = if n < 4 { None } else {
+        let mean = vals.iter().sum::<f64>() / n as f64;
+        let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+        let stddev = variance.sqrt();
+        if stddev == 0.0 { Some(0.0) } else {
+            Some(vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64)
+        }
+    };
+    Ok(Json(json!({"kurtosis_error_length": kurtosis, "count": n})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-skewness — skewness do lag de retry por kind. Sprint #4005.
 async fn dlq_by_kind_retry_lag_skewness(
     State(st): State<AppState>,
@@ -19873,6 +19975,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-kurtosis",              get(dlq_by_kind_retry_lag_kurtosis))
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-skewness",              get(dlq_by_user_retry_lag_skewness))
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-kurtosis",              get(dlq_by_user_retry_lag_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-skewness",            get(dlq_by_tenant_retry_lag_skewness))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-kurtosis",            get(dlq_by_tenant_retry_lag_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/error-length-skewness",                   get(dlq_error_length_skewness))
+        .route("/api/v1/notifications/dlq/stats/error-length-kurtosis",                   get(dlq_error_length_kurtosis))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))

@@ -666,6 +666,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-var-by-mime",           get(file_stats_name_length_var_by_mime))
         .route("/api/v1/drive/files/stats/name-length-var-by-ext",            get(file_stats_name_length_var_by_ext))
         .route("/api/v1/drive/files/stats/name-length-var-by-owner",          get(file_stats_name_length_var_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-skewness-by-kind",      get(file_stats_name_length_skewness_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-kurtosis-by-kind",      get(file_stats_name_length_kurtosis_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-p25-by-kind",           get(file_stats_name_length_p25_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-p75-by-kind",           get(file_stats_name_length_p75_by_kind))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15847,6 +15851,66 @@ async fn file_stats_std_dev_size_by_owner(State(state): State<AppState>, ctx: Re
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, std_dev, cnt)| serde_json::json!({"owner_id": owner, "std_dev_size_bytes": std_dev.unwrap_or(0.0), "file_count": cnt}))
         .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-skewness-by-kind — skewness de comprimento de nome por kind. Sprint #4029.
+async fn file_stats_name_length_skewness_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(LENGTH(name) ORDER BY LENGTH(name)) AS lens, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let skewness = if n < 3 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64 }
+        };
+        serde_json::json!({"kind": kind, "skewness_name_length": skewness, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-kurtosis-by-kind — kurtosis de comprimento de nome por kind. Sprint #4030.
+async fn file_stats_name_length_kurtosis_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(LENGTH(name) ORDER BY LENGTH(name)) AS lens, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0 }
+        };
+        serde_json::json!({"kind": kind, "kurtosis_name_length": kurtosis, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-p25-by-kind — P25 de comprimento de nome por kind. Sprint #4031.
+async fn file_stats_name_length_p25_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p25_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, p25, cnt)| serde_json::json!({"kind": kind, "p25_name_length": p25.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-p75-by-kind — P75 de comprimento de nome por kind. Sprint #4032.
+async fn file_stats_name_length_p75_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p75_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, p75, cnt)| serde_json::json!({"kind": kind, "p75_name_length": p75.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
