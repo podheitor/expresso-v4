@@ -594,6 +594,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deletes-by-hour",                   get(file_stats_deletes_by_hour))
         .route("/api/v1/drive/files/stats/active-size-p50-by-kind",           get(file_stats_size_active_p50_by_kind))
         .route("/api/v1/drive/files/stats/active-size-stddev-by-mime",        get(file_stats_size_active_stddev_by_mime))
+        .route("/api/v1/drive/files/stats/uploads-by-year",                   get(file_stats_uploads_by_year))
+        .route("/api/v1/drive/files/stats/deletes-by-year",                   get(file_stats_deletes_by_year))
+        .route("/api/v1/drive/files/stats/active-size-p25-by-kind",           get(file_stats_size_active_p25_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-avg-by-ext",           get(file_stats_size_deleted_avg_by_ext))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -14852,6 +14856,66 @@ async fn file_stats_size_active_stddev_by_mime(State(state): State<AppState>, ct
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(mime, stddev, cnt)| serde_json::json!({"mime_type": mime, "stddev_active_size_bytes": stddev, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/uploads-by-year — contagem de uploads por ano. Sprint #3669.
+async fn file_stats_uploads_by_year(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(YEAR FROM created_at AT TIME ZONE 'UTC')::INT AS year, COUNT(*)::BIGINT AS upload_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY year ORDER BY year ASC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(y, cnt)| serde_json::json!({"year": y, "upload_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deletes-by-year — contagem de deleções por ano. Sprint #3670.
+async fn file_stats_deletes_by_year(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(YEAR FROM deleted_at AT TIME ZONE 'UTC')::INT AS year, COUNT(*)::BIGINT AS delete_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY year ORDER BY year ASC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(y, cnt)| serde_json::json!({"year": y, "delete_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-p25-by-kind — P25 de size ativo por kind. Sprint #3671.
+async fn file_stats_size_active_p25_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p25_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, p25, cnt)| serde_json::json!({"kind": kind, "p25_active_size_bytes": p25, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-avg-by-ext — média de size deletado por extensão. Sprint #3672.
+async fn file_stats_size_deleted_avg_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, avg, cnt)| serde_json::json!({"file_ext": ext, "avg_deleted_size_bytes": avg, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

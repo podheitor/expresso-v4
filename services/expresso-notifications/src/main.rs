@@ -10058,6 +10058,120 @@ async fn dlq_by_kind_attempts_kurtosis(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-kurtosis — curtose de attempts por user. Sprint #3665.
+async fn dlq_by_user_attempts_kurtosis(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(user_id::TEXT, 'unknown'), ARRAY_AGG(attempts ORDER BY attempts) AS vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0 }
+        };
+        json!({"user_id": user, "kurtosis_attempts": kurtosis, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-attempts-kurtosis — curtose de attempts por tenant. Sprint #3666.
+async fn dlq_by_tenant_attempts_kurtosis(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(tenant_id::TEXT, 'unknown'), ARRAY_AGG(attempts ORDER BY attempts) AS vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tenant, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let kurtosis = if n < 4 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else { vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64 - 3.0 }
+        };
+        json!({"tenant_id": tenant, "kurtosis_attempts": kurtosis, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-attempts-coeff-var — CV de attempts por kind. Sprint #3667.
+async fn dlq_by_kind_attempts_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(attempts ORDER BY attempts) AS vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else {
+            (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt()
+        };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        json!({"kind": kind, "coeff_var_attempts": cv, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-coeff-var — CV de attempts por user. Sprint #3668.
+async fn dlq_by_user_attempts_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(user_id::TEXT, 'unknown'), ARRAY_AGG(attempts ORDER BY attempts) AS vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else {
+            (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt()
+        };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        json!({"user_id": user, "coeff_var_attempts": cv, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy — entropia normalizada de error_length por kind. Sprint #3428.
 async fn dlq_by_kind_error_length_normalized_entropy(
     State(st): State<AppState>,
@@ -18247,6 +18361,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-skewness",              get(dlq_by_user_attempts_skewness))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-skewness",            get(dlq_by_tenant_attempts_skewness))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-kurtosis",              get(dlq_by_kind_attempts_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-kurtosis",              get(dlq_by_user_attempts_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-kurtosis",            get(dlq_by_tenant_attempts_kurtosis))
+        .route("/api/v1/notifications/dlq/stats/by-kind-attempts-coeff-var",             get(dlq_by_kind_attempts_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-coeff-var",             get(dlq_by_user_attempts_coeff_var))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
