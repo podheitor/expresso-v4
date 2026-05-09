@@ -10276,6 +10276,114 @@ async fn dlq_by_tenant_payload_size_coeff_var(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-error-length-coeff-var — CV de error_length por user. Sprint #3705.
+async fn dlq_by_user_error_length_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(user_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY user_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else { (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt() };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        json!({"user_id": user, "coeff_var_error_length": cv, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-coeff-var — CV de error_length por tenant. Sprint #3706.
+async fn dlq_by_tenant_error_length_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(tenant_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY tenant_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tenant, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let mean = if n == 0 { 0.0 } else { vals.iter().sum::<f64>() / n as f64 };
+        let stddev = if n == 0 { 0.0 } else { (vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt() };
+        let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+        json!({"tenant_id": tenant, "coeff_var_error_length": cv, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-payload-size-lorenz — curva de Lorenz de payload_size por kind. Sprint #3707.
+async fn dlq_by_kind_payload_size_lorenz(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(LENGTH(payload::TEXT)::BIGINT ORDER BY LENGTH(payload::TEXT)) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<f64> = if n == 0 || total == 0.0 { vec![] } else {
+            let mut cum = 0.0f64;
+            vals.iter().map(|&v| { cum += v / total; cum }).collect()
+        };
+        json!({"kind": kind, "lorenz_payload_size": lorenz, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-payload-size-lorenz — curva de Lorenz de payload_size por user. Sprint #3708.
+async fn dlq_by_user_payload_size_lorenz(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(user_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(payload::TEXT)::BIGINT ORDER BY LENGTH(payload::TEXT)) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let lorenz: Vec<f64> = if n == 0 || total == 0.0 { vec![] } else {
+            let mut cum = 0.0f64;
+            vals.iter().map(|&v| { cum += v / total; cum }).collect()
+        };
+        json!({"user_id": user, "lorenz_payload_size": lorenz, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy — entropia normalizada de error_length por kind. Sprint #3428.
 async fn dlq_by_kind_error_length_normalized_entropy(
     State(st): State<AppState>,
@@ -18473,6 +18581,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-coeff-var",         get(dlq_by_kind_payload_size_coeff_var))
         .route("/api/v1/notifications/dlq/stats/by-user-payload-size-coeff-var",         get(dlq_by_user_payload_size_coeff_var))
         .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-coeff-var",       get(dlq_by_tenant_payload_size_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-user-error-length-coeff-var",         get(dlq_by_user_error_length_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-coeff-var",       get(dlq_by_tenant_error_length_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/by-kind-payload-size-lorenz",            get(dlq_by_kind_payload_size_lorenz))
+        .route("/api/v1/notifications/dlq/stats/by-user-payload-size-lorenz",            get(dlq_by_user_payload_size_lorenz))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
