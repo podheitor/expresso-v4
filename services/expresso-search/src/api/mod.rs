@@ -7204,6 +7204,68 @@ pub async fn segment_docs_normalized_entropy(State(store): State<IndexStore>) ->
     Json(serde_json::json!({"docs_normalized_entropy": norm_entropy, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-normalized-entropy — entropia normalizada de disk_bytes entre segmentos. Sprint #3437.
+pub async fn segment_bytes_normalized_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"bytes_normalized_entropy": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    let total: f64 = vals.iter().sum();
+    let norm_entropy = if total == 0.0 { 0.0 } else {
+        let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+        entropy / (n as f64).ln()
+    };
+    Json(serde_json::json!({"bytes_normalized_entropy": norm_entropy, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-trimmed-mean — média aparada de num_docs entre segmentos. Sprint #3438.
+pub async fn segment_docs_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_trimmed_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let trimmed_mean = if n < 2 { vals[0] } else {
+        let trim = (n as f64 * 0.1) as usize;
+        let t = &vals[trim..n - trim];
+        if t.is_empty() { 0.0 } else { t.iter().sum::<f64>() / t.len() as f64 }
+    };
+    Json(serde_json::json!({"docs_trimmed_mean": trimmed_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-harmonic-mean — média harmônica de num_docs entre segmentos. Sprint #3439.
+pub async fn segment_docs_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_harmonic_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).filter(|&v| v > 0.0).collect();
+    let harmonic_mean = if vals.is_empty() { 0.0 } else {
+        let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+        if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+    };
+    Json(serde_json::json!({"docs_harmonic_mean": harmonic_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-geometric-mean — média geométrica de num_docs entre segmentos. Sprint #3440.
+pub async fn segment_docs_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_geometric_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).filter(|&v| v > 0.0).collect();
+    let geometric_mean = if vals.is_empty() { 0.0 } else {
+        (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp()
+    };
+    Json(serde_json::json!({"docs_geometric_mean": geometric_mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-atkinson — índice de Atkinson de disk_bytes entre segmentos. Sprint #2863.
 pub async fn segment_bytes_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
