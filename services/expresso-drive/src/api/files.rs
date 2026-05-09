@@ -614,6 +614,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-p10-by-owner",        get(file_stats_size_deleted_p10_by_owner))
         .route("/api/v1/drive/files/stats/deleted-size-p10-by-ext",          get(file_stats_size_deleted_p10_by_ext))
         .route("/api/v1/drive/files/stats/active-size-p05-by-kind",          get(file_stats_size_active_p05_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-p05-by-mime",          get(file_stats_size_active_p05_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-p05-by-owner",         get(file_stats_size_active_p05_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-p05-by-ext",           get(file_stats_size_active_p05_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-p05-by-kind",         get(file_stats_size_deleted_p05_by_kind))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15188,6 +15192,70 @@ async fn file_stats_size_active_p05_by_kind(State(state): State<AppState>, ctx: 
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(kind, p05, cnt)| serde_json::json!({"kind": kind, "p05_active_size_bytes": p05, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-active-p05-by-mime — P5 do size de arquivos ativos por MIME. Sprint #3769.
+async fn file_stats_size_active_p05_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p05_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, p05, cnt)| serde_json::json!({"mime_type": mime, "p05_active_size_bytes": p05, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-active-p05-by-owner — P5 do size de arquivos ativos por owner. Sprint #3770.
+async fn file_stats_size_active_p05_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+                PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p05_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY active_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, p05, cnt)| serde_json::json!({"owner_id": owner, "p05_active_size_bytes": p05, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-active-p05-by-ext — P5 do size de arquivos ativos por extensão. Sprint #3771.
+async fn file_stats_size_active_p05_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p05_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, p05, cnt)| serde_json::json!({"ext": ext, "p05_active_size_bytes": p05, "active_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-deleted-p05-by-kind — P5 do size de arquivos deletados por kind. Sprint #3772.
+async fn file_stats_size_deleted_p05_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY size_bytes)::FLOAT8 AS p05_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, p05, cnt)| serde_json::json!({"kind": kind, "p05_deleted_size_bytes": p05, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
