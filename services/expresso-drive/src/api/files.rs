@@ -642,6 +642,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-total-deleted",               get(file_stats_size_total_deleted))
         .route("/api/v1/drive/files/stats/total-size-by-mime",               get(file_stats_total_size_by_mime))
         .route("/api/v1/drive/files/stats/avg-size-by-kind",                 get(file_stats_avg_size_by_kind))
+        .route("/api/v1/drive/files/stats/avg-size-by-mime",                 get(file_stats_avg_size_by_mime))
+        .route("/api/v1/drive/files/stats/avg-size-by-ext",                  get(file_stats_avg_size_by_ext))
+        .route("/api/v1/drive/files/stats/avg-size-by-owner",                get(file_stats_avg_size_by_owner))
+        .route("/api/v1/drive/files/stats/total-size-by-ext",                get(file_stats_total_size_by_ext_v2))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15598,6 +15602,62 @@ async fn file_stats_avg_size_by_kind(State(state): State<AppState>, ctx: Request
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(kind, avg, cnt)| serde_json::json!({"kind": kind, "avg_size_bytes": avg.unwrap_or(0.0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/avg-size-by-mime — tamanho médio por tipo MIME. Sprint #3909.
+async fn file_stats_avg_size_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, AVG(size_bytes)::FLOAT8 AS avg_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, avg, cnt)| serde_json::json!({"mime_type": mime, "avg_size_bytes": avg.unwrap_or(0.0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/avg-size-by-ext — tamanho médio por extensão. Sprint #3910.
+async fn file_stats_avg_size_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, AVG(size_bytes)::FLOAT8 AS avg_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, avg, cnt)| serde_json::json!({"ext": ext, "avg_size_bytes": avg.unwrap_or(0.0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/avg-size-by-owner — tamanho médio por proprietário. Sprint #3911.
+async fn file_stats_avg_size_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS owner_id, AVG(size_bytes)::FLOAT8 AS avg_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, avg, cnt)| serde_json::json!({"owner_id": owner, "avg_size_bytes": avg.unwrap_or(0.0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/total-size-by-ext — tamanho total por extensão. Sprint #3912.
+async fn file_stats_total_size_by_ext_v2(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, SUM(size_bytes)::BIGINT AS total_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, size, cnt)| serde_json::json!({"ext": ext, "total_size_bytes": size.unwrap_or(0), "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

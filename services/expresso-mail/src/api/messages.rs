@@ -670,6 +670,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/body-length-p25-by-tier",       get(body_length_p25_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p05-by-tier",    get(subject_length_p05_by_tier_stats))
         .route("/mail/messages/stats/subject-length-p10-by-tier",    get(subject_length_p10_by_tier_stats))
+        .route("/mail/messages/stats/subject-length-p25-by-tier",    get(subject_length_p25_by_tier_stats))
+        .route("/mail/messages/stats/subject-length-p05-by-folder",  get(subject_length_p05_by_folder_stats))
+        .route("/mail/messages/stats/subject-length-p10-by-folder",  get(subject_length_p10_by_folder_stats))
+        .route("/mail/messages/stats/subject-length-p25-by-folder",  get(subject_length_p25_by_folder_stats))
         .route("/mail/messages/stats/body-length-p50-by-tier",       get(body_length_p50_by_tier_stats))
         .route("/mail/messages/stats/body-length-p75-by-tier",       get(body_length_p75_by_tier_stats))
         .route("/mail/messages/stats/body-length-p90-by-tier",       get(body_length_p90_by_tier_stats))
@@ -19752,6 +19756,90 @@ async fn subject_length_p10_by_tier_stats(
     tx.commit().await?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(tier, p10, cnt)| serde_json::json!({"tier": tier, "p10_subject_length": p10, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-p25-by-tier — P25 comprimento de subject × tier. Sprint #3913.
+async fn subject_length_p25_by_tier_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(m.subject))::BIGINT AS p25_subject_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND m.subject IS NOT NULL \
+         GROUP BY mb.tier ORDER BY p25_subject_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(tier, p25, cnt)| serde_json::json!({"tier": tier, "p25_subject_length": p25, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-p05-by-folder — P05 comprimento de subject × pasta. Sprint #3914.
+async fn subject_length_p05_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(m.subject))::BIGINT AS p05_subject_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND m.subject IS NOT NULL \
+         GROUP BY mb.name ORDER BY p05_subject_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, p05, cnt)| serde_json::json!({"folder_name": folder, "p05_subject_length": p05, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-p10-by-folder — P10 comprimento de subject × pasta. Sprint #3915.
+async fn subject_length_p10_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(m.subject))::BIGINT AS p10_subject_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND m.subject IS NOT NULL \
+         GROUP BY mb.name ORDER BY p10_subject_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, p10, cnt)| serde_json::json!({"folder_name": folder, "p10_subject_length": p10, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/subject-length-p25-by-folder — P25 comprimento de subject × pasta. Sprint #3916.
+async fn subject_length_p25_by_folder_stats(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder_name, \
+         PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(m.subject))::BIGINT AS p25_subject_length, \
+         COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON mb.id = m.mailbox_id \
+         WHERE m.tenant_id = $1 AND mb.tenant_id = $1 AND mb.user_id = $2 AND m.subject IS NOT NULL \
+         GROUP BY mb.name ORDER BY p25_subject_length DESC",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(folder, p25, cnt)| serde_json::json!({"folder_name": folder, "p25_subject_length": p25, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
