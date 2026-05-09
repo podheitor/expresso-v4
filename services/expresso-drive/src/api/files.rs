@@ -475,6 +475,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-mad-by-owner",              get(file_stats_size_active_mad_by_owner))
         .route("/api/v1/drive/files/stats/active-size-mad-by-ext",                get(file_stats_size_active_mad_by_ext))
         .route("/api/v1/drive/files/stats/deleted-size-coeff-var-by-mime",        get(file_stats_size_deleted_coeff_var_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-p99-by-owner",             get(file_stats_size_active_p99_by_owner))
+        .route("/api/v1/drive/files/stats/active-size-p99-by-ext",               get(file_stats_size_active_p99_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-coeff-var-by-owner",      get(file_stats_size_deleted_coeff_var_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-coeff-var-by-ext",        get(file_stats_size_deleted_coeff_var_by_ext))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -13995,6 +13999,80 @@ async fn file_stats_size_active_p99_by_mime(State(state): State<AppState>, ctx: 
     .map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(mime, p99, cnt)| {
         serde_json::json!({"mime_type": mime, "p99_active_size_bytes": p99, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-p99-by-owner — P99 de size ativo por owner. Sprint #3569.
+async fn file_stats_size_active_p99_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+                COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p99_active_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY p99_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, p99, cnt)| {
+        serde_json::json!({"owner_id": owner, "p99_active_size_bytes": p99, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-p99-by-ext — P99 de size ativo por extensão. Sprint #3570.
+async fn file_stats_size_active_p99_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), \
+                COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p99_active_size, \
+                COUNT(*)::BIGINT AS active_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY file_ext ORDER BY p99_active_size DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, p99, cnt)| {
+        serde_json::json!({"file_ext": ext, "p99_active_size_bytes": p99, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-coeff-var-by-owner — CV de size deletado por owner. Sprint #3571.
+async fn file_stats_size_deleted_coeff_var_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(owner_id::TEXT, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(owner, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"owner_id": owner, "coeff_var_deleted_size": coeff_var, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-coeff-var-by-ext — CV de size deletado por extensão. Sprint #3572.
+async fn file_stats_size_deleted_coeff_var_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(file_ext, 'unknown'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY file_ext ORDER BY file_ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"file_ext": ext, "coeff_var_deleted_size": coeff_var, "deleted_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

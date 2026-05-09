@@ -482,6 +482,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/recipient-count-geometric-mean-by-folder", get(recipient_count_geometric_mean_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-trimmed-mean-by-folder",   get(recipient_count_trimmed_mean_by_folder_stats))
         .route("/mail/messages/stats/recipient-count-winsorized-mean-by-folder", get(recipient_count_winsorized_mean_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-harmonic-mean-by-tier",   get(attachment_count_harmonic_mean_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-geometric-mean-by-tier",  get(attachment_count_geometric_mean_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-trimmed-mean-by-tier",    get(attachment_count_trimmed_mean_by_tier_stats))
+        .route("/mail/messages/stats/attachment-count-winsorized-mean-by-tier", get(attachment_count_winsorized_mean_by_tier_stats))
         .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
         .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
         .route("/mail/messages/stats/size-normalized-entropy-by-sender",        get(size_normalized_entropy_by_sender_stats))
@@ -15324,6 +15328,132 @@ async fn recipient_count_winsorized_mean_by_folder_stats(
             clamped.iter().sum::<f64>() / clamped.len() as f64
         };
         serde_json::json!({"folder": folder, "winsorized_mean_recipient_count": winsorized_mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-harmonic-mean-by-tier — média harmônica de attachment_count por tier. Sprint #3573.
+async fn attachment_count_harmonic_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().filter(|&v| v > 0).map(|v| v as f64).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|v| 1.0 / v).sum();
+            n as f64 / recip_sum
+        };
+        serde_json::json!({"tier": tier, "harmonic_mean_attachment_count": harmonic_mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-geometric-mean-by-tier — média geométrica de attachment_count por tier. Sprint #3574.
+async fn attachment_count_geometric_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().filter(|&v| v > 0).map(|v| v as f64).collect();
+        let n = vals.len();
+        let geometric_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        serde_json::json!({"tier": tier, "geometric_mean_attachment_count": geometric_mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-trimmed-mean-by-tier — média aparada de attachment_count por tier. Sprint #3575.
+async fn attachment_count_trimmed_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let trimmed_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let lo = (n as f64 * 0.10) as usize;
+            let hi = ((n as f64 * 0.90) as usize).min(n);
+            let trimmed = &vals[lo..hi];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        serde_json::json!({"tier": tier, "trimmed_mean_attachment_count": trimmed_mean, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-winsorized-mean-by-tier — média winsorizada de attachment_count por tier. Sprint #3576.
+async fn attachment_count_winsorized_mean_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, \
+                ARRAY_AGG(m.attachment_count ORDER BY m.attachment_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let winsorized_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let p10 = vals[(n as f64 * 0.10) as usize];
+            let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+            clamped.iter().sum::<f64>() / clamped.len() as f64
+        };
+        serde_json::json!({"tier": tier, "winsorized_mean_attachment_count": winsorized_mean, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

@@ -1293,6 +1293,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_categories_trimmed_mean_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/categories-winsorized-mean-by-weekday",
+            get(events_by_range_categories_winsorized_mean_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-normalized-entropy-by-weekday",
+            get(events_by_range_summary_normalized_entropy_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-harmonic-mean-by-weekday",
+            get(events_by_range_summary_harmonic_mean_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-geometric-mean-by-weekday",
+            get(events_by_range_summary_geometric_mean_by_weekday),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/categories-p10-by-month",
             get(events_by_range_categories_p10_by_month),
         )
@@ -11350,6 +11366,162 @@ async fn events_by_range_categories_trimmed_mean_by_weekday(
         };
         let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
         serde_json::json!({"weekday": d, "weekday_name": day_name, "trimmed_mean_categories": trimmed_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/categories-winsorized-mean-by-weekday — média winsorizada de categories × weekday. Sprint #3581.
+async fn events_by_range_categories_winsorized_mean_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         ARRAY_AGG(COALESCE(array_length(categories, 1), 0) ORDER BY COALESCE(array_length(categories, 1), 0)) AS cat_vals, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let winsorized_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let p10 = vals[(n as f64 * 0.10) as usize];
+            let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+            clamped.iter().sum::<f64>() / clamped.len() as f64
+        };
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"weekday": d, "weekday_name": day_name, "winsorized_mean_categories": winsorized_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-normalized-entropy-by-weekday — entropia normalizada de summary_length × weekday. Sprint #3582.
+async fn events_by_range_summary_normalized_entropy_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         ARRAY_AGG(LENGTH(COALESCE(summary, '')) ORDER BY LENGTH(COALESCE(summary, ''))) AS len_vals, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"weekday": d, "weekday_name": day_name, "normalized_entropy_summary_length": norm_entropy, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-harmonic-mean-by-weekday — média harmônica de summary_length × weekday. Sprint #3583.
+async fn events_by_range_summary_harmonic_mean_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         ARRAY_AGG(LENGTH(COALESCE(summary, '')) ORDER BY LENGTH(COALESCE(summary, ''))) AS len_vals, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let k = vals.len();
+        let harmonic_mean = if k == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { k as f64 / recip_sum }
+        };
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"weekday": d, "weekday_name": day_name, "harmonic_mean_summary_length": harmonic_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-geometric-mean-by-weekday — média geométrica de summary_length × weekday. Sprint #3584.
+async fn events_by_range_summary_geometric_mean_by_weekday(
+    State(state): State<AppState>,
+    ctx:          RequestCtx,
+    Path(cal_id): Path<Uuid>,
+    Query(q):     Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS dow, \
+         ARRAY_AGG(LENGTH(COALESCE(summary, '')) ORDER BY LENGTH(COALESCE(summary, ''))) AS len_vals, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+         AND ($3::timestamptz IS NULL OR dtstart >= $3) \
+         AND ($4::timestamptz IS NULL OR dtstart < $4) \
+         GROUP BY dow ORDER BY dow ASC",
+    )
+    .bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before)
+    .fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    const DAY_NAMES: [&str; 7] = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(d, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let k = vals.len();
+        let geometric_mean = if k == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / k as f64).exp()
+        };
+        let day_name = DAY_NAMES.get(d as usize).copied().unwrap_or("Unknown");
+        serde_json::json!({"weekday": d, "weekday_name": day_name, "geometric_mean_summary_length": geometric_mean, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

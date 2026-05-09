@@ -9472,6 +9472,123 @@ async fn dlq_by_user_error_length_geometric_mean(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-geometric-mean — média geométrica de error_length por tenant. Sprint #3565.
+async fn dlq_by_tenant_error_length_geometric_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(tenant_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY tenant_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tenant, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let geometric_mean = if n == 0 { 0.0 } else {
+            let log_sum: f64 = vals.iter().map(|v| v.ln()).sum();
+            (log_sum / n as f64).exp()
+        };
+        json!({"tenant_id": tenant, "geometric_mean_error_length": geometric_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-error-length-trimmed-mean — média aparada de error_length por kind. Sprint #3566.
+async fn dlq_by_kind_error_length_trimmed_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let trimmed_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let lo = (n as f64 * 0.10) as usize;
+            let hi = ((n as f64 * 0.90) as usize).min(n);
+            let trimmed = &vals[lo..hi];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        json!({"kind": kind, "trimmed_mean_error_length": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-error-length-trimmed-mean — média aparada de error_length por user. Sprint #3567.
+async fn dlq_by_user_error_length_trimmed_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(user_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY user_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let trimmed_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let lo = (n as f64 * 0.10) as usize;
+            let hi = ((n as f64 * 0.90) as usize).min(n);
+            let trimmed = &vals[lo..hi];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        json!({"user_id": user, "trimmed_mean_error_length": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-trimmed-mean — média aparada de error_length por tenant. Sprint #3568.
+async fn dlq_by_tenant_error_length_trimmed_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(tenant_id::TEXT, 'unknown'), ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY tenant_id ORDER BY cnt DESC LIMIT 100",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tenant, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let trimmed_mean = if n < 2 { vals.first().copied().unwrap_or(0.0) } else {
+            let lo = (n as f64 * 0.10) as usize;
+            let hi = ((n as f64 * 0.90) as usize).min(n);
+            let trimmed = &vals[lo..hi];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        json!({"tenant_id": tenant, "trimmed_mean_error_length": trimmed_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy — entropia normalizada de error_length por kind. Sprint #3428.
 async fn dlq_by_kind_error_length_normalized_entropy(
     State(st): State<AppState>,
@@ -17641,6 +17758,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-harmonic-mean",   get(dlq_by_tenant_error_length_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-geometric-mean",    get(dlq_by_kind_error_length_geometric_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-geometric-mean",    get(dlq_by_user_error_length_geometric_mean))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-geometric-mean",  get(dlq_by_tenant_error_length_geometric_mean))
+        .route("/api/v1/notifications/dlq/stats/by-kind-error-length-trimmed-mean",      get(dlq_by_kind_error_length_trimmed_mean))
+        .route("/api/v1/notifications/dlq/stats/by-user-error-length-trimmed-mean",      get(dlq_by_user_error_length_trimmed_mean))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-trimmed-mean",    get(dlq_by_tenant_error_length_trimmed_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
