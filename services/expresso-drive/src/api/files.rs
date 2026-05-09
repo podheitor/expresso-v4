@@ -431,6 +431,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/active-size-hhi-by-ext",                get(file_stats_size_active_hhi_by_ext))
         .route("/api/v1/drive/files/stats/active-size-lorenz-by-ext",             get(file_stats_size_active_lorenz_by_ext))
         .route("/api/v1/drive/files/stats/active-size-theil-by-ext",              get(file_stats_size_active_theil_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-atkinson-by-ext",           get(file_stats_size_active_atkinson_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-normalized-entropy-by-kind", get(file_stats_size_active_normalized_entropy_by_kind))
+        .route("/api/v1/drive/files/stats/active-size-normalized-entropy-by-mime", get(file_stats_size_active_normalized_entropy_by_mime))
+        .route("/api/v1/drive/files/stats/active-size-normalized-entropy-by-owner", get(file_stats_size_active_normalized_entropy_by_owner))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -12350,6 +12354,81 @@ async fn file_stats_size_active_atkinson_by_owner(State(state): State<AppState>,
         serde_json::json!({"owner_id": owner_id, "atkinson_active_size": atkinson, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-atkinson-by-ext — Atkinson de size ativo por extensão. Sprint #3329.
+async fn file_stats_size_active_atkinson_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let geo_mean = (vals.iter().map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"extension": ext, "atkinson_active_size": atkinson, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-normalized-entropy-by-kind — entropia normalizada de size ativo por kind. Sprint #3330.
+async fn file_stats_size_active_normalized_entropy_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT kind, SUM(size_bytes)::BIGINT AS total_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, s, _)| {
+            let p = *s as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized, "kind_count": n})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-normalized-entropy-by-mime — entropia normalizada de size ativo por mime. Sprint #3331.
+async fn file_stats_size_active_normalized_entropy_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mime_type, SUM(size_bytes)::BIGINT AS total_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, s, _)| {
+            let p = *s as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized, "mime_count": n})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-normalized-entropy-by-owner — entropia normalizada de size ativo por owner. Sprint #3332.
+async fn file_stats_size_active_normalized_entropy_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, SUM(size_bytes)::BIGINT AS total_size, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let grand_total: i64 = rows.iter().map(|(_, s, _)| s).sum();
+    let n = rows.len();
+    let entropy = if grand_total > 0 {
+        rows.iter().fold(0.0f64, |acc, (_, s, _)| {
+            let p = *s as f64 / grand_total as f64;
+            if p > 0.0 { acc - p * p.ln() } else { acc }
+        })
+    } else { 0.0 };
+    let normalized = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+    Ok(Json(serde_json::json!({"entropy": entropy, "normalized_entropy": normalized, "owner_count": n})))
 }
 
 /// GET /api/v1/drive/files/stats/count-active-by-kind — contagem de arquivos ativos por kind. Sprint #2901.

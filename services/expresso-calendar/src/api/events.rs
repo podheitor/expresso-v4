@@ -1905,6 +1905,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_atkinson_by_month),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-trimmed-mean-by-month",
+            get(events_by_range_duration_trimmed_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-winsorized-mean-by-month",
+            get(events_by_range_duration_winsorized_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-month",
+            get(events_by_range_summary_length_skewness_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-normalized-entropy-by-month",
+            get(events_by_range_summary_length_normalized_entropy_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-variance-by-month",
             get(events_by_range_summary_length_variance_by_month),
         )
@@ -2295,6 +2311,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-atkinson-by-month",
             get(events_by_range_duration_atkinson_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-trimmed-mean-by-month",
+            get(events_by_range_duration_trimmed_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-winsorized-mean-by-month",
+            get(events_by_range_duration_winsorized_mean_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-month",
+            get(events_by_range_summary_length_skewness_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/summary-length-normalized-entropy-by-month",
+            get(events_by_range_summary_length_normalized_entropy_by_month),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-variance-by-month",
@@ -14365,6 +14397,134 @@ async fn events_by_range_duration_atkinson_by_month(
             if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
         };
         serde_json::json!({"month": month, "atkinson_duration": atkinson, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-trimmed-mean-by-month — média aparada de duração por mês. Sprint #3341.
+async fn events_by_range_duration_trimmed_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let trimmed_mean = if n < 2 {
+            vals.first().copied().unwrap_or(0.0)
+        } else {
+            let trim = (n as f64 * 0.1) as usize;
+            let trimmed = &vals[trim..n - trim];
+            if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 }
+        };
+        serde_json::json!({"month": month, "trimmed_mean_duration_seconds": trimmed_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-winsorized-mean-by-month — média winsorizada de duração por mês. Sprint #3342.
+async fn events_by_range_duration_winsorized_mean_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart)) ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().collect();
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let winsorized_mean = if n == 0 {
+            0.0
+        } else {
+            let p10_idx = (n as f64 * 0.1) as usize;
+            let p90_idx = ((n as f64 * 0.9) as usize).min(n - 1);
+            let p10 = vals[p10_idx];
+            let p90 = vals[p90_idx];
+            let clamped: Vec<f64> = vals.iter().map(|&v| v.max(p10).min(p90)).collect();
+            clamped.iter().sum::<f64>() / n as f64
+        };
+        serde_json::json!({"month": month, "winsorized_mean_duration_seconds": winsorized_mean, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-skewness-by-month — assimetria de summary_length por mês. Sprint #3343.
+async fn events_by_range_summary_length_skewness_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(LENGTH(summary)) FILTER (WHERE summary IS NOT NULL) AS lengths, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let skewness = if n < 3 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+            let stddev = variance.sqrt();
+            if stddev == 0.0 { 0.0 } else {
+                vals.iter().map(|&v| ((v - mean) / stddev).powi(3)).sum::<f64>() / n as f64
+            }
+        };
+        serde_json::json!({"month": month, "skewness_summary_length": skewness, "event_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/summary-length-normalized-entropy-by-month — entropia normalizada de summary_length por mês. Sprint #3344.
+async fn events_by_range_summary_length_normalized_entropy_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(LENGTH(summary)) FILTER (WHERE summary IS NOT NULL AND LENGTH(summary) > 0) AS lengths, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let total: f64 = vals.iter().sum();
+        let n = vals.len();
+        let entropy = if total <= 0.0 { 0.0 } else {
+            vals.iter().fold(0.0f64, |acc, &v| { let p = v / total; if p > 0.0 { acc - p * p.ln() } else { acc } })
+        };
+        let normalized_entropy = if n > 1 { entropy / (n as f64).ln() } else { 0.0 };
+        serde_json::json!({"month": month, "normalized_entropy_summary_length": normalized_entropy, "event_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
