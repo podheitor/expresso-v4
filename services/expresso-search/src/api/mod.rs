@@ -9724,6 +9724,71 @@ pub async fn segment_bytes_range(State(store): State<IndexStore>) -> Json<serde_
     Json(serde_json::json!({"bytes_range": max - min, "bytes_min": min, "bytes_max": max, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-length-entropy — entropia de Shannon dos comprimentos de nome. Sprint #4117.
+pub async fn segment_name_length_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_entropy": null, "total_segments": 0}));
+    }
+    let total = n as f64;
+    let mut freq: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (name, _, _) in &segs { *freq.entry(name.len()).or_insert(0) += 1; }
+    let entropy: f64 = freq.values().map(|&c| { let p = c as f64 / total; -p * p.ln() }).sum();
+    Json(serde_json::json!({"name_length_entropy": entropy, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-gini — coeficiente Gini dos comprimentos de nome. Sprint #4118.
+pub async fn segment_name_length_gini(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 2 {
+        return Json(serde_json::json!({"name_length_gini": null, "total_segments": n}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let sum: f64 = vals.iter().sum();
+    if sum == 0.0 {
+        return Json(serde_json::json!({"name_length_gini": 0.0, "total_segments": n}));
+    }
+    let gini: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum::<f64>() / (n as f64 * sum);
+    Json(serde_json::json!({"name_length_gini": gini, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-hhi — índice Herfindahl-Hirschman dos comprimentos de nome. Sprint #4119.
+pub async fn segment_name_length_hhi(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_hhi": null, "total_segments": 0}));
+    }
+    let total: usize = segs.iter().map(|(name, _, _)| name.len()).sum();
+    if total == 0 {
+        return Json(serde_json::json!({"name_length_hhi": 0.0, "total_segments": n}));
+    }
+    let hhi: f64 = segs.iter().map(|(name, _, _)| { let s = name.len() as f64 / total as f64; s * s }).sum();
+    Json(serde_json::json!({"name_length_hhi": hhi, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-theil — índice Theil T dos comprimentos de nome. Sprint #4120.
+pub async fn segment_name_length_theil(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_theil": null, "total_segments": 0}));
+    }
+    let total: f64 = segs.iter().map(|(name, _, _)| name.len() as f64).sum();
+    if total == 0.0 {
+        return Json(serde_json::json!({"name_length_theil": 0.0, "total_segments": n}));
+    }
+    let mean = total / n as f64;
+    let theil: f64 = segs.iter().map(|(name, _, _)| {
+        let x = name.len() as f64;
+        if x == 0.0 { 0.0 } else { (x / mean) * (x / mean).ln() }
+    }).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"name_length_theil": theil, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-p25 — P25 de comprimento de nome de segmento. Sprint #4057.
 pub async fn segment_name_length_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

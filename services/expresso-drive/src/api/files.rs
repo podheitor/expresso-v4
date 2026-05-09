@@ -682,6 +682,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-kurtosis-by-owner",    get(file_stats_name_length_kurtosis_by_owner))
         .route("/api/v1/drive/files/stats/name-length-p25-by-owner",         get(file_stats_name_length_p25_by_owner))
         .route("/api/v1/drive/files/stats/name-length-p75-by-owner",         get(file_stats_name_length_p75_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-var-by-owner",         get(file_stats_name_length_var_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-std-dev-by-owner",     get(file_stats_name_length_std_dev_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-iqr-by-owner",         get(file_stats_name_length_iqr_by_owner))
+        .route("/api/v1/drive/files/stats/name-length-coeff-var-by-owner",   get(file_stats_name_length_coeff_var_by_owner))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -16103,6 +16107,58 @@ async fn file_stats_name_length_p75_by_owner(State(state): State<AppState>, ctx:
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(owner, p75, cnt)| serde_json::json!({"owner_id": owner, "p75_name_length": p75.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-var-by-owner — variância de comprimento de nome por owner. Sprint #4109.
+async fn file_stats_name_length_var_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, VAR_POP(LENGTH(name))::FLOAT8 AS var_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, var, cnt)| serde_json::json!({"owner_id": owner, "var_name_length": var.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-std-dev-by-owner — desvio padrão de comprimento de nome por owner. Sprint #4110.
+async fn file_stats_name_length_std_dev_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, STDDEV_POP(LENGTH(name))::FLOAT8 AS std_dev_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, std, cnt)| serde_json::json!({"owner_id": owner, "std_dev_name_length": std.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-iqr-by-owner — IQR de comprimento de nome por owner. Sprint #4111.
+async fn file_stats_name_length_iqr_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, f64, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id, \
+                PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p25_name_len, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p75_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, p25, p75, cnt)| serde_json::json!({"owner_id": owner, "iqr_name_length": p75 - p25, "p25_name_length": p25, "p75_name_length": p75, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-coeff-var-by-owner — coeficiente de variação de comprimento de nome por owner. Sprint #4112.
+async fn file_stats_name_length_coeff_var_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(uuid::Uuid, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT owner_id, \
+                STDDEV_POP(LENGTH(name))::FLOAT8 AS std_dev_name_len, \
+                AVG(LENGTH(name))::FLOAT8 AS mean_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(owner, std, mean, cnt)| {
+        let cv = match (std, mean) {
+            (Some(s), Some(m)) if m != 0.0 => Some(s / m),
+            _ => None,
+        };
+        serde_json::json!({"owner_id": owner, "coeff_var_name_length": cv, "file_count": cnt})
+    }).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

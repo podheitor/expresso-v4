@@ -11507,6 +11507,98 @@ async fn dlq_retry_lag_p10(
     }
 }
 
+/// GET /api/v1/notifications/dlq/stats/retry-lag-coeff-var — coeficiente de variação do lag de retry na DLQ. Sprint #4105.
+async fn dlq_retry_lag_coeff_var(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT STDDEV_POP(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS std_dev_lag, \
+                AVG(EXTRACT(EPOCH FROM (now() - created_at)))::FLOAT8 AS mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((Some(std), Some(mean), cnt)) if mean != 0.0 => Ok(Json(json!({"coeff_var_retry_lag": std / mean, "std_dev": std, "mean": mean, "count": cnt}))),
+        Some((_, _, cnt)) => Ok(Json(json!({"coeff_var_retry_lag": null, "count": cnt}))),
+        None => Ok(Json(json!({"coeff_var_retry_lag": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-mad — MAD do lag de retry na DLQ. Sprint #4106.
+async fn dlq_retry_lag_mad(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let lags: Vec<(f64,)> = sqlx::query_as(
+        "SELECT EXTRACT(EPOCH FROM (now() - created_at))::FLOAT8 \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         ORDER BY 1",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let vals: Vec<f64> = lags.into_iter().map(|(v,)| v).collect();
+    let n = vals.len();
+    if n == 0 { return Ok(Json(json!({"mad_retry_lag_seconds": null, "count": 0}))); }
+    let median = if n % 2 == 0 { (vals[n / 2 - 1] + vals[n / 2]) / 2.0 } else { vals[n / 2] };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|&v| (v - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 0 { (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0 } else { abs_devs[n / 2] };
+    Ok(Json(json!({"mad_retry_lag_seconds": mad, "median_retry_lag_seconds": median, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-harmonic-mean — média harmônica do lag de retry na DLQ. Sprint #4107.
+async fn dlq_retry_lag_harmonic_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT CASE WHEN SUM(1.0 / NULLIF(EXTRACT(EPOCH FROM (now() - created_at)), 0)) > 0 \
+                     THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(EXTRACT(EPOCH FROM (now() - created_at)), 0)) \
+                     ELSE NULL END AS harmonic_mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((hm, cnt)) => Ok(Json(json!({"harmonic_mean_retry_lag_seconds": hm, "count": cnt}))),
+        None => Ok(Json(json!({"harmonic_mean_retry_lag_seconds": null, "count": 0}))),
+    }
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-geometric-mean — média geométrica do lag de retry na DLQ. Sprint #4108.
+async fn dlq_retry_lag_geometric_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: Option<(Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXP(AVG(LN(NULLIF(EXTRACT(EPOCH FROM (now() - created_at)), 0))))::FLOAT8 AS geometric_mean_lag, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_optional(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    match row {
+        Some((gm, cnt)) => Ok(Json(json!({"geometric_mean_retry_lag_seconds": gm, "count": cnt}))),
+        None => Ok(Json(json!({"geometric_mean_retry_lag_seconds": null, "count": 0}))),
+    }
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-p05 — P05 de error_length na DLQ. Sprint #4065.
 async fn dlq_error_length_p05(
     State(st): State<AppState>,
@@ -20237,6 +20329,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/retry-lag-p99",                           get(dlq_retry_lag_p99))
         .route("/api/v1/notifications/dlq/stats/retry-lag-p05",                           get(dlq_retry_lag_p05))
         .route("/api/v1/notifications/dlq/stats/retry-lag-p10",                           get(dlq_retry_lag_p10))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-coeff-var",                     get(dlq_retry_lag_coeff_var))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-mad",                           get(dlq_retry_lag_mad))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-harmonic-mean",                 get(dlq_retry_lag_harmonic_mean))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-geometric-mean",                get(dlq_retry_lag_geometric_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-skewness",              get(dlq_by_kind_retry_lag_skewness))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-kurtosis",              get(dlq_by_kind_retry_lag_kurtosis))
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-skewness",              get(dlq_by_user_retry_lag_skewness))
