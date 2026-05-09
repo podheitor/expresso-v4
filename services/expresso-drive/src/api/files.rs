@@ -698,6 +698,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-iqr-by-ext",            get(file_stats_name_length_iqr_by_ext))
         .route("/api/v1/drive/files/stats/name-length-coeff-var-by-kind",     get(file_stats_name_length_coeff_var_by_kind))
         .route("/api/v1/drive/files/stats/name-length-coeff-var-by-mime",     get(file_stats_name_length_coeff_var_by_mime))
+        .route("/api/v1/drive/files/stats/name-length-coeff-var-by-ext",     get(file_stats_name_length_coeff_var_by_ext))
+        .route("/api/v1/drive/files/stats/name-length-harmonic-mean-by-kind", get(file_stats_name_length_harmonic_mean_by_kind))
+        .route("/api/v1/drive/files/stats/name-length-harmonic-mean-by-mime", get(file_stats_name_length_harmonic_mean_by_mime))
+        .route("/api/v1/drive/files/stats/name-length-harmonic-mean-by-ext",  get(file_stats_name_length_harmonic_mean_by_ext))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -16361,6 +16365,58 @@ async fn file_stats_var_size_by_owner(State(state): State<AppState>, ctx: Reques
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY owner_id ORDER BY owner_id",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(owner, var, cnt)| serde_json::json!({"owner_id": owner, "variance_size_bytes": var.unwrap_or(0.0), "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-coeff-var-by-ext — coeficiente de variação de comprimento de nome por extensão. Sprint #4189.
+async fn file_stats_name_length_coeff_var_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, STDDEV_POP(LENGTH(name))::FLOAT8 AS std_name_len, AVG(LENGTH(name))::FLOAT8 AS mean_name_len, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, std, mean, cnt)| {
+        let cv = match (std, mean) {
+            (Some(s), Some(m)) if m != 0.0 => Some(s / m),
+            _ => None,
+        };
+        serde_json::json!({"ext": ext, "coeff_var_name_length": cv, "file_count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-harmonic-mean-by-kind — média harmônica de comprimento de nome por kind. Sprint #4190.
+async fn file_stats_name_length_harmonic_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                CASE WHEN SUM(1.0 / NULLIF(LENGTH(name), 0)) > 0 THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(LENGTH(name), 0)) ELSE NULL END AS harmonic_mean_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, hm, cnt)| serde_json::json!({"kind": kind, "harmonic_mean_name_length": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-harmonic-mean-by-mime — média harmônica de comprimento de nome por tipo MIME. Sprint #4191.
+async fn file_stats_name_length_harmonic_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                CASE WHEN SUM(1.0 / NULLIF(LENGTH(name), 0)) > 0 THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(LENGTH(name), 0)) ELSE NULL END AS harmonic_mean_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, hm, cnt)| serde_json::json!({"mime_type": mime, "harmonic_mean_name_length": hm, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-harmonic-mean-by-ext — média harmônica de comprimento de nome por extensão. Sprint #4192.
+async fn file_stats_name_length_harmonic_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                CASE WHEN SUM(1.0 / NULLIF(LENGTH(name), 0)) > 0 THEN COUNT(*)::FLOAT8 / SUM(1.0 / NULLIF(LENGTH(name), 0)) ELSE NULL END AS harmonic_mean_name_len, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, hm, cnt)| serde_json::json!({"ext": ext, "harmonic_mean_name_length": hm, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

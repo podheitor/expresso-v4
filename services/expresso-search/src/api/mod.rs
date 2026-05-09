@@ -9914,6 +9914,63 @@ pub async fn segment_name_length_rank_max(State(store): State<IndexStore>) -> Js
     }
 }
 
+/// GET /api/v1/search/index/segments/name-length-harmonic-mean — média harmônica de comprimento de nome de segmento. Sprint #4197.
+pub async fn segment_name_length_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_harmonic_mean": null, "total_segments": 0}));
+    }
+    let inv_sum: f64 = segs.iter().map(|(name, _, _)| if name.len() > 0 { 1.0 / name.len() as f64 } else { 0.0 }).sum();
+    let hm = if inv_sum > 0.0 { Some(n as f64 / inv_sum) } else { None };
+    Json(serde_json::json!({"name_length_harmonic_mean": hm, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-geometric-mean — média geométrica de comprimento de nome de segmento. Sprint #4198.
+pub async fn segment_name_length_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_geometric_mean": null, "total_segments": 0}));
+    }
+    let ln_sum: f64 = segs.iter().filter_map(|(name, _, _)| if name.len() > 0 { Some((name.len() as f64).ln()) } else { None }).sum();
+    let valid_n = segs.iter().filter(|(name, _, _)| name.len() > 0).count();
+    let gm = if valid_n > 0 { Some((ln_sum / valid_n as f64).exp()) } else { None };
+    Json(serde_json::json!({"name_length_geometric_mean": gm, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-median — mediana de comprimento de nome de segmento. Sprint #4199.
+pub async fn segment_name_length_median(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_length_median": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let median = if n % 2 == 0 {
+        (vals[n / 2 - 1] + vals[n / 2]) as f64 / 2.0
+    } else {
+        vals[n / 2] as f64
+    };
+    Json(serde_json::json!({"name_length_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-below-p75 — segmentos com nome mais curto que o P75. Sprint #4200.
+pub async fn segment_name_length_below_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"below_p75_count": 0, "total_segments": 0, "p75_name_length": null}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let p75_idx = ((n as f64 * 0.75).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p75 = vals[p75_idx] as f64;
+    let count = vals.iter().filter(|&&v| (v as f64) < p75).count();
+    Json(serde_json::json!({"below_p75_count": count, "total_segments": n, "p75_name_length": p75}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-rank-min — segmento com nome mais curto (rank 1). Sprint #4177.
 pub async fn segment_name_length_rank_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
