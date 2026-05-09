@@ -718,6 +718,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-p10-by-mime",           get(file_stats_name_length_p10_by_mime))
         .route("/api/v1/drive/files/stats/name-length-p10-by-ext",            get(file_stats_name_length_p10_by_ext))
         .route("/api/v1/drive/files/stats/name-length-p90-by-kind",           get(file_stats_name_length_p90_by_kind))
+        .route("/api/v1/drive/files/stats/size-p95-by-mime",                   get(file_stats_size_p95_by_mime))
+        .route("/api/v1/drive/files/stats/size-p01-by-kind",                   get(file_stats_size_p01_by_kind))
+        .route("/api/v1/drive/files/stats/size-p01-by-mime",                   get(file_stats_size_p01_by_mime))
+        .route("/api/v1/drive/files/stats/size-p01-by-ext",                    get(file_stats_size_p01_by_ext))
         .route("/api/v1/drive/files/stats/size-var-by-mime",                   get(file_stats_size_var_by_mime))
         .route("/api/v1/drive/files/stats/size-var-by-ext",                    get(file_stats_size_var_by_ext))
         .route("/api/v1/drive/files/stats/size-sum-by-ext",                    get(file_stats_size_sum_by_ext))
@@ -16760,6 +16764,46 @@ async fn file_stats_name_length_coeff_var_by_mime(State(state): State<AppState>,
         };
         serde_json::json!({"mime_type": mime, "coeff_var_name_length": cv, "file_count": cnt})
     }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p95-by-mime — P95 de tamanho de arquivo por MIME. Sprint #4389.
+async fn file_stats_size_p95_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p95_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, p95, cnt)| serde_json::json!({"mime_type": mime, "p95_size_bytes": p95, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p01-by-kind — P01 de tamanho de arquivo por kind. Sprint #4390.
+async fn file_stats_size_p01_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p01_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, p01, cnt)| serde_json::json!({"kind": kind, "p01_size_bytes": p01, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p01-by-mime — P01 de tamanho de arquivo por MIME. Sprint #4391.
+async fn file_stats_size_p01_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p01_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, p01, cnt)| serde_json::json!({"mime_type": mime, "p01_size_bytes": p01, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-p01-by-ext — P01 de tamanho de arquivo por extensão. Sprint #4392.
+async fn file_stats_size_p01_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p01_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, p01, cnt)| serde_json::json!({"ext": ext, "p01_size_bytes": p01, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
