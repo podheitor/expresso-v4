@@ -368,6 +368,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-cv-by-kind",             get(file_stats_size_deleted_cv_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-iqr-by-kind",            get(file_stats_size_deleted_iqr_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-stddev-by-kind",         get(file_stats_size_deleted_stddev_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-variance-by-kind",       get(file_stats_size_deleted_variance_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-variance-by-mime",       get(file_stats_size_deleted_variance_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-skewness-by-kind",       get(file_stats_size_deleted_skewness_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-skewness-by-mime",       get(file_stats_size_deleted_skewness_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-kind",              get(file_stats_size_active_range_by_kind))
         .route("/api/v1/drive/files/stats/active-size-range-by-mime",              get(file_stats_size_active_range_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-owner",             get(file_stats_size_active_range_by_owner))
@@ -10687,6 +10691,78 @@ async fn file_stats_size_deleted_stddev_by_kind(State(state): State<AppState>, c
     .bind(ctx.tenant_id).fetch_all(state.db()).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(kind, stddev, cnt)| serde_json::json!({"kind": kind, "stddev_deleted_size_bytes": stddev, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-variance-by-kind — variância do tamanho de arquivos deletados por kind. Sprint #3086.
+async fn file_stats_size_deleted_variance_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY kind ORDER BY variance_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, var, cnt)| serde_json::json!({"kind": kind, "variance_deleted_size_bytes": var, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-variance-by-mime — variância do tamanho de arquivos deletados por mime_type. Sprint #3091.
+async fn file_stats_size_deleted_variance_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY variance_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, var, cnt)| serde_json::json!({"mime_type": mime, "variance_deleted_size_bytes": var, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-skewness-by-kind — skewness do tamanho de arquivos deletados por kind. Sprint #3096.
+async fn file_stats_size_deleted_skewness_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                COALESCE( \
+                    (AVG(POWER(size_bytes - sub.avg_sz, 3)) / NULLIF(POWER(STDDEV_POP(size_bytes), 3), 0)), \
+                    0.0)::FLOAT8 AS skewness_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         JOIN (SELECT kind AS k, AVG(size_bytes) AS avg_sz FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY kind) sub \
+           ON drive_files.kind = sub.k \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY drive_files.kind ORDER BY skewness_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, skew, cnt)| serde_json::json!({"kind": kind, "skewness_deleted_size": skew, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-skewness-by-mime — skewness do tamanho de arquivos deletados por mime_type. Sprint #3101.
+async fn file_stats_size_deleted_skewness_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                COALESCE( \
+                    (AVG(POWER(size_bytes - sub.avg_sz, 3)) / NULLIF(POWER(STDDEV_POP(size_bytes), 3), 0)), \
+                    0.0)::FLOAT8 AS skewness_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         JOIN (SELECT mime_type AS mt, AVG(size_bytes) AS avg_sz FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY mime_type) sub \
+           ON drive_files.mime_type = sub.mt \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY drive_files.mime_type ORDER BY skewness_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, skew, cnt)| serde_json::json!({"mime_type": mime, "skewness_deleted_size": skew, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

@@ -8420,6 +8420,57 @@ pub async fn segment_byte_density_p25(State(store): State<IndexStore>) -> Json<s
     Json(serde_json::json!({"p25_byte_density": p25, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/byte-density-sum — soma total da densidade bytes/doc. Sprint #3088.
+pub async fn segment_byte_density_sum(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_byte_density": 0.0, "total_segments": 0}));
+    }
+    let sum: f64 = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).sum();
+    Json(serde_json::json!({"sum_byte_density": sum, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-count — contagem de segmentos com density calculável. Sprint #3093.
+pub async fn segment_byte_density_count(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let total = segs.len();
+    let with_docs = segs.iter().filter(|(_, docs, _)| *docs > 0).count();
+    Json(serde_json::json!({"segments_with_density": with_docs, "total_segments": total}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-variance — variância da densidade bytes/doc. Sprint #3098.
+pub async fn segment_byte_density_variance(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"variance_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = densities.iter().sum::<f64>() / n as f64;
+    let variance = densities.iter().map(|d| (d - mean).powi(2)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"variance_byte_density": variance, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-mad — MAD da densidade bytes/doc. Sprint #3103.
+pub async fn segment_byte_density_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mad_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = densities.iter().sum::<f64>() / n as f64;
+    let mad = densities.iter().map(|d| (d - mean).abs()).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"mad_byte_density": mad, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
