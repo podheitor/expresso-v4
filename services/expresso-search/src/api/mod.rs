@@ -10853,6 +10853,70 @@ pub async fn segment_name_length_sum_below_p05(State(store): State<IndexStore>) 
 }
 
 /// GET /api/v1/search/index/segments/docs-sum-above-p25 — soma de docs dos segmentos acima do P25. Sprint #4617.
+/// GET /api/v1/search/index/segments/name-length-sum-below-p01 — soma de comprimento de nome dos segmentos abaixo do P01. Sprint #4697.
+pub async fn segment_name_length_sum_below_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_below_p01": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p01_idx = ((n as f64 * 0.01).ceil() as usize).min(n - 1);
+    let p01 = vals[p01_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p01).sum();
+    let count = vals.iter().filter(|&&v| v < p01).count();
+    Json(serde_json::json!({"sum_name_length_below_p01": sum, "p01_name_length": p01, "count_below_p01": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p90 — soma de comprimento de nome dos segmentos acima do P90. Sprint #4698.
+pub async fn segment_name_length_sum_above_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_above_p90": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p90_idx = ((n as f64 * 0.90).ceil() as usize).min(n - 1);
+    let p90 = vals[p90_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p90).sum();
+    let count = vals.iter().filter(|&&v| v > p90).count();
+    Json(serde_json::json!({"sum_name_length_above_p90": sum, "p90_name_length": p90, "count_above_p90": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p99 — soma de comprimento de nome dos segmentos acima do P99. Sprint #4699.
+pub async fn segment_name_length_sum_above_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_above_p99": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p99_idx = ((n as f64 * 0.99).ceil() as usize).min(n - 1);
+    let p99 = vals[p99_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p99).sum();
+    let count = vals.iter().filter(|&&v| v > p99).count();
+    Json(serde_json::json!({"sum_name_length_above_p99": sum, "p99_name_length": p99, "count_above_p99": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p25 — soma de comprimento de nome dos segmentos acima do P25. Sprint #4700.
+pub async fn segment_name_length_sum_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_above_p25": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p25_idx = ((n as f64 * 0.25).ceil() as usize).min(n - 1);
+    let p25 = vals[p25_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p25).sum();
+    let count = vals.iter().filter(|&&v| v > p25).count();
+    Json(serde_json::json!({"sum_name_length_above_p25": sum, "p25_name_length": p25, "count_above_p25": count, "total_segments": n}))
+}
+
 pub async fn segment_docs_sum_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();

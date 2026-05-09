@@ -14468,6 +14468,95 @@ async fn dlq_attempts_gini(
     Ok(Json(json!({"gini_attempts": gini, "count": total_pop})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/attempts-theil — índice de Theil de attempts. Sprint #4685.
+async fn dlq_attempts_theil(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT attempts::BIGINT FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let n = rows.len();
+    if n == 0 { return Ok(Json(json!({"theil_t_attempts": null, "count": 0}))); }
+    let vals: Vec<f64> = rows.iter().map(|(v,)| *v as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 { return Ok(Json(json!({"theil_t_attempts": null, "count": n}))); }
+    let theil: f64 = vals.iter().filter(|&&v| v > 0.0)
+        .map(|&v| (v / mean) * (v / mean).ln())
+        .sum::<f64>() / n as f64;
+    Ok(Json(json!({"theil_t_attempts": theil, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-hhi — índice HHI de attempts. Sprint #4686.
+async fn dlq_attempts_hhi(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT attempts::BIGINT, COUNT(*)::BIGINT AS freq FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY attempts",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total: i64 = rows.iter().map(|(_, f)| f).sum();
+    if total == 0 { return Ok(Json(json!({"hhi_attempts": null, "count": 0}))); }
+    let hhi: f64 = rows.iter().map(|(_, f)| { let s = *f as f64 / total as f64; s * s }).sum();
+    Ok(Json(json!({"hhi_attempts": hhi, "count": total})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-atkinson — índice de Atkinson de attempts. Sprint #4687.
+async fn dlq_attempts_atkinson(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT attempts::BIGINT FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let n = rows.len();
+    if n == 0 { return Ok(Json(json!({"atkinson_attempts": null, "count": 0}))); }
+    let vals: Vec<f64> = rows.iter().map(|(v,)| *v as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 { return Ok(Json(json!({"atkinson_attempts": null, "count": n}))); }
+    let epsilon = 0.5f64;
+    let geom_mean = (vals.iter().filter(|&&v| v > 0.0).map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+    let atkinson = 1.0 - geom_mean / mean;
+    Ok(Json(json!({"atkinson_attempts": atkinson, "epsilon": epsilon, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/error-length-mad — MAD global de error_length. Sprint #4688.
+async fn dlq_error_length_mad(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH median AS (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY LENGTH(error_message)::FLOAT8) AS med \
+                         FROM notification_dlq \
+                         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)) \
+         SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS(LENGTH(d.error_message)::FLOAT8 - m.med))::FLOAT8 AS mad_error_length, \
+                COUNT(d.*)::BIGINT AS cnt \
+         FROM notification_dlq d, median m \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR d.created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR d.created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"mad_error_length": row.0, "count": row.1})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-p05 — P05 global de attempts. Sprint #4605.
 async fn dlq_attempts_p05(
     State(st): State<AppState>,
@@ -22916,6 +23005,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/attempts-count-below-mean",        get(dlq_attempts_count_below_mean))
         .route("/api/v1/notifications/dlq/stats/attempts-lorenz",                  get(dlq_attempts_lorenz))
         .route("/api/v1/notifications/dlq/stats/attempts-gini",                    get(dlq_attempts_gini))
+        .route("/api/v1/notifications/dlq/stats/attempts-theil",                   get(dlq_attempts_theil))
+        .route("/api/v1/notifications/dlq/stats/attempts-hhi",                     get(dlq_attempts_hhi))
+        .route("/api/v1/notifications/dlq/stats/attempts-atkinson",                get(dlq_attempts_atkinson))
+        .route("/api/v1/notifications/dlq/stats/error-length-mad",                 get(dlq_error_length_mad))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean",   get(dlq_by_kind_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean",   get(dlq_by_user_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-harmonic-mean", get(dlq_by_tenant_attempts_harmonic_mean))

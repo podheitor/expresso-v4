@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/size-winsorized-mean",                get(file_stats_size_winsorized_mean))
+        .route("/api/v1/drive/files/stats/size-skewness",                       get(file_stats_size_skewness))
+        .route("/api/v1/drive/files/stats/size-kurtosis",                       get(file_stats_size_kurtosis))
+        .route("/api/v1/drive/files/stats/version-mad",                         get(file_stats_version_mad))
         .route("/api/v1/drive/files/stats/size-mad",                            get(file_stats_size_mad))
         .route("/api/v1/drive/files/stats/size-harmonic-mean",                  get(file_stats_size_harmonic_mean))
         .route("/api/v1/drive/files/stats/size-geometric-mean",                 get(file_stats_size_geometric_mean))
@@ -17487,6 +17491,51 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
 }
 
 /// GET /api/v1/drive/files/stats/size-count-above-p75 — contagem de arquivos com tamanho acima do P75. Sprint #4629.
+/// GET /api/v1/drive/files/stats/size-winsorized-mean — média winsorizada (10%–90%) de tamanho global. Sprint #4689.
+async fn file_stats_size_winsorized_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH bounds AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY size) AS lo, \
+                                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY size) AS hi \
+                         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL) \
+         SELECT AVG(GREATEST(LEAST(f.size::FLOAT8, b.hi), b.lo))::FLOAT8 AS winsorized_mean_size, \
+                COUNT(f.*)::BIGINT AS file_count \
+         FROM drive_files f, bounds b WHERE f.tenant_id = $1 AND f.deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"winsorized_mean_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-skewness — assimetria de tamanho global. Sprint #4690.
+async fn file_stats_size_skewness(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (), 3)) OVER () / \
+                    NULLIF(POWER(STDDEV_POP(size::FLOAT8) OVER (), 3), 0))::FLOAT8 AS skewness_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"skewness_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-kurtosis — curtose de tamanho global. Sprint #4691.
+async fn file_stats_size_kurtosis(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (), 4)) OVER () / \
+                    NULLIF(POWER(VAR_POP(size::FLOAT8) OVER (), 2), 0) - 3.0)::FLOAT8 AS kurtosis_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"kurtosis_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-mad — MAD de versão global. Sprint #4692.
+async fn file_stats_version_mad(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH med AS (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY version) AS median FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL) \
+         SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS(f.version - m.median))::FLOAT8 AS mad_version, COUNT(f.*)::BIGINT AS file_count \
+         FROM drive_files f, med m WHERE f.tenant_id = $1 AND f.deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mad_version": row.0, "file_count": row.1})))
+}
+
 /// GET /api/v1/drive/files/stats/size-mad — MAD de tamanho global. Sprint #4669.
 async fn file_stats_size_mad(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
     let row: (Option<f64>, i64) = sqlx::query_as(
