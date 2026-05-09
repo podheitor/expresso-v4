@@ -815,6 +815,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/age-days-count-below-p75",            get(file_stats_age_days_count_below_p75))
         .route("/api/v1/drive/files/stats/age-days-count-above-p90",            get(file_stats_age_days_count_above_p90))
         .route("/api/v1/drive/files/stats/age-days-count-below-p90",            get(file_stats_age_days_count_below_p90))
+        .route("/api/v1/drive/files/stats/age-days-count-above-p95",            get(file_stats_age_days_count_above_p95))
+        .route("/api/v1/drive/files/stats/age-days-count-below-p95",            get(file_stats_age_days_count_below_p95))
+        .route("/api/v1/drive/files/stats/age-days-count-above-p99",            get(file_stats_age_days_count_above_p99))
+        .route("/api/v1/drive/files/stats/age-days-count-below-p99",            get(file_stats_age_days_count_below_p99))
         .route("/api/v1/drive/files/stats/version-range",                        get(file_stats_version_range))
         .route("/api/v1/drive/files/stats/version-gini",                         get(file_stats_version_gini))
         .route("/api/v1/drive/files/stats/version-mad",                         get(file_stats_version_mad))
@@ -17859,6 +17863,50 @@ async fn file_stats_age_days_count_below_p90(State(state): State<AppState>, ctx:
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_age_days": row.0, "count_below_p90": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-above-p95 — contagem de arquivos com age_days acima do P95. Sprint #4909.
+async fn file_stats_age_days_count_above_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p95_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_age_days": row.0, "count_above_p95": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-below-p95 — contagem de arquivos com age_days abaixo do P95. Sprint #4910.
+async fn file_stats_age_days_count_below_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p95_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 < (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_age_days": row.0, "count_below_p95": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-above-p99 — contagem de arquivos com age_days acima do P99. Sprint #4911.
+async fn file_stats_age_days_count_above_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p99_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p99, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_age_days": row.0, "count_above_p99": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/age-days-count-below-p99 — contagem de arquivos com age_days abaixo do P99. Sprint #4912.
+async fn file_stats_age_days_count_below_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0)::FLOAT8 AS p99_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0 < (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p99, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_age_days": row.0, "count_below_p99": row.1, "file_count": row.2})))
 }
 
 /// GET /api/v1/drive/files/stats/version-range — range (max−min) de versão global. Sprint #4711.

@@ -829,6 +829,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-below-p50-by-sender",       get(attachment_count_below_p50_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-above-p75-by-sender",       get(attachment_count_above_p75_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-below-p75-by-sender",       get(attachment_count_below_p75_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-above-p90-by-sender",       get(attachment_count_above_p90_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-below-p90-by-sender",       get(attachment_count_below_p90_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-above-p95-by-sender",       get(attachment_count_above_p95_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-below-p95-by-sender",       get(attachment_count_below_p95_by_sender_stats))
         .route("/mail/messages/stats/body-length-count-above-p50-by-sender",      get(body_length_count_above_p50_by_sender_stats))
         .route("/mail/messages/stats/body-length-count-below-p50-by-sender",      get(body_length_count_below_p50_by_sender_stats))
         .route("/mail/messages/stats/body-length-count-above-p75-by-sender",      get(body_length_count_above_p75_by_sender_stats))
@@ -23284,6 +23288,90 @@ async fn attachment_count_below_p25_by_sender_stats(
     let mut seen = std::collections::HashSet::new();
     let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
         .map(|(sender, p25, below, cnt)| serde_json::json!({"sender": sender, "p25_attachment_count": p25, "count_below_p25": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-above-p90-by-sender — contagem de msgs com attachment_count acima do P90 × remetente. Sprint #4913.
+async fn attachment_count_above_p90_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY attachment_count)::FLOAT8 AS p90_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count > PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p90, above, cnt)| serde_json::json!({"sender": sender, "p90_attachment_count": p90, "count_above_p90": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-below-p90-by-sender — contagem de msgs com attachment_count abaixo do P90 × remetente. Sprint #4914.
+async fn attachment_count_below_p90_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY attachment_count)::FLOAT8 AS p90_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count < PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p90, below, cnt)| serde_json::json!({"sender": sender, "p90_attachment_count": p90, "count_below_p90": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-above-p95-by-sender — contagem de msgs com attachment_count acima do P95 × remetente. Sprint #4915.
+async fn attachment_count_above_p95_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY attachment_count)::FLOAT8 AS p95_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count > PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_above_p95, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p95, above, cnt)| serde_json::json!({"sender": sender, "p95_attachment_count": p95, "count_above_p95": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-below-p95-by-sender — contagem de msgs com attachment_count abaixo do P95 × remetente. Sprint #4916.
+async fn attachment_count_below_p95_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY attachment_count)::FLOAT8 AS p95_attachment_count, \
+                COUNT(*) FILTER (WHERE attachment_count < PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY attachment_count) OVER (PARTITION BY sender))::BIGINT AS count_below_p95, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _, _)| seen.insert(s.clone()))
+        .map(|(sender, p95, below, cnt)| serde_json::json!({"sender": sender, "p95_attachment_count": p95, "count_below_p95": below, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
