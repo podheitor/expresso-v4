@@ -380,6 +380,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-mad-by-tier",                         get(size_mad_by_tier_stats))
         .route("/mail/messages/stats/body-length-mad-by-folder",                get(body_length_mad_by_folder_stats))
         .route("/mail/messages/stats/body-length-mad-by-tier",                  get(body_length_mad_by_tier_stats))
+        .route("/mail/messages/stats/size-coeff-var-by-tier",                  get(size_coeff_var_by_tier_stats))
+        .route("/mail/messages/stats/size-coeff-var-by-folder",               get(size_coeff_var_by_folder_stats))
+        .route("/mail/messages/stats/body-length-coeff-var-by-tier",          get(body_length_coeff_var_by_tier_stats))
+        .route("/mail/messages/stats/body-length-coeff-var-by-folder",        get(body_length_coeff_var_by_folder_stats))
         .route("/mail/messages/stats/size-trimmed-mean-by-folder",              get(size_trimmed_mean_by_folder_stats))
         .route("/mail/messages/stats/size-trimmed-mean-by-tier",                get(size_trimmed_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-trimmed-mean-by-folder",       get(body_length_trimmed_mean_by_folder_stats))
@@ -13005,6 +13009,122 @@ async fn body_length_mad_by_tier_stats(
         abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
         let mad = if m == 0 { 0.0 } else if m % 2 == 1 { abs_devs[m / 2] } else { (abs_devs[m / 2 - 1] + abs_devs[m / 2]) / 2.0 };
         serde_json::json!({"tier": tier, "mad_body_length": mad, "median_body_length": median, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-coeff-var-by-tier — coeficiente de variação de size por tier. Sprint #3593.
+async fn size_coeff_var_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"tier": tier, "coeff_var_size": coeff_var, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-coeff-var-by-folder — coeficiente de variação de size por pasta. Sprint #3594.
+async fn size_coeff_var_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.size::FLOAT8 ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, sizes_opt, cnt)| {
+        let vals: Vec<f64> = sizes_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"folder": folder, "coeff_var_size": coeff_var, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-coeff-var-by-tier — CV de body_length por tier. Sprint #3595.
+async fn body_length_coeff_var_by_tier_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.tier AS tier, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.tier ORDER BY mb.tier",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tier, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"tier": tier, "coeff_var_body_length": coeff_var, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-coeff-var-by-folder — CV de body_length por pasta. Sprint #3596.
+async fn body_length_coeff_var_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, ARRAY_AGG(m.body_length::FLOAT8 ORDER BY m.body_length) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(folder, lengths_opt, cnt)| {
+        let vals: Vec<f64> = lengths_opt.into_iter().flatten().collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"folder": folder, "coeff_var_body_length": coeff_var, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
