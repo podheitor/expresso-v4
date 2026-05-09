@@ -10788,6 +10788,70 @@ pub async fn segment_docs_sum_below_p99(State(store): State<IndexStore>) -> Json
     Json(serde_json::json!({"sum_docs_below_p99": sum, "p99_docs": p99, "count_below_p99": count, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-sum-above-p99 — soma de docs dos segmentos acima do P99. Sprint #4677.
+pub async fn segment_docs_sum_above_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_docs_above_p99": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, docs)| *docs).collect();
+    vals.sort_unstable();
+    let p99_idx = ((n as f64 * 0.99).ceil() as usize).min(n - 1);
+    let p99 = vals[p99_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p99).sum();
+    let count = vals.iter().filter(|&&v| v > p99).count();
+    Json(serde_json::json!({"sum_docs_above_p99": sum, "p99_docs": p99, "count_above_p99": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-p99 — soma de bytes dos segmentos acima do P99. Sprint #4678.
+pub async fn segment_bytes_sum_above_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_bytes_above_p99": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, bytes, _)| *bytes).collect();
+    vals.sort_unstable();
+    let p99_idx = ((n as f64 * 0.99).ceil() as usize).min(n - 1);
+    let p99 = vals[p99_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v > p99).sum();
+    let count = vals.iter().filter(|&&v| v > p99).count();
+    Json(serde_json::json!({"sum_bytes_above_p99": sum, "p99_bytes": p99, "count_above_p99": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-below-p10 — soma de comprimento de nome dos segmentos abaixo do P10. Sprint #4679.
+pub async fn segment_name_length_sum_below_p10(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_below_p10": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p10_idx = ((n as f64 * 0.10).ceil() as usize).min(n - 1);
+    let p10 = vals[p10_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p10).sum();
+    let count = vals.iter().filter(|&&v| v < p10).count();
+    Json(serde_json::json!({"sum_name_length_below_p10": sum, "p10_name_length": p10, "count_below_p10": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-below-p05 — soma de comprimento de nome dos segmentos abaixo do P05. Sprint #4680.
+pub async fn segment_name_length_sum_below_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_name_length_below_p05": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(name, _, _)| name.len() as u64).collect();
+    vals.sort_unstable();
+    let p05_idx = ((n as f64 * 0.05).ceil() as usize).min(n - 1);
+    let p05 = vals[p05_idx];
+    let sum: u64 = vals.iter().filter(|&&v| v < p05).sum();
+    let count = vals.iter().filter(|&&v| v < p05).count();
+    Json(serde_json::json!({"sum_name_length_below_p05": sum, "p05_name_length": p05, "count_below_p05": count, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/docs-sum-above-p25 — soma de docs dos segmentos acima do P25. Sprint #4617.
 pub async fn segment_docs_sum_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

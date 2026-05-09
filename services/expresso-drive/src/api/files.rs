@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/size-mad",                            get(file_stats_size_mad))
+        .route("/api/v1/drive/files/stats/size-harmonic-mean",                  get(file_stats_size_harmonic_mean))
+        .route("/api/v1/drive/files/stats/size-geometric-mean",                 get(file_stats_size_geometric_mean))
+        .route("/api/v1/drive/files/stats/size-trimmed-mean",                   get(file_stats_size_trimmed_mean))
         .route("/api/v1/drive/files/stats/size-p01",                            get(file_stats_size_p01))
         .route("/api/v1/drive/files/stats/size-p75",                            get(file_stats_size_p75))
         .route("/api/v1/drive/files/stats/size-p90",                            get(file_stats_size_p90))
@@ -17483,6 +17487,51 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
 }
 
 /// GET /api/v1/drive/files/stats/size-count-above-p75 — contagem de arquivos com tamanho acima do P75. Sprint #4629.
+/// GET /api/v1/drive/files/stats/size-mad — MAD de tamanho global. Sprint #4669.
+async fn file_stats_size_mad(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH med AS (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY size) AS median FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL) \
+         SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS(f.size - m.median))::FLOAT8 AS mad_size, COUNT(f.*)::BIGINT AS file_count \
+         FROM drive_files f, med m WHERE f.tenant_id = $1 AND f.deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mad_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-harmonic-mean — média harmônica de tamanho global. Sprint #4670.
+async fn file_stats_size_harmonic_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (COUNT(*) FILTER (WHERE size > 0)::FLOAT8 / NULLIF(SUM(1.0 / NULLIF(size::FLOAT8, 0)), 0))::FLOAT8 AS harmonic_mean_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"harmonic_mean_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-geometric-mean — média geométrica de tamanho global. Sprint #4671.
+async fn file_stats_size_geometric_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT EXP(AVG(LN(NULLIF(size::FLOAT8, 0))))::FLOAT8 AS geometric_mean_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"geometric_mean_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-trimmed-mean — média truncada (10%–90%) de tamanho global. Sprint #4672.
+async fn file_stats_size_trimmed_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT size::BIGINT FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY size",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let n = rows.len();
+    if n == 0 {
+        return Ok(Json(serde_json::json!({"trimmed_mean_size": null, "file_count": 0})));
+    }
+    let lo = ((n as f64 * 0.10).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.90).floor() as usize).min(n - 1);
+    let trimmed: Vec<f64> = rows[lo..=hi].iter().map(|(v,)| *v as f64).collect();
+    let mean = if trimmed.is_empty() { None } else { Some(trimmed.iter().sum::<f64>() / trimmed.len() as f64) };
+    Ok(Json(serde_json::json!({"trimmed_mean_size": mean, "file_count": n})))
+}
+
 /// GET /api/v1/drive/files/stats/size-p01 — P01 de tamanho global. Sprint #4649.
 async fn file_stats_size_p01(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
     let row: (Option<f64>, i64) = sqlx::query_as(

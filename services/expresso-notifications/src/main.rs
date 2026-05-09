@@ -14355,6 +14355,119 @@ async fn dlq_attempts_geometric_mean(
     Ok(Json(json!({"geometric_mean_attempts": row.0, "count": row.1})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/attempts-count-above-mean — contagem de entradas DLQ com attempts acima da média. Sprint #4665.
+async fn dlq_attempts_count_above_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (i64, Option<f64>, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE attempts::FLOAT8 > AVG(attempts::FLOAT8) OVER ())::BIGINT AS count_above_mean, \
+                AVG(attempts::FLOAT8)::FLOAT8 AS mean_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) LIMIT 1",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"count_above_mean": row.0, "mean_attempts": row.1, "count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-count-below-mean — contagem de entradas DLQ com attempts abaixo da média. Sprint #4666.
+async fn dlq_attempts_count_below_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (i64, Option<f64>, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE attempts::FLOAT8 < AVG(attempts::FLOAT8) OVER ())::BIGINT AS count_below_mean, \
+                AVG(attempts::FLOAT8)::FLOAT8 AS mean_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) LIMIT 1",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"count_below_mean": row.0, "mean_attempts": row.1, "count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-lorenz — área de Lorenz de attempts. Sprint #4667.
+async fn dlq_attempts_lorenz(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT attempts::BIGINT, COUNT(*)::BIGINT AS freq \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY attempts ORDER BY attempts",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total_pop: i64 = rows.iter().map(|(_, f)| f).sum();
+    let total_val: i64 = rows.iter().map(|(v, f)| v * f).sum();
+    if total_pop == 0 || total_val == 0 {
+        return Ok(Json(json!({"lorenz_area": null, "count": 0})));
+    }
+    let mut cum_pop = 0i64;
+    let mut cum_val = 0i64;
+    let mut area = 0.0f64;
+    let mut prev_x = 0.0f64;
+    let mut prev_y = 0.0f64;
+    for (v, f) in &rows {
+        cum_pop += f;
+        cum_val += v * f;
+        let x = cum_pop as f64 / total_pop as f64;
+        let y = cum_val as f64 / total_val as f64;
+        area += (x - prev_x) * (prev_y + y) / 2.0;
+        prev_x = x;
+        prev_y = y;
+    }
+    Ok(Json(json!({"lorenz_area": area, "count": total_pop})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-gini — coeficiente de Gini de attempts. Sprint #4668.
+async fn dlq_attempts_gini(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT attempts::BIGINT, COUNT(*)::BIGINT AS freq \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY attempts ORDER BY attempts",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total_pop: i64 = rows.iter().map(|(_, f)| f).sum();
+    let total_val: i64 = rows.iter().map(|(v, f)| v * f).sum();
+    if total_pop == 0 || total_val == 0 {
+        return Ok(Json(json!({"gini_attempts": null, "count": 0})));
+    }
+    let mut cum_pop = 0i64;
+    let mut cum_val = 0i64;
+    let mut area = 0.0f64;
+    let mut prev_x = 0.0f64;
+    let mut prev_y = 0.0f64;
+    for (v, f) in &rows {
+        cum_pop += f;
+        cum_val += v * f;
+        let x = cum_pop as f64 / total_pop as f64;
+        let y = cum_val as f64 / total_val as f64;
+        area += (x - prev_x) * (prev_y + y) / 2.0;
+        prev_x = x;
+        prev_y = y;
+    }
+    let gini = 1.0 - 2.0 * area;
+    Ok(Json(json!({"gini_attempts": gini, "count": total_pop})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-p05 — P05 global de attempts. Sprint #4605.
 async fn dlq_attempts_p05(
     State(st): State<AppState>,
@@ -22799,6 +22912,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/attempts-mad",                     get(dlq_attempts_mad))
         .route("/api/v1/notifications/dlq/stats/attempts-harmonic-mean",           get(dlq_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/attempts-geometric-mean",          get(dlq_attempts_geometric_mean))
+        .route("/api/v1/notifications/dlq/stats/attempts-count-above-mean",        get(dlq_attempts_count_above_mean))
+        .route("/api/v1/notifications/dlq/stats/attempts-count-below-mean",        get(dlq_attempts_count_below_mean))
+        .route("/api/v1/notifications/dlq/stats/attempts-lorenz",                  get(dlq_attempts_lorenz))
+        .route("/api/v1/notifications/dlq/stats/attempts-gini",                    get(dlq_attempts_gini))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean",   get(dlq_by_kind_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean",   get(dlq_by_user_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-harmonic-mean", get(dlq_by_tenant_attempts_harmonic_mean))
