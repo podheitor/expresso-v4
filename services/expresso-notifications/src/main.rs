@@ -6934,6 +6934,86 @@ async fn dlq_by_kind_created_at_min(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-created-at-min — timestamp mínimo de created_at por user_id. Sprint #3045.
+async fn dlq_by_user_created_at_min(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, MIN(created_at)::TEXT AS min_created_at, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, ts, cnt)| {
+        json!({"user_id": uid, "min_created_at": ts, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-created-at-max — timestamp máximo de created_at por user_id. Sprint #3050.
+async fn dlq_by_user_created_at_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, MAX(created_at)::TEXT AS max_created_at, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(uid, ts, cnt)| {
+        json!({"user_id": uid, "max_created_at": ts, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-created-at-min — timestamp mínimo de created_at por tenant_id. Sprint #3055.
+async fn dlq_by_tenant_created_at_min(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, MIN(created_at)::TEXT AS min_created_at, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, ts, cnt)| {
+        json!({"tenant_id": tid, "min_created_at": ts, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-created-at-max — timestamp máximo de created_at por tenant_id. Sprint #3060.
+async fn dlq_by_tenant_created_at_max(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, MAX(created_at)::TEXT AS max_created_at, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tid, ts, cnt)| {
+        json!({"tenant_id": tid, "max_created_at": ts, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-sum — soma de error length por tenant. Sprint #3030.
 async fn dlq_by_tenant_error_length_sum(
     State(st): State<AppState>,
@@ -14769,6 +14849,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-sum",       get(dlq_by_tenant_error_length_sum))
         .route("/api/v1/notifications/dlq/stats/by-kind-created-at-min",           get(dlq_by_kind_created_at_min))
         .route("/api/v1/notifications/dlq/stats/by-kind-created-at-max",           get(dlq_by_kind_created_at_max))
+        .route("/api/v1/notifications/dlq/stats/by-user-created-at-min",           get(dlq_by_user_created_at_min))
+        .route("/api/v1/notifications/dlq/stats/by-user-created-at-max",           get(dlq_by_user_created_at_max))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-created-at-min",         get(dlq_by_tenant_created_at_min))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-created-at-max",         get(dlq_by_tenant_created_at_max))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-stddev",          get(dlq_by_kind_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-stddev",          get(dlq_by_user_attempts_stddev))
         .route("/api/v1/notifications/dlq/stats/by-tenant-attempts-stddev",        get(dlq_by_tenant_attempts_stddev))

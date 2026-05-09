@@ -416,6 +416,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-p99-by-sender",                       get(size_p99_by_sender_stats))
         .route("/mail/messages/stats/body-length-p99-by-sender",                get(body_length_p99_by_sender_stats))
         .route("/mail/messages/stats/size-stddev-by-sender",                    get(size_stddev_by_sender_stats))
+        .route("/mail/messages/stats/body-length-stddev-by-sender",             get(body_length_stddev_by_sender_stats))
+        .route("/mail/messages/stats/body-length-count-by-sender",              get(body_length_count_by_sender_stats))
+        .route("/mail/messages/stats/body-length-variance-by-sender",           get(body_length_variance_by_sender_stats))
+        .route("/mail/messages/stats/size-skewness-by-sender",                  get(size_skewness_by_sender_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -13362,6 +13366,99 @@ async fn size_stddev_by_sender_stats(
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, stddev, cnt)| {
         serde_json::json!({"sender": sender, "stddev_size": stddev, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-stddev-by-sender — desvio padrão de body_length por remetente. Sprint #3047.
+async fn body_length_stddev_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE(STDDEV_POP(m.body_length), 0.0)::FLOAT8 AS stddev_body_length, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY stddev_body_length DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, stddev, cnt)| {
+        serde_json::json!({"sender": sender, "stddev_body_length": stddev, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-by-sender — contagem de mensagens por remetente via body_length. Sprint #3052.
+async fn body_length_count_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, i64, f64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COUNT(*)::BIGINT AS cnt, \
+                COALESCE(AVG(m.body_length), 0.0)::FLOAT8 AS avg_body_length \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, cnt, avg)| {
+        serde_json::json!({"sender": sender, "count": cnt, "avg_body_length": avg})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-variance-by-sender — variância de body_length por remetente. Sprint #3057.
+async fn body_length_variance_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE(VAR_POP(m.body_length), 0.0)::FLOAT8 AS variance_body_length, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY variance_body_length DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, variance, cnt)| {
+        serde_json::json!({"sender": sender, "variance_body_length": variance, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-skewness-by-sender — skewness de size por remetente. Sprint #3062.
+async fn size_skewness_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE( \
+                    (AVG(POWER(m.size - sub.avg_size, 3)) / NULLIF(POWER(STDDEV_POP(m.size), 3), 0)), \
+                    0.0)::FLOAT8 AS skewness_size, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m \
+         JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         JOIN (SELECT from_addr, AVG(size) AS avg_size FROM messages WHERE user_id = $1 GROUP BY from_addr) sub \
+           ON m.from_addr = sub.from_addr \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY skewness_size DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, skewness, cnt)| {
+        serde_json::json!({"sender": sender, "skewness_size": skewness, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
