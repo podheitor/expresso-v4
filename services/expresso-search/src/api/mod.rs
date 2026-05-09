@@ -3156,6 +3156,140 @@ pub async fn segment_docs_below_p25(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"p25_docs": p25, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/size-percentile-band — segmentos entre P25 e P75 de disk_bytes. Sprint #5185.
+pub async fn segment_size_percentile_band(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25": null, "p75": null, "in_band": [], "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let p25 = bytes[(n * 25) / 100];
+    let p75 = bytes[(n * 75) / 100];
+    let in_band: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| *db >= p25 && *db <= p75)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p25_bytes": p25, "p75_bytes": p75, "in_band_count": in_band.len(), "segment_count": n, "segments": in_band}))
+}
+
+/// GET /api/v1/search/index/segments/docs-percentile-band — segmentos entre P25 e P75 de num_docs. Sprint #5186.
+pub async fn segment_docs_percentile_band(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p25": null, "p75": null, "in_band": [], "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let p25 = docs[(n * 25) / 100];
+    let p75 = docs[(n * 75) / 100];
+    let in_band: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| *nd >= p25 && *nd <= p75)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"p25_docs": p25, "p75_docs": p75, "in_band_count": in_band.len(), "segment_count": n, "segments": in_band}))
+}
+
+/// GET /api/v1/search/index/segments/size-decile-counts — contagem de segmentos por decil de disk_bytes. Sprint #5187.
+pub async fn segment_size_decile_counts(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"deciles": [], "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let decile_boundaries: Vec<u64> = (1..=10).map(|d| bytes[(n * d).saturating_sub(1) / 10]).collect();
+    let mut decile_counts = vec![0usize; 10];
+    for (_, _, db) in &segs {
+        let decile = decile_boundaries.iter().position(|&b| *db <= b).unwrap_or(9);
+        decile_counts[decile] += 1;
+    }
+    let deciles: Vec<serde_json::Value> = decile_counts.iter().enumerate()
+        .map(|(i, &cnt)| serde_json::json!({"decile": i + 1, "upper_bound": decile_boundaries[i], "count": cnt}))
+        .collect();
+    Json(serde_json::json!({"deciles": deciles, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-decile-counts — contagem de segmentos por decil de num_docs. Sprint #5188.
+pub async fn segment_docs_decile_counts(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"deciles": [], "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let decile_boundaries: Vec<u64> = (1..=10).map(|d| docs[(n * d).saturating_sub(1) / 10]).collect();
+    let mut decile_counts = vec![0usize; 10];
+    for (_, nd, _) in &segs {
+        let decile = decile_boundaries.iter().position(|&b| *nd <= b).unwrap_or(9);
+        decile_counts[decile] += 1;
+    }
+    let deciles: Vec<serde_json::Value> = decile_counts.iter().enumerate()
+        .map(|(i, &cnt)| serde_json::json!({"decile": i + 1, "upper_bound": decile_boundaries[i], "count": cnt}))
+        .collect();
+    Json(serde_json::json!({"deciles": deciles, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-rank — segmentos rankeados por disk_bytes desc. Sprint #5189.
+pub async fn segment_size_rank(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let mut ranked: Vec<(String, u64, u64)> = segs;
+    ranked.sort_by(|a, b| b.2.cmp(&a.2));
+    let rows: Vec<serde_json::Value> = ranked.iter().enumerate()
+        .map(|(i, (id, nd, db))| serde_json::json!({"rank": i + 1, "segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"rows": rows, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-rank — segmentos rankeados por num_docs desc. Sprint #5190.
+pub async fn segment_docs_rank(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let mut ranked: Vec<(String, u64, u64)> = segs;
+    ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    let rows: Vec<serde_json::Value> = ranked.iter().enumerate()
+        .map(|(i, (id, nd, db))| serde_json::json!({"rank": i + 1, "segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"rows": rows, "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-bottom-n — N segmentos com menor disk_bytes. Sprint #5191.
+pub async fn segment_size_bottom_n(
+    State(store): State<IndexStore>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let n_req = q.get("n").and_then(|v| v.parse::<usize>().ok()).unwrap_or(10);
+    let segs = store.list_segments().unwrap_or_default();
+    let total = segs.len();
+    let mut ranked: Vec<(String, u64, u64)> = segs;
+    ranked.sort_by(|a, b| a.2.cmp(&b.2));
+    let rows: Vec<serde_json::Value> = ranked.iter().take(n_req).enumerate()
+        .map(|(i, (id, nd, db))| serde_json::json!({"rank": i + 1, "segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"rows": rows, "n": n_req, "segment_count": total}))
+}
+
+/// GET /api/v1/search/index/segments/docs-bottom-n — N segmentos com menor num_docs. Sprint #5192.
+pub async fn segment_docs_bottom_n(
+    State(store): State<IndexStore>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> Json<serde_json::Value> {
+    let n_req = q.get("n").and_then(|v| v.parse::<usize>().ok()).unwrap_or(10);
+    let segs = store.list_segments().unwrap_or_default();
+    let total = segs.len();
+    let mut ranked: Vec<(String, u64, u64)> = segs;
+    ranked.sort_by(|a, b| a.1.cmp(&b.1));
+    let rows: Vec<serde_json::Value> = ranked.iter().take(n_req).enumerate()
+        .map(|(i, (id, nd, db))| serde_json::json!({"rank": i + 1, "segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"rows": rows, "n": n_req, "segment_count": total}))
+}
+
 /// GET /api/v1/search/index/segments/size-count-above-mean — contagem de segmentos com disk_bytes > média global. Sprint #5165.
 pub async fn segment_size_count_above_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
