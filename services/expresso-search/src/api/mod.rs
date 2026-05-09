@@ -9435,6 +9435,70 @@ pub async fn segment_bytes_sum_above_p75(State(store): State<IndexStore>) -> Jso
     Json(serde_json::json!({"bytes_sum_above_p75": sum, "count_above_p75": count, "bytes_p75": p75, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-sum-above-p90 — soma de docs em segmentos acima do P90. Sprint #3977.
+pub async fn segment_docs_sum_above_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_above_p90": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p90 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, d, _)| *d > p90).map(|(_, d, _)| *d).sum();
+    let count = segs.iter().filter(|(_, d, _)| *d > p90).count();
+    Json(serde_json::json!({"docs_sum_above_p90": sum, "count_above_p90": count, "docs_p90": p90, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-p90 — soma de bytes em segmentos acima do P90. Sprint #3978.
+pub async fn segment_bytes_sum_above_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_above_p90": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.90).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p90 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, _, b)| *b > p90).map(|(_, _, b)| *b).sum();
+    let count = segs.iter().filter(|(_, _, b)| *b > p90).count();
+    Json(serde_json::json!({"bytes_sum_above_p90": sum, "count_above_p90": count, "bytes_p90": p90, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-above-p95 — soma de docs em segmentos acima do P95. Sprint #3979.
+pub async fn segment_docs_sum_above_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_above_p95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p95 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, d, _)| *d > p95).map(|(_, d, _)| *d).sum();
+    let count = segs.iter().filter(|(_, d, _)| *d > p95).count();
+    Json(serde_json::json!({"docs_sum_above_p95": sum, "count_above_p95": count, "docs_p95": p95, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-p95 — soma de bytes em segmentos acima do P95. Sprint #3980.
+pub async fn segment_bytes_sum_above_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_above_p95": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p95 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, _, b)| *b > p95).map(|(_, _, b)| *b).sum();
+    let count = segs.iter().filter(|(_, _, b)| *b > p95).count();
+    Json(serde_json::json!({"bytes_sum_above_p95": sum, "count_above_p95": count, "bytes_p95": p95, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

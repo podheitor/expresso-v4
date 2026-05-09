@@ -2313,6 +2313,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_p95_by_hour),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-p99-by-hour",
+            get(events_by_range_duration_p99_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-month",
+            get(events_by_range_duration_std_dev_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-weekday",
+            get(events_by_range_duration_std_dev_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-var-by-hour",
+            get(events_by_range_duration_var_by_hour),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-month",
             get(events_by_range_duration_entropy_by_month),
         )
@@ -2911,6 +2927,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-p95-by-hour",
             get(events_by_range_duration_p95_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-p99-by-hour",
+            get(events_by_range_duration_p99_by_hour),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-month",
+            get(events_by_range_duration_std_dev_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-weekday",
+            get(events_by_range_duration_std_dev_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-var-by-hour",
+            get(events_by_range_duration_var_by_hour),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-entropy-by-month",
@@ -14333,6 +14365,90 @@ async fn events_by_range_duration_p95_by_hour(
     ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, p95, cnt)| serde_json::json!({"hour": h, "p95_duration_seconds": p95.unwrap_or(0.0), "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-p99-by-hour — P99 de duração × hora UTC. Sprint #3981.
+async fn events_by_range_duration_p99_by_hour(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p99_seconds, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, p99, cnt)| serde_json::json!({"hour": h, "p99_duration_seconds": p99.unwrap_or(0.0), "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-month — desvio padrão de duração × mês. Sprint #3982.
+async fn events_by_range_duration_std_dev_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS std_dev_seconds, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC') ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(m, std, cnt)| serde_json::json!({"month": m, "std_dev_duration_seconds": std.unwrap_or(0.0), "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-std-dev-by-weekday — desvio padrão de duração × dia da semana. Sprint #3983.
+async fn events_by_range_duration_std_dev_by_weekday(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS weekday, \
+                STDDEV_POP(EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS std_dev_seconds, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC') ORDER BY weekday",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(wd, std, cnt)| serde_json::json!({"weekday": wd, "std_dev_duration_seconds": std.unwrap_or(0.0), "event_count": cnt})).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-var-by-hour — variância de duração × hora UTC. Sprint #3984.
+async fn events_by_range_duration_var_by_hour(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC')::INT AS hour, \
+                VAR_POP(EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS variance_seconds, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(HOUR FROM dtstart AT TIME ZONE 'UTC') ORDER BY hour",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(h, var, cnt)| serde_json::json!({"hour": h, "variance_duration_seconds": var.unwrap_or(0.0), "event_count": cnt})).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
