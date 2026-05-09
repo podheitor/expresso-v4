@@ -388,6 +388,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-trimmed-mean-by-mime",  get(file_stats_size_deleted_trimmed_mean_by_mime))
         .route("/api/v1/drive/files/stats/deleted-size-trimmed-mean-by-owner", get(file_stats_size_deleted_trimmed_mean_by_owner))
         .route("/api/v1/drive/files/stats/deleted-size-trimmed-mean-by-ext",   get(file_stats_size_deleted_trimmed_mean_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-winsorized-mean-by-kind",  get(file_stats_size_deleted_winsorized_mean_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-winsorized-mean-by-mime",  get(file_stats_size_deleted_winsorized_mean_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-winsorized-mean-by-owner", get(file_stats_size_deleted_winsorized_mean_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-winsorized-mean-by-ext",   get(file_stats_size_deleted_winsorized_mean_by_ext))
         .route("/api/v1/drive/files/stats/active-size-range-by-kind",              get(file_stats_size_active_range_by_kind))
         .route("/api/v1/drive/files/stats/active-size-range-by-mime",              get(file_stats_size_active_range_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-owner",             get(file_stats_size_active_range_by_owner))
@@ -11084,6 +11088,78 @@ async fn file_stats_size_deleted_trimmed_mean_by_ext(State(state): State<AppStat
     .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(ext, tm, cnt)| serde_json::json!({"extension": ext, "trimmed_mean_deleted_size_bytes": tm, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-winsorized-mean-by-kind — média winsorized do tamanho de arquivos deletados por kind. Sprint #3189.
+async fn file_stats_size_deleted_winsorized_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                COALESCE(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p10, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p90, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_sz, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY kind ORDER BY avg_sz DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, p10, p90, _, cnt)| serde_json::json!({"kind": kind, "winsorized_mean_deleted_size_bytes": (p10 + p90) / 2.0, "p10": p10, "p90": p90, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-winsorized-mean-by-mime — média winsorized do tamanho de arquivos deletados por mime_type. Sprint #3190.
+async fn file_stats_size_deleted_winsorized_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                COALESCE(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p10, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p90, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_sz, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY mime_type ORDER BY avg_sz DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, p10, p90, _, cnt)| serde_json::json!({"mime_type": mime, "winsorized_mean_deleted_size_bytes": (p10 + p90) / 2.0, "p10": p10, "p90": p90, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-winsorized-mean-by-owner — média winsorized do tamanho de arquivos deletados por owner. Sprint #3191.
+async fn file_stats_size_deleted_winsorized_mean_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+                COALESCE(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p10, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p90, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_sz, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY avg_sz DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, p10, p90, _, cnt)| serde_json::json!({"owner_id": owner, "winsorized_mean_deleted_size_bytes": (p10 + p90) / 2.0, "p10": p10, "p90": p90, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-winsorized-mean-by-ext — média winsorized do tamanho de arquivos deletados por extensão. Sprint #3192.
+async fn file_stats_size_deleted_winsorized_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, f64, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ext, \
+                COALESCE(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p10, \
+                COALESCE(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY size_bytes), 0.0)::FLOAT8 AS p90, \
+                COALESCE(AVG(size_bytes), 0.0)::FLOAT8 AS avg_sz, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY avg_sz DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, p10, p90, _, cnt)| serde_json::json!({"extension": ext, "winsorized_mean_deleted_size_bytes": (p10 + p90) / 2.0, "p10": p10, "p90": p90, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

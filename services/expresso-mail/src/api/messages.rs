@@ -444,6 +444,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/body-length-gini-by-sender",               get(body_length_gini_by_sender_stats))
         .route("/mail/messages/stats/size-theil-by-sender",                     get(size_theil_by_sender_stats))
         .route("/mail/messages/stats/body-length-theil-by-sender",              get(body_length_theil_by_sender_stats))
+        .route("/mail/messages/stats/size-hhi-by-sender",                       get(size_hhi_by_sender_stats))
+        .route("/mail/messages/stats/body-length-hhi-by-sender",                get(body_length_hhi_by_sender_stats))
+        .route("/mail/messages/stats/size-atkinson-by-sender",                  get(size_atkinson_by_sender_stats))
+        .route("/mail/messages/stats/body-length-atkinson-by-sender",           get(body_length_atkinson_by_sender_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -14061,6 +14065,114 @@ async fn body_length_theil_by_sender_stats(
             if mean > 0.0 { vals.iter().map(|&x| (x / mean) * (x / mean).ln()).sum::<f64>() / n as f64 } else { 0.0 }
         };
         serde_json::json!({"sender": sender, "theil_body_length": theil, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-hhi-by-sender — HHI de size por remetente. Sprint #3193.
+async fn size_hhi_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.size ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let hhi = if n == 0 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total > 0.0 { vals.iter().map(|&v| (v / total).powi(2)).sum::<f64>() } else { 0.0 }
+        };
+        serde_json::json!({"sender": sender, "hhi_size": hhi, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-hhi-by-sender — HHI de body_length por remetente. Sprint #3194.
+async fn body_length_hhi_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.body_length ORDER BY m.body_length) AS body_lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let hhi = if n == 0 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total > 0.0 { vals.iter().map(|&v| (v / total).powi(2)).sum::<f64>() } else { 0.0 }
+        };
+        serde_json::json!({"sender": sender, "hhi_body_length": hhi, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-atkinson-by-sender — índice Atkinson de size por remetente. Sprint #3195.
+async fn size_atkinson_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.size ORDER BY m.size) AS sizes, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let ln_sum: f64 = vals.iter().map(|&v| v.ln()).sum();
+            let geo_mean = (ln_sum / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"sender": sender, "atkinson_size": atkinson, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-atkinson-by-sender — índice Atkinson de body_length por remetente. Sprint #3196.
+async fn body_length_atkinson_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, ARRAY_AGG(m.body_length ORDER BY m.body_length) AS body_lengths, COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY cnt DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            let ln_sum: f64 = vals.iter().map(|&v| v.ln()).sum();
+            let geo_mean = (ln_sum / n as f64).exp();
+            if mean > 0.0 { 1.0 - geo_mean / mean } else { 0.0 }
+        };
+        serde_json::json!({"sender": sender, "atkinson_body_length": atkinson, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
