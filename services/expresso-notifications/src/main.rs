@@ -14640,6 +14640,107 @@ async fn dlq_error_length_hhi(
     Ok(Json(json!({"hhi_error_length": hhi, "count": total})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/error-length-atkinson — índice de Atkinson de error_length. Sprint #4725.
+async fn dlq_error_length_atkinson(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT LENGTH(error_message)::BIGINT FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let n = rows.len();
+    if n == 0 { return Ok(Json(json!({"atkinson_error_length": null, "count": 0}))); }
+    let vals: Vec<f64> = rows.iter().map(|(v,)| *v as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 { return Ok(Json(json!({"atkinson_error_length": null, "count": n}))); }
+    let geom_mean = (vals.iter().filter(|&&v| v > 0.0).map(|&v| v.ln()).sum::<f64>() / n as f64).exp();
+    let atkinson = 1.0 - geom_mean / mean;
+    Ok(Json(json!({"atkinson_error_length": atkinson, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-lorenz — área de Lorenz de retry_lag. Sprint #4726.
+async fn dlq_retry_lag_lorenz(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(EPOCH FROM (retry_at - created_at))::BIGINT AS lag, COUNT(*)::BIGINT AS freq FROM notification_dlq \
+         WHERE retry_at IS NOT NULL AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY lag ORDER BY lag",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total_pop: i64 = rows.iter().map(|(_, f)| f).sum();
+    let total_val: i64 = rows.iter().map(|(v, f)| v * f).sum();
+    if total_pop == 0 || total_val == 0 { return Ok(Json(json!({"lorenz_area": null, "count": 0}))); }
+    let mut cum_pop = 0i64; let mut cum_val = 0i64;
+    let mut area = 0.0f64; let mut prev_x = 0.0f64; let mut prev_y = 0.0f64;
+    for (v, f) in &rows {
+        cum_pop += f; cum_val += v * f;
+        let x = cum_pop as f64 / total_pop as f64; let y = cum_val as f64 / total_val as f64;
+        area += (x - prev_x) * (prev_y + y) / 2.0;
+        prev_x = x; prev_y = y;
+    }
+    Ok(Json(json!({"lorenz_area": area, "count": total_pop})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-gini — coeficiente de Gini de retry_lag. Sprint #4727.
+async fn dlq_retry_lag_gini(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(EPOCH FROM (retry_at - created_at))::BIGINT AS lag, COUNT(*)::BIGINT AS freq FROM notification_dlq \
+         WHERE retry_at IS NOT NULL AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY lag ORDER BY lag",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let total_pop: i64 = rows.iter().map(|(_, f)| f).sum();
+    let total_val: i64 = rows.iter().map(|(v, f)| v * f).sum();
+    if total_pop == 0 || total_val == 0 { return Ok(Json(json!({"gini_retry_lag": null, "count": 0}))); }
+    let mut cum_pop = 0i64; let mut cum_val = 0i64;
+    let mut area = 0.0f64; let mut prev_x = 0.0f64; let mut prev_y = 0.0f64;
+    for (v, f) in &rows {
+        cum_pop += f; cum_val += v * f;
+        let x = cum_pop as f64 / total_pop as f64; let y = cum_val as f64 / total_val as f64;
+        area += (x - prev_x) * (prev_y + y) / 2.0;
+        prev_x = x; prev_y = y;
+    }
+    Ok(Json(json!({"gini_retry_lag": 1.0 - 2.0 * area, "count": total_pop})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/retry-lag-theil — índice de Theil de retry_lag. Sprint #4728.
+async fn dlq_retry_lag_theil(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(f64,)> = sqlx::query_as(
+        "SELECT EXTRACT(EPOCH FROM (retry_at - created_at))::FLOAT8 AS lag FROM notification_dlq \
+         WHERE retry_at IS NOT NULL AND ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let n = rows.len();
+    if n == 0 { return Ok(Json(json!({"theil_t_retry_lag": null, "count": 0}))); }
+    let vals: Vec<f64> = rows.into_iter().map(|(v,)| v).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    if mean == 0.0 { return Ok(Json(json!({"theil_t_retry_lag": null, "count": n}))); }
+    let theil: f64 = vals.iter().filter(|&&v| v > 0.0).map(|&v| (v / mean) * (v / mean).ln()).sum::<f64>() / n as f64;
+    Ok(Json(json!({"theil_t_retry_lag": theil, "count": n})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/error-length-mad — MAD global de error_length. Sprint #4688.
 async fn dlq_error_length_mad(
     State(st): State<AppState>,
@@ -23116,6 +23217,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/error-length-gini",                 get(dlq_error_length_gini))
         .route("/api/v1/notifications/dlq/stats/error-length-theil",                get(dlq_error_length_theil))
         .route("/api/v1/notifications/dlq/stats/error-length-hhi",                  get(dlq_error_length_hhi))
+        .route("/api/v1/notifications/dlq/stats/error-length-atkinson",             get(dlq_error_length_atkinson))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-lorenz",                  get(dlq_retry_lag_lorenz))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-gini",                    get(dlq_retry_lag_gini))
+        .route("/api/v1/notifications/dlq/stats/retry-lag-theil",                   get(dlq_retry_lag_theil))
         .route("/api/v1/notifications/dlq/stats/error-length-mad",                 get(dlq_error_length_mad))
         .route("/api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean",   get(dlq_by_kind_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean",   get(dlq_by_user_attempts_harmonic_mean))
