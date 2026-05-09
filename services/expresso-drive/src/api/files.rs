@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/version-sum",                        get(file_stats_version_sum))
+        .route("/api/v1/drive/files/stats/size-mean",                          get(file_stats_size_mean))
+        .route("/api/v1/drive/files/stats/size-sum",                           get(file_stats_size_sum))
+        .route("/api/v1/drive/files/stats/size-median",                        get(file_stats_size_median))
         .route("/api/v1/drive/files/stats/version-kurtosis",                   get(file_stats_version_kurtosis))
         .route("/api/v1/drive/files/stats/version-harmonic-mean",              get(file_stats_version_harmonic_mean))
         .route("/api/v1/drive/files/stats/version-geometric-mean",             get(file_stats_version_geometric_mean))
@@ -17468,6 +17472,42 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-sum — soma de versão global. Sprint #4609.
+async fn file_stats_version_sum(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT SUM(version)::BIGINT AS sum_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"sum_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mean — média de tamanho global. Sprint #4610.
+async fn file_stats_size_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT AVG(size)::FLOAT8 AS mean_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-sum — soma de tamanho global. Sprint #4611.
+async fn file_stats_size_sum(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<i64>, i64) = sqlx::query_as(
+        "SELECT SUM(size)::BIGINT AS sum_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"sum_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-median — mediana de tamanho global. Sprint #4612.
+async fn file_stats_size_median(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY size)::FLOAT8 AS median_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"median_size": row.0, "file_count": row.1})))
 }
 
 /// GET /api/v1/drive/files/stats/version-kurtosis — curtose de versão global. Sprint #4589.
