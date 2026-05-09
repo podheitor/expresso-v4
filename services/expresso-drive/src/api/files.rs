@@ -376,6 +376,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-skewness-by-ext",        get(file_stats_size_deleted_skewness_by_ext))
         .route("/api/v1/drive/files/stats/deleted-size-kurtosis-by-kind",       get(file_stats_size_deleted_kurtosis_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-kurtosis-by-mime",       get(file_stats_size_deleted_kurtosis_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-kurtosis-by-owner",      get(file_stats_size_deleted_kurtosis_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-kurtosis-by-ext",        get(file_stats_size_deleted_kurtosis_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-variance-by-owner",      get(file_stats_size_deleted_variance_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-variance-by-ext",        get(file_stats_size_deleted_variance_by_ext))
         .route("/api/v1/drive/files/stats/active-size-range-by-kind",              get(file_stats_size_active_range_by_kind))
         .route("/api/v1/drive/files/stats/active-size-range-by-mime",              get(file_stats_size_active_range_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-owner",             get(file_stats_size_active_range_by_owner))
@@ -10851,6 +10855,78 @@ async fn file_stats_size_deleted_kurtosis_by_mime(State(state): State<AppState>,
     .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(mime, kurt, cnt)| serde_json::json!({"mime_type": mime, "kurtosis_deleted_size": kurt, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-kurtosis-by-owner — kurtosis do tamanho de arquivos deletados por owner_id. Sprint #3126.
+async fn file_stats_size_deleted_kurtosis_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, \
+                COALESCE( \
+                    (AVG(POWER(size_bytes - sub.avg_sz, 4)) / NULLIF(POWER(STDDEV_POP(size_bytes), 4), 0)) - 3.0, \
+                    0.0)::FLOAT8 AS kurtosis_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         JOIN (SELECT owner_id AS oid, AVG(size_bytes) AS avg_sz FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY owner_id) sub \
+           ON drive_files.owner_id = sub.oid \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY drive_files.owner_id ORDER BY kurtosis_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, kurt, cnt)| serde_json::json!({"owner_id": owner, "kurtosis_deleted_size": kurt, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-kurtosis-by-ext — kurtosis do tamanho de arquivos deletados por extensão. Sprint #3131.
+async fn file_stats_size_deleted_kurtosis_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT extension, \
+                COALESCE( \
+                    (AVG(POWER(size_bytes - sub.avg_sz, 4)) / NULLIF(POWER(STDDEV_POP(size_bytes), 4), 0)) - 3.0, \
+                    0.0)::FLOAT8 AS kurtosis_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         JOIN (SELECT extension AS ext, AVG(size_bytes) AS avg_sz FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY extension) sub \
+           ON drive_files.extension = sub.ext \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY drive_files.extension ORDER BY kurtosis_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, kurt, cnt)| serde_json::json!({"extension": ext, "kurtosis_deleted_size": kurt, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-variance-by-owner — variância do tamanho de arquivos deletados por owner_id. Sprint #3136.
+async fn file_stats_size_deleted_variance_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY owner_id ORDER BY variance_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, var, cnt)| serde_json::json!({"owner_id": owner, "variance_deleted_size_bytes": var, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-variance-by-ext — variância do tamanho de arquivos deletados por extensão. Sprint #3141.
+async fn file_stats_size_deleted_variance_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT extension, COALESCE(VAR_POP(size_bytes), 0.0)::FLOAT8 AS variance_deleted_size, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NOT NULL \
+         GROUP BY extension ORDER BY variance_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, var, cnt)| serde_json::json!({"extension": ext, "variance_deleted_size_bytes": var, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

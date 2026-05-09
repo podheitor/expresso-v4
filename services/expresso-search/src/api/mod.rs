@@ -8546,6 +8546,80 @@ pub async fn segment_byte_density_theil(State(store): State<IndexStore>) -> Json
     Json(serde_json::json!({"theil_byte_density": theil, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/byte-density-atkinson — índice Atkinson da densidade bytes/doc. Sprint #3128.
+pub async fn segment_byte_density_atkinson(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"atkinson_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let mean = densities.iter().sum::<f64>() / n as f64;
+    let atkinson = if mean > 0.0 {
+        let geo_mean = densities.iter().map(|&d| if d > 0.0 { d.ln() } else { f64::NEG_INFINITY }).sum::<f64>() / n as f64;
+        let geo_mean = if geo_mean.is_finite() { geo_mean.exp() } else { 0.0 };
+        1.0 - geo_mean / mean
+    } else { 0.0 };
+    Json(serde_json::json!({"atkinson_byte_density": atkinson, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-lorenz — curva de Lorenz da densidade bytes/doc. Sprint #3133.
+pub async fn segment_byte_density_lorenz(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"lorenz_points": [], "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let total: f64 = densities.iter().sum();
+    let mut cumulative = 0.0;
+    let points: Vec<serde_json::Value> = densities.iter().enumerate().map(|(i, &d)| {
+        cumulative += d;
+        serde_json::json!({"population_share": (i + 1) as f64 / n as f64, "density_share": if total > 0.0 { cumulative / total } else { 0.0 }})
+    }).collect();
+    Json(serde_json::json!({"lorenz_points": points, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-trimmed-mean — média truncada da densidade bytes/doc. Sprint #3138.
+pub async fn segment_byte_density_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"trimmed_mean_byte_density": null, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let trim = (n as f64 * 0.1).floor() as usize;
+    let trimmed = &densities[trim..n - trim];
+    let mean = if trimmed.is_empty() { 0.0 } else { trimmed.iter().sum::<f64>() / trimmed.len() as f64 };
+    Json(serde_json::json!({"trimmed_mean_byte_density": mean, "trim_pct": 0.1, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-winsorized-mean — média winsorizada da densidade bytes/doc. Sprint #3143.
+pub async fn segment_byte_density_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"winsorized_mean_byte_density": null, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let trim = (n as f64 * 0.1).floor() as usize;
+    let lo = densities[trim];
+    let hi = densities[n - 1 - trim];
+    let mean = densities.iter().map(|&d| d.max(lo).min(hi)).sum::<f64>() / n as f64;
+    Json(serde_json::json!({"winsorized_mean_byte_density": mean, "trim_pct": 0.1, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

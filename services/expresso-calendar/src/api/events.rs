@@ -1809,6 +1809,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_duration_hhi_by_weekday),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-month",
+            get(events_by_range_duration_lorenz_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-theil-by-month",
+            get(events_by_range_duration_theil_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-gini-by-month",
+            get(events_by_range_duration_gini_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-month",
+            get(events_by_range_duration_hhi_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-kurtosis-by-class",
             get(events_by_range_summary_length_kurtosis_by_class),
         )
@@ -2039,6 +2055,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-weekday",
             get(events_by_range_duration_hhi_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-month",
+            get(events_by_range_duration_lorenz_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-theil-by-month",
+            get(events_by_range_duration_theil_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-gini-by-month",
+            get(events_by_range_duration_gini_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-month",
+            get(events_by_range_duration_hhi_by_month),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/summary-length-p95-by-weekday",
@@ -13387,6 +13419,125 @@ async fn events_by_range_duration_hhi_by_weekday(
             if total > 0.0 { vals.iter().map(|&d| (d / total).powi(2)).sum::<f64>() } else { 0.0 }
         };
         serde_json::json!({"weekday": wd, "hhi_duration": hhi, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-lorenz-by-month — curva de Lorenz de duração por mês. Sprint #3129.
+async fn events_by_range_duration_lorenz_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, f64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                COALESCE(AVG(EXTRACT(EPOCH FROM (dtend - dtstart))), 0.0)::FLOAT8 AS avg_duration, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let total_dur: f64 = rows.iter().map(|(_, avg, cnt)| avg * *cnt as f64).sum();
+    let total_cnt: i64 = rows.iter().map(|(_, _, c)| c).sum();
+    let mut cum_pop = 0.0f64;
+    let mut cum_dur = 0.0f64;
+    let points: Vec<serde_json::Value> = rows.iter().map(|(month, avg, cnt)| {
+        cum_pop += *cnt as f64 / total_cnt.max(1) as f64;
+        cum_dur += if total_dur > 0.0 { avg * *cnt as f64 / total_dur } else { 0.0 };
+        serde_json::json!({"month": month, "population_share": cum_pop, "duration_share": cum_dur, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"lorenz_points": points})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-theil-by-month — índice Theil de duração por mês. Sprint #3134.
+async fn events_by_range_duration_theil_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart))::FLOAT8 ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().collect();
+        let m = vals.len();
+        let theil = if m == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / m as f64;
+            if mean > 0.0 {
+                vals.iter().map(|&d| if d > 0.0 { (d / mean) * (d / mean).ln() } else { 0.0 }).sum::<f64>() / m as f64
+            } else { 0.0 }
+        };
+        serde_json::json!({"month": month, "theil_duration": theil, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-gini-by-month — coeficiente Gini de duração por mês. Sprint #3139.
+async fn events_by_range_duration_gini_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart))::FLOAT8 ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().collect();
+        let m = vals.len();
+        let gini = if m == 0 { 0.0 } else {
+            vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let sum: f64 = vals.iter().sum();
+            if sum > 0.0 {
+                let weighted: f64 = vals.iter().enumerate().map(|(i, &d)| (2 * (i + 1) - m - 1) as f64 * d).sum();
+                weighted / (m as f64 * sum)
+            } else { 0.0 }
+        };
+        serde_json::json!({"month": month, "gini_duration": gini, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-hhi-by-month — índice HHI de duração por mês. Sprint #3144.
+async fn events_by_range_duration_hhi_by_month(
+    State(state): State<AppState>,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let rows: Vec<(i32, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart)::INT AS month, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (dtend - dtstart))::FLOAT8 ORDER BY dtstart) FILTER (WHERE dtend IS NOT NULL) AS durations, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events WHERE calendar_id = $1 \
+           AND ($2::TIMESTAMPTZ IS NULL OR dtstart >= $2) \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart <= $3) \
+         GROUP BY EXTRACT(MONTH FROM dtstart) ORDER BY month",
+    ).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&state.db).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(month, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().collect();
+        let m = vals.len();
+        let hhi = if m == 0 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total > 0.0 { vals.iter().map(|&d| (d / total).powi(2)).sum::<f64>() } else { 0.0 }
+        };
+        serde_json::json!({"month": month, "hhi_duration": hhi, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
