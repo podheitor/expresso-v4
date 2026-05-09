@@ -983,6 +983,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/folder-file-count-below-p95",        get(file_stats_folder_file_count_below_p95))
         .route("/api/v1/drive/files/stats/name-length-count-above-p01",        get(file_stats_name_length_count_above_p01))
         .route("/api/v1/drive/files/stats/name-length-count-below-p01",        get(file_stats_name_length_count_below_p01))
+        .route("/api/v1/drive/files/stats/name-length-count-above-p05",        get(file_stats_name_length_count_above_p05))
+        .route("/api/v1/drive/files/stats/name-length-count-below-p05",        get(file_stats_name_length_count_below_p05))
+        .route("/api/v1/drive/files/stats/name-length-count-above-p95",        get(file_stats_name_length_count_above_p95))
+        .route("/api/v1/drive/files/stats/name-length-count-below-p95",        get(file_stats_name_length_count_below_p95))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -20423,6 +20427,50 @@ async fn file_stats_name_length_count_below_p01(State(state): State<AppState>, c
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p01_name_length": row.0, "count_below_p01": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-above-p05 — arquivos com name_length > P05. Sprint #5293.
+async fn file_stats_name_length_count_above_p05(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p05_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) > (SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p05, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p05_name_length": row.0, "count_above_p05": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-below-p05 — arquivos com name_length < P05. Sprint #5294.
+async fn file_stats_name_length_count_below_p05(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p05_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) < (SELECT PERCENTILE_CONT(0.05) WITHIN GROUP (ORDER BY LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p05, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p05_name_length": row.0, "count_below_p05": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-above-p95 — arquivos com name_length > P95. Sprint #5295.
+async fn file_stats_name_length_count_above_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p95_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_name_length": row.0, "count_above_p95": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/name-length-count-below-p95 — arquivos com name_length < P95. Sprint #5296.
+async fn file_stats_name_length_count_below_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(name))::FLOAT8 AS p95_name_length, \
+                COUNT(*) FILTER (WHERE LENGTH(name) < (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(name)) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p95, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_name_length": row.0, "count_below_p95": row.1, "file_count": row.2})))
 }
 
 /// DELETE /api/v1/drive/folders/:id/quota — remove folder quota.
