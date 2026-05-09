@@ -8620,6 +8620,79 @@ pub async fn segment_byte_density_winsorized_mean(State(store): State<IndexStore
     Json(serde_json::json!({"winsorized_mean_byte_density": mean, "trim_pct": 0.1, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/byte-density-harmonic-mean — média harmônica de bytes/doc. Sprint #3157.
+pub async fn segment_byte_density_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"harmonic_mean_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).filter(|&d| d > 0.0).collect();
+    let m = densities.len();
+    let hm = if m == 0 { 0.0 } else {
+        let inv_sum: f64 = densities.iter().map(|&d| 1.0 / d).sum();
+        if inv_sum > 0.0 { m as f64 / inv_sum } else { 0.0 }
+    };
+    Json(serde_json::json!({"harmonic_mean_byte_density": hm, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-geometric-mean — média geométrica de bytes/doc. Sprint #3158.
+pub async fn segment_byte_density_geometric_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"geometric_mean_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).filter(|&d| d > 0.0).collect();
+    let m = densities.len();
+    let gm = if m == 0 { 0.0 } else {
+        let ln_sum: f64 = densities.iter().map(|&d| d.ln()).sum();
+        (ln_sum / m as f64).exp()
+    };
+    Json(serde_json::json!({"geometric_mean_byte_density": gm, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-normalized-entropy — entropia normalizada de bytes/doc. Sprint #3159.
+pub async fn segment_byte_density_normalized_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"normalized_entropy_byte_density": null, "total_segments": 0}));
+    }
+    let densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    let total: f64 = densities.iter().sum();
+    let entropy = if total <= 0.0 { 0.0 } else {
+        densities.iter().fold(0.0f64, |acc, &d| {
+            if d > 0.0 { let p = d / total; acc - p * p.ln() } else { acc }
+        })
+    };
+    let max_entropy = if n > 1 { (n as f64).ln() } else { 1.0 };
+    let normalized = if max_entropy > 0.0 { entropy / max_entropy } else { 0.0 };
+    Json(serde_json::json!({"normalized_entropy_byte_density": normalized, "raw_entropy": entropy, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/byte-density-p75 — P75 de bytes/doc. Sprint #3160.
+pub async fn segment_byte_density_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p75_byte_density": null, "total_segments": 0}));
+    }
+    let mut densities: Vec<f64> = segs.iter().map(|(_, docs, bytes)| {
+        if *docs > 0 { *bytes as f64 / *docs as f64 } else { 0.0 }
+    }).collect();
+    densities.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let idx = ((n as f64) * 0.75) as usize;
+    let p75 = densities[idx.min(n - 1)];
+    Json(serde_json::json!({"p75_byte_density": p75, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/byte-density-range — range da densidade bytes/doc. Sprint #2435.
 pub async fn segment_byte_density_range(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

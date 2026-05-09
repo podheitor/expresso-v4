@@ -380,6 +380,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-kurtosis-by-ext",        get(file_stats_size_deleted_kurtosis_by_ext))
         .route("/api/v1/drive/files/stats/deleted-size-variance-by-owner",      get(file_stats_size_deleted_variance_by_owner))
         .route("/api/v1/drive/files/stats/deleted-size-variance-by-ext",        get(file_stats_size_deleted_variance_by_ext))
+        .route("/api/v1/drive/files/stats/deleted-size-mad-by-kind",            get(file_stats_size_deleted_mad_by_kind))
+        .route("/api/v1/drive/files/stats/deleted-size-mad-by-mime",            get(file_stats_size_deleted_mad_by_mime))
+        .route("/api/v1/drive/files/stats/deleted-size-mad-by-owner",           get(file_stats_size_deleted_mad_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-mad-by-ext",             get(file_stats_size_deleted_mad_by_ext))
         .route("/api/v1/drive/files/stats/active-size-range-by-kind",              get(file_stats_size_active_range_by_kind))
         .route("/api/v1/drive/files/stats/active-size-range-by-mime",              get(file_stats_size_active_range_by_mime))
         .route("/api/v1/drive/files/stats/active-size-range-by-owner",             get(file_stats_size_active_range_by_owner))
@@ -10927,6 +10931,83 @@ async fn file_stats_size_deleted_variance_by_ext(State(state): State<AppState>, 
     .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(ext, var, cnt)| serde_json::json!({"extension": ext, "variance_deleted_size_bytes": var, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-mad-by-kind — MAD do tamanho de arquivos deletados por kind. Sprint #3149.
+async fn file_stats_size_deleted_mad_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT df.kind, \
+                COALESCE(AVG(ABS(df.size_bytes - sub.avg_sz)), 0.0)::FLOAT8 AS mad_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files df \
+         JOIN (SELECT kind AS k, AVG(size_bytes) AS avg_sz FROM drive_files \
+               WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY kind) sub ON df.kind = sub.k \
+         WHERE df.tenant_id = $1 AND df.deleted_at IS NOT NULL \
+         GROUP BY df.kind ORDER BY mad_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, mad, cnt)| serde_json::json!({"kind": kind, "mad_deleted_size_bytes": mad, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-mad-by-mime — MAD do tamanho de arquivos deletados por mime_type. Sprint #3150.
+async fn file_stats_size_deleted_mad_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT df.mime_type, \
+                COALESCE(AVG(ABS(df.size_bytes - sub.avg_sz)), 0.0)::FLOAT8 AS mad_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files df \
+         JOIN (SELECT mime_type AS m, AVG(size_bytes) AS avg_sz FROM drive_files \
+               WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY mime_type) sub ON df.mime_type = sub.m \
+         WHERE df.tenant_id = $1 AND df.deleted_at IS NOT NULL \
+         GROUP BY df.mime_type ORDER BY mad_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, mad, cnt)| serde_json::json!({"mime_type": mime, "mad_deleted_size_bytes": mad, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-mad-by-owner — MAD do tamanho de arquivos deletados por owner. Sprint #3151.
+async fn file_stats_size_deleted_mad_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT df.owner_id::TEXT, \
+                COALESCE(AVG(ABS(df.size_bytes - sub.avg_sz)), 0.0)::FLOAT8 AS mad_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files df \
+         JOIN (SELECT owner_id AS oid, AVG(size_bytes) AS avg_sz FROM drive_files \
+               WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY owner_id) sub ON df.owner_id = sub.oid \
+         WHERE df.tenant_id = $1 AND df.deleted_at IS NOT NULL \
+         GROUP BY df.owner_id ORDER BY mad_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, mad, cnt)| serde_json::json!({"owner_id": owner, "mad_deleted_size_bytes": mad, "deleted_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-mad-by-ext — MAD do tamanho de arquivos deletados por extensão. Sprint #3152.
+async fn file_stats_size_deleted_mad_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(df.name), '.', 1))) AS ext, \
+                COALESCE(AVG(ABS(df.size_bytes - sub.avg_sz)), 0.0)::FLOAT8 AS mad_deleted_size, \
+                COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files df \
+         JOIN (SELECT LOWER(REVERSE(SPLIT_PART(REVERSE(name), '.', 1))) AS ex, AVG(size_bytes) AS avg_sz FROM drive_files \
+               WHERE tenant_id = $1 AND deleted_at IS NOT NULL AND name LIKE '%.%' GROUP BY ex) sub \
+           ON LOWER(REVERSE(SPLIT_PART(REVERSE(df.name), '.', 1))) = sub.ex \
+         WHERE df.tenant_id = $1 AND df.deleted_at IS NOT NULL AND df.name LIKE '%.%' \
+         GROUP BY ext ORDER BY mad_deleted_size DESC",
+    )
+    .bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, mad, cnt)| serde_json::json!({"extension": ext, "mad_deleted_size_bytes": mad, "deleted_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

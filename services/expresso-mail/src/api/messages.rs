@@ -436,6 +436,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-p25-by-sender",                       get(size_p25_by_sender_stats))
         .route("/mail/messages/stats/body-length-p10-by-sender",                get(body_length_p10_by_sender_stats))
         .route("/mail/messages/stats/body-length-p25-by-sender",                get(body_length_p25_by_sender_stats))
+        .route("/mail/messages/stats/size-trimmed-mean-by-sender",              get(size_trimmed_mean_by_sender_stats))
+        .route("/mail/messages/stats/body-length-trimmed-mean-by-sender",       get(body_length_trimmed_mean_by_sender_stats))
+        .route("/mail/messages/stats/size-winsorized-mean-by-sender",           get(size_winsorized_mean_by_sender_stats))
+        .route("/mail/messages/stats/body-length-winsorized-mean-by-sender",    get(body_length_winsorized_mean_by_sender_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-folder",             get(size_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/size-harmonic-mean-by-tier",               get(size_harmonic_mean_by_tier_stats))
         .route("/mail/messages/stats/body-length-harmonic-mean-by-folder",      get(body_length_harmonic_mean_by_folder_stats))
@@ -13832,6 +13836,108 @@ async fn body_length_p25_by_sender_stats(
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, p25, cnt)| {
         serde_json::json!({"sender": sender, "p25_body_length": p25, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-trimmed-mean-by-sender — média trimmed de size por remetente. Sprint #3153.
+async fn size_trimmed_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE( \
+                    AVG(m.size) FILTER ( \
+                        WHERE m.size > PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY m.from_addr) \
+                          AND m.size < PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY m.from_addr) \
+                    ), 0.0)::FLOAT8 AS trimmed_mean_size, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY trimmed_mean_size DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, tm, cnt)| {
+        serde_json::json!({"sender": sender, "trimmed_mean_size": tm, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-trimmed-mean-by-sender — média trimmed de body_length por remetente. Sprint #3154.
+async fn body_length_trimmed_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE( \
+                    AVG(m.body_length) FILTER ( \
+                        WHERE m.body_length > PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY m.body_length) OVER (PARTITION BY m.from_addr) \
+                          AND m.body_length < PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY m.body_length) OVER (PARTITION BY m.from_addr) \
+                    ), 0.0)::FLOAT8 AS trimmed_mean_body_length, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY trimmed_mean_body_length DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, tm, cnt)| {
+        serde_json::json!({"sender": sender, "trimmed_mean_body_length": tm, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-winsorized-mean-by-sender — média winsorized de size por remetente. Sprint #3155.
+async fn size_winsorized_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE( \
+                    AVG(GREATEST(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY m.from_addr), \
+                        LEAST(m.size, PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY m.from_addr))) \
+                    ), 0.0)::FLOAT8 AS winsorized_mean_size, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY winsorized_mean_size DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, wm, cnt)| {
+        serde_json::json!({"sender": sender, "winsorized_mean_size": wm, "count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-winsorized-mean-by-sender — média winsorized de body_length por remetente. Sprint #3156.
+async fn body_length_winsorized_mean_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, f64, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                COALESCE( \
+                    AVG(GREATEST(PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY m.body_length) OVER (PARTITION BY m.from_addr), \
+                        LEAST(m.body_length, PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY m.body_length) OVER (PARTITION BY m.from_addr))) \
+                    ), 0.0)::FLOAT8 AS winsorized_mean_body_length, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.user_id = $1 GROUP BY m.from_addr ORDER BY winsorized_mean_body_length DESC LIMIT 100",
+    ).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, wm, cnt)| {
+        serde_json::json!({"sender": sender, "winsorized_mean_body_length": wm, "count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
