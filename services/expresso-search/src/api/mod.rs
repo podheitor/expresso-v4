@@ -3156,6 +3156,150 @@ pub async fn segment_docs_below_p25(State(store): State<IndexStore>) -> Json<ser
     Json(serde_json::json!({"p25_docs": p25, "below_count": below.len(), "segment_count": n, "segments": below}))
 }
 
+/// GET /api/v1/search/index/segments/docs-iqr-outliers — segmentos com num_docs fora de [Q1-1.5*IQR, Q3+1.5*IQR]. Sprint #5105.
+pub async fn segment_docs_iqr_outliers(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"q1": null, "q3": null, "iqr": null, "outliers": [], "segment_count": 0}));
+    }
+    let mut docs: Vec<u64> = segs.iter().map(|(_, nd, _)| *nd).collect();
+    docs.sort_unstable();
+    let q1 = docs[(n * 25) / 100] as f64;
+    let q3 = docs[(n * 75) / 100] as f64;
+    let iqr = q3 - q1;
+    let lo = q1 - 1.5 * iqr;
+    let hi = q3 + 1.5 * iqr;
+    let outliers: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| (*nd as f64) < lo || (*nd as f64) > hi)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"q1": q1, "q3": q3, "iqr": iqr, "fence_lo": lo, "fence_hi": hi, "outlier_count": outliers.len(), "segment_count": n, "outliers": outliers}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-iqr-outliers — segmentos com disk_bytes fora de [Q1-1.5*IQR, Q3+1.5*IQR]. Sprint #5106.
+pub async fn segment_bytes_iqr_outliers(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"q1": null, "q3": null, "iqr": null, "outliers": [], "segment_count": 0}));
+    }
+    let mut bytes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    bytes.sort_unstable();
+    let q1 = bytes[(n * 25) / 100] as f64;
+    let q3 = bytes[(n * 75) / 100] as f64;
+    let iqr = q3 - q1;
+    let lo = q1 - 1.5 * iqr;
+    let hi = q3 + 1.5 * iqr;
+    let outliers: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| (*db as f64) < lo || (*db as f64) > hi)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"q1": q1, "q3": q3, "iqr": iqr, "fence_lo": lo, "fence_hi": hi, "outlier_count": outliers.len(), "segment_count": n, "outliers": outliers}))
+}
+
+/// GET /api/v1/search/index/segments/docs-zscore-above-1 — segmentos com z-score de num_docs > 1. Sprint #5107.
+pub async fn segment_docs_zscore_above_1(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "above": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| stddev > 0.0 && (*nd as f64 - mean) / stddev > 1.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_docs": mean, "stddev_docs": stddev, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-zscore-above-1 — segmentos com z-score de disk_bytes > 1. Sprint #5108.
+pub async fn segment_bytes_zscore_above_1(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "above": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| stddev > 0.0 && (*db as f64 - mean) / stddev > 1.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_bytes": mean, "stddev_bytes": stddev, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/docs-zscore-above-2 — segmentos com z-score de num_docs > 2. Sprint #5109.
+pub async fn segment_docs_zscore_above_2(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "above": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| stddev > 0.0 && (*nd as f64 - mean) / stddev > 2.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_docs": mean, "stddev_docs": stddev, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-zscore-above-2 — segmentos com z-score de disk_bytes > 2. Sprint #5110.
+pub async fn segment_bytes_zscore_above_2(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "above": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let above: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| stddev > 0.0 && (*db as f64 - mean) / stddev > 2.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_bytes": mean, "stddev_bytes": stddev, "above_count": above.len(), "segment_count": n, "segments": above}))
+}
+
+/// GET /api/v1/search/index/segments/docs-zscore-below-1 — segmentos com z-score de num_docs < -1. Sprint #5111.
+pub async fn segment_docs_zscore_below_1(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "below": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, nd, _)| *nd as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, nd, _)| stddev > 0.0 && (*nd as f64 - mean) / stddev < -1.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_docs": mean, "stddev_docs": stddev, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-zscore-below-1 — segmentos com z-score de disk_bytes < -1. Sprint #5112.
+pub async fn segment_bytes_zscore_below_1(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"mean": null, "stddev": null, "below": [], "segment_count": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, db)| *db as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let stddev = (vals.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n as f64).sqrt();
+    let below: Vec<serde_json::Value> = segs.iter()
+        .filter(|(_, _, db)| stddev > 0.0 && (*db as f64 - mean) / stddev < -1.0)
+        .map(|(id, nd, db)| serde_json::json!({"segment_id": id, "num_docs": nd, "disk_bytes": db}))
+        .collect();
+    Json(serde_json::json!({"mean_bytes": mean, "stddev_bytes": stddev, "below_count": below.len(), "segment_count": n, "segments": below}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-above-p01 — segmentos com disk_bytes > P01 (list). Sprint #5085.
 pub async fn segment_bytes_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

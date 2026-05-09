@@ -930,6 +930,14 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/size-count-below-p75-by-folder",          get(size_count_below_p75_by_folder_stats))
         .route("/mail/messages/stats/body-length-count-above-p75-by-folder",   get(body_length_count_above_p75_by_folder_stats))
         .route("/mail/messages/stats/body-length-count-below-p75-by-folder",   get(body_length_count_below_p75_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-above-p75-by-folder",    get(attachment_count_above_p75_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-below-p75-by-folder",    get(attachment_count_below_p75_by_folder_stats))
+        .route("/mail/messages/stats/size-count-above-p90-by-folder",          get(size_count_above_p90_by_folder_stats))
+        .route("/mail/messages/stats/size-count-below-p90-by-folder",          get(size_count_below_p90_by_folder_stats))
+        .route("/mail/messages/stats/body-length-count-above-p90-by-folder",   get(body_length_count_above_p90_by_folder_stats))
+        .route("/mail/messages/stats/body-length-count-below-p90-by-folder",   get(body_length_count_below_p90_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-above-p90-by-folder",    get(attachment_count_above_p90_by_folder_stats))
+        .route("/mail/messages/stats/attachment-count-below-p90-by-folder",    get(attachment_count_below_p90_by_folder_stats))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -26994,6 +27002,190 @@ async fn body_length_count_below_p75_by_folder_stats(
     let result: Vec<serde_json::Value> = rows.into_iter()
         .filter(|(f, _, _, _)| seen.insert(f.clone()))
         .map(|(folder, p75, below, cnt)| serde_json::json!({"folder": folder, "p75_body_length": p75, "count_below_p75": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-count-above-p75-by-folder — mensagens por folder com attachment_count > P75. Sprint #5117.
+async fn attachment_count_above_p75_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.attachment_count)::FLOAT8 AS p75_attachment_count, \
+                COUNT(*) FILTER (WHERE m.attachment_count > PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.attachment_count) OVER (PARTITION BY mb.name))::BIGINT AS count_above_p75, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p75, above, cnt)| serde_json::json!({"folder": folder, "p75_attachment_count": p75, "count_above_p75": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-count-below-p75-by-folder — mensagens por folder com attachment_count < P75. Sprint #5118.
+async fn attachment_count_below_p75_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.attachment_count)::FLOAT8 AS p75_attachment_count, \
+                COUNT(*) FILTER (WHERE m.attachment_count < PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.attachment_count) OVER (PARTITION BY mb.name))::BIGINT AS count_below_p75, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p75, below, cnt)| serde_json::json!({"folder": folder, "p75_attachment_count": p75, "count_below_p75": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/size-count-above-p90-by-folder — mensagens por folder com size > P90. Sprint #5119.
+async fn size_count_above_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size)::FLOAT8 AS p90_size, \
+                COUNT(*) FILTER (WHERE m.size > PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY mb.name))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, above, cnt)| serde_json::json!({"folder": folder, "p90_size": p90, "count_above_p90": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/size-count-below-p90-by-folder — mensagens por folder com size < P90. Sprint #5120.
+async fn size_count_below_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size)::FLOAT8 AS p90_size, \
+                COUNT(*) FILTER (WHERE m.size < PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size) OVER (PARTITION BY mb.name))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, below, cnt)| serde_json::json!({"folder": folder, "p90_size": p90, "count_below_p90": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/body-length-count-above-p90-by-folder — mensagens por folder com body_length > P90. Sprint #5121.
+async fn body_length_count_above_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(m.body))::FLOAT8 AS p90_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(m.body) > PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(m.body)) OVER (PARTITION BY mb.name))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, above, cnt)| serde_json::json!({"folder": folder, "p90_body_length": p90, "count_above_p90": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/body-length-count-below-p90-by-folder — mensagens por folder com body_length < P90. Sprint #5122.
+async fn body_length_count_below_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(m.body))::FLOAT8 AS p90_body_length, \
+                COUNT(*) FILTER (WHERE LENGTH(m.body) < PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(m.body)) OVER (PARTITION BY mb.name))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, below, cnt)| serde_json::json!({"folder": folder, "p90_body_length": p90, "count_below_p90": below, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-count-above-p90-by-folder — mensagens por folder com attachment_count > P90. Sprint #5123.
+async fn attachment_count_above_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.attachment_count)::FLOAT8 AS p90_attachment_count, \
+                COUNT(*) FILTER (WHERE m.attachment_count > PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.attachment_count) OVER (PARTITION BY mb.name))::BIGINT AS count_above_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, above, cnt)| serde_json::json!({"folder": folder, "p90_attachment_count": p90, "count_above_p90": above, "message_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/mail/messages/stats/attachment-count-below-p90-by-folder — mensagens por folder com attachment_count < P90. Sprint #5124.
+async fn attachment_count_below_p90_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.attachment_count)::FLOAT8 AS p90_attachment_count, \
+                COUNT(*) FILTER (WHERE m.attachment_count < PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.attachment_count) OVER (PARTITION BY mb.name))::BIGINT AS count_below_p90, \
+                COUNT(*)::BIGINT AS message_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let mut seen = std::collections::HashSet::new();
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .filter(|(f, _, _, _)| seen.insert(f.clone()))
+        .map(|(folder, p90, below, cnt)| serde_json::json!({"folder": folder, "p90_attachment_count": p90, "count_below_p90": below, "message_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
