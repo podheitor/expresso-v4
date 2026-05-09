@@ -9499,6 +9499,56 @@ pub async fn segment_bytes_sum_above_p95(State(store): State<IndexStore>) -> Jso
     Json(serde_json::json!({"bytes_sum_above_p95": sum, "count_above_p95": count, "bytes_p95": p95, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-trimmed-p90 — média aparada P5–P95 de docs entre segmentos. Sprint #3997.
+pub async fn segment_docs_trimmed_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_trimmed_p90_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let lo = ((n as f64 * 0.05).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.95).ceil() as usize).min(n);
+    let trimmed = &vals[lo..hi];
+    let mean = if trimmed.is_empty() { None } else {
+        Some(trimmed.iter().sum::<u64>() as f64 / trimmed.len() as f64)
+    };
+    Json(serde_json::json!({"docs_trimmed_p90_mean": mean, "trimmed_count": trimmed.len(), "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-trimmed-p90 — média aparada P5–P95 de bytes entre segmentos. Sprint #3998.
+pub async fn segment_bytes_trimmed_p90(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_trimmed_p90_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let lo = ((n as f64 * 0.05).ceil() as usize).min(n);
+    let hi = ((n as f64 * 0.95).ceil() as usize).min(n);
+    let trimmed = &vals[lo..hi];
+    let mean = if trimmed.is_empty() { None } else {
+        Some(trimmed.iter().sum::<u64>() as f64 / trimmed.len() as f64)
+    };
+    Json(serde_json::json!({"bytes_trimmed_p90_mean": mean, "trimmed_count": trimmed.len(), "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-max — comprimento máximo de nome de segmento. Sprint #3999.
+pub async fn segment_name_length_max(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let max = segs.iter().map(|(name, _, _)| name.len()).max();
+    Json(serde_json::json!({"name_length_max": max, "total_segments": segs.len()}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-min — comprimento mínimo de nome de segmento. Sprint #4000.
+pub async fn segment_name_length_min(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let min = segs.iter().map(|(name, _, _)| name.len()).min();
+    Json(serde_json::json!({"name_length_min": min, "total_segments": segs.len()}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
