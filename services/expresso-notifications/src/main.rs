@@ -14509,6 +14509,196 @@ async fn dlq_payload_size_count_below_p25(
     Ok(Json(json!({"p25_payload_size": row.0, "count_below_p25": row.1, "total_count": row.2})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-above-p50 — contagem de entradas DLQ com payload_size acima do P50. Sprint #4985.
+async fn dlq_payload_size_count_above_p50(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p50, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) > (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p50_payload_size": row.0, "count_above_p50": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-below-p50 — contagem de entradas DLQ com payload_size abaixo do P50. Sprint #4986.
+async fn dlq_payload_size_count_below_p50(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p50, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) < (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p50_payload_size": row.0, "count_below_p50": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-above-p75 — contagem de entradas DLQ com payload_size acima do P75. Sprint #4987.
+async fn dlq_payload_size_count_above_p75(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p75, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p75_payload_size": row.0, "count_above_p75": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-below-p75 — contagem de entradas DLQ com payload_size abaixo do P75. Sprint #4988.
+async fn dlq_payload_size_count_below_p75(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p75, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) < (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p75_payload_size": row.0, "count_below_p75": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-above-p90 — contagem de entradas DLQ com payload_size acima do P90. Sprint #4989.
+async fn dlq_payload_size_count_above_p90(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p90, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) > (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p90_payload_size": row.0, "count_above_p90": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-below-p90 — contagem de entradas DLQ com payload_size abaixo do P90. Sprint #4990.
+async fn dlq_payload_size_count_below_p90(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p90, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) < (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p90_payload_size": row.0, "count_below_p90": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-above-p95 — contagem de entradas DLQ com payload_size acima do P95. Sprint #4991.
+async fn dlq_payload_size_count_above_p95(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p95, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p95_payload_size": row.0, "count_above_p95": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-below-p95 — contagem de entradas DLQ com payload_size abaixo do P95. Sprint #4992.
+async fn dlq_payload_size_count_below_p95(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p95, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) < (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p95_payload_size": row.0, "count_below_p95": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-above-p99 — contagem de entradas DLQ com payload_size acima do P99. Sprint #4993.
+async fn dlq_payload_size_count_above_p99(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p99, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p99_payload_size": row.0, "count_above_p99": row.1, "total_count": row.2})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/payload-size-count-below-p99 — contagem de entradas DLQ com payload_size abaixo do P99. Sprint #4994.
+async fn dlq_payload_size_count_below_p99(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(payload))::FLOAT8 AS p99, \
+                COUNT(*) FILTER (WHERE LENGTH(payload) < (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(payload)) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p99_payload_size": row.0, "count_below_p99": row.1, "total_count": row.2})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-count-above-p90 — contagem de entradas DLQ com attempts acima do P90. Sprint #4945.
 async fn dlq_attempts_count_above_p90(
     State(st): State<AppState>,
@@ -24199,6 +24389,16 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/attempts-count-below-p99",         get(dlq_attempts_count_below_p99))
         .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p25",     get(dlq_payload_size_count_above_p25))
         .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p25",     get(dlq_payload_size_count_below_p25))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p50",     get(dlq_payload_size_count_above_p50))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p50",     get(dlq_payload_size_count_below_p50))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p75",     get(dlq_payload_size_count_above_p75))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p75",     get(dlq_payload_size_count_below_p75))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p90",     get(dlq_payload_size_count_above_p90))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p90",     get(dlq_payload_size_count_below_p90))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p95",     get(dlq_payload_size_count_above_p95))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p95",     get(dlq_payload_size_count_below_p95))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-above-p99",     get(dlq_payload_size_count_above_p99))
+        .route("/api/v1/notifications/dlq/stats/payload-size-count-below-p99",     get(dlq_payload_size_count_below_p99))
         .route("/api/v1/notifications/dlq/stats/attempts-count-above-p90",         get(dlq_attempts_count_above_p90))
         .route("/api/v1/notifications/dlq/stats/attempts-count-below-p90",         get(dlq_attempts_count_below_p90))
         .route("/api/v1/notifications/dlq/stats/attempts-count-above-p95",         get(dlq_attempts_count_above_p95))
