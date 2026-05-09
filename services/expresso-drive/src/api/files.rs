@@ -718,6 +718,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-p10-by-mime",           get(file_stats_name_length_p10_by_mime))
         .route("/api/v1/drive/files/stats/name-length-p10-by-ext",            get(file_stats_name_length_p10_by_ext))
         .route("/api/v1/drive/files/stats/name-length-p90-by-kind",           get(file_stats_name_length_p90_by_kind))
+        .route("/api/v1/drive/files/stats/size-mean-by-kind",                  get(file_stats_size_mean_by_kind))
+        .route("/api/v1/drive/files/stats/size-mean-by-mime",                  get(file_stats_size_mean_by_mime))
+        .route("/api/v1/drive/files/stats/size-mean-by-ext",                   get(file_stats_size_mean_by_ext))
+        .route("/api/v1/drive/files/stats/size-var-by-kind",                   get(file_stats_size_var_by_kind))
         .route("/api/v1/drive/files/stats/name-length-sum-by-ext",             get(file_stats_name_length_sum_by_ext))
         .route("/api/v1/drive/files/stats/name-length-range-by-kind",          get(file_stats_name_length_range_by_kind))
         .route("/api/v1/drive/files/stats/name-length-range-by-mime",          get(file_stats_name_length_range_by_mime))
@@ -16752,6 +16756,46 @@ async fn file_stats_name_length_coeff_var_by_mime(State(state): State<AppState>,
         };
         serde_json::json!({"mime_type": mime, "coeff_var_name_length": cv, "file_count": cnt})
     }).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mean-by-kind — média de tamanho de arquivo por kind. Sprint #4349.
+async fn file_stats_size_mean_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, AVG(size)::FLOAT8 AS mean_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, mean, cnt)| serde_json::json!({"kind": kind, "mean_size_bytes": mean, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mean-by-mime — média de tamanho de arquivo por MIME. Sprint #4350.
+async fn file_stats_size_mean_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, AVG(size)::FLOAT8 AS mean_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, mean, cnt)| serde_json::json!({"mime_type": mime, "mean_size_bytes": mean, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mean-by-ext — média de tamanho de arquivo por extensão. Sprint #4351.
+async fn file_stats_size_mean_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, AVG(size)::FLOAT8 AS mean_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, mean, cnt)| serde_json::json!({"ext": ext, "mean_size_bytes": mean, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-var-by-kind — variância de tamanho de arquivo por kind. Sprint #4352.
+async fn file_stats_size_var_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, VAR_POP(size)::FLOAT8 AS var_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, var, cnt)| serde_json::json!({"kind": kind, "var_size_bytes": var, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

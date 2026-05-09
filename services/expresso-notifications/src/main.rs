@@ -12665,6 +12665,124 @@ async fn dlq_by_tenant_retry_lag_stddev(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-retry-lag-winsorized-mean — média winsorized (10–90%) do lag de retry por user. Sprint #4345.
+async fn dlq_by_user_retry_lag_winsorized_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (now() - created_at)) ORDER BY EXTRACT(EPOCH FROM (now() - created_at))) AS lags, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(uid, lags, cnt)| {
+        let vals: Vec<f64> = lags.into_iter().flatten().collect();
+        let n = vals.len();
+        let mean = if n > 0 {
+            let lo_idx = (n as f64 * 0.10).ceil() as usize;
+            let hi_idx = ((n as f64 * 0.90).floor() as usize).min(n - 1);
+            let lo_val = vals[lo_idx.min(n - 1)];
+            let hi_val = vals[hi_idx];
+            let wsum: f64 = vals.iter().map(|&v| v.clamp(lo_val, hi_val)).sum();
+            Some(wsum / n as f64)
+        } else { None };
+        json!({"user_id": uid, "winsorized_mean_retry_lag": mean, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-retry-lag-winsorized-mean — média winsorized (10–90%) do lag de retry por tenant. Sprint #4346.
+async fn dlq_by_tenant_retry_lag_winsorized_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT tenant_id, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (now() - created_at)) ORDER BY EXTRACT(EPOCH FROM (now() - created_at))) AS lags, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tid, lags, cnt)| {
+        let vals: Vec<f64> = lags.into_iter().flatten().collect();
+        let n = vals.len();
+        let mean = if n > 0 {
+            let lo_idx = (n as f64 * 0.10).ceil() as usize;
+            let hi_idx = ((n as f64 * 0.90).floor() as usize).min(n - 1);
+            let lo_val = vals[lo_idx.min(n - 1)];
+            let hi_val = vals[hi_idx];
+            let wsum: f64 = vals.iter().map(|&v| v.clamp(lo_val, hi_val)).sum();
+            Some(wsum / n as f64)
+        } else { None };
+        json!({"tenant_id": tid, "winsorized_mean_retry_lag": mean, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-mode — moda do lag de retry por kind (discretized to seconds). Sprint #4347.
+async fn dlq_by_kind_retry_lag_mode(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (now() - created_at))) AS lags, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(kind, lags, cnt)| {
+        let mut freq: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+        for v in lags.into_iter().flatten() { *freq.entry(v as i64).or_insert(0) += 1; }
+        let (mode, freq_count) = freq.into_iter().max_by_key(|&(_, c)| c).unwrap_or((0, 0));
+        json!({"kind": kind, "mode_retry_lag_secs": mode, "mode_frequency": freq_count, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-retry-lag-mode — moda do lag de retry por user. Sprint #4348.
+async fn dlq_by_user_retry_lag_mode(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(uuid::Uuid, Vec<Option<f64>>, i64)> = sqlx::query_as(
+        "SELECT user_id, \
+                ARRAY_AGG(EXTRACT(EPOCH FROM (now() - created_at))) AS lags, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(uid, lags, cnt)| {
+        let mut freq: std::collections::HashMap<i64, usize> = std::collections::HashMap::new();
+        for v in lags.into_iter().flatten() { *freq.entry(v as i64).or_insert(0) += 1; }
+        let (mode, freq_count) = freq.into_iter().max_by_key(|&(_, c)| c).unwrap_or((0, 0));
+        json!({"user_id": uid, "mode_retry_lag_secs": mode, "mode_frequency": freq_count, "count": cnt})
+    }).collect::<Vec<_>>();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-retry-lag-trimmed-mean — média trimmed (10–90%) do lag de retry por kind. Sprint #4325.
 async fn dlq_by_kind_retry_lag_trimmed_mean(
     State(st): State<AppState>,
@@ -21358,6 +21476,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-range",                get(dlq_by_user_retry_lag_range))
         .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-range",              get(dlq_by_tenant_retry_lag_range))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-mean",                 get(dlq_by_kind_retry_lag_mean))
+        .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-winsorized-mean",        get(dlq_by_user_retry_lag_winsorized_mean))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-winsorized-mean",      get(dlq_by_tenant_retry_lag_winsorized_mean))
+        .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-mode",                  get(dlq_by_kind_retry_lag_mode))
+        .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-mode",                  get(dlq_by_user_retry_lag_mode))
         .route("/api/v1/notifications/dlq/stats/by-kind-retry-lag-trimmed-mean",          get(dlq_by_kind_retry_lag_trimmed_mean))
         .route("/api/v1/notifications/dlq/stats/by-user-retry-lag-trimmed-mean",          get(dlq_by_user_retry_lag_trimmed_mean))
         .route("/api/v1/notifications/dlq/stats/by-tenant-retry-lag-trimmed-mean",        get(dlq_by_tenant_retry_lag_trimmed_mean))

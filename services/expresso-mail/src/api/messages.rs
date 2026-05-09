@@ -746,6 +746,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count-p75-by-folder",         get(cc_count_p75_by_folder_stats))
         .route("/mail/messages/stats/cc-count-p90-by-folder",         get(cc_count_p90_by_folder_stats))
         .route("/mail/messages/stats/cc-count-p10-by-folder",         get(cc_count_p10_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-max-by-folder",               get(bcc_count_max_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-range-by-folder",             get(bcc_count_range_by_folder_stats))
+        .route("/mail/messages/stats/bcc-count-mode-by-folder",              get(bcc_count_mode_by_folder_stats))
+        .route("/mail/messages/stats/body-length-mean-by-folder",            get(body_length_mean_by_folder_stats))
         .route("/mail/messages/stats/bcc-count-winsorized-mean-by-folder",    get(bcc_count_winsorized_mean_by_folder_stats))
         .route("/mail/messages/stats/bcc-count-avg-by-folder",               get(bcc_count_avg_by_folder_stats))
         .route("/mail/messages/stats/bcc-count-sum-by-folder",               get(bcc_count_sum_by_folder_stats))
@@ -21619,6 +21623,89 @@ async fn bcc_count_p25_by_folder_stats(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p25, cnt)| serde_json::json!({"folder": folder, "p25_bcc_count": p25, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-max-by-folder — máximo de bcc_count × folder. Sprint #4353.
+async fn bcc_count_max_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MAX(COALESCE(array_length(m.bcc, 1), 0))::BIGINT AS max_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mx, cnt)| serde_json::json!({"folder": folder, "max_bcc_count": mx, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-range-by-folder — range de bcc_count × folder. Sprint #4354.
+async fn bcc_count_range_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MIN(COALESCE(array_length(m.bcc, 1), 0))::BIGINT AS min_bcc, \
+                MAX(COALESCE(array_length(m.bcc, 1), 0))::BIGINT AS max_bcc, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mn, mx, cnt)| serde_json::json!({"folder": folder, "range_bcc_count": mx - mn, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/bcc-count-mode-by-folder — moda de bcc_count × folder. Sprint #4355.
+async fn bcc_count_mode_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                MODE() WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0))::BIGINT AS mode_bcc, \
+                COUNT(*) FILTER (WHERE COALESCE(array_length(m.bcc, 1), 0) = \
+                    MODE() WITHIN GROUP (ORDER BY COALESCE(array_length(m.bcc, 1), 0)))::BIGINT AS mode_count, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mode, mc, cnt)| serde_json::json!({"folder": folder, "mode_bcc_count": mode, "mode_frequency": mc, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-mean-by-folder — média de comprimento de body × folder. Sprint #4356.
+async fn body_length_mean_by_folder_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mb.name AS folder, \
+                AVG(LENGTH(m.body_text))::FLOAT8 AS mean_body_len, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 AND m.body_text IS NOT NULL \
+         GROUP BY mb.name ORDER BY mb.name",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mean, cnt)| serde_json::json!({"folder": folder, "mean_body_length": mean, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
