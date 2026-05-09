@@ -10367,6 +10367,72 @@ pub async fn segment_name_length_variance(State(store): State<IndexStore>) -> Js
     Json(serde_json::json!({"name_length_variance": variance, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/name-entropy — entropia de Shannon dos nomes dos segmentos (por caractere). Sprint #4377.
+pub async fn segment_name_entropy(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"name_entropy": null, "total_segments": 0}));
+    }
+    let mut freq: std::collections::HashMap<char, usize> = std::collections::HashMap::new();
+    let mut total_chars = 0usize;
+    for (name, _, _) in &segs {
+        for c in name.chars() { *freq.entry(c).or_insert(0) += 1; total_chars += 1; }
+    }
+    let entropy = if total_chars > 0 {
+        freq.values().map(|&cnt| {
+            let p = cnt as f64 / total_chars as f64;
+            -p * p.log2()
+        }).sum::<f64>()
+    } else { 0.0 };
+    Json(serde_json::json!({"name_entropy": entropy, "total_chars": total_chars, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-max-freq — comprimento de nome mais frequente. Sprint #4378.
+pub async fn segment_name_length_max_freq(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"max_freq_name_length": null, "frequency": 0, "total_segments": 0}));
+    }
+    let mut freq: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    for (name, _, _) in &segs { *freq.entry(name.len()).or_insert(0) += 1; }
+    let (length, count) = freq.into_iter().max_by_key(|&(_, c)| c).unwrap_or((0, 0));
+    Json(serde_json::json!({"max_freq_name_length": length, "frequency": count, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-kurtosis — kurtosis de comprimento de nome. Sprint #4379.
+pub async fn segment_name_length_kurtosis_name(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n < 4 {
+        return Json(serde_json::json!({"name_length_kurtosis": null, "total_segments": n}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(name, _, _)| name.len() as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+    let kurtosis = if variance > 0.0 {
+        let stddev = variance.sqrt();
+        vals.iter().map(|&v| ((v - mean) / stddev).powi(4)).sum::<f64>() / n as f64
+    } else { 0.0 };
+    Json(serde_json::json!({"name_length_kurtosis": kurtosis, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/name-length-sum-above-p25 — soma dos comprimentos de nome acima do P25. Sprint #4380.
+pub async fn segment_name_length_sum_above_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"sum_above_p25": 0, "total_segments": 0}));
+    }
+    let mut vals: Vec<usize> = segs.iter().map(|(name, _, _)| name.len()).collect();
+    vals.sort_unstable();
+    let p25_idx = ((n as f64 * 0.25).ceil() as usize).min(n - 1);
+    let p25 = vals[p25_idx] as f64;
+    let sum: usize = vals.iter().filter(|&&v| (v as f64) > p25).sum();
+    Json(serde_json::json!({"sum_above_p25": sum, "p25_name_length": p25, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/name-length-count-below-p25 — número de segmentos com nome abaixo do P25. Sprint #4357.
 pub async fn segment_name_length_count_below_p25(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
