@@ -766,6 +766,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-winsorized-mean-by-ext",      get(file_stats_size_winsorized_mean_by_ext))
         .route("/api/v1/drive/files/stats/size-skewness-by-kind",            get(file_stats_size_skewness_by_kind))
         .route("/api/v1/drive/files/stats/size-skewness-by-mime",            get(file_stats_size_skewness_by_mime))
+        .route("/api/v1/drive/files/stats/size-skewness-by-ext",              get(file_stats_size_skewness_by_ext))
+        .route("/api/v1/drive/files/stats/size-kurtosis-by-kind",             get(file_stats_size_kurtosis_by_kind))
+        .route("/api/v1/drive/files/stats/size-kurtosis-by-mime",             get(file_stats_size_kurtosis_by_mime))
+        .route("/api/v1/drive/files/stats/size-kurtosis-by-ext",              get(file_stats_size_kurtosis_by_ext))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -17360,6 +17364,60 @@ async fn file_stats_size_skewness_by_mime(State(state): State<AppState>, ctx: Re
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result = rows.into_iter().map(|(mime, sk, cnt)| serde_json::json!({"mime_type": mime, "skewness_size": sk, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-skewness-by-ext — assimetria do tamanho por extensão. Sprint #4529.
+async fn file_stats_size_skewness_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))), 3)) \
+                    OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))) / \
+                    NULLIF(POWER(STDDEV_POP(size::FLOAT8) OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))), 3), 0))::FLOAT8 AS skewness_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, sk, cnt)| serde_json::json!({"ext": ext, "skewness_size": sk, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-kurtosis-by-kind — curtose do tamanho por tipo. Sprint #4530.
+async fn file_stats_size_kurtosis_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT kind, \
+                (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (PARTITION BY kind), 4)) OVER (PARTITION BY kind) / \
+                    NULLIF(POWER(VAR_POP(size::FLOAT8) OVER (PARTITION BY kind), 2), 0) - 3.0)::FLOAT8 AS kurtosis_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(kind, ku, cnt)| serde_json::json!({"kind": kind, "kurtosis_size": ku, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-kurtosis-by-mime — curtose do tamanho por MIME. Sprint #4531.
+async fn file_stats_size_kurtosis_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, \
+                (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (PARTITION BY mime_type), 4)) OVER (PARTITION BY mime_type) / \
+                    NULLIF(POWER(VAR_POP(size::FLOAT8) OVER (PARTITION BY mime_type), 2), 0) - 3.0)::FLOAT8 AS kurtosis_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(mime, ku, cnt)| serde_json::json!({"mime_type": mime, "kurtosis_size": ku, "file_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/size-kurtosis-by-ext — curtose do tamanho por extensão. Sprint #4532.
+async fn file_stats_size_kurtosis_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, \
+                (AVG(POWER(size::FLOAT8 - AVG(size::FLOAT8) OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))), 4)) \
+                    OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))) / \
+                    NULLIF(POWER(VAR_POP(size::FLOAT8) OVER (PARTITION BY LOWER(REGEXP_REPLACE(name, '^.*\\.', ''))), 2), 0) - 3.0)::FLOAT8 AS kurtosis_size, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result = rows.into_iter().map(|(ext, ku, cnt)| serde_json::json!({"ext": ext, "kurtosis_size": ku, "file_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
