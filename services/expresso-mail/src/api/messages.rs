@@ -458,6 +458,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/attachment-count-atkinson-by-sender",      get(attachment_count_atkinson_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-lorenz-by-sender",        get(attachment_count_lorenz_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-normalized-entropy-by-sender", get(attachment_count_normalized_entropy_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-gini-by-sender",           get(recipient_count_gini_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-theil-by-sender",          get(recipient_count_theil_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-hhi-by-sender",            get(recipient_count_hhi_by_sender_stats))
+        .route("/mail/messages/stats/recipient-count-atkinson-by-sender",       get(recipient_count_atkinson_by_sender_stats))
         .route("/mail/messages/stats/size-entropy-by-sender",                   get(size_entropy_by_sender_stats))
         .route("/mail/messages/stats/body-length-entropy-by-sender",            get(body_length_entropy_by_sender_stats))
         .route("/mail/messages/stats/size-normalized-entropy-by-sender",        get(size_normalized_entropy_by_sender_stats))
@@ -14659,6 +14663,135 @@ async fn attachment_count_normalized_entropy_by_sender_stats(
             entropy / (n as f64).ln()
         };
         serde_json::json!({"sender": sender, "normalized_entropy_attachment_count": norm_entropy, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-gini-by-sender — Gini de recipient_count por remetente. Sprint #3453.
+async fn recipient_count_gini_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let mut vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let n = vals.len();
+        let gini = if n < 2 { 0.0 } else {
+            let total: f64 = vals.iter().sum();
+            if total == 0.0 { 0.0 } else {
+                let sum: f64 = vals.iter().enumerate().map(|(i, &v)| (2.0 * (i + 1) as f64 - n as f64 - 1.0) * v).sum();
+                sum / (n as f64 * total)
+            }
+        };
+        serde_json::json!({"sender": sender, "gini_recipient_count": gini, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-theil-by-sender — Theil T de recipient_count por remetente. Sprint #3454.
+async fn recipient_count_theil_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let theil = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                vals.iter().map(|&v| (v / mean) * (v / mean).ln()).sum::<f64>() / n as f64
+            }
+        };
+        serde_json::json!({"sender": sender, "theil_recipient_count": theil, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-hhi-by-sender — HHI de recipient_count por remetente. Sprint #3455.
+async fn recipient_count_hhi_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let total: f64 = vals.iter().sum();
+        let hhi = if total == 0.0 { 0.0 } else {
+            vals.iter().map(|&v| (v / total).powi(2)).sum()
+        };
+        serde_json::json!({"sender": sender, "hhi_recipient_count": hhi, "message_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/recipient-count-atkinson-by-sender — Atkinson de recipient_count por remetente. Sprint #3456.
+async fn recipient_count_atkinson_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = state.begin_tenant_tx(ctx.tenant_id).await.map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()})))
+    })?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT m.from_addr AS sender, \
+                ARRAY_AGG(m.recipient_count ORDER BY m.recipient_count) AS counts, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.from_addr ORDER BY msg_count DESC LIMIT 100",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(sender, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let atkinson = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let log_sum: f64 = vals.iter().map(|&v| v.ln()).sum();
+                let geo_mean = (log_sum / n as f64).exp();
+                1.0 - geo_mean / mean
+            }
+        };
+        serde_json::json!({"sender": sender, "atkinson_recipient_count": atkinson, "message_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }

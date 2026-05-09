@@ -9072,6 +9072,116 @@ async fn dlq_by_kind_error_length_normalized_entropy(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy — entropia normalizada de error_length por user. Sprint #3445.
+async fn dlq_by_user_error_length_normalized_entropy(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        json!({"user_id": user, "normalized_entropy_error_length": norm_entropy, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy — entropia normalizada de error_length por tenant. Sprint #3446.
+async fn dlq_by_tenant_error_length_normalized_entropy(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT tenant_id::TEXT, ARRAY_AGG(LENGTH(last_error) ORDER BY LENGTH(last_error)) AS lengths, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) AND last_error IS NOT NULL \
+         GROUP BY tenant_id ORDER BY tenant_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(tenant, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        json!({"tenant_id": tenant, "normalized_entropy_error_length": norm_entropy, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean — média harmônica de attempts por kind. Sprint #3447.
+async fn dlq_by_kind_attempts_harmonic_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(attempts ORDER BY attempts) AS att_vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY kind ORDER BY kind",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+        };
+        json!({"kind": kind, "harmonic_mean_attempts": harmonic_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean — média harmônica de attempts por user. Sprint #3448.
+async fn dlq_by_user_attempts_harmonic_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(String, Vec<Option<i32>>, i64)> = sqlx::query_as(
+        "SELECT user_id::TEXT, ARRAY_AGG(attempts ORDER BY attempts) AS att_vals, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         GROUP BY user_id ORDER BY user_id",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(user, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).filter(|&v| v > 0.0).collect();
+        let n = vals.len();
+        let harmonic_mean = if n == 0 { 0.0 } else {
+            let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+            if recip_sum == 0.0 { 0.0 } else { n as f64 / recip_sum }
+        };
+        json!({"user_id": user, "harmonic_mean_attempts": harmonic_mean, "count": cnt})
+    }).collect();
+    Ok(Json(json!({"rows": result})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/by-kind-error-length-variance — variância de error_length por kind. Sprint #3080.
 async fn dlq_by_kind_error_length_variance(
     State(st): State<AppState>,
@@ -16980,6 +17090,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-user-payload-size-normalized-entropy",   get(dlq_by_user_payload_size_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-payload-size-normalized-entropy", get(dlq_by_tenant_payload_size_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/by-kind-attempts-harmonic-mean",   get(dlq_by_kind_attempts_harmonic_mean))
+        .route("/api/v1/notifications/dlq/stats/by-user-attempts-harmonic-mean",   get(dlq_by_user_attempts_harmonic_mean))
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-gini",       get(dlq_by_kind_error_length_gini))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-gini",       get(dlq_by_user_error_length_gini))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-gini",     get(dlq_by_tenant_error_length_gini))

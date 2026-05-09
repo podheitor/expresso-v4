@@ -7300,6 +7300,70 @@ pub async fn segment_bytes_mad(State(store): State<IndexStore>) -> Json<serde_js
     Json(serde_json::json!({"bytes_mad": mad, "bytes_median": median, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-winsorized-mean — média winsorizada (10%–90%) de doc_count entre segmentos. Sprint #3457.
+pub async fn segment_docs_winsorized_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_winsorized_mean": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p10 = vals[(n as f64 * 0.10) as usize];
+    let p90 = vals[((n as f64 * 0.90) as usize).min(n - 1)];
+    let clamped: Vec<f64> = vals.iter().map(|&v| v.clamp(p10, p90)).collect();
+    let winsorized_mean = clamped.iter().sum::<f64>() / clamped.len() as f64;
+    Json(serde_json::json!({"docs_winsorized_mean": winsorized_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-harmonic-mean — média harmônica de disk_bytes entre segmentos. Sprint #3458.
+pub async fn segment_bytes_harmonic_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_harmonic_mean": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).filter(|&v| v > 0.0).collect();
+    let m = vals.len();
+    let harmonic_mean = if m == 0 { 0.0 } else {
+        let recip_sum: f64 = vals.iter().map(|&v| 1.0 / v).sum();
+        if recip_sum == 0.0 { 0.0 } else { m as f64 / recip_sum }
+    };
+    Json(serde_json::json!({"bytes_harmonic_mean": harmonic_mean, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-mad — MAD de doc_count entre segmentos. Sprint #3459.
+pub async fn segment_docs_mad(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_mad": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = if n % 2 == 1 { vals[n / 2] } else { (vals[n / 2 - 1] + vals[n / 2]) / 2.0 };
+    let mut abs_devs: Vec<f64> = vals.iter().map(|v| (v - median).abs()).collect();
+    abs_devs.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mad = if n % 2 == 1 { abs_devs[n / 2] } else { (abs_devs[n / 2 - 1] + abs_devs[n / 2]) / 2.0 };
+    Json(serde_json::json!({"docs_mad": mad, "docs_median": median, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-coeff-var — coeficiente de variação de doc_count entre segmentos. Sprint #3460.
+pub async fn segment_docs_coeff_var(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_coeff_var": null, "total_segments": 0}));
+    }
+    let vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    let mean = vals.iter().sum::<f64>() / n as f64;
+    let coeff_var = if mean == 0.0 { 0.0 } else {
+        let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+        variance.sqrt() / mean
+    };
+    Json(serde_json::json!({"docs_coeff_var": coeff_var, "docs_mean": mean, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-trimmed-mean — média aparada (10%–90%) de disk_bytes entre segmentos. Sprint #2873.
 pub async fn segment_bytes_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
