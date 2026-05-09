@@ -7435,6 +7435,69 @@ pub async fn segment_docs_trimmed_stdev(State(store): State<IndexStore>) -> Json
     Json(serde_json::json!({"docs_trimmed_stdev": trimmed_stdev, "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/bytes-trimmed-stdev — desvio padrão aparado de disk_bytes. Sprint #3497.
+pub async fn segment_bytes_trimmed_stdev(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_trimmed_stdev": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo = (n as f64 * 0.10).floor() as usize;
+    let hi = (n as f64 * 0.90).ceil() as usize;
+    let hi = hi.min(n);
+    let trimmed_stdev = if lo < hi {
+        let slice = &vals[lo..hi];
+        let mean = slice.iter().sum::<f64>() / slice.len() as f64;
+        let variance = slice.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / slice.len() as f64;
+        variance.sqrt()
+    } else { 0.0 };
+    Json(serde_json::json!({"bytes_trimmed_stdev": trimmed_stdev, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-p05 — P5 de doc_count entre segmentos. Sprint #3498.
+pub async fn segment_docs_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_p05": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p05 = vals[((n as f64 * 0.05) as usize).min(n - 1)];
+    Json(serde_json::json!({"docs_p05": p05, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-p05 — P5 de disk_bytes entre segmentos. Sprint #3499.
+pub async fn segment_bytes_p05(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_p05": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, _, b)| *b as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p05 = vals[((n as f64 * 0.05) as usize).min(n - 1)];
+    Json(serde_json::json!({"bytes_p05": p05, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-iqr-ratio — razão IQR/mediana de doc_count entre segmentos. Sprint #3500.
+pub async fn segment_docs_iqr_ratio(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_iqr_ratio": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<f64> = segs.iter().map(|(_, d, _)| *d as f64).collect();
+    vals.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let q1 = vals[((n as f64 * 0.25) as usize).min(n - 1)];
+    let q3 = vals[((n as f64 * 0.75) as usize).min(n - 1)];
+    let median = if n % 2 == 1 { vals[n / 2] } else { (vals[n / 2 - 1] + vals[n / 2]) / 2.0 };
+    let iqr_ratio = if median == 0.0 { 0.0 } else { (q3 - q1) / median };
+    Json(serde_json::json!({"docs_iqr_ratio": iqr_ratio, "docs_q1": q1, "docs_q3": q3, "docs_median": median, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/bytes-trimmed-mean — média aparada (10%–90%) de disk_bytes entre segmentos. Sprint #2873.
 pub async fn segment_bytes_trimmed_mean(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

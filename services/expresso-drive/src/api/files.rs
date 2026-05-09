@@ -463,6 +463,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/deleted-size-normalized-entropy-by-kind",  get(file_stats_size_deleted_normalized_entropy_by_kind))
         .route("/api/v1/drive/files/stats/deleted-size-normalized-entropy-by-mime",  get(file_stats_size_deleted_normalized_entropy_by_mime))
         .route("/api/v1/drive/files/stats/deleted-size-normalized-entropy-by-owner", get(file_stats_size_deleted_normalized_entropy_by_owner))
+        .route("/api/v1/drive/files/stats/deleted-size-normalized-entropy-by-ext",  get(file_stats_size_deleted_normalized_entropy_by_ext))
+        .route("/api/v1/drive/files/stats/count-deleted-by-ext",                    get(file_stats_count_deleted_by_ext))
+        .route("/api/v1/drive/files/stats/count-active-by-ext",                     get(file_stats_count_active_by_ext))
+        .route("/api/v1/drive/files/stats/active-size-coeff-var-by-kind",           get(file_stats_size_active_coeff_var_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-kind",               get(file_stats_size_active_hhi_by_kind))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-mime",               get(file_stats_size_active_hhi_by_mime))
         .route("/api/v1/drive/files/stats/active-size-hhi-by-owner",              get(file_stats_size_active_hhi_by_owner))
@@ -12964,6 +12968,72 @@ async fn file_stats_size_deleted_normalized_entropy_by_owner(State(state): State
             entropy / (n as f64).ln()
         };
         serde_json::json!({"owner_id": owner, "normalized_entropy_deleted_size": norm_entropy, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/deleted-size-normalized-entropy-by-ext — entropia normalizada de size deletados por extensão. Sprint #3489.
+async fn file_stats_size_deleted_normalized_entropy_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT COALESCE(extension, 'none'), ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY extension ORDER BY extension",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let total: f64 = vals.iter().sum();
+        let norm_entropy = if n < 2 || total == 0.0 { 0.0 } else {
+            let entropy: f64 = vals.iter().map(|&v| { let p = v / total; if p > 0.0 { -p * p.ln() } else { 0.0 } }).sum();
+            entropy / (n as f64).ln()
+        };
+        serde_json::json!({"extension": ext, "normalized_entropy_deleted_size": norm_entropy, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-deleted-by-ext — contagem de arquivos deletados por extensão. Sprint #3490.
+async fn file_stats_count_deleted_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(extension, 'none'), COUNT(*)::BIGINT AS deleted_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NOT NULL GROUP BY extension ORDER BY deleted_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, cnt)| {
+        serde_json::json!({"extension": ext, "deleted_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_deleted": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/count-active-by-ext — contagem de arquivos ativos por extensão. Sprint #3491.
+async fn file_stats_count_active_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT COALESCE(extension, 'none'), COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY extension ORDER BY active_count DESC",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let total: i64 = rows.iter().map(|(_, c)| c).sum();
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(ext, cnt)| {
+        serde_json::json!({"extension": ext, "active_count": cnt})
+    }).collect();
+    Ok(Json(serde_json::json!({"total_active": total, "rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/active-size-coeff-var-by-kind — coeficiente de variação de size de arquivos ativos por kind. Sprint #3492.
+async fn file_stats_size_active_coeff_var_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Vec<Option<i64>>, i64)> = sqlx::query_as(
+        "SELECT kind, ARRAY_AGG(size_bytes ORDER BY size_bytes) AS sizes, COUNT(*)::BIGINT AS active_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter().map(|(kind, raw, cnt)| {
+        let vals: Vec<f64> = raw.into_iter().flatten().map(|v| v as f64).collect();
+        let n = vals.len();
+        let coeff_var = if n == 0 { 0.0 } else {
+            let mean = vals.iter().sum::<f64>() / n as f64;
+            if mean == 0.0 { 0.0 } else {
+                let variance = vals.iter().map(|&v| (v - mean).powi(2)).sum::<f64>() / n as f64;
+                variance.sqrt() / mean
+            }
+        };
+        serde_json::json!({"kind": kind, "coeff_var_active_size": coeff_var, "active_count": cnt})
     }).collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
