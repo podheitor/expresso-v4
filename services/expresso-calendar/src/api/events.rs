@@ -2657,6 +2657,22 @@ pub fn routes() -> Router<AppState> {
             get(events_by_range_categories_cv_by_month),
         )
         .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-weekday",
+            get(events_by_range_duration_count_above_p01_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-month",
+            get(events_by_range_duration_count_above_p01_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-weekday",
+            get(events_by_range_duration_count_below_p01_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-month",
+            get(events_by_range_duration_count_below_p01_by_month),
+        )
+        .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p75-by-weekday",
             get(events_by_range_duration_count_above_p75_by_weekday),
         )
@@ -3783,6 +3799,22 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/categories-cv-by-month",
             get(events_by_range_categories_cv_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-weekday",
+            get(events_by_range_duration_count_above_p01_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-month",
+            get(events_by_range_duration_count_above_p01_by_month),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-weekday",
+            get(events_by_range_duration_count_below_p01_by_weekday),
+        )
+        .route(
+            "/api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-month",
+            get(events_by_range_duration_count_below_p01_by_month),
         )
         .route(
             "/api/v1/calendars/:cal_id/events-by-range/duration-count-above-p75-by-weekday",
@@ -17420,6 +17452,122 @@ async fn events_by_range_attendees_count_below_p75_by_month(
     ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
     tx.commit().await?;
     let result = rows.into_iter().map(|(m, p75, below, cnt)| serde_json::json!({"month": m, "p75_attendees": p75, "count_below_p75": below, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-weekday — contagem acima do P01 de duração × dia da semana. Sprint #4641.
+async fn events_by_range_duration_count_above_p01_by_weekday(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS weekday, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p01_duration, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) > \
+                    PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) OVER ())::BIGINT AS count_above_p01, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC') ORDER BY weekday",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(wd, p01, above, cnt)| serde_json::json!({"weekday": wd, "p01_duration_secs": p01, "count_above_p01": above, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-count-above-p01-by-month — contagem acima do P01 de duração × mês. Sprint #4642.
+async fn events_by_range_duration_count_above_p01_by_month(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p01_duration, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) > \
+                    PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) OVER ())::BIGINT AS count_above_p01, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC') ORDER BY month",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p01, above, cnt)| serde_json::json!({"month": m, "p01_duration_secs": p01, "count_above_p01": above, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-weekday — contagem abaixo do P01 de duração × dia da semana. Sprint #4643.
+async fn events_by_range_duration_count_below_p01_by_weekday(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC')::INT AS weekday, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p01_duration, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) < \
+                    PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) OVER ())::BIGINT AS count_below_p01, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(DOW FROM dtstart AT TIME ZONE 'UTC') ORDER BY weekday",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(wd, p01, below, cnt)| serde_json::json!({"weekday": wd, "p01_duration_secs": p01, "count_below_p01": below, "event_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/duration-count-below-p01-by-month — contagem abaixo do P01 de duração × mês. Sprint #4644.
+async fn events_by_range_duration_count_below_p01_by_month(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>,
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    if let (Some(a), Some(b)) = (q.after, q.before) {
+        if a >= b { return Err(CalendarError::BadRequest("after must be before before".into())); }
+    }
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC')::INT AS month, \
+                PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart)))::FLOAT8 AS p01_duration, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (dtend - dtstart)) < \
+                    PERCENTILE_CONT(0.01) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (dtend - dtstart))) OVER ())::BIGINT AS count_below_p01, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM calendar_events \
+         WHERE tenant_id = $1 AND calendar_id = $2 \
+           AND ($3::TIMESTAMPTZ IS NULL OR dtstart >= $3) \
+           AND ($4::TIMESTAMPTZ IS NULL OR dtstart <= $4) \
+           AND dtend IS NOT NULL \
+         GROUP BY EXTRACT(MONTH FROM dtstart AT TIME ZONE 'UTC') ORDER BY month",
+    ).bind(ctx.tenant_id).bind(cal_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p01, below, cnt)| serde_json::json!({"month": m, "p01_duration_secs": p01, "count_below_p01": below, "event_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

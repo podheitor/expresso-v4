@@ -14198,6 +14198,91 @@ async fn dlq_by_tenant_error_length_normalized_entropy(
     Ok(Json(json!({"rows": result})))
 }
 
+/// GET /api/v1/notifications/dlq/stats/attempts-trimmed-mean — média aparada global de attempts. Sprint #4625.
+async fn dlq_attempts_trimmed_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let rows: Vec<(Option<i32>,)> = sqlx::query_as(
+        "SELECT attempts FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         ORDER BY attempts",
+    ).bind(since_dt).bind(until_dt).fetch_all(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    let vals: Vec<f64> = rows.into_iter().flatten().map(|v| v as f64).collect();
+    let n = vals.len();
+    let mean = if n > 0 {
+        let lo = (n as f64 * 0.10).ceil() as usize;
+        let hi = ((n as f64 * 0.90).floor() as usize).min(n.saturating_sub(1));
+        if lo <= hi { let s: f64 = vals[lo..=hi].iter().sum(); Some(s / (hi - lo + 1) as f64) } else { None }
+    } else { None };
+    Ok(Json(json!({"trimmed_mean_attempts": mean, "count": n})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-winsorized-mean — média winsorizada global de attempts. Sprint #4626.
+async fn dlq_attempts_winsorized_mean(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "WITH bounds AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY attempts)::FLOAT8 AS lo, \
+                    PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY attempts)::FLOAT8 AS hi \
+             FROM notification_dlq \
+             WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) \
+         ) \
+         SELECT AVG(GREATEST(LEAST(d.attempts::FLOAT8, b.hi), b.lo))::FLOAT8 AS winsorized_mean, COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq d, bounds b \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR d.created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR d.created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"winsorized_mean_attempts": row.0, "count": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-skewness — assimetria global de attempts. Sprint #4627.
+async fn dlq_attempts_skewness(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(attempts::FLOAT8 - AVG(attempts::FLOAT8) OVER (), 3)) OVER () / \
+                    NULLIF(POWER(STDDEV_POP(attempts::FLOAT8) OVER (), 3), 0))::FLOAT8 AS skewness_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) LIMIT 1",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"skewness_attempts": row.0, "count": row.1})))
+}
+
+/// GET /api/v1/notifications/dlq/stats/attempts-kurtosis — curtose global de attempts. Sprint #4628.
+async fn dlq_attempts_kurtosis(
+    State(st): State<AppState>,
+    Query(q): Query<DlqStatsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_ref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "unavailable"}))))?;
+    let since_dt = q.since.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "since must be RFC3339"}))))).transpose()?;
+    let until_dt = q.until.as_deref().map(|s| OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339).map_err(|_| (StatusCode::BAD_REQUEST, Json(json!({"error": "until must be RFC3339"}))))).transpose()?;
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (AVG(POWER(attempts::FLOAT8 - AVG(attempts::FLOAT8) OVER (), 4)) OVER () / \
+                    NULLIF(POWER(VAR_POP(attempts::FLOAT8) OVER (), 2), 0) - 3.0)::FLOAT8 AS kurtosis_attempts, \
+                COUNT(*)::BIGINT AS cnt \
+         FROM notification_dlq \
+         WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2) LIMIT 1",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"kurtosis_attempts": row.0, "count": row.1})))
+}
+
 /// GET /api/v1/notifications/dlq/stats/attempts-p05 — P05 global de attempts. Sprint #4605.
 async fn dlq_attempts_p05(
     State(st): State<AppState>,
@@ -22626,6 +22711,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/notifications/dlq/stats/by-kind-error-length-normalized-entropy",   get(dlq_by_kind_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-user-error-length-normalized-entropy",   get(dlq_by_user_error_length_normalized_entropy))
         .route("/api/v1/notifications/dlq/stats/by-tenant-error-length-normalized-entropy", get(dlq_by_tenant_error_length_normalized_entropy))
+        .route("/api/v1/notifications/dlq/stats/attempts-trimmed-mean",             get(dlq_attempts_trimmed_mean))
+        .route("/api/v1/notifications/dlq/stats/attempts-winsorized-mean",          get(dlq_attempts_winsorized_mean))
+        .route("/api/v1/notifications/dlq/stats/attempts-skewness",                 get(dlq_attempts_skewness))
+        .route("/api/v1/notifications/dlq/stats/attempts-kurtosis",                 get(dlq_attempts_kurtosis))
         .route("/api/v1/notifications/dlq/stats/attempts-p05",                      get(dlq_attempts_p05))
         .route("/api/v1/notifications/dlq/stats/attempts-p10",                      get(dlq_attempts_p10))
         .route("/api/v1/notifications/dlq/stats/attempts-p25",                      get(dlq_attempts_p25))

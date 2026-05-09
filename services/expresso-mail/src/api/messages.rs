@@ -802,6 +802,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/cc-count-iqr-by-folder",              get(cc_count_iqr_by_folder_stats))
         .route("/mail/messages/stats/cc-count-harmonic-mean-by-folder",    get(cc_count_harmonic_mean_by_folder_stats))
         .route("/mail/messages/stats/cc-count-geometric-mean-by-folder",   get(cc_count_geometric_mean_by_folder_stats))
+        .route("/mail/messages/stats/body-length-count-below-mean-by-sender", get(body_length_count_below_mean_by_sender))
+        .route("/mail/messages/stats/size-count-above-mean-by-sender",       get(size_count_above_mean_by_sender))
+        .route("/mail/messages/stats/size-count-below-mean-by-sender",       get(size_count_below_mean_by_sender))
+        .route("/mail/messages/stats/attachment-count-mean-by-sender",       get(attachment_count_mean_by_sender))
         .route("/mail/messages/stats/attachment-count-mean-by-tier",          get(attachment_count_mean_by_tier))
         .route("/mail/messages/stats/attachment-count-sum-by-tier",           get(attachment_count_sum_by_tier))
         .route("/mail/messages/stats/body-length-mean-by-tier",               get(body_length_mean_by_tier))
@@ -22828,6 +22832,97 @@ async fn size_p50_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p50, cnt)| serde_json::json!({"folder": folder, "p50_size": p50, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/body-length-count-below-mean-by-sender — contagem abaixo da média de body length × remetente. Sprint #4633.
+async fn body_length_count_below_mean_by_sender(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH sender_mean AS ( \
+             SELECT sender, AVG(LENGTH(body))::FLOAT8 AS mean_body FROM messages \
+             WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender \
+         ) \
+         SELECT m.sender, \
+                COUNT(*) FILTER (WHERE LENGTH(m.body) < sm.mean_body)::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN sender_mean sm ON m.sender = sm.sender \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.sender ORDER BY m.sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, below, cnt)| serde_json::json!({"sender": sender, "count_below_mean_body_length": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-above-mean-by-sender — contagem acima da média de tamanho × remetente. Sprint #4634.
+async fn size_count_above_mean_by_sender(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH sender_mean AS ( \
+             SELECT sender, AVG(size)::FLOAT8 AS mean_size FROM messages \
+             WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender \
+         ) \
+         SELECT m.sender, \
+                COUNT(*) FILTER (WHERE m.size > sm.mean_size)::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN sender_mean sm ON m.sender = sm.sender \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.sender ORDER BY m.sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, above, cnt)| serde_json::json!({"sender": sender, "count_above_mean_size": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/size-count-below-mean-by-sender — contagem abaixo da média de tamanho × remetente. Sprint #4635.
+async fn size_count_below_mean_by_sender(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, i64, i64)> = sqlx::query_as(
+        "WITH sender_mean AS ( \
+             SELECT sender, AVG(size)::FLOAT8 AS mean_size FROM messages \
+             WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender \
+         ) \
+         SELECT m.sender, \
+                COUNT(*) FILTER (WHERE m.size < sm.mean_size)::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN sender_mean sm ON m.sender = sm.sender \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY m.sender ORDER BY m.sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, below, cnt)| serde_json::json!({"sender": sender, "count_below_mean_size": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-mean-by-sender — média de contagem de anexos × remetente. Sprint #4636.
+async fn attachment_count_mean_by_sender(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                AVG(COALESCE(array_length(attachments, 1), 0))::FLOAT8 AS mean_attachments, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 \
+         GROUP BY sender ORDER BY sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, mean, cnt)| serde_json::json!({"sender": sender, "mean_attachment_count": mean, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
 

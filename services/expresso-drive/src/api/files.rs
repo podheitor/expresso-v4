@@ -774,6 +774,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/version-cv",                         get(file_stats_version_cv))
         .route("/api/v1/drive/files/stats/version-p75",                        get(file_stats_version_p75))
         .route("/api/v1/drive/files/stats/version-p90",                        get(file_stats_version_p90))
+        .route("/api/v1/drive/files/stats/size-count-above-p75",               get(file_stats_size_count_above_p75))
+        .route("/api/v1/drive/files/stats/size-count-below-p25",               get(file_stats_size_count_below_p25))
+        .route("/api/v1/drive/files/stats/size-mode",                          get(file_stats_size_mode))
+        .route("/api/v1/drive/files/stats/size-variance",                      get(file_stats_size_variance))
         .route("/api/v1/drive/files/stats/version-sum",                        get(file_stats_version_sum))
         .route("/api/v1/drive/files/stats/size-mean",                          get(file_stats_size_mean))
         .route("/api/v1/drive/files/stats/size-sum",                           get(file_stats_size_sum))
@@ -17472,6 +17476,46 @@ async fn file_stats_version_p90(State(state): State<AppState>, ctx: RequestCtx) 
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-above-p75 — contagem de arquivos com tamanho acima do P75. Sprint #4629.
+async fn file_stats_size_count_above_p75(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p75_size, \
+                COUNT(*) FILTER (WHERE size > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p75, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p75_size": row.0, "count_above_p75": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-count-below-p25 — contagem de arquivos com tamanho abaixo do P25. Sprint #4630.
+async fn file_stats_size_count_below_p25(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY size)::FLOAT8 AS p25_size, \
+                COUNT(*) FILTER (WHERE size < (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY size) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p25, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p25_size": row.0, "count_below_p25": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/size-mode — moda de tamanho global. Sprint #4631.
+async fn file_stats_size_mode(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT MODE() WITHIN GROUP (ORDER BY size)::FLOAT8 AS mode_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mode_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/size-variance — variância de tamanho global. Sprint #4632.
+async fn file_stats_size_variance(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT VAR_POP(size)::FLOAT8 AS variance_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"variance_size": row.0, "file_count": row.1})))
 }
 
 /// GET /api/v1/drive/files/stats/version-sum — soma de versão global. Sprint #4609.
