@@ -14627,6 +14627,62 @@ pub async fn segment_size_p90(State(store): State<IndexStore>) -> Json<serde_jso
     Json(serde_json::json!({"p90_size": p90, "segment_count": n}))
 }
 
+/// GET /api/v1/search/index/segments/size-p95 — P95 do tamanho dos segmentos. Sprint #4937.
+pub async fn segment_size_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"p95_size": sizes[idx], "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/size-p99 — P99 do tamanho dos segmentos. Sprint #4938.
+pub async fn segment_size_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_size": null, "segment_count": 0}));
+    }
+    let mut sizes: Vec<u64> = segs.iter().map(|(_, _, db)| *db).collect();
+    sizes.sort_unstable();
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"p99_size": sizes[idx], "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-p95 — P95 da razão docs/bytes por segmento. Sprint #4939.
+pub async fn segment_ratio_p95(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p95_ratio": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let idx = ((n as f64 * 0.95).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"p95_ratio": ratios[idx], "segment_count": n}))
+}
+
+/// GET /api/v1/search/index/segments/ratio-p99 — P99 da razão docs/bytes por segmento. Sprint #4940.
+pub async fn segment_ratio_p99(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"p99_ratio": null, "segment_count": 0}));
+    }
+    let mut ratios: Vec<f64> = segs.iter().map(|(_, nd, db)| {
+        if *db > 0 { *nd as f64 / *db as f64 } else { 0.0 }
+    }).collect();
+    ratios.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let idx = ((n as f64 * 0.99).ceil() as usize).saturating_sub(1).min(n - 1);
+    Json(serde_json::json!({"p99_ratio": ratios[idx], "segment_count": n}))
+}
+
 pub async fn segment_ratio_p50(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();
     let n = segs.len();
