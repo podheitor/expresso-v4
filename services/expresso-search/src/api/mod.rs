@@ -9387,6 +9387,54 @@ pub async fn segment_bytes_trimmed_p95(State(store): State<IndexStore>) -> Json<
     Json(serde_json::json!({"bytes_trimmed_mean_5_95": mean, "trimmed_count": trimmed.len(), "total_segments": n}))
 }
 
+/// GET /api/v1/search/index/segments/docs-count-large — segmentos com docs acima de 1000. Sprint #3957.
+pub async fn segment_docs_count_large(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let large = segs.iter().filter(|(_, d, _)| *d > 1000).count();
+    Json(serde_json::json!({"large_segments": large, "threshold_docs": 1000, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-count-large — segmentos com bytes acima de 1MB. Sprint #3958.
+pub async fn segment_bytes_count_large(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    let large = segs.iter().filter(|(_, _, b)| *b > 1_048_576).count();
+    Json(serde_json::json!({"large_segments": large, "threshold_bytes": 1_048_576, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/docs-sum-above-p75 — soma de docs em segmentos acima do P75. Sprint #3959.
+pub async fn segment_docs_sum_above_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"docs_sum_above_p75": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, d, _)| *d).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.75).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p75 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, d, _)| *d > p75).map(|(_, d, _)| *d).sum();
+    let count = segs.iter().filter(|(_, d, _)| *d > p75).count();
+    Json(serde_json::json!({"docs_sum_above_p75": sum, "count_above_p75": count, "docs_p75": p75, "total_segments": n}))
+}
+
+/// GET /api/v1/search/index/segments/bytes-sum-above-p75 — soma de bytes em segmentos acima do P75. Sprint #3960.
+pub async fn segment_bytes_sum_above_p75(State(store): State<IndexStore>) -> Json<serde_json::Value> {
+    let segs = store.list_segments().unwrap_or_default();
+    let n = segs.len();
+    if n == 0 {
+        return Json(serde_json::json!({"bytes_sum_above_p75": null, "total_segments": 0}));
+    }
+    let mut vals: Vec<u64> = segs.iter().map(|(_, _, b)| *b).collect();
+    vals.sort_unstable();
+    let idx = ((n as f64 * 0.75).ceil() as usize).saturating_sub(1).min(n - 1);
+    let p75 = vals[idx];
+    let sum: u64 = segs.iter().filter(|(_, _, b)| *b > p75).map(|(_, _, b)| *b).sum();
+    let count = segs.iter().filter(|(_, _, b)| *b > p75).count();
+    Json(serde_json::json!({"bytes_sum_above_p75": sum, "count_above_p75": count, "bytes_p75": p75, "total_segments": n}))
+}
+
 /// GET /api/v1/search/index/segments/p75-bytes — P75 de bytes entre segmentos. Sprint #2588.
 pub async fn segment_p75_bytes(State(store): State<IndexStore>) -> Json<serde_json::Value> {
     let segs = store.list_segments().unwrap_or_default();

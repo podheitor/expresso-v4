@@ -650,6 +650,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/max-size-by-mime",                 get(file_stats_max_size_by_mime))
         .route("/api/v1/drive/files/stats/max-size-by-ext",                  get(file_stats_max_size_by_ext))
         .route("/api/v1/drive/files/stats/max-size-by-owner",                get(file_stats_max_size_by_owner))
+        .route("/api/v1/drive/files/stats/min-size-by-kind",                 get(file_stats_min_size_by_kind))
+        .route("/api/v1/drive/files/stats/min-size-by-mime",                 get(file_stats_min_size_by_mime))
+        .route("/api/v1/drive/files/stats/min-size-by-ext",                  get(file_stats_min_size_by_ext))
+        .route("/api/v1/drive/files/stats/min-size-by-owner",                get(file_stats_min_size_by_owner))
         .route("/api/v1/drive/files/stats/version-min-by-ext",                get(file_stats_version_min_by_ext))
         .route("/api/v1/drive/files/stats/version-max-by-mime",               get(file_stats_version_max_by_mime))
         .route("/api/v1/drive/files/stats/version-min-by-mime",               get(file_stats_version_min_by_mime))
@@ -15718,6 +15722,62 @@ async fn file_stats_max_size_by_owner(State(state): State<AppState>, ctx: Reques
     ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     let result: Vec<serde_json::Value> = rows.into_iter()
         .map(|(owner, max, cnt)| serde_json::json!({"owner_id": owner, "max_size_bytes": max.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/min-size-by-kind — tamanho mínimo por kind. Sprint #3949.
+async fn file_stats_min_size_by_kind(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT kind, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY kind ORDER BY kind",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(kind, min, cnt)| serde_json::json!({"kind": kind, "min_size_bytes": min.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/min-size-by-mime — tamanho mínimo por tipo MIME. Sprint #3950.
+async fn file_stats_min_size_by_mime(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT mime_type, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY mime_type ORDER BY mime_type",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(mime, min, cnt)| serde_json::json!({"mime_type": mime, "min_size_bytes": min.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/min-size-by-ext — tamanho mínimo por extensão. Sprint #3951.
+async fn file_stats_min_size_by_ext(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT LOWER(REGEXP_REPLACE(name, '^.*\\.', '')) AS ext, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND name LIKE '%.%' \
+         GROUP BY ext ORDER BY ext",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(ext, min, cnt)| serde_json::json!({"ext": ext, "min_size_bytes": min.unwrap_or(0), "file_count": cnt}))
+        .collect();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/drive/files/stats/min-size-by-owner — tamanho mínimo por proprietário. Sprint #3952.
+async fn file_stats_min_size_by_owner(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(String, Option<i64>, i64)> = sqlx::query_as(
+        "SELECT owner_id::TEXT AS owner_id, MIN(size_bytes)::BIGINT AS min_size, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files \
+         WHERE tenant_id = $1 AND deleted_at IS NULL \
+         GROUP BY owner_id ORDER BY owner_id",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let result: Vec<serde_json::Value> = rows.into_iter()
+        .map(|(owner, min, cnt)| serde_json::json!({"owner_id": owner, "min_size_bytes": min.unwrap_or(0), "file_count": cnt}))
         .collect();
     Ok(Json(serde_json::json!({"rows": result})))
 }
