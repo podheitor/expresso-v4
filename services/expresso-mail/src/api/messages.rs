@@ -805,6 +805,10 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/body-length-count-below-mean-by-sender", get(body_length_count_below_mean_by_sender))
         .route("/mail/messages/stats/size-count-above-mean-by-sender",       get(size_count_above_mean_by_sender))
         .route("/mail/messages/stats/size-count-below-mean-by-sender",       get(size_count_below_mean_by_sender))
+        .route("/mail/messages/stats/attachment-count-range-by-sender",          get(attachment_count_range_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-mad-by-sender",            get(attachment_count_mad_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-p50-by-sender",            get(attachment_count_p50_by_sender_stats))
+        .route("/mail/messages/stats/attachment-count-p25-by-sender",            get(attachment_count_p25_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-skewness-by-sender",      get(attachment_count_skewness_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-kurtosis-by-sender",      get(attachment_count_kurtosis_by_sender_stats))
         .route("/mail/messages/stats/attachment-count-cv-by-sender",            get(attachment_count_cv_by_sender_stats))
@@ -22921,6 +22925,77 @@ async fn size_count_below_mean_by_sender(
 
 /// GET /mail/messages/stats/attachment-count-mean-by-sender — média de contagem de anexos × remetente. Sprint #4636.
 /// GET /mail/messages/stats/size-p01-by-sender — P01 de tamanho de mensagem × remetente. Sprint #4653.
+/// GET /mail/messages/stats/attachment-count-range-by-sender — range de contagem de anexos × remetente. Sprint #4713.
+async fn attachment_count_range_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                (MAX(COALESCE(array_length(attachments, 1), 0))::FLOAT8 - MIN(COALESCE(array_length(attachments, 1), 0))::FLOAT8) AS range_attachment_count, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender ORDER BY sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, range, cnt)| serde_json::json!({"sender": sender, "range_attachment_count": range, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-mad-by-sender — MAD de contagem de anexos × remetente. Sprint #4714.
+async fn attachment_count_mad_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT sender, \
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ABS(COALESCE(array_length(attachments, 1), 0) - \
+                    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE(array_length(attachments, 1), 0)) OVER (PARTITION BY sender)))::FLOAT8 AS mad_attachment_count, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let mut seen = std::collections::HashSet::new();
+    let result = rows.into_iter().filter(|(s, _, _)| seen.insert(s.clone()))
+        .map(|(sender, mad, cnt)| serde_json::json!({"sender": sender, "mad_attachment_count": mad, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p50-by-sender — P50 de contagem de anexos × remetente. Sprint #4715.
+async fn attachment_count_p50_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT sender, PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(array_length(attachments, 1), 0))::FLOAT8 AS p50_attachment_count, COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender ORDER BY sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, p50, cnt)| serde_json::json!({"sender": sender, "p50_attachment_count": p50, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /mail/messages/stats/attachment-count-p25-by-sender — P25 de contagem de anexos × remetente. Sprint #4716.
+async fn attachment_count_p25_by_sender_stats(
+    State(state): State<AppState>,
+    ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await?;
+    let rows: Vec<(String, Option<f64>, i64)> = sqlx::query_as(
+        "SELECT sender, PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE(array_length(attachments, 1), 0))::FLOAT8 AS p25_attachment_count, COUNT(*)::BIGINT AS msg_count \
+         FROM messages WHERE tenant_id = $1 AND user_id = $2 GROUP BY sender ORDER BY sender",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(sender, p25, cnt)| serde_json::json!({"sender": sender, "p25_attachment_count": p25, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
 /// GET /mail/messages/stats/attachment-count-skewness-by-sender — assimetria de contagem de anexos × remetente. Sprint #4693.
 async fn attachment_count_skewness_by_sender_stats(
     State(state): State<AppState>,

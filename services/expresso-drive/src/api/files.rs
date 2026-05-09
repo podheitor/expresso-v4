@@ -777,6 +777,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/size-winsorized-mean",                get(file_stats_size_winsorized_mean))
         .route("/api/v1/drive/files/stats/size-skewness",                       get(file_stats_size_skewness))
         .route("/api/v1/drive/files/stats/size-kurtosis",                       get(file_stats_size_kurtosis))
+        .route("/api/v1/drive/files/stats/version-count-above-mean",             get(file_stats_version_count_above_mean))
+        .route("/api/v1/drive/files/stats/version-count-below-mean",             get(file_stats_version_count_below_mean))
+        .route("/api/v1/drive/files/stats/version-range",                        get(file_stats_version_range))
+        .route("/api/v1/drive/files/stats/version-gini",                         get(file_stats_version_gini))
         .route("/api/v1/drive/files/stats/version-mad",                         get(file_stats_version_mad))
         .route("/api/v1/drive/files/stats/size-mad",                            get(file_stats_size_mad))
         .route("/api/v1/drive/files/stats/size-harmonic-mean",                  get(file_stats_size_harmonic_mean))
@@ -17524,6 +17528,57 @@ async fn file_stats_size_kurtosis(State(state): State<AppState>, ctx: RequestCtx
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"kurtosis_size": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-above-mean — contagem de arquivos com versão acima da média. Sprint #4709.
+async fn file_stats_version_count_above_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (i64, Option<f64>, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE version::FLOAT8 > AVG(version::FLOAT8) OVER ())::BIGINT AS count_above_mean, \
+                AVG(version)::FLOAT8 AS mean_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"count_above_mean": row.0, "mean_version": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-count-below-mean — contagem de arquivos com versão abaixo da média. Sprint #4710.
+async fn file_stats_version_count_below_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (i64, Option<f64>, i64) = sqlx::query_as(
+        "SELECT COUNT(*) FILTER (WHERE version::FLOAT8 < AVG(version::FLOAT8) OVER ())::BIGINT AS count_below_mean, \
+                AVG(version)::FLOAT8 AS mean_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL LIMIT 1",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"count_below_mean": row.0, "mean_version": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/version-range — range (max−min) de versão global. Sprint #4711.
+async fn file_stats_version_range(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64) = sqlx::query_as(
+        "SELECT (MAX(version::FLOAT8) - MIN(version::FLOAT8))::FLOAT8 AS range_version, COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"range_version": row.0, "file_count": row.1})))
+}
+
+/// GET /api/v1/drive/files/stats/version-gini — coeficiente de Gini de versão global. Sprint #4712.
+async fn file_stats_version_gini(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let rows: Vec<(i64,)> = sqlx::query_as(
+        "SELECT version::BIGINT FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY version",
+    ).bind(ctx.tenant_id).fetch_all(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    let n = rows.len();
+    if n == 0 { return Ok(Json(serde_json::json!({"gini_version": null, "file_count": 0}))); }
+    let total: f64 = rows.iter().map(|(v,)| *v as f64).sum();
+    if total == 0.0 { return Ok(Json(serde_json::json!({"gini_version": null, "file_count": n}))); }
+    let mut cum = 0.0f64;
+    let mut lorenz = 0.0f64;
+    let mut prev_x = 0.0f64; let mut prev_y = 0.0f64;
+    for (i, (v,)) in rows.iter().enumerate() {
+        cum += *v as f64;
+        let x = (i + 1) as f64 / n as f64;
+        let y = cum / total;
+        lorenz += (x - prev_x) * (prev_y + y) / 2.0;
+        prev_x = x; prev_y = y;
+    }
+    Ok(Json(serde_json::json!({"gini_version": 1.0 - 2.0 * lorenz, "file_count": n})))
 }
 
 /// GET /api/v1/drive/files/stats/version-mad — MAD de versão global. Sprint #4692.
