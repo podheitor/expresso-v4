@@ -152740,4 +152740,285 @@ pub async fn body_path_length_below_p75_by_folder(
     Ok(Json(serde_json::json!({"rows": result})))
 }
 
+
+pub async fn body_path_length_above_p90_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p90_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p90_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > t.p90_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p90_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p90, above, cnt)| serde_json::json!({"tier": tier, "p90_body_path_length": p90, "count_above_p90": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p90_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p90_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p90_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < t.p90_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p90_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p90, below, cnt)| serde_json::json!({"tier": tier, "p90_body_path_length": p90, "count_below_p90": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_above_p90_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p90_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p90_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > f.p90_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p90_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p90, above, cnt)| serde_json::json!({"folder": folder, "p90_body_path_length": p90, "count_above_p90": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p90_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p90_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p90_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < f.p90_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p90_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p90, below, cnt)| serde_json::json!({"folder": folder, "p90_body_path_length": p90, "count_below_p90": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_above_p95_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p95_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p95_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > t.p95_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p95_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p95, above, cnt)| serde_json::json!({"tier": tier, "p95_body_path_length": p95, "count_above_p95": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p95_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p95_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p95_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < t.p95_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p95_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p95, below, cnt)| serde_json::json!({"tier": tier, "p95_body_path_length": p95, "count_below_p95": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_above_p95_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p95_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p95_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > f.p95_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p95_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p95, above, cnt)| serde_json::json!({"folder": folder, "p95_body_path_length": p95, "count_above_p95": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p95_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p95_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p95_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < f.p95_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p95_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p95, below, cnt)| serde_json::json!({"folder": folder, "p95_body_path_length": p95, "count_below_p95": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_above_p99_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p99_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p99_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > t.p99_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, above, cnt)| serde_json::json!({"tier": tier, "p99_body_path_length": p99, "count_above_p99": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p99_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (              SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier,                     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p99_f              FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier          )          SELECT t.tier, t.p99_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < t.p99_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m          JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, below, cnt)| serde_json::json!({"tier": tier, "p99_body_path_length": p99, "count_below_p99": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_above_p99_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p99_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p99_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) > f.p99_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p99_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p99, above, cnt)| serde_json::json!({"folder": folder, "p99_body_path_length": p99, "count_above_p99": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn body_path_length_below_p99_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb.name AS folder, PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY LENGTH(COALESCE(m.body_path, '')))::FLOAT8 AS p99_f              FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id              WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY mb.name          )          SELECT f.folder, f.p99_f,                 COUNT(*) FILTER (WHERE LENGTH(COALESCE(m.body_path, '')) < f.p99_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS msg_count          FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id          JOIN folder_p f ON mb.name = f.folder          WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY f.folder, f.p99_f ORDER BY f.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p99, below, cnt)| serde_json::json!({"folder": folder, "p99_body_path_length": p99, "count_below_p99": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_above_mean_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS (              SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier              FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1              WHERE u.id = $2 GROUP BY u.id          ), tier_avg AS (              SELECT ut.tier, AVG(LENGTH(v.body))::FLOAT8 AS mean_f              FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid              WHERE v.tenant_id = $1 GROUP BY ut.tier          )          SELECT ta.tier, ta.mean_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) > ta.mean_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid          JOIN tier_avg ta ON ut.tier = ta.tier          WHERE v.tenant_id = $1 GROUP BY ta.tier, ta.mean_f ORDER BY ta.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, above, cnt)| serde_json::json!({"tier": tier, "mean_vacation_body_length": mean, "count_above_mean": above, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_below_mean_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS (              SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier              FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1              WHERE u.id = $2 GROUP BY u.id          ), tier_avg AS (              SELECT ut.tier, AVG(LENGTH(v.body))::FLOAT8 AS mean_f              FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid              WHERE v.tenant_id = $1 GROUP BY ut.tier          )          SELECT ta.tier, ta.mean_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) < ta.mean_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid          JOIN tier_avg ta ON ut.tier = ta.tier          WHERE v.tenant_id = $1 GROUP BY ta.tier, ta.mean_f ORDER BY ta.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, below, cnt)| serde_json::json!({"tier": tier, "mean_vacation_body_length": mean, "count_below_mean": below, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_above_mean_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_avg AS (              SELECT mb2.name AS folder, AVG(LENGTH(v.body))::FLOAT8 AS mean_f              FROM user_vacation v              JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id              WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY mb2.name          )          SELECT fa.folder, fa.mean_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) > fa.mean_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v          JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id          JOIN folder_avg fa ON mb2.name = fa.folder          WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY fa.folder, fa.mean_f ORDER BY fa.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mean, above, cnt)| serde_json::json!({"folder": folder, "mean_vacation_body_length": mean, "count_above_mean": above, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_below_mean_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_avg AS (              SELECT mb2.name AS folder, AVG(LENGTH(v.body))::FLOAT8 AS mean_f              FROM user_vacation v              JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id              WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY mb2.name          )          SELECT fa.folder, fa.mean_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) < fa.mean_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v          JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id          JOIN folder_avg fa ON mb2.name = fa.folder          WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY fa.folder, fa.mean_f ORDER BY fa.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mean, below, cnt)| serde_json::json!({"folder": folder, "mean_vacation_body_length": mean, "count_below_mean": below, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_above_p10_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS (              SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier              FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1              WHERE u.id = $2 GROUP BY u.id          ), tier_p AS (              SELECT ut.tier, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(v.body))::FLOAT8 AS p10_f              FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid              WHERE v.tenant_id = $1 GROUP BY ut.tier          )          SELECT tp.tier, tp.p10_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) > tp.p10_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid          JOIN tier_p tp ON ut.tier = tp.tier          WHERE v.tenant_id = $1 GROUP BY tp.tier, tp.p10_f ORDER BY tp.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, above, cnt)| serde_json::json!({"tier": tier, "p10_vacation_body_length": p10, "count_above_p10": above, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_below_p10_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS (              SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier              FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1              WHERE u.id = $2 GROUP BY u.id          ), tier_p AS (              SELECT ut.tier, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(v.body))::FLOAT8 AS p10_f              FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid              WHERE v.tenant_id = $1 GROUP BY ut.tier          )          SELECT tp.tier, tp.p10_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) < tp.p10_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v JOIN user_tier ut ON v.user_id = ut.uid          JOIN tier_p tp ON ut.tier = tp.tier          WHERE v.tenant_id = $1 GROUP BY tp.tier, tp.p10_f ORDER BY tp.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, below, cnt)| serde_json::json!({"tier": tier, "p10_vacation_body_length": p10, "count_below_p10": below, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_above_p10_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb2.name AS folder, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(v.body))::FLOAT8 AS p10_f              FROM user_vacation v              JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id              WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY mb2.name          )          SELECT fp.folder, fp.p10_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) > fp.p10_f)::BIGINT AS count_above,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v          JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id          JOIN folder_p fp ON mb2.name = fp.folder          WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY fp.folder, fp.p10_f ORDER BY fp.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p10, above, cnt)| serde_json::json!({"folder": folder, "p10_vacation_body_length": p10, "count_above_p10": above, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn vacation_body_length_below_p10_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH folder_p AS (              SELECT mb2.name AS folder, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY LENGTH(v.body))::FLOAT8 AS p10_f              FROM user_vacation v              JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id              WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY mb2.name          )          SELECT fp.folder, fp.p10_f,                 COUNT(*) FILTER (WHERE LENGTH(v.body) < fp.p10_f)::BIGINT AS count_below,                 COUNT(*)::BIGINT AS vacation_count          FROM user_vacation v          JOIN mailboxes mb2 ON mb2.user_id = v.user_id AND mb2.tenant_id = v.tenant_id          JOIN folder_p fp ON mb2.name = fp.folder          WHERE v.tenant_id = $1 AND v.user_id = $2 GROUP BY fp.folder, fp.p10_f ORDER BY fp.folder",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p10, below, cnt)| serde_json::json!({"folder": folder, "p10_vacation_body_length": p10, "count_below_p10": below, "vacation_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
 }
