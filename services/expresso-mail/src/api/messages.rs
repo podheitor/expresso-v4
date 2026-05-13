@@ -4556,6 +4556,26 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p25-by-tier", get(flag_preset_created_at_epoch_count_below_p25_by_tier))
         .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p25-by-folder", get(flag_preset_created_at_epoch_count_above_p25_by_folder))
         .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p25-by-folder", get(flag_preset_created_at_epoch_count_below_p25_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p50-by-tier", get(flag_preset_created_at_epoch_count_above_p50_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p50-by-tier", get(flag_preset_created_at_epoch_count_below_p50_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p50-by-folder", get(flag_preset_created_at_epoch_count_above_p50_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p50-by-folder", get(flag_preset_created_at_epoch_count_below_p50_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p75-by-tier", get(flag_preset_created_at_epoch_count_above_p75_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p75-by-tier", get(flag_preset_created_at_epoch_count_below_p75_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p75-by-folder", get(flag_preset_created_at_epoch_count_above_p75_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p75-by-folder", get(flag_preset_created_at_epoch_count_below_p75_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p90-by-tier", get(flag_preset_created_at_epoch_count_above_p90_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p90-by-tier", get(flag_preset_created_at_epoch_count_below_p90_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p90-by-folder", get(flag_preset_created_at_epoch_count_above_p90_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p90-by-folder", get(flag_preset_created_at_epoch_count_below_p90_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p95-by-tier", get(flag_preset_created_at_epoch_count_above_p95_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p95-by-tier", get(flag_preset_created_at_epoch_count_below_p95_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p95-by-folder", get(flag_preset_created_at_epoch_count_above_p95_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p95-by-folder", get(flag_preset_created_at_epoch_count_below_p95_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p99-by-tier", get(flag_preset_created_at_epoch_count_above_p99_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p99-by-tier", get(flag_preset_created_at_epoch_count_below_p99_by_tier))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-above-p99-by-folder", get(flag_preset_created_at_epoch_count_above_p99_by_folder))
+        .route("/mail/messages/stats/flag-preset-created-at-epoch-count-below-p99-by-folder", get(flag_preset_created_at_epoch_count_below_p99_by_folder))
         .route("/mail/messages/stats/from-name-length-count-above-p90-by-tier", get(from_name_length_count_above_p90_by_tier))
         .route("/mail/messages/stats/from-name-length-count-below-p90-by-tier", get(from_name_length_count_below_p90_by_tier))
         .route("/mail/messages/stats/from-name-length-count-above-p75-by-tier", get(from_name_length_count_above_p75_by_tier))
@@ -134856,5 +134876,525 @@ pub async fn flag_preset_created_at_epoch_count_below_p25_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p25, below, cnt)| serde_json::json!({"folder": folder, "p25_flag_preset_created_at_epoch": p25, "count_below_p25": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p50_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p50_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > t.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p50_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, above, cnt)| serde_json::json!({"tier": tier, "p50_flag_preset_created_at_epoch": p50, "count_above_p50": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p50_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p50_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < t.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p50_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, below, cnt)| serde_json::json!({"tier": tier, "p50_flag_preset_created_at_epoch": p50, "count_below_p50": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p50_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p50_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > pa.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p50, above, cnt)| serde_json::json!({"folder": folder, "p50_flag_preset_created_at_epoch": p50, "count_above_p50": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p50_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p50_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < pa.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p50, below, cnt)| serde_json::json!({"folder": folder, "p50_flag_preset_created_at_epoch": p50, "count_below_p50": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p75_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p75_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > t.p75_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p75_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p75, above, cnt)| serde_json::json!({"tier": tier, "p75_flag_preset_created_at_epoch": p75, "count_above_p75": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p75_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p75_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < t.p75_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p75_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p75, below, cnt)| serde_json::json!({"tier": tier, "p75_flag_preset_created_at_epoch": p75, "count_below_p75": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p75_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p75_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > pa.p75_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p75_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p75, above, cnt)| serde_json::json!({"folder": folder, "p75_flag_preset_created_at_epoch": p75, "count_above_p75": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p75_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p75_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < pa.p75_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p75_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p75, below, cnt)| serde_json::json!({"folder": folder, "p75_flag_preset_created_at_epoch": p75, "count_below_p75": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p90_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p90_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p90_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > t.p90_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p90_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p90, above, cnt)| serde_json::json!({"tier": tier, "p90_flag_preset_created_at_epoch": p90, "count_above_p90": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p90_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p90_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p90_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < t.p90_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p90_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p90, below, cnt)| serde_json::json!({"tier": tier, "p90_flag_preset_created_at_epoch": p90, "count_below_p90": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p90_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p90_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p90_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > pa.p90_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p90_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p90, above, cnt)| serde_json::json!({"folder": folder, "p90_flag_preset_created_at_epoch": p90, "count_above_p90": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p90_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p90_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p90_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < pa.p90_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p90_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p90, below, cnt)| serde_json::json!({"folder": folder, "p90_flag_preset_created_at_epoch": p90, "count_below_p90": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p95_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p95_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p95_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > t.p95_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p95_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p95, above, cnt)| serde_json::json!({"tier": tier, "p95_flag_preset_created_at_epoch": p95, "count_above_p95": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p95_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p95_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p95_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < t.p95_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p95_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p95, below, cnt)| serde_json::json!({"tier": tier, "p95_flag_preset_created_at_epoch": p95, "count_below_p95": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p95_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p95_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p95_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > pa.p95_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p95_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p95, above, cnt)| serde_json::json!({"folder": folder, "p95_flag_preset_created_at_epoch": p95, "count_above_p95": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p95_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p95_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p95_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < pa.p95_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p95_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p95, below, cnt)| serde_json::json!({"folder": folder, "p95_flag_preset_created_at_epoch": p95, "count_below_p95": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p99_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p99_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > t.p99_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, above, cnt)| serde_json::json!({"tier": tier, "p99_flag_preset_created_at_epoch": p99, "count_above_p99": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p99_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT CASE WHEN SUM(mb.size_bytes) = 0 THEN 'empty' WHEN SUM(mb.size_bytes) < 1024 THEN 'tiny' WHEN SUM(mb.size_bytes) < 10240 THEN 'small' WHEN SUM(mb.size_bytes) < 102400 THEN 'medium' WHEN SUM(mb.size_bytes) < 1048576 THEN 'large' ELSE 'huge' END AS tier \
+             FROM mailboxes mb WHERE mb.tenant_id = $1 AND mb.user_id = $2 \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p99_f \
+             FROM mail_flag_presets fp CROSS JOIN user_tier ut \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < t.p99_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp \
+         CROSS JOIN user_tier ut \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, below, cnt)| serde_json::json!({"tier": tier, "p99_flag_preset_created_at_epoch": p99, "count_below_p99": below, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_above_p99_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p99_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) > pa.p99_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p99, above, cnt)| serde_json::json!({"folder": folder, "p99_flag_preset_created_at_epoch": p99, "count_above_p99": above, "preset_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn flag_preset_created_at_epoch_count_below_p99_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH preset_p AS ( \
+             SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM fp.created_at))::FLOAT8 AS p99_f \
+             FROM mail_flag_presets fp \
+             WHERE fp.tenant_id = $1 AND fp.user_id = $2 \
+         ) \
+         SELECT 'all_presets'::TEXT AS folder, pa.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM fp.created_at) < pa.p99_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS preset_count \
+         FROM mail_flag_presets fp CROSS JOIN preset_p pa \
+         WHERE fp.tenant_id = $1 AND fp.user_id = $2 GROUP BY pa.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p99, below, cnt)| serde_json::json!({"folder": folder, "p99_flag_preset_created_at_epoch": p99, "count_below_p99": below, "preset_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
