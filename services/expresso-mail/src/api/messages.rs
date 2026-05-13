@@ -4800,6 +4800,26 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/sieve-script-length-count-below-p99-by-tier", get(sieve_script_length_count_below_p99_by_tier))
         .route("/mail/messages/stats/sieve-script-length-count-above-p99-by-folder", get(sieve_script_length_count_above_p99_by_folder))
         .route("/mail/messages/stats/sieve-script-length-count-below-p99-by-folder", get(sieve_script_length_count_below_p99_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-mean-by-tier", get(sieve_updated_at_epoch_count_above_mean_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-mean-by-tier", get(sieve_updated_at_epoch_count_below_mean_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-mean-by-folder", get(sieve_updated_at_epoch_count_above_mean_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-mean-by-folder", get(sieve_updated_at_epoch_count_below_mean_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p10-by-tier", get(sieve_updated_at_epoch_count_above_p10_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p10-by-tier", get(sieve_updated_at_epoch_count_below_p10_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p10-by-folder", get(sieve_updated_at_epoch_count_above_p10_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p10-by-folder", get(sieve_updated_at_epoch_count_below_p10_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p25-by-tier", get(sieve_updated_at_epoch_count_above_p25_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p25-by-tier", get(sieve_updated_at_epoch_count_below_p25_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p25-by-folder", get(sieve_updated_at_epoch_count_above_p25_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p25-by-folder", get(sieve_updated_at_epoch_count_below_p25_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p50-by-tier", get(sieve_updated_at_epoch_count_above_p50_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p50-by-tier", get(sieve_updated_at_epoch_count_below_p50_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p50-by-folder", get(sieve_updated_at_epoch_count_above_p50_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p50-by-folder", get(sieve_updated_at_epoch_count_below_p50_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p75-by-tier", get(sieve_updated_at_epoch_count_above_p75_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p75-by-tier", get(sieve_updated_at_epoch_count_below_p75_by_tier))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-above-p75-by-folder", get(sieve_updated_at_epoch_count_above_p75_by_folder))
+        .route("/mail/messages/stats/sieve-updated-at-epoch-count-below-p75-by-folder", get(sieve_updated_at_epoch_count_below_p75_by_folder))
         .route("/mail/messages/stats/from-name-length-count-above-p90-by-tier", get(from_name_length_count_above_p90_by_tier))
         .route("/mail/messages/stats/from-name-length-count-below-p90-by-tier", get(from_name_length_count_below_p90_by_tier))
         .route("/mail/messages/stats/from-name-length-count-above-p75-by-tier", get(from_name_length_count_above_p75_by_tier))
@@ -141420,5 +141440,515 @@ pub async fn sieve_script_length_count_below_p99_by_folder(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(folder, p99, below, cnt)| serde_json::json!({"folder": folder, "p99_sieve_script_length": p99, "count_below_p99": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_mean_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_avg AS ( \
+             SELECT ut.tier, AVG(EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS mean_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > t.mean_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_avg t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.mean_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, above, cnt)| serde_json::json!({"tier": tier, "mean_sieve_updated_at_epoch": mean, "count_above_mean": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_mean_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_avg AS ( \
+             SELECT ut.tier, AVG(EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS mean_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < t.mean_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_avg t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.mean_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, below, cnt)| serde_json::json!({"tier": tier, "mean_sieve_updated_at_epoch": mean, "count_below_mean": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_mean_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_avg AS ( \
+             SELECT AVG(EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS mean_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sa.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > sa.mean_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_avg sa \
+         WHERE s.tenant_id = $1 GROUP BY sa.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mean, above, cnt)| serde_json::json!({"folder": folder, "mean_sieve_updated_at_epoch": mean, "count_above_mean": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_mean_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_avg AS ( \
+             SELECT AVG(EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS mean_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sa.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < sa.mean_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_avg sa \
+         WHERE s.tenant_id = $1 GROUP BY sa.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, mean, below, cnt)| serde_json::json!({"folder": folder, "mean_sieve_updated_at_epoch": mean, "count_below_mean": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p10_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p10_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > t.p10_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p10_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, above, cnt)| serde_json::json!({"tier": tier, "p10_sieve_updated_at_epoch": p10, "count_above_p10": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p10_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p10_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < t.p10_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p10_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, below, cnt)| serde_json::json!({"tier": tier, "p10_sieve_updated_at_epoch": p10, "count_below_p10": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p10_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p10_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > sp.p10_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p10, above, cnt)| serde_json::json!({"folder": folder, "p10_sieve_updated_at_epoch": p10, "count_above_p10": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p10_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p10_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < sp.p10_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p10, below, cnt)| serde_json::json!({"folder": folder, "p10_sieve_updated_at_epoch": p10, "count_below_p10": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p25_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p25_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > t.p25_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p25_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, above, cnt)| serde_json::json!({"tier": tier, "p25_sieve_updated_at_epoch": p25, "count_above_p25": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p25_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p25_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < t.p25_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p25_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, below, cnt)| serde_json::json!({"tier": tier, "p25_sieve_updated_at_epoch": p25, "count_below_p25": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p25_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p25_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > sp.p25_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p25, above, cnt)| serde_json::json!({"folder": folder, "p25_sieve_updated_at_epoch": p25, "count_above_p25": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p25_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p25_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < sp.p25_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p25, below, cnt)| serde_json::json!({"folder": folder, "p25_sieve_updated_at_epoch": p25, "count_below_p25": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p50_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p50_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > t.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p50_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, above, cnt)| serde_json::json!({"tier": tier, "p50_sieve_updated_at_epoch": p50, "count_above_p50": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p50_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p50_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < t.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p50_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, below, cnt)| serde_json::json!({"tier": tier, "p50_sieve_updated_at_epoch": p50, "count_below_p50": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p50_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p50_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > sp.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p50, above, cnt)| serde_json::json!({"folder": folder, "p50_sieve_updated_at_epoch": p50, "count_above_p50": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p50_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p50_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < sp.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p50, below, cnt)| serde_json::json!({"folder": folder, "p50_sieve_updated_at_epoch": p50, "count_below_p50": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p75_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p75_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > t.p75_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p75_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p75, above, cnt)| serde_json::json!({"tier": tier, "p75_sieve_updated_at_epoch": p75, "count_above_p75": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p75_by_tier(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH user_tier AS ( \
+             SELECT u.id AS uid, CASE WHEN COALESCE(SUM(mb.size_bytes), 0) = 0 THEN 'empty' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1048576 THEN 'tiny' WHEN COALESCE(SUM(mb.size_bytes), 0) < 10485760 THEN 'small' WHEN COALESCE(SUM(mb.size_bytes), 0) < 104857600 THEN 'medium' WHEN COALESCE(SUM(mb.size_bytes), 0) < 1073741824 THEN 'large' ELSE 'huge' END AS tier \
+             FROM users u LEFT JOIN mailboxes mb ON mb.user_id = u.id AND mb.tenant_id = $1 \
+             WHERE u.id = $2 GROUP BY u.id \
+         ), \
+         tier_p AS ( \
+             SELECT ut.tier, PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p75_f \
+             FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+             WHERE s.tenant_id = $1 GROUP BY ut.tier \
+         ) \
+         SELECT t.tier, t.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < t.p75_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s JOIN user_tier ut ON s.user_id = ut.uid \
+         JOIN tier_p t ON ut.tier = t.tier \
+         WHERE s.tenant_id = $1 GROUP BY t.tier, t.p75_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p75, below, cnt)| serde_json::json!({"tier": tier, "p75_sieve_updated_at_epoch": p75, "count_below_p75": below, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_above_p75_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p75_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) > sp.p75_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p75_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p75, above, cnt)| serde_json::json!({"folder": folder, "p75_sieve_updated_at_epoch": p75, "count_above_p75": above, "sieve_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn sieve_updated_at_epoch_count_below_p75_by_folder(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH sieve_p AS ( \
+             SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM s.updated_at))::FLOAT8 AS p75_f \
+             FROM user_sieve s WHERE s.tenant_id = $1 \
+         ) \
+         SELECT 'all_users'::TEXT AS folder, sp.p75_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM s.updated_at) < sp.p75_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS sieve_count \
+         FROM user_sieve s CROSS JOIN sieve_p sp \
+         WHERE s.tenant_id = $1 GROUP BY sp.p75_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(folder, p75, below, cnt)| serde_json::json!({"folder": folder, "p75_sieve_updated_at_epoch": p75, "count_below_p75": below, "sieve_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
