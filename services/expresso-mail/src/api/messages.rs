@@ -8150,6 +8150,24 @@ pub fn routes() -> Router<AppState> {
                         .route("/mail/messages/stats/message-size-bytes-below-p25-overall-v2", get(message_size_bytes_below_p25_overall_v2))
                         .route("/mail/messages/stats/message-size-bytes-above-p50-overall-v2", get(message_size_bytes_above_p50_overall_v2))
                         .route("/mail/messages/stats/message-size-bytes-below-p50-overall-v2", get(message_size_bytes_below_p50_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-above-p75-overall-v2", get(message_size_bytes_above_p75_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-below-p75-overall-v2", get(message_size_bytes_below_p75_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-above-p90-overall-v2", get(message_size_bytes_above_p90_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-below-p90-overall-v2", get(message_size_bytes_below_p90_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-above-p95-overall-v2", get(message_size_bytes_above_p95_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-below-p95-overall-v2", get(message_size_bytes_below_p95_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-above-p99-overall-v2", get(message_size_bytes_above_p99_overall_v2))
+                        .route("/mail/messages/stats/message-size-bytes-below-p99-overall-v2", get(message_size_bytes_below_p99_overall_v2))
+                        .route("/mail/messages/stats/message-uid-above-mean-overall-v2", get(message_uid_above_mean_overall_v2))
+                        .route("/mail/messages/stats/message-uid-below-mean-overall-v2", get(message_uid_below_mean_overall_v2))
+                        .route("/mail/messages/stats/message-uid-above-p10-overall-v2", get(message_uid_above_p10_overall_v2))
+                        .route("/mail/messages/stats/message-uid-below-p10-overall-v2", get(message_uid_below_p10_overall_v2))
+                        .route("/mail/messages/stats/message-uid-above-p25-overall-v2", get(message_uid_above_p25_overall_v2))
+                        .route("/mail/messages/stats/message-uid-below-p25-overall-v2", get(message_uid_below_p25_overall_v2))
+                        .route("/mail/messages/stats/message-uid-above-p50-overall-v2", get(message_uid_above_p50_overall_v2))
+                        .route("/mail/messages/stats/message-uid-below-p50-overall-v2", get(message_uid_below_p50_overall_v2))
+                        .route("/mail/messages/stats/message-uid-above-p75-overall-v2", get(message_uid_above_p75_overall_v2))
+                        .route("/mail/messages/stats/message-uid-below-p75-overall-v2", get(message_uid_below_p75_overall_v2))
         .route("/mail/messages/stats/received-at-hour-above-p10-overall", get(received_at_hour_above_p10_overall))
         .route("/mail/messages/stats/received-at-hour-below-p10-overall", get(received_at_hour_below_p10_overall))
         .route("/mail/messages/stats/received-at-hour-above-p10-by-tier-v3", get(received_at_hour_above_p10_by_tier_v2))
@@ -225594,4 +225612,274 @@ pub async fn message_size_bytes_below_p50_overall_v2(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     Ok(Json(serde_json::json!({"p50_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_above_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_above_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_below_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_above_p90_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p90_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_above_p90": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_below_p90_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p90_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_p90": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_above_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_above_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_below_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_above_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_above_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_size_bytes_below_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY m.size_bytes)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.size_bytes < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_message_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(m.uid)::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE m.uid > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_message_uid": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(m.uid)::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE m.uid < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_message_uid": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_above_p10_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_message_uid": row.as_ref().and_then(|r| r.0), "count_above_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_below_p10_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_message_uid": row.as_ref().and_then(|r| r.0), "count_below_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_above_p25_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_message_uid": row.as_ref().and_then(|r| r.0), "count_above_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_below_p25_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_message_uid": row.as_ref().and_then(|r| r.0), "count_below_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_above_p50_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_message_uid": row.as_ref().and_then(|r| r.0), "count_above_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_below_p50_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_message_uid": row.as_ref().and_then(|r| r.0), "count_below_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_above_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_message_uid": row.as_ref().and_then(|r| r.0), "count_above_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn message_uid_below_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY m.uid)::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE m.uid < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_message_uid": row.as_ref().and_then(|r| r.0), "count_below_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
 }
