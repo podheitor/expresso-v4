@@ -25084,6 +25084,10 @@ async fn main() -> anyhow::Result<()> {
          .route("/api/v1/notifications/dlq/stats/created-at-age-count-below-p75", get(dlq_created_at_age_count_below_p75))
          .route("/api/v1/notifications/dlq/stats/created-at-age-count-above-p90", get(dlq_created_at_age_count_above_p90))
          .route("/api/v1/notifications/dlq/stats/created-at-age-count-below-p90", get(dlq_created_at_age_count_below_p90))
+         .route("/api/v1/notifications/dlq/stats/created-at-age-count-above-p95", get(dlq_created_at_age_count_above_p95))
+         .route("/api/v1/notifications/dlq/stats/created-at-age-count-below-p95", get(dlq_created_at_age_count_below_p95))
+         .route("/api/v1/notifications/dlq/stats/created-at-age-count-above-p99", get(dlq_created_at_age_count_above_p99))
+         .route("/api/v1/notifications/dlq/stats/created-at-age-count-below-p99", get(dlq_created_at_age_count_below_p99))
         .route("/api/v1/notifications/dlq/count",            get(count_dlq))
         .route("/api/v1/notifications/dlq/oldest",           get(oldest_dlq_entry))
         .route("/api/v1/notifications/dlq/newest",           get(newest_dlq_entry))
@@ -25303,4 +25307,56 @@ async fn dlq_created_at_age_count_below_p90(State(st): State<AppState>, Query(q)
     ).bind(since_dt).bind(until_dt).fetch_one(pool).await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
     Ok(Json(json!({"p90_age_secs": row.0, "count_below_p90": row.1, "total_count": row.2})))
+}
+
+async fn dlq_created_at_age_count_above_p95(State(st): State<AppState>, Query(q): Query<DlqStatsQuery>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_deref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "db unavailable"}))))?;
+    let (since_dt, until_dt) = q.parse_range().map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e}))))?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) AS p95_age, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at)) > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT AS count_above_p95, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p95_age_secs": row.0, "count_above_p95": row.1, "total_count": row.2})))
+}
+
+async fn dlq_created_at_age_count_below_p95(State(st): State<AppState>, Query(q): Query<DlqStatsQuery>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_deref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "db unavailable"}))))?;
+    let (since_dt, until_dt) = q.parse_range().map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e}))))?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) AS p95_age, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at)) <= (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT AS count_below_p95, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p95_age_secs": row.0, "count_below_p95": row.1, "total_count": row.2})))
+}
+
+async fn dlq_created_at_age_count_above_p99(State(st): State<AppState>, Query(q): Query<DlqStatsQuery>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_deref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "db unavailable"}))))?;
+    let (since_dt, until_dt) = q.parse_range().map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e}))))?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) AS p99_age, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at)) > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT AS count_above_p99, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p99_age_secs": row.0, "count_above_p99": row.1, "total_count": row.2})))
+}
+
+async fn dlq_created_at_age_count_below_p99(State(st): State<AppState>, Query(q): Query<DlqStatsQuery>) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let pool = st.db.as_deref().ok_or_else(|| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "db unavailable"}))))?;
+    let (since_dt, until_dt) = q.parse_range().map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({"error": e}))))?;
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) AS p99_age, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - created_at)) <= (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - created_at))) FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)))::BIGINT AS count_below_p99, \
+         COUNT(*)::BIGINT AS total_count \
+         FROM notification_dlq WHERE ($1::TIMESTAMPTZ IS NULL OR created_at >= $1) AND ($2::TIMESTAMPTZ IS NULL OR created_at <= $2)",
+    ).bind(since_dt).bind(until_dt).fetch_one(pool).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e.to_string()}))))?;
+    Ok(Json(json!({"p99_age_secs": row.0, "count_below_p99": row.1, "total_count": row.2})))
 }

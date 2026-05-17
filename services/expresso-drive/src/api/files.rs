@@ -1003,6 +1003,10 @@ pub fn routes() -> Router<AppState> {
          .route("/api/v1/drive/files/stats/updated-at-age-count-below-p75",    get(file_stats_updated_at_age_count_below_p75))
          .route("/api/v1/drive/files/stats/updated-at-age-count-above-p90",    get(file_stats_updated_at_age_count_above_p90))
          .route("/api/v1/drive/files/stats/updated-at-age-count-below-p90",    get(file_stats_updated_at_age_count_below_p90))
+         .route("/api/v1/drive/files/stats/updated-at-age-count-above-p95",    get(file_stats_updated_at_age_count_above_p95))
+         .route("/api/v1/drive/files/stats/updated-at-age-count-below-p95",    get(file_stats_updated_at_age_count_below_p95))
+         .route("/api/v1/drive/files/stats/updated-at-age-count-above-p99",    get(file_stats_updated_at_age_count_above_p99))
+         .route("/api/v1/drive/files/stats/updated-at-age-count-below-p99",    get(file_stats_updated_at_age_count_below_p99))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -20669,4 +20673,44 @@ async fn file_stats_updated_at_age_count_below_p90(State(state): State<AppState>
          FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p90_update_age_days": row.0, "count_below_p90": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_updated_at_age_count_above_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) AS p95_days, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p95, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_update_age_days": row.0, "count_above_p95": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_updated_at_age_count_below_p95(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) AS p95_days, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 <= (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p95, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p95_update_age_days": row.0, "count_below_p95": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_updated_at_age_count_above_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) AS p99_days, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p99, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_update_age_days": row.0, "count_above_p99": row.1, "file_count": row.2})))
+}
+
+async fn file_stats_updated_at_age_count_below_p99(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) AS p99_days, \
+         COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 <= (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p99, \
+         COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p99_update_age_days": row.0, "count_below_p99": row.1, "file_count": row.2})))
 }
