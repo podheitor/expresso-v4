@@ -7242,6 +7242,26 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/mailbox-updated-at-millisecond-below-p95-overall-v2", get(mailbox_updated_at_millisecond_below_p95_overall))
         .route("/mail/messages/stats/mailbox-updated-at-millisecond-above-p95-by-tier-v2", get(mailbox_updated_at_millisecond_above_p95_by_tier_v2))
         .route("/mail/messages/stats/mailbox-updated-at-millisecond-below-p95-by-tier-v2", get(mailbox_updated_at_millisecond_below_p95_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-millisecond-above-p99-overall-v2", get(mailbox_updated_at_millisecond_above_p99_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-millisecond-below-p99-overall-v2", get(mailbox_updated_at_millisecond_below_p99_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-millisecond-above-p99-by-tier-v2", get(mailbox_updated_at_millisecond_above_p99_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-millisecond-below-p99-by-tier-v2", get(mailbox_updated_at_millisecond_below_p99_by_tier_v2))
+        .route("/mail/messages/stats/mean-mailbox-created-at-millisecond-overall-v2", get(mean_mailbox_created_at_millisecond_overall))
+        .route("/mail/messages/stats/mean-mailbox-created-at-millisecond-below-overall-v2", get(mean_mailbox_created_at_millisecond_below_overall))
+        .route("/mail/messages/stats/mean-mailbox-created-at-millisecond-by-tier-v2", get(mean_mailbox_created_at_millisecond_by_tier_v2))
+        .route("/mail/messages/stats/mean-mailbox-created-at-millisecond-below-by-tier-v2", get(mean_mailbox_created_at_millisecond_below_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p10-overall-v2", get(mailbox_created_at_millisecond_above_p10_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p10-overall-v2", get(mailbox_created_at_millisecond_below_p10_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p10-by-tier-v2", get(mailbox_created_at_millisecond_above_p10_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p10-by-tier-v2", get(mailbox_created_at_millisecond_below_p10_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p25-overall-v2", get(mailbox_created_at_millisecond_above_p25_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p25-overall-v2", get(mailbox_created_at_millisecond_below_p25_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p25-by-tier-v2", get(mailbox_created_at_millisecond_above_p25_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p25-by-tier-v2", get(mailbox_created_at_millisecond_below_p25_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p50-overall-v2", get(mailbox_created_at_millisecond_above_p50_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p50-overall-v2", get(mailbox_created_at_millisecond_below_p50_overall))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-above-p50-by-tier-v2", get(mailbox_created_at_millisecond_above_p50_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-millisecond-below-p50-by-tier-v2", get(mailbox_created_at_millisecond_below_p50_by_tier_v2))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -194856,5 +194876,533 @@ pub async fn mailbox_updated_at_millisecond_below_p95_by_tier_v2(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(tier, p95, below, cnt)| serde_json::json!({"tier": tier, "p95_mailbox_updated_at_millisecond": p95, "count_below_p95": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_millisecond_above_p99_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.updated_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.updated_at) > p.p99_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_updated_at_millisecond": row.as_ref().and_then(|r| r.0), "count_above_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_millisecond_below_p99_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.updated_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.updated_at) < p.p99_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_updated_at_millisecond": row.as_ref().and_then(|r| r.0), "count_below_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_millisecond_above_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.updated_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.updated_at) > p.p99_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, above, cnt)| serde_json::json!({"tier": tier, "p99_mailbox_updated_at_millisecond": p99, "count_above_p99": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_millisecond_below_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.updated_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.updated_at) < p.p99_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, below, cnt)| serde_json::json!({"tier": tier, "p99_mailbox_updated_at_millisecond": p99, "count_below_p99": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mean_mailbox_created_at_millisecond_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT AVG(EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb.created_at) > AVG(EXTRACT(MILLISECONDS FROM mb.created_at)) OVER ())::BIGINT, \
+                COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         LIMIT 1",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mean_mailbox_created_at_millisecond_below_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH s AS (SELECT AVG(EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS mean_f \
+                    FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+                    WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT s.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < s.mean_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN s \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY s.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mean_mailbox_created_at_millisecond_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_avg AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    AVG(EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS mean_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > t.mean_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_avg t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                                  WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                                  WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, above, cnt)| serde_json::json!({"tier": tier, "mean_mailbox_created_at_millisecond": mean, "count_above_mean": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mean_mailbox_created_at_millisecond_below_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_avg AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    AVG(EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS mean_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < t.mean_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_avg t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                                  WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                                  WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, below, cnt)| serde_json::json!({"tier": tier, "mean_mailbox_created_at_millisecond": mean, "count_below_mean": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p10_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p10_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_above_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p10_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p10_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_below_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p10_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p10_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, above, cnt)| serde_json::json!({"tier": tier, "p10_mailbox_created_at_millisecond": p10, "count_above_p10": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p10_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p10_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, below, cnt)| serde_json::json!({"tier": tier, "p10_mailbox_created_at_millisecond": p10, "count_below_p10": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p25_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p25_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_above_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p25_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p25_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_below_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p25_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p25_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, above, cnt)| serde_json::json!({"tier": tier, "p25_mailbox_created_at_millisecond": p25, "count_above_p25": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p25_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p25_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, below, cnt)| serde_json::json!({"tier": tier, "p25_mailbox_created_at_millisecond": p25, "count_below_p25": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p50_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p50_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_above_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p50_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p50_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         ) \
+         SELECT p.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         CROSS JOIN p \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 \
+         GROUP BY p.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_mailbox_created_at_millisecond": row.as_ref().and_then(|r| r.0), "count_below_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_millisecond_above_p50_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p50_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) > p.p50_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, above, cnt)| serde_json::json!({"tier": tier, "p50_mailbox_created_at_millisecond": p50, "count_above_p50": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_millisecond_below_p50_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY EXTRACT(MILLISECONDS FROM mb.created_at))::FLOAT8 AS p50_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id \
+             WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT p.tier, p.p50_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(MILLISECONDS FROM mb2.created_at) < p.p50_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN p ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' \
+                         WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' \
+                         WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.tier, p.p50_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p50, below, cnt)| serde_json::json!({"tier": tier, "p50_mailbox_created_at_millisecond": p50, "count_below_p50": below, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
