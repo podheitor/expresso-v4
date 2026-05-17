@@ -7498,6 +7498,22 @@ pub fn routes() -> Router<AppState> {
         .route("/mail/messages/stats/mailbox-created-at-day-below-p95-overall", get(mailbox_created_at_day_below_p95_overall))
         .route("/mail/messages/stats/mailbox-created-at-day-above-p95-by-tier-v2", get(mailbox_created_at_day_above_p95_by_tier_v2))
         .route("/mail/messages/stats/mailbox-created-at-day-below-p95-by-tier-v2", get(mailbox_created_at_day_below_p95_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-day-above-p99-overall", get(mailbox_created_at_day_above_p99_overall))
+        .route("/mail/messages/stats/mailbox-created-at-day-below-p99-overall", get(mailbox_created_at_day_below_p99_overall))
+        .route("/mail/messages/stats/mailbox-created-at-day-above-p99-by-tier-v2", get(mailbox_created_at_day_above_p99_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-created-at-day-below-p99-by-tier-v2", get(mailbox_created_at_day_below_p99_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-mean-overall", get(mailbox_updated_at_day_above_mean_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-mean-overall", get(mailbox_updated_at_day_below_mean_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-mean-by-tier-v2", get(mailbox_updated_at_day_above_mean_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-mean-by-tier-v2", get(mailbox_updated_at_day_below_mean_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-p10-overall", get(mailbox_updated_at_day_above_p10_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-p10-overall", get(mailbox_updated_at_day_below_p10_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-p10-by-tier-v2", get(mailbox_updated_at_day_above_p10_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-p10-by-tier-v2", get(mailbox_updated_at_day_below_p10_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-p25-overall", get(mailbox_updated_at_day_above_p25_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-p25-overall", get(mailbox_updated_at_day_below_p25_overall))
+        .route("/mail/messages/stats/mailbox-updated-at-day-above-p25-by-tier-v2", get(mailbox_updated_at_day_above_p25_by_tier_v2))
+        .route("/mail/messages/stats/mailbox-updated-at-day-below-p25-by-tier-v2", get(mailbox_updated_at_day_below_p25_by_tier_v2))
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -200849,5 +200865,325 @@ pub async fn mailbox_created_at_day_below_p95_by_tier_v2(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result = rows.into_iter().map(|(tier, p95, below, cnt)| serde_json::json!({"tier": tier, "p95_mailbox_created_at_day": p95, "count_below_p95": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_day_above_p99_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.created_at))::FLOAT8 AS p99_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p99_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.created_at) > p.p99_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_created_at_day": row.as_ref().and_then(|r| r.0), "count_above_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_day_below_p99_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.created_at))::FLOAT8 AS p99_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p99_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.created_at) < p.p99_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p99_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_created_at_day": row.as_ref().and_then(|r| r.0), "count_below_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_created_at_day_above_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.created_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.created_at) > t.p99_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, above, cnt)| serde_json::json!({"tier": tier, "p99_mailbox_created_at_day": p99, "count_above_p99": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_created_at_day_below_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.created_at))::FLOAT8 AS p99_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p99_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.created_at) < t.p99_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p99_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p99, below, cnt)| serde_json::json!({"tier": tier, "p99_mailbox_created_at_day": p99, "count_below_p99": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_above_mean_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS mean_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_below_mean_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS mean_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_above_mean_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    AVG(EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS mean_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > t.mean_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.mean_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, above, cnt)| serde_json::json!({"tier": tier, "mean_mailbox_updated_at_day": mean, "count_above_mean": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_below_mean_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    AVG(EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS mean_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.mean_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < t.mean_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.mean_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, mean, below, cnt)| serde_json::json!({"tier": tier, "mean_mailbox_updated_at_day": mean, "count_below_mean": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_above_p10_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p10_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p10_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > p.p10_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_above_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_below_p10_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p10_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p10_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < p.p10_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p10_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_below_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_above_p10_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > t.p10_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p10_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, above, cnt)| serde_json::json!({"tier": tier, "p10_mailbox_updated_at_day": p10, "count_above_p10": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_below_p10_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p10_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p10_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < t.p10_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p10_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p10, below, cnt)| serde_json::json!({"tier": tier, "p10_mailbox_updated_at_day": p10, "count_below_p10": below, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_above_p25_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p25_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p25_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > p.p25_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_above_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_below_p25_overall(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p25_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p25_f, COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < p.p25_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p25_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_updated_at_day": row.as_ref().and_then(|r| r.0), "count_below_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_updated_at_day_above_p25_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) > t.p25_f)::BIGINT AS count_above, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p25_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, above, cnt)| serde_json::json!({"tier": tier, "p25_mailbox_updated_at_day": p25, "count_above_p25": above, "message_count": cnt})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+pub async fn mailbox_updated_at_day_below_p25_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS ( \
+             SELECT CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END AS tier, \
+                    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY EXTRACT(DAY FROM mb.updated_at))::FLOAT8 AS p25_f \
+             FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier \
+         ) \
+         SELECT t.tier, t.p25_f, \
+                COUNT(*) FILTER (WHERE EXTRACT(DAY FROM mb2.updated_at) < t.p25_f)::BIGINT AS count_below, \
+                COUNT(*)::BIGINT AS msg_count \
+         FROM messages m \
+         JOIN mailboxes mb2 ON m.mailbox_id = mb2.id \
+         JOIN tier_p t ON (CASE WHEN m.size_bytes = 0 THEN 'empty' WHEN m.size_bytes < 1024 THEN 'tiny' WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' WHEN m.size_bytes < 1048576 THEN 'large' ELSE 'huge' END) = t.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY t.tier, t.p25_f ORDER BY t.tier",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result = rows.into_iter().map(|(tier, p25, below, cnt)| serde_json::json!({"tier": tier, "p25_mailbox_updated_at_day": p25, "count_below_p25": below, "message_count": cnt})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
