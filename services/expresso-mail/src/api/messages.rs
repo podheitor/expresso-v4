@@ -8002,6 +8002,26 @@ pub fn routes() -> Router<AppState> {
                         .route("/mail/messages/stats/received-at-hour-below-p90-overall-v2", get(received_at_hour_below_p90_overall_v2))
                         .route("/mail/messages/stats/received-at-hour-above-p90-by-tier-v3", get(received_at_hour_above_p90_by_tier_v2))
                         .route("/mail/messages/stats/received-at-hour-below-p90-by-tier-v3", get(received_at_hour_below_p90_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-hour-above-p95-overall-v2", get(received_at_hour_above_p95_overall_v2))
+                        .route("/mail/messages/stats/received-at-hour-below-p95-overall-v2", get(received_at_hour_below_p95_overall_v2))
+                        .route("/mail/messages/stats/received-at-hour-above-p95-by-tier-v3", get(received_at_hour_above_p95_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-hour-below-p95-by-tier-v3", get(received_at_hour_below_p95_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-hour-above-p99-overall-v2", get(received_at_hour_above_p99_overall_v2))
+                        .route("/mail/messages/stats/received-at-hour-below-p99-overall-v2", get(received_at_hour_below_p99_overall_v2))
+                        .route("/mail/messages/stats/received-at-hour-above-p99-by-tier-v3", get(received_at_hour_above_p99_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-hour-below-p99-by-tier-v3", get(received_at_hour_below_p99_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-day-of-week-above-mean-overall-v2", get(received_at_day_of_week_above_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-day-of-week-below-mean-overall-v2", get(received_at_day_of_week_below_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-year-above-mean-overall-v2", get(received_at_year_above_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-year-below-mean-overall-v2", get(received_at_year_below_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-month-above-mean-overall-v2", get(received_at_month_above_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-month-below-mean-overall-v2", get(received_at_month_below_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-quarter-above-mean-overall-v2", get(received_at_quarter_above_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-quarter-below-mean-overall-v2", get(received_at_quarter_below_mean_overall_v2))
+                        .route("/mail/messages/stats/received-at-doy-above-p95-overall-v3", get(received_at_doy_above_p95_overall_v2))
+                        .route("/mail/messages/stats/received-at-doy-below-p95-overall-v3", get(received_at_doy_below_p95_overall_v2))
+                        .route("/mail/messages/stats/received-at-doy-above-p95-by-tier-v3", get(received_at_doy_above_p95_by_tier_v2))
+                        .route("/mail/messages/stats/received-at-doy-below-p95-by-tier-v3", get(received_at_doy_below_p95_by_tier_v2))
         .route("/mail/messages/stats/received-at-hour-above-p10-overall", get(received_at_hour_above_p10_overall))
         .route("/mail/messages/stats/received-at-hour-below-p10-overall", get(received_at_hour_below_p10_overall))
         .route("/mail/messages/stats/received-at-hour-above-p10-by-tier-v3", get(received_at_hour_above_p10_by_tier_v2))
@@ -223175,5 +223195,323 @@ pub async fn received_at_hour_below_p90_by_tier_v2(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p90_received_at_hour": r.1, "count_below_p90": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_hour_above_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_received_at_hour": row.as_ref().and_then(|r| r.0), "count_above_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_hour_below_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_received_at_hour": row.as_ref().and_then(|r| r.0), "count_below_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_hour_above_p95_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) > tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p95_received_at_hour": r.1, "count_above_p95": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_hour_below_p95_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) < tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p95_received_at_hour": r.1, "count_below_p95": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_hour_above_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_received_at_hour": row.as_ref().and_then(|r| r.0), "count_above_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_hour_below_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_received_at_hour": row.as_ref().and_then(|r| r.0), "count_below_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_hour_above_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) > tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p99_received_at_hour": r.1, "count_above_p99": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_hour_below_p99_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(HOUR FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(HOUR FROM m.received_at) < tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p99_received_at_hour": r.1, "count_below_p99": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_day_of_week_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(DOW FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(DOW FROM m.received_at) > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_day_of_week": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_day_of_week_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(DOW FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(DOW FROM m.received_at) < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_day_of_week": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_year_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(YEAR FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(YEAR FROM m.received_at) > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_year": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_year_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(YEAR FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(YEAR FROM m.received_at) < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_year": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_month_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(MONTH FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(MONTH FROM m.received_at) > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_month": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_month_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(MONTH FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(MONTH FROM m.received_at) < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_month": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_quarter_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(QUARTER FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(QUARTER FROM m.received_at) > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_quarter": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_quarter_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(EXTRACT(QUARTER FROM m.received_at))::FLOAT8 AS mean_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE EXTRACT(QUARTER FROM m.received_at) < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_received_at_quarter": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_doy_above_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(DOY FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(DOY FROM m.received_at) > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_received_at_doy": row.as_ref().and_then(|r| r.0), "count_above_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_doy_below_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(DOY FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE EXTRACT(DOY FROM m.received_at) < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_received_at_doy": row.as_ref().and_then(|r| r.0), "count_below_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn received_at_doy_above_p95_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(DOY FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(DOY FROM m.received_at) > tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p95_received_at_doy": r.1, "count_above_p95": r.2, "message_count": r.3})).collect();
+    Ok(Json(serde_json::json!({"tiers": result})))
+}
+
+pub async fn received_at_doy_below_p95_by_tier_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let rows: Vec<(String, Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH tier_p AS (SELECT CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END AS tier, \
+         PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(DOY FROM m.received_at))::FLOAT8 AS p_f FROM messages m WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY 1) \
+         SELECT tier_p.tier, tier_p.p_f, COUNT(*) FILTER (WHERE EXTRACT(DOY FROM m.received_at) < tier_p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN tier_p ON (CASE WHEN m.size_bytes < 10240 THEN 'small' WHEN m.size_bytes < 102400 THEN 'medium' ELSE 'large' END) = tier_p.tier \
+         WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY tier_p.tier, tier_p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_all(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let result: Vec<_> = rows.iter().map(|r| serde_json::json!({"tier": r.0, "p95_received_at_doy": r.1, "count_below_p95": r.2, "message_count": r.3})).collect();
     Ok(Json(serde_json::json!({"tiers": result})))
 }
