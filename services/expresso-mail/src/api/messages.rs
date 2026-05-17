@@ -8062,6 +8062,22 @@ pub fn routes() -> Router<AppState> {
                         .route("/mail/messages/stats/mailbox-message-count-below-p99-overall-v2", get(mailbox_message_count_below_p99_overall_v2))
                         .route("/mail/messages/stats/mailbox-unseen-count-above-mean-overall-v2", get(mailbox_unseen_count_above_mean_overall_v2))
                         .route("/mail/messages/stats/mailbox-unseen-count-below-mean-overall-v2", get(mailbox_unseen_count_below_mean_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p10-overall-v2", get(mailbox_unseen_count_above_p10_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p10-overall-v2", get(mailbox_unseen_count_below_p10_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p25-overall-v2", get(mailbox_unseen_count_above_p25_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p25-overall-v2", get(mailbox_unseen_count_below_p25_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p50-overall-v2", get(mailbox_unseen_count_above_p50_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p50-overall-v2", get(mailbox_unseen_count_below_p50_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p75-overall-v2", get(mailbox_unseen_count_above_p75_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p75-overall-v2", get(mailbox_unseen_count_below_p75_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p90-overall-v2", get(mailbox_unseen_count_above_p90_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p90-overall-v2", get(mailbox_unseen_count_below_p90_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p95-overall-v2", get(mailbox_unseen_count_above_p95_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p95-overall-v2", get(mailbox_unseen_count_below_p95_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-above-p99-overall-v2", get(mailbox_unseen_count_above_p99_overall_v2))
+                        .route("/mail/messages/stats/mailbox-unseen-count-below-p99-overall-v2", get(mailbox_unseen_count_below_p99_overall_v2))
+                        .route("/mail/messages/stats/mailbox-size-bytes-above-mean-overall-v2", get(mailbox_size_bytes_above_mean_overall_v2))
+                        .route("/mail/messages/stats/mailbox-size-bytes-below-mean-overall-v2", get(mailbox_size_bytes_below_mean_overall_v2))
         .route("/mail/messages/stats/received-at-hour-above-p10-overall", get(received_at_hour_above_p10_overall))
         .route("/mail/messages/stats/received-at-hour-below-p10-overall", get(received_at_hour_below_p10_overall))
         .route("/mail/messages/stats/received-at-hour-above-p10-by-tier-v3", get(received_at_hour_above_p10_by_tier_v2))
@@ -224166,4 +224182,244 @@ pub async fn mailbox_unseen_count_below_mean_overall_v2(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
     Ok(Json(serde_json::json!({"mean_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p10_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p10_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p10_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p10": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p25_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p25_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p25_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p25": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p50_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p50_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p50_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p50": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p75_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p75_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p75": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p90_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p90_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p90": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p90_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p90_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p90": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p95_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p95_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p95": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_above_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count > p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_above_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_unseen_count_below_p99_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY mb.unseen_count)::FLOAT8 AS p_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.p_f, COUNT(*) FILTER (WHERE mb2.unseen_count < p.p_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.p_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"p99_mailbox_unseen_count": row.as_ref().and_then(|r| r.0), "count_below_p99": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_size_bytes_above_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(mb.size_bytes)::FLOAT8 AS mean_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE mb2.size_bytes > p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_size_bytes": row.as_ref().and_then(|r| r.0), "count_above_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
+}
+
+pub async fn mailbox_size_bytes_below_mean_overall_v2(
+    State(state): State<AppState>, ctx: RequestCtx,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    let mut tx = begin_tenant_tx(state.db(), ctx.tenant_id).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    let row: Option<(Option<f64>, i64, i64)> = sqlx::query_as(
+        "WITH p AS (SELECT AVG(mb.size_bytes)::FLOAT8 AS mean_f FROM messages m JOIN mailboxes mb ON m.mailbox_id = mb.id WHERE m.tenant_id = $1 AND m.user_id = $2) \
+         SELECT p.mean_f, COUNT(*) FILTER (WHERE mb2.size_bytes < p.mean_f)::BIGINT, COUNT(*)::BIGINT \
+         FROM messages m JOIN mailboxes mb2 ON m.mailbox_id = mb2.id CROSS JOIN p WHERE m.tenant_id = $1 AND m.user_id = $2 GROUP BY p.mean_f",
+    ).bind(ctx.tenant_id).bind(ctx.user_id).fetch_optional(&mut *tx).await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    tx.commit().await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))))?;
+    Ok(Json(serde_json::json!({"mean_mailbox_size_bytes": row.as_ref().and_then(|r| r.0), "count_below_mean": row.as_ref().map(|r| r.1).unwrap_or(0), "message_count": row.as_ref().map(|r| r.2).unwrap_or(0)})))
 }
