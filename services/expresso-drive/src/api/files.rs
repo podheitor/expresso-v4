@@ -991,6 +991,10 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/drive/files/stats/name-length-count-below-p05",        get(file_stats_name_length_count_below_p05))
         .route("/api/v1/drive/files/stats/name-length-count-above-p95",        get(file_stats_name_length_count_above_p95))
         .route("/api/v1/drive/files/stats/name-length-count-below-p95",        get(file_stats_name_length_count_below_p95))
+        .route("/api/v1/drive/files/stats/updated-at-age-count-above-mean",     get(file_stats_updated_at_age_count_above_mean))
+        .route("/api/v1/drive/files/stats/updated-at-age-count-below-mean",     get(file_stats_updated_at_age_count_below_mean))
+        .route("/api/v1/drive/files/stats/updated-at-age-count-above-p10",      get(file_stats_updated_at_age_count_above_p10))
+        .route("/api/v1/drive/files/stats/updated-at-age-count-below-p10",      get(file_stats_updated_at_age_count_below_p10))
         .route("/api/v1/drive/users/:user_id/usage",        get(user_usage))
 }
 
@@ -20529,4 +20533,48 @@ async fn delete_folder_quota(
         event = "drive.folder.quota_deleted",
         tenant_id = %ctx.tenant_id, user_id = %ctx.user_id, folder_id = %id);
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/v1/drive/files/stats/updated-at-age-count-above-mean — arquivos com age_update acima da média (em dias). Sprint #5401.
+async fn file_stats_updated_at_age_count_above_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT AVG(EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0)::FLOAT8 AS mean_update_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 > (SELECT AVG(EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_mean, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_update_age_days": row.0, "count_above_mean": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/updated-at-age-count-below-mean — arquivos com age_update abaixo da média (em dias). Sprint #5402.
+async fn file_stats_updated_at_age_count_below_mean(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT AVG(EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0)::FLOAT8 AS mean_update_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 < (SELECT AVG(EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_mean, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"mean_update_age_days": row.0, "count_below_mean": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/updated-at-age-count-above-p10 — arquivos com age_update acima do P10 (em dias). Sprint #5403.
+async fn file_stats_updated_at_age_count_above_p10(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0)::FLOAT8 AS p10_update_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 > (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_above_p10, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p10_update_age_days": row.0, "count_above_p10": row.1, "file_count": row.2})))
+}
+
+/// GET /api/v1/drive/files/stats/updated-at-age-count-below-p10 — arquivos com age_update abaixo do P10 (em dias). Sprint #5404.
+async fn file_stats_updated_at_age_count_below_p10(State(state): State<AppState>, ctx: RequestCtx) -> Result<Json<serde_json::Value>> {
+    let row: (Option<f64>, i64, i64) = sqlx::query_as(
+        "SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0)::FLOAT8 AS p10_update_age_days, \
+                COUNT(*) FILTER (WHERE EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0 < (SELECT PERCENTILE_CONT(0.10) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (NOW() - updated_at))/86400.0) FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL))::BIGINT AS count_below_p10, \
+                COUNT(*)::BIGINT AS file_count \
+         FROM drive_files WHERE tenant_id = $1 AND deleted_at IS NULL",
+    ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
+    Ok(Json(serde_json::json!({"p10_update_age_days": row.0, "count_below_p10": row.1, "file_count": row.2})))
 }
