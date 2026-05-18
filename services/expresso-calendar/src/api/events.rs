@@ -14449,6 +14449,26 @@ pub fn routes() -> Router<AppState> {
                 .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-mean-by-month", get(events_by_range_ical_min_line_len_below_mean_by_month))
         )
         )
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p10-by-weekday", get(events_by_range_ical_min_line_len_above_p10_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p10-by-weekday", get(events_by_range_ical_min_line_len_below_p10_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p10-by-month", get(events_by_range_ical_min_line_len_above_p10_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p10-by-month", get(events_by_range_ical_min_line_len_below_p10_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p25-by-weekday", get(events_by_range_ical_min_line_len_above_p25_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p25-by-weekday", get(events_by_range_ical_min_line_len_below_p25_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p25-by-month", get(events_by_range_ical_min_line_len_above_p25_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p25-by-month", get(events_by_range_ical_min_line_len_below_p25_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p50-by-weekday", get(events_by_range_ical_min_line_len_above_p50_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p50-by-weekday", get(events_by_range_ical_min_line_len_below_p50_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p50-by-month", get(events_by_range_ical_min_line_len_above_p50_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p50-by-month", get(events_by_range_ical_min_line_len_below_p50_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p75-by-weekday", get(events_by_range_ical_min_line_len_above_p75_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p75-by-weekday", get(events_by_range_ical_min_line_len_below_p75_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p75-by-month", get(events_by_range_ical_min_line_len_above_p75_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p75-by-month", get(events_by_range_ical_min_line_len_below_p75_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-above-mean-by-weekday", get(events_by_range_ical_avg_line_len_above_mean_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-below-mean-by-weekday", get(events_by_range_ical_avg_line_len_below_mean_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-above-mean-by-month", get(events_by_range_ical_avg_line_len_above_mean_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-below-mean-by-month", get(events_by_range_ical_avg_line_len_below_mean_by_month))
         )
         )
         )
@@ -96829,5 +96849,405 @@ async fn events_by_range_ical_min_line_len_below_mean_by_month(
     ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
     tx.commit().await?;
     let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "mean_ical_min_line_len": m, "count_below_mean": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p10-by-weekday — Sprint #7845.
+async fn events_by_range_ical_min_line_len_above_p10_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p10_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p10, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p10_ical_min_line_len": m, "count_above_p10": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p10-by-weekday — Sprint #7846.
+async fn events_by_range_ical_min_line_len_below_p10_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p10_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p10, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p10_ical_min_line_len": m, "count_below_p10": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p10-by-month — Sprint #7847.
+async fn events_by_range_ical_min_line_len_above_p10_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p10_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p10, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p10_ical_min_line_len": m, "count_above_p10": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p10-by-month — Sprint #7848.
+async fn events_by_range_ical_min_line_len_below_p10_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p10_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.1) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p10, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p10_ical_min_line_len": m, "count_below_p10": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p25-by-weekday — Sprint #7849.
+async fn events_by_range_ical_min_line_len_above_p25_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p25_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p25, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p25_ical_min_line_len": m, "count_above_p25": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p25-by-weekday — Sprint #7850.
+async fn events_by_range_ical_min_line_len_below_p25_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p25_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p25, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p25_ical_min_line_len": m, "count_below_p25": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p25-by-month — Sprint #7851.
+async fn events_by_range_ical_min_line_len_above_p25_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p25_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p25, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p25_ical_min_line_len": m, "count_above_p25": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p25-by-month — Sprint #7852.
+async fn events_by_range_ical_min_line_len_below_p25_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p25_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p25, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p25_ical_min_line_len": m, "count_below_p25": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p50-by-weekday — Sprint #7853.
+async fn events_by_range_ical_min_line_len_above_p50_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p50, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p50_ical_min_line_len": m, "count_above_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p50-by-weekday — Sprint #7854.
+async fn events_by_range_ical_min_line_len_below_p50_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p50, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p50_ical_min_line_len": m, "count_below_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p50-by-month — Sprint #7855.
+async fn events_by_range_ical_min_line_len_above_p50_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p50, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p50_ical_min_line_len": m, "count_above_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p50-by-month — Sprint #7856.
+async fn events_by_range_ical_min_line_len_below_p50_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p50, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p50_ical_min_line_len": m, "count_below_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p75-by-weekday — Sprint #7857.
+async fn events_by_range_ical_min_line_len_above_p75_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p75, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p75_ical_min_line_len": m, "count_above_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p75-by-weekday — Sprint #7858.
+async fn events_by_range_ical_min_line_len_below_p75_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p75, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "p75_ical_min_line_len": m, "count_below_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-above-p75-by-month — Sprint #7859.
+async fn events_by_range_ical_min_line_len_above_p75_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p75, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p75_ical_min_line_len": m, "count_above_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-min-line-len-below-p75-by-month — Sprint #7860.
+async fn events_by_range_ical_min_line_len_below_p75_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_min_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE((SELECT MIN(length(line)) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p75, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "p75_ical_min_line_len": m, "count_below_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-above-mean-by-weekday — Sprint #7861.
+async fn events_by_range_ical_avg_line_len_above_mean_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER () AS mean_ical_avg_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER ())::BIGINT AS count_above_mean, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "mean_ical_avg_line_len": m, "count_above_mean": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-below-mean-by-weekday — Sprint #7862.
+async fn events_by_range_ical_avg_line_len_below_mean_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER () AS mean_ical_avg_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER ())::BIGINT AS count_below_mean, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"dow": d, "mean_ical_avg_line_len": m, "count_below_mean": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-above-mean-by-month — Sprint #7863.
+async fn events_by_range_ical_avg_line_len_above_mean_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER () AS mean_ical_avg_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) > AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER ())::BIGINT AS count_above_mean, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "mean_ical_avg_line_len": m, "count_above_mean": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-avg-line-len-below-mean-by-month — Sprint #7864.
+async fn events_by_range_ical_avg_line_len_below_mean_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER () AS mean_ical_avg_line_len, \
+         COUNT(*) FILTER (WHERE COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0) < AVG(COALESCE((SELECT ROUND(AVG(length(line))::numeric, 2) FROM unnest(regexp_split_to_array(ical_raw, E'\\n')) AS line), 0)) OVER ())::BIGINT AS count_below_mean, \
+         COUNT(*)::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, m, a, c)| serde_json::json!({"month": d, "mean_ical_avg_line_len": m, "count_below_mean": a, "event_count": c})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
