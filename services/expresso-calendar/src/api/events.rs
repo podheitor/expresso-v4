@@ -16307,6 +16307,26 @@ pub fn routes() -> Router<AppState> {
                 .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p25-by-weekday", get(events_by_range_ical_acknowledged_count_below_p25_by_weekday))
                 .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p25-by-month", get(events_by_range_ical_acknowledged_count_above_p25_by_month))
                 .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p25-by-month", get(events_by_range_ical_acknowledged_count_below_p25_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p50-by-weekday", get(events_by_range_ical_acknowledged_count_above_p50_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p50-by-weekday", get(events_by_range_ical_acknowledged_count_below_p50_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p50-by-month", get(events_by_range_ical_acknowledged_count_above_p50_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p50-by-month", get(events_by_range_ical_acknowledged_count_below_p50_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p75-by-weekday", get(events_by_range_ical_acknowledged_count_above_p75_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p75-by-weekday", get(events_by_range_ical_acknowledged_count_below_p75_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p75-by-month", get(events_by_range_ical_acknowledged_count_above_p75_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p75-by-month", get(events_by_range_ical_acknowledged_count_below_p75_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p90-by-weekday", get(events_by_range_ical_acknowledged_count_above_p90_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p90-by-weekday", get(events_by_range_ical_acknowledged_count_below_p90_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p90-by-month", get(events_by_range_ical_acknowledged_count_above_p90_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p90-by-month", get(events_by_range_ical_acknowledged_count_below_p90_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p95-by-weekday", get(events_by_range_ical_acknowledged_count_above_p95_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p95-by-weekday", get(events_by_range_ical_acknowledged_count_below_p95_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p95-by-month", get(events_by_range_ical_acknowledged_count_above_p95_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p95-by-month", get(events_by_range_ical_acknowledged_count_below_p95_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p99-by-weekday", get(events_by_range_ical_acknowledged_count_above_p99_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p99-by-weekday", get(events_by_range_ical_acknowledged_count_below_p99_by_weekday))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p99-by-month", get(events_by_range_ical_acknowledged_count_above_p99_by_month))
+                .route("/api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p99-by-month", get(events_by_range_ical_acknowledged_count_below_p99_by_month))
 async fn create(
     State(state): State<AppState>,
     ctx: RequestCtx,
@@ -135553,5 +135573,405 @@ async fn events_by_range_ical_acknowledged_count_below_p25_by_month(
     ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
     tx.commit().await?;
     let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p25_ical_acknowledged_count": p, "count_below_p25": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p50-by-weekday — Sprint #9701.
+async fn events_by_range_ical_acknowledged_count_above_p50_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p50, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, a, c)| serde_json::json!({"dow": d, "p50_ical_acknowledged_count": p, "count_above_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p50-by-weekday — Sprint #9702.
+async fn events_by_range_ical_acknowledged_count_below_p50_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p50, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, b, c)| serde_json::json!({"dow": d, "p50_ical_acknowledged_count": p, "count_below_p50": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p50-by-month — Sprint #9703.
+async fn events_by_range_ical_acknowledged_count_above_p50_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p50, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, a, c)| serde_json::json!({"month": m, "p50_ical_acknowledged_count": p, "count_above_p50": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p50-by-month — Sprint #9704.
+async fn events_by_range_ical_acknowledged_count_below_p50_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p50_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p50, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p50_ical_acknowledged_count": p, "count_below_p50": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p75-by-weekday — Sprint #9705.
+async fn events_by_range_ical_acknowledged_count_above_p75_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p75, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, a, c)| serde_json::json!({"dow": d, "p75_ical_acknowledged_count": p, "count_above_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p75-by-weekday — Sprint #9706.
+async fn events_by_range_ical_acknowledged_count_below_p75_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p75, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, b, c)| serde_json::json!({"dow": d, "p75_ical_acknowledged_count": p, "count_below_p75": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p75-by-month — Sprint #9707.
+async fn events_by_range_ical_acknowledged_count_above_p75_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p75, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, a, c)| serde_json::json!({"month": m, "p75_ical_acknowledged_count": p, "count_above_p75": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p75-by-month — Sprint #9708.
+async fn events_by_range_ical_acknowledged_count_below_p75_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p75_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p75, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p75_ical_acknowledged_count": p, "count_below_p75": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p90-by-weekday — Sprint #9709.
+async fn events_by_range_ical_acknowledged_count_above_p90_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p90_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p90, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, a, c)| serde_json::json!({"dow": d, "p90_ical_acknowledged_count": p, "count_above_p90": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p90-by-weekday — Sprint #9710.
+async fn events_by_range_ical_acknowledged_count_below_p90_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p90_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p90, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, b, c)| serde_json::json!({"dow": d, "p90_ical_acknowledged_count": p, "count_below_p90": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p90-by-month — Sprint #9711.
+async fn events_by_range_ical_acknowledged_count_above_p90_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p90_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p90, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, a, c)| serde_json::json!({"month": m, "p90_ical_acknowledged_count": p, "count_above_p90": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p90-by-month — Sprint #9712.
+async fn events_by_range_ical_acknowledged_count_below_p90_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p90_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.90) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p90, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p90_ical_acknowledged_count": p, "count_below_p90": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p95-by-weekday — Sprint #9713.
+async fn events_by_range_ical_acknowledged_count_above_p95_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p95_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p95, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, a, c)| serde_json::json!({"dow": d, "p95_ical_acknowledged_count": p, "count_above_p95": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p95-by-weekday — Sprint #9714.
+async fn events_by_range_ical_acknowledged_count_below_p95_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p95_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p95, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, b, c)| serde_json::json!({"dow": d, "p95_ical_acknowledged_count": p, "count_below_p95": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p95-by-month — Sprint #9715.
+async fn events_by_range_ical_acknowledged_count_above_p95_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p95_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p95, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, a, c)| serde_json::json!({"month": m, "p95_ical_acknowledged_count": p, "count_above_p95": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p95-by-month — Sprint #9716.
+async fn events_by_range_ical_acknowledged_count_below_p95_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p95_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p95, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p95_ical_acknowledged_count": p, "count_below_p95": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p99-by-weekday — Sprint #9717.
+async fn events_by_range_ical_acknowledged_count_above_p99_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p99_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p99, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, a, c)| serde_json::json!({"dow": d, "p99_ical_acknowledged_count": p, "count_above_p99": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p99-by-weekday — Sprint #9718.
+async fn events_by_range_ical_acknowledged_count_below_p99_by_weekday(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(DOW FROM start_at)::INT AS dow, \
+         (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p99_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p99, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY dow ORDER BY dow",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(d, p, b, c)| serde_json::json!({"dow": d, "p99_ical_acknowledged_count": p, "count_below_p99": b, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-above-p99-by-month — Sprint #9719.
+async fn events_by_range_ical_acknowledged_count_above_p99_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p99_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) > (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_above_p99, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, a, c)| serde_json::json!({"month": m, "p99_ical_acknowledged_count": p, "count_above_p99": a, "event_count": c})).collect::<Vec<_>>();
+    Ok(Json(serde_json::json!({"rows": result})))
+}
+
+/// GET /api/v1/calendars/:cal_id/events-by-range/ical-acknowledged-count-below-p99-by-month — Sprint #9720.
+async fn events_by_range_ical_acknowledged_count_below_p99_by_month(
+    State(state): State<AppState>, ctx: RequestCtx,
+    Path(cal_id): Path<uuid::Uuid>,
+    Query(q): Query<EventsByRangeRruleStatsQuery>
+) -> Result<Json<serde_json::Value>, CalendarError> {
+    let mut tx = state.db.begin().await?;
+    let rows: Vec<(i32, Option<f64>, i64, i64)> = sqlx::query_as(
+        "SELECT EXTRACT(MONTH FROM start_at)::INT AS month, \
+         (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)) AS p99_ical_acknowledged_count, \
+         COUNT(*) FILTER (WHERE COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0) <= (SELECT PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY COALESCE(regexp_count(ical_raw, 'ACKNOWLEDGED'), 0)) FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4)))::BIGINT AS count_below_p99, \
+         COUNT(*) OVER ()::BIGINT AS event_count \
+         FROM calendar_events WHERE calendar_id = $1 AND tenant_id = $2 AND ($3::TIMESTAMPTZ IS NULL OR start_at >= $3) AND ($4::TIMESTAMPTZ IS NULL OR start_at < $4) \
+         GROUP BY month ORDER BY month",
+    ).bind(cal_id).bind(ctx.tenant_id).bind(q.after).bind(q.before).fetch_all(&mut *tx).await?;
+    tx.commit().await?;
+    let result = rows.into_iter().map(|(m, p, b, c)| serde_json::json!({"month": m, "p99_ical_acknowledged_count": p, "count_below_p99": b, "event_count": c})).collect::<Vec<_>>();
     Ok(Json(serde_json::json!({"rows": result})))
 }
