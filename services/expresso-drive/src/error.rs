@@ -61,3 +61,53 @@ impl IntoResponse for DriveError {
         (status, body).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: DriveError) -> StatusCode {
+        e.into_response().status()
+    }
+
+    #[test]
+    fn not_found_is_404() {
+        assert_eq!(status(DriveError::NotFound(Uuid::new_v4())), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn gone_is_410() {
+        assert_eq!(status(DriveError::Gone(Uuid::new_v4())), StatusCode::GONE);
+    }
+
+    #[test]
+    fn conflict_is_409() {
+        assert_eq!(status(DriveError::Conflict("dup".into())), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(DriveError::BadRequest("bad".into())), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(DriveError::Forbidden), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn unauthorized_is_401() {
+        assert_eq!(status(DriveError::Unauthorized), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn quota_exceeded_is_507() {
+        assert_eq!(status(DriveError::QuotaExceeded), StatusCode::INSUFFICIENT_STORAGE);
+    }
+
+    #[test]
+    fn database_unavailable_is_503() {
+        assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
+    }
+}

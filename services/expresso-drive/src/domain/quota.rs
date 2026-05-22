@@ -291,6 +291,73 @@ impl<'a> QuotaRepo<'a> {
         .await?;
         Ok(rows)
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── Quota::fits ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn quota_fits_within_limit() {
+        let q = Quota { max_bytes: 1000, used_bytes: 500 };
+        assert!(q.fits(499));
+        assert!(q.fits(500)); // exactly at limit
+    }
+
+    #[test]
+    fn quota_fits_exceeds_limit() {
+        let q = Quota { max_bytes: 1000, used_bytes: 500 };
+        assert!(!q.fits(501));
+        assert!(!q.fits(1000));
+    }
+
+    #[test]
+    fn quota_fits_zero_extra() {
+        let q = Quota { max_bytes: 1000, used_bytes: 1000 };
+        assert!(q.fits(0));
+        assert!(!q.fits(1));
+    }
+
+    #[test]
+    fn quota_fits_saturating_add_overflow_safe() {
+        // used_bytes near i64::MAX — saturating_add must not panic or wrap.
+        let q = Quota { max_bytes: i64::MAX, used_bytes: i64::MAX - 1 };
+        assert!(q.fits(1));   // used + 1 == MAX == max → fits
+        assert!(!q.fits(2));  // saturating_add overflows → MAX+1 saturates to MAX, still not > MAX
+        // Edge: used = MAX, max = MAX
+        let q2 = Quota { max_bytes: i64::MAX, used_bytes: i64::MAX };
+        assert!(q2.fits(0));
+        assert!(!q2.fits(1));
+    }
+
+    // ─── FolderQuota::fits ───────────────────────────────────────────────────
+
+    #[test]
+    fn folder_quota_fits_within() {
+        let fid = Uuid::new_v4();
+        let fq = FolderQuota { folder_id: fid, max_bytes: 500, used_bytes: 100 };
+        assert!(fq.fits(400));
+        assert!(!fq.fits(401));
+    }
+
+    #[test]
+    fn folder_quota_fits_empty_folder() {
+        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 1024, used_bytes: 0 };
+        assert!(fq.fits(1024));
+        assert!(!fq.fits(1025));
+    }
+
+    // ─── DEFAULT_QUOTA_BYTES ─────────────────────────────────────────────────
+
+    #[test]
+    fn default_quota_is_10_gb() {
+        assert_eq!(DEFAULT_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
+    }
+}
+
+impl<'a> QuotaRepo<'a> {
 
     pub async fn get(&self, tenant_id: Uuid) -> Result<Quota> {
         let mut tx = begin_tenant_tx(self.pool, tenant_id).await?;
