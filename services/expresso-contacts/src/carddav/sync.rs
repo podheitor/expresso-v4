@@ -170,12 +170,41 @@ fn ok_207(body: String) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_token_value, TOKEN_PREFIX};
+    use super::{parse_token_value, push_member, push_token, TOKEN_PREFIX};
+    use uuid::Uuid;
 
     #[test]
     fn token_roundtrip() {
         let tok = format!("{TOKEN_PREFIX}5");
         assert_eq!(parse_token_value(&tok), Some(5));
         assert_eq!(parse_token_value("junk"), None);
+    }
+
+    #[test]
+    fn parse_token_value_zero() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
+    }
+
+    #[test]
+    fn parse_token_value_non_numeric() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}xyz")), None);
+    }
+
+    #[test]
+    fn push_token_ends_multistatus() {
+        let mut out = String::new();
+        push_token(&mut out, "urn:expresso:ctag:3");
+        assert!(out.contains("</D:multistatus>"));
+    }
+
+    #[test]
+    fn push_member_contains_vcf_href_and_etag() {
+        let user = Uuid::nil();
+        let ab   = Uuid::nil();
+        let mut out = String::new();
+        push_member(&mut out, user, ab, "contact-uid", "etag99");
+        assert!(out.contains(".vcf"));
+        assert!(out.contains("etag99"));
+        assert!(out.contains("200 OK"));
     }
 }

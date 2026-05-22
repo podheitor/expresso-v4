@@ -82,4 +82,24 @@ mod tests {
         assert_eq!(command_label("AUTH PLAIN"), "OTHER"); // full line
         assert_eq!(command_label("XFOO"), "OTHER");
     }
+
+    #[test]
+    fn all_known_commands_map() {
+        for cmd in ["HELO", "LHLO", "MAIL", "RCPT", "DATA", "RSET", "NOOP", "QUIT", "VRFY", "STARTTLS", "AUTH"] {
+            assert_ne!(command_label(cmd), "OTHER", "expected {cmd} to map to itself");
+        }
+    }
+
+    #[test]
+    fn command_label_case_insensitive() {
+        assert_eq!(command_label("quit"), "QUIT");
+        assert_eq!(command_label("Starttls"), "STARTTLS");
+        assert_eq!(command_label("noop"), "NOOP");
+    }
+
+    #[test]
+    fn empty_and_whitespace_map_to_other() {
+        assert_eq!(command_label(""), "OTHER");
+        assert_eq!(command_label("   "), "OTHER");
+    }
 }

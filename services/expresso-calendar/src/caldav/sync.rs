@@ -193,7 +193,8 @@ fn ok_207(body: String) -> Response {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_token_value, TOKEN_PREFIX};
+    use super::{parse_token_value, push_member, push_token, TOKEN_PREFIX};
+    use uuid::Uuid;
 
     #[test]
     fn token_roundtrip() {
@@ -201,5 +202,39 @@ mod tests {
         assert_eq!(parse_token_value(&tok), Some(7));
         assert_eq!(parse_token_value("garbage"), None);
         assert_eq!(parse_token_value(""), None);
+    }
+
+    #[test]
+    fn parse_token_value_zero() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
+    }
+
+    #[test]
+    fn parse_token_value_large() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}99999")), Some(99999));
+    }
+
+    #[test]
+    fn parse_token_value_non_numeric_suffix() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}abc")), None);
+    }
+
+    #[test]
+    fn push_token_wraps_in_sync_token_tags() {
+        let mut out = String::new();
+        push_token(&mut out, "urn:expresso:ctag:5");
+        assert!(out.contains("<D:sync-token>urn:expresso:ctag:5</D:sync-token>"));
+        assert!(out.contains("</D:multistatus>"));
+    }
+
+    #[test]
+    fn push_member_contains_ics_href_and_etag() {
+        let user = Uuid::nil();
+        let cal  = Uuid::nil();
+        let mut out = String::new();
+        push_member(&mut out, user, cal, "evt-uid", "etag42");
+        assert!(out.contains(".ics"));
+        assert!(out.contains("etag42"));
+        assert!(out.contains("200 OK"));
     }
 }

@@ -58,4 +58,22 @@ mod tests {
         let r = TenantProviderCache::new("http://kc/realms/{realm}".into(), Duration::from_secs(1));
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn rejects_empty_template() {
+        let r = TenantProviderCache::new("".into(), Duration::from_secs(1));
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn realm_placeholder_constant() {
+        assert_eq!(REALM_PLACEHOLDER, "{realm}");
+    }
+
+    #[test]
+    fn placeholder_substitution_in_template() {
+        let tmpl = "http://kc/realms/{realm}/protocol/openid-connect";
+        let issuer = tmpl.replace(REALM_PLACEHOLDER, "expresso");
+        assert_eq!(issuer, "http://kc/realms/expresso/protocol/openid-connect");
+    }
 }

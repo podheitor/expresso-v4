@@ -119,4 +119,25 @@ mod tests {
         assert_eq!(strip_origin("http://h:8003/carddav/u/a/x.vcf"), "/carddav/u/a/x.vcf");
         assert_eq!(strip_origin("/carddav/u/a/x.vcf"), "/carddav/u/a/x.vcf");
     }
+
+    #[test]
+    fn strip_https_origin() {
+        assert_eq!(strip_origin("https://example.com/carddav/u/a/y.vcf"), "/carddav/u/a/y.vcf");
+    }
+
+    #[test]
+    fn strip_origin_no_path_returns_slash() {
+        assert_eq!(strip_origin("http://example.com"), "/");
+        assert_eq!(strip_origin("https://svc.internal"), "/");
+    }
+
+    #[test]
+    fn strip_origin_relative_unchanged() {
+        assert_eq!(strip_origin("/api/v1/contacts"), "/api/v1/contacts");
+    }
+
+    #[test]
+    fn strip_origin_non_http_unchanged() {
+        assert_eq!(strip_origin("ftp://example.com/file"), "ftp://example.com/file");
+    }
 }
