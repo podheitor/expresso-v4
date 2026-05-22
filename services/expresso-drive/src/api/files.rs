@@ -20714,3 +20714,129 @@ async fn file_stats_updated_at_age_count_below_p99(State(state): State<AppState>
     ).bind(ctx.tenant_id).fetch_one(state.db_or_unavailable()?).await.map_err(db_or_unavailable)?;
     Ok(Json(serde_json::json!({"p99_update_age_days": row.0, "count_below_p99": row.1, "file_count": row.2})))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── sanitize_name ───────────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_name_normal_filename() {
+        assert_eq!(sanitize_name("report.pdf").unwrap(), "report.pdf");
+    }
+
+    #[test]
+    fn sanitize_name_trims_whitespace() {
+        assert_eq!(sanitize_name("  hello.txt  ").unwrap(), "hello.txt");
+    }
+
+    #[test]
+    fn sanitize_name_empty_rejected() {
+        assert!(sanitize_name("").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_whitespace_only_rejected() {
+        assert!(sanitize_name("   ").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_forward_slash_rejected() {
+        assert!(sanitize_name("a/b").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_backslash_rejected() {
+        assert!(sanitize_name("a\\b").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_dot_rejected() {
+        assert!(sanitize_name(".").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_dotdot_rejected() {
+        assert!(sanitize_name("..").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_control_char_rejected() {
+        assert!(sanitize_name("bad\x00name").is_err());
+        assert!(sanitize_name("bad\x1fname").is_err());
+        assert!(sanitize_name("bad\x7fname").is_err());
+    }
+
+    #[test]
+    fn sanitize_name_exactly_255_chars_passes() {
+        let name = "a".repeat(255);
+        assert!(sanitize_name(&name).is_ok());
+    }
+
+    #[test]
+    fn sanitize_name_256_chars_rejected() {
+        let name = "a".repeat(256);
+        assert!(sanitize_name(&name).is_err());
+    }
+
+    #[test]
+    fn sanitize_name_non_ascii_printable_passes() {
+        // UTF-8 non-ASCII printable (e.g. Portuguese filename)
+        assert!(sanitize_name("relatório.pdf").is_ok());
+    }
+
+    // ─── percent_encode_filename ─────────────────────────────────────────────
+
+    #[test]
+    fn percent_encode_ascii_alphanum_unchanged() {
+        assert_eq!(percent_encode_filename("report123"), "report123");
+    }
+
+    #[test]
+    fn percent_encode_space_encoded() {
+        let out = percent_encode_filename("my file.txt");
+        assert!(out.contains("%20"));
+    }
+
+    #[test]
+    fn percent_encode_utf8_bytes_encoded() {
+        let out = percent_encode_filename("relatório");
+        // 'ó' is multi-byte UTF-8 — must be percent-encoded
+        assert!(out.contains('%'));
+    }
+
+    #[test]
+    fn percent_encode_attr_chars_unchanged() {
+        // RFC 5987 attr-char must pass through unmodified
+        for ch in ['!', '#', '$', '&', '+', '-', '.', '^', '_', '`', '|', '~'] {
+            let s = ch.to_string();
+            assert_eq!(percent_encode_filename(&s), s, "attr-char {ch} should not be encoded");
+        }
+    }
+
+    // ─── build_content_disposition ───────────────────────────────────────────
+
+    #[test]
+    fn build_content_disposition_ascii_filename() {
+        let cd = build_content_disposition("report.pdf");
+        assert!(cd.starts_with("attachment; filename=\"report.pdf\""));
+        assert!(cd.contains("filename*=UTF-8''report.pdf"));
+    }
+
+    #[test]
+    fn build_content_disposition_non_ascii_replaces_in_ascii_part() {
+        let cd = build_content_disposition("relatório.pdf");
+        // ASCII fallback: ó replaced by _
+        assert!(cd.contains("filename=\"relat_rio.pdf\""));
+        // UTF-8* has encoded version
+        assert!(cd.contains("filename*=UTF-8''"));
+    }
+
+    #[test]
+    fn build_content_disposition_empty_name_uses_download() {
+        // All non-ascii-graphic chars → empty ascii → falls back to "download"
+        let cd = build_content_disposition("\x01\x02");
+        assert!(cd.contains("filename=\"download\""));
+    }
+}

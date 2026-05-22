@@ -1464,3 +1464,48 @@ fn validate_folder_name(name: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_folder_name_passes() {
+        assert!(validate_folder_name("Work Projects").is_ok());
+    }
+
+    #[test]
+    fn empty_name_rejected() {
+        assert!(validate_folder_name("").is_err());
+    }
+
+    #[test]
+    fn exactly_200_chars_passes() {
+        assert!(validate_folder_name(&"a".repeat(200)).is_ok());
+    }
+
+    #[test]
+    fn two_hundred_one_chars_rejected() {
+        assert!(validate_folder_name(&"a".repeat(201)).is_err());
+    }
+
+    #[test]
+    fn null_byte_rejected() {
+        assert!(validate_folder_name("bad\0name").is_err());
+    }
+
+    #[test]
+    fn carriage_return_rejected() {
+        assert!(validate_folder_name("bad\rname").is_err());
+    }
+
+    #[test]
+    fn newline_rejected() {
+        assert!(validate_folder_name("bad\nname").is_err());
+    }
+
+    #[test]
+    fn single_char_name_passes() {
+        assert!(validate_folder_name("X").is_ok());
+    }
+}
