@@ -474,3 +474,38 @@ async fn reject_counter(
     );
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn counter_list_limit_clamp_min() {
+        let raw: i64 = 0;
+        assert_eq!(raw.min(200).max(1), 1);
+    }
+
+    #[test]
+    fn counter_list_limit_clamp_max() {
+        let raw: i64 = 999;
+        assert_eq!(raw.min(200).max(1), 200);
+    }
+
+    #[test]
+    fn counter_list_limit_in_range() {
+        let raw: i64 = 50;
+        assert_eq!(raw.min(200).max(1), 50);
+    }
+
+    #[test]
+    fn freebusy_params_include_transparent_defaults_false() {
+        let json = r#"{"attendees":"a@ex.com","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z"}"#;
+        let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
+        assert!(!p.include_transparent);
+    }
+
+    #[test]
+    fn freebusy_params_include_transparent_explicit() {
+        let json = r#"{"attendees":"a@ex.com","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z","include_transparent":true}"#;
+        let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
+        assert!(p.include_transparent);
+    }
+}

@@ -235,3 +235,43 @@ pub struct TenantWizardTpl {
     pub error:       Option<String>,
     pub success:     Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kc_user_deser_full() {
+        let json = r#"{"id":"abc","username":"heitor","email":"h@ex.com","firstName":"Heitor","lastName":"F","enabled":true}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.id, "abc");
+        assert_eq!(u.first, "Heitor");
+        assert!(u.enabled);
+    }
+
+    #[test]
+    fn kc_user_defaults_on_missing_fields() {
+        let json = r#"{"id":"xyz"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.username, "");
+        assert_eq!(u.email, "");
+        assert!(!u.enabled);
+    }
+
+    #[test]
+    fn kc_realm_deser() {
+        let json = r#"{"realm":"expresso","displayName":"Expresso","enabled":true,"sslRequired":"external","accessTokenLifespan":300,"registrationAllowed":false,"passwordPolicy":""}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.realm, "expresso");
+        assert_eq!(r.display_name, "Expresso");
+        assert_eq!(r.access_token_lifespan, 300);
+    }
+
+    #[test]
+    fn kc_realm_defaults_on_missing_fields() {
+        let json = r#"{"realm":"test"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.display_name, "");
+        assert!(!r.registration_allowed);
+    }
+}

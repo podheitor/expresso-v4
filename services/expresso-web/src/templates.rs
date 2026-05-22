@@ -525,3 +525,33 @@ pub struct AddrbookShareTpl {
     pub shares:      Vec<AclRow>,
     pub error:       Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_size_bytes() {
+        assert_eq!(human_size(0), "0 B");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(1023), "1023 B");
+    }
+
+    #[test]
+    fn human_size_kilobytes() {
+        assert_eq!(human_size(1024), "1.0 KB");
+        assert_eq!(human_size(2048), "2.0 KB");
+    }
+
+    #[test]
+    fn human_size_megabytes() {
+        assert_eq!(human_size(1_048_576), "1.0 MB");
+        assert_eq!(human_size(5 * 1_048_576), "5.0 MB");
+    }
+
+    #[test]
+    fn human_size_gigabytes() {
+        assert_eq!(human_size(1_073_741_824), "1.00 GB");
+        assert_eq!(human_size(2 * 1_073_741_824), "2.00 GB");
+    }
+}
