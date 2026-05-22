@@ -503,4 +503,17 @@ END:VCALENDAR\r\n";
         };
         assert_eq!(a.cn.as_deref(), Some("Alice Smith"));
     }
+
+    #[test]
+    fn attendee_rsvp_true_preserved() {
+        let a = Attendee {
+            email:    "carol@example.com".into(),
+            cn:       None,
+            role:     Some("OPT-PARTICIPANT".into()),
+            partstat: Some("NEEDS-ACTION".into()),
+            rsvp:     Some(true),
+        };
+        assert_eq!(a.rsvp, Some(true));
+        assert_eq!(a.role.as_deref(), Some("OPT-PARTICIPANT"));
+    }
 }

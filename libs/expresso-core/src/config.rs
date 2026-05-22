@@ -278,4 +278,9 @@ mod tests {
     fn default_host_is_not_loopback() {
         assert_ne!(default_host(), "127.0.0.1");
     }
+
+    #[test]
+    fn default_s3_region_string_length_is_nonzero() {
+        assert!(!default_s3_region().is_empty());
+    }
 }

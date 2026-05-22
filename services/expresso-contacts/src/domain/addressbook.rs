@@ -403,4 +403,10 @@ mod tests {
         assert_eq!(u.name.as_deref(), Some("Family"));
         assert_eq!(u.description.as_deref(), Some("Family contacts"));
     }
+
+    #[test]
+    fn update_addressbook_is_default_some_true() {
+        let u = UpdateAddressbook { name: None, description: None, is_default: Some(true) };
+        assert_eq!(u.is_default, Some(true));
+    }
 }

@@ -153,4 +153,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
         assert!(q.email.is_none());
     }
+
+    #[test]
+    fn user_query_email_with_port_in_domain_stored() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"user@host:8080"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("user@host:8080"));
+    }
 }

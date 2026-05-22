@@ -371,4 +371,18 @@ mod tests {
         };
         assert!(lock.is_expired());
     }
+
+    #[test]
+    fn wopi_lock_acquired_at_before_expires_at() {
+        let now = OffsetDateTime::now_utc();
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: now,
+            expires_at: now + Duration::minutes(30),
+        };
+        assert!(lock.acquired_at < lock.expires_at);
+    }
 }

@@ -540,4 +540,9 @@ mod slug_tests {
     fn valid_slug_rejects_underscore() {
         assert!(!valid_slug("my_tenant"));
     }
+
+    #[test]
+    fn plans_const_contains_standard() {
+        assert!(PLANS.contains(&"standard"));
+    }
 }

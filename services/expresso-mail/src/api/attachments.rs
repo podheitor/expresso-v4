@@ -600,4 +600,10 @@ mod extra_tests {
         let s = percent_encode_filename("~draft.txt");
         assert_eq!(s, "~draft.txt");
     }
+
+    #[test]
+    fn sanitize_header_token_non_empty_passthrough() {
+        let result = sanitize_header_token("text/html", "text/plain");
+        assert_eq!(result, "text/html");
+    }
 }

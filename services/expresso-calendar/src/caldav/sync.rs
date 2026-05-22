@@ -291,4 +291,9 @@ mod tests {
     fn token_prefix_contains_ctag() {
         assert!(TOKEN_PREFIX.contains("ctag"));
     }
+
+    #[test]
+    fn parse_token_value_one_is_valid() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}1")), Some(1));
+    }
 }

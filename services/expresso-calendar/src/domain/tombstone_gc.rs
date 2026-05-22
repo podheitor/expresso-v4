@@ -132,4 +132,11 @@ mod tests {
         // 6 divides evenly into 24, keeping GC aligned to day boundaries.
         assert_eq!(24 % DEFAULT_INTERVAL_HOURS, 0);
     }
+
+    #[test]
+    fn retention_days_type_fits_i32() {
+        // Verify the constant fits inside i32 so it can be used directly in SQL binds.
+        let _: i32 = DEFAULT_RETENTION_DAYS;
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

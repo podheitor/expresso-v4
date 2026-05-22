@@ -345,4 +345,10 @@ mod tests {
         };
         assert_eq!(c.admin_pass, "s3cr3t");
     }
+
+    #[test]
+    fn kc_admin_config_no_exchange_client_when_only_id_set() {
+        let c = cfg(Some("client-id"), None);
+        assert!(!c.has_exchange_client());
+    }
 }

@@ -544,4 +544,11 @@ mod tests {
     fn depth_infinity_ne_one() {
         assert_ne!(Depth::Infinity, Depth::One);
     }
+
+    #[test]
+    fn depth_variants_are_all_distinct() {
+        assert_ne!(Depth::Zero, Depth::One);
+        assert_ne!(Depth::One, Depth::Infinity);
+        assert_ne!(Depth::Zero, Depth::Infinity);
+    }
 }

@@ -227,4 +227,9 @@ BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:
     fn has_method_reply_returns_true_for_reply() {
         assert!(has_method_reply("METHOD:REPLY"));
     }
+
+    #[test]
+    fn has_method_reply_case_insensitive() {
+        assert!(has_method_reply("method:reply"));
+    }
 }

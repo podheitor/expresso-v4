@@ -124,4 +124,9 @@ mod tests {
     fn refresh_error_is_unauthorized() {
         assert_eq!(status(RpError::Refresh("expired".into())), StatusCode::UNAUTHORIZED);
     }
+
+    #[test]
+    fn config_error_status_is_500() {
+        assert_eq!(status(RpError::Config("missing var".into())), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

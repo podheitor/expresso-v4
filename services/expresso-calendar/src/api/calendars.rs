@@ -321,4 +321,10 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"week"}"#).unwrap();
         assert!(q.bucket.is_some());
     }
+
+    #[test]
+    fn stats_by_tenant_query_limit_preserved_when_set() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":42}"#).unwrap();
+        assert_eq!(q.limit, Some(42));
+    }
 }

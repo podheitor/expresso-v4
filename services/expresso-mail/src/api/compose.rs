@@ -1059,4 +1059,9 @@ mod tests {
     fn max_subject_bytes_is_998() {
         assert_eq!(MAX_SUBJECT_BYTES, 998);
     }
+
+    #[test]
+    fn max_recipients_per_message_is_100() {
+        assert_eq!(MAX_RECIPIENTS_PER_MESSAGE, 100);
+    }
 }

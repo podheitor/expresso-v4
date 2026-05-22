@@ -611,4 +611,9 @@ mod tests {
         assert!(out.starts_with('"'));
         assert!(out.contains("'@SUM(B1)"));
     }
+
+    #[test]
+    fn empty_input_returns_empty_string() {
+        assert_eq!(csv_escape(""), "");
+    }
 }

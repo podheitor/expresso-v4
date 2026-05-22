@@ -327,4 +327,12 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(cfg.jwt_ttl > 0);
     }
+
+    #[test]
+    fn different_users_same_room_produce_different_tokens() {
+        let j = Jitsi::new(fixture_cfg());
+        let req_a = IssueRequest { room: "r", user_id: Uuid::nil(),    display_name: "A", email: "a@x", moderator: false, allow_recording: false };
+        let req_b = IssueRequest { room: "r", user_id: Uuid::new_v4(), display_name: "B", email: "b@x", moderator: false, allow_recording: false };
+        assert_ne!(j.mint(&req_a).unwrap().token, j.mint(&req_b).unwrap().token);
+    }
 }

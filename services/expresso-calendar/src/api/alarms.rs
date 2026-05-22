@@ -523,4 +523,10 @@ mod tests {
         let b: CreateAlarmBody = serde_json::from_str(r#"{"uid":"alarm-uid-42"}"#).unwrap();
         assert_eq!(b.uid.as_deref(), Some("alarm-uid-42"));
     }
+
+    #[test]
+    fn patch_alarm_body_action_none_when_absent() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.action.is_none());
+    }
 }

@@ -402,4 +402,10 @@ mod tests {
         let c = sample();
         assert_eq!(c.tenant_id, uuid::Uuid::nil());
     }
+
+    #[test]
+    fn contact_vcard_raw_preserved() {
+        let c = sample();
+        assert!(c.vcard_raw.contains("BEGIN:VCARD"));
+    }
 }

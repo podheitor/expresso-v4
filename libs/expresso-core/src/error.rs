@@ -131,4 +131,10 @@ mod tests {
         let e = CoreError::NotFound { resource: "calendar_event" };
         assert!(e.to_string().contains("calendar_event"));
     }
+
+    #[test]
+    fn core_error_tenant_not_set_display_is_not_empty() {
+        let e = CoreError::TenantNotSet;
+        assert!(!e.to_string().is_empty());
+    }
 }

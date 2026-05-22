@@ -373,4 +373,9 @@ mod tests {
         assert!(is_live_prop("DAV:", "Displayname"));
         assert!(is_live_prop("DAV:", "DISPLAYNAME"));
     }
+
+    #[test]
+    fn is_live_prop_rejects_unknown_namespace() {
+        assert!(!is_live_prop("urn:custom:", "displayname"));
+    }
 }

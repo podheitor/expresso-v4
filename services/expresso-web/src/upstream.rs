@@ -231,4 +231,9 @@ mod tests {
     fn build_url_empty_path_produces_base_only() {
         assert_eq!(build_url("http://svc", ""), "http://svc");
     }
+
+    #[test]
+    fn build_url_base_with_port_preserved() {
+        assert_eq!(build_url("http://svc:9000", "/health"), "http://svc:9000/health");
+    }
 }

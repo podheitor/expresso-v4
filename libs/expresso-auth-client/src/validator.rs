@@ -344,4 +344,10 @@ mod tests {
         let c = OidcConfig::new("https://idp/realms/r", "");
         assert!(c.audiences().is_empty());
     }
+
+    #[test]
+    fn oidc_config_comma_audience_splits_into_two() {
+        let c = OidcConfig::new("https://idp/realms/r", "client-a,client-b");
+        assert_eq!(c.audiences().len(), 2);
+    }
 }

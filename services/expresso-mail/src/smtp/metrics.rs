@@ -174,4 +174,10 @@ mod tests {
         assert_eq!(command_label("HELO"), "HELO");
         assert_eq!(command_label("helo"), "HELO");
     }
+
+    #[test]
+    fn unknown_command_maps_to_other() {
+        assert_eq!(command_label("XFOO"), "OTHER");
+        assert_eq!(command_label("BDAT"), "OTHER");
+    }
 }

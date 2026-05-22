@@ -108,4 +108,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("s3 timeout"));
     }
+
+    #[test]
+    fn display_prefix_is_internal_error_for_etag_mismatch() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("etag mismatch"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }

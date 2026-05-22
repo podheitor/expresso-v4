@@ -253,4 +253,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(!s.storage_key.is_empty());
     }
+
+    #[test]
+    fn session_owner_user_id_is_nil() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.owner_user_id, Uuid::nil());
+    }
 }

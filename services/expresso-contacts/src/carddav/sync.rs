@@ -271,4 +271,10 @@ mod tests {
         push_token(&mut out, "urn:expresso:ctag:99");
         assert!(out.contains("urn:expresso:ctag:99"));
     }
+
+    #[test]
+    fn parse_token_value_max_i64_is_some() {
+        let tok = format!("urn:expresso:ctag:{}", i64::MAX);
+        assert_eq!(parse_token_value(&tok), Some(i64::MAX));
+    }
 }

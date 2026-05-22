@@ -576,4 +576,10 @@ mod tests {
         let raw: Option<i64> = None;
         assert_eq!(raw.unwrap_or(50), 50);
     }
+
+    #[test]
+    fn counter_limit_exactly_200_not_clamped() {
+        let raw: i64 = 200;
+        assert_eq!(raw.min(200).max(1), 200);
+    }
 }

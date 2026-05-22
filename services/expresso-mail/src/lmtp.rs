@@ -306,4 +306,10 @@ mod tests {
     fn max_msg_bytes_is_50_mib() {
         assert_eq!(super::MAX_MSG_BYTES, 50 * 1024 * 1024);
     }
+
+    #[test]
+    fn size_param_decimal_not_parsed() {
+        // Decimal size values must not parse — only integers are valid.
+        assert_eq!(extract_size_param("<a@b> SIZE=10.5"), None);
+    }
 }

@@ -324,4 +324,17 @@ mod tests {
         };
         assert_eq!(s.created_by, uid);
     }
+
+    #[test]
+    fn share_tenant_id_preserved() {
+        let tid = Uuid::new_v4();
+        let s = Share {
+            id: Uuid::nil(), tenant_id: tid, file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert_eq!(s.tenant_id, tid);
+    }
 }

@@ -16943,6 +16943,11 @@ mod tests {
     fn facet_from_top_n_is_positive() {
         assert!(FACET_FROM_TOP_N > 0);
     }
+
+    #[test]
+    fn default_limit_is_less_than_max_limit() {
+        assert!(DEFAULT_LIMIT < MAX_LIMIT);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

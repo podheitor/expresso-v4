@@ -148,4 +148,13 @@ mod tests {
         assert_eq!(out.email, "test@example.com");
         assert_eq!(out.id, id);
     }
+
+    #[test]
+    fn user_out_serializes_id_and_email() {
+        let id = uuid::Uuid::nil();
+        let out = UserOut { id, email: "alice@example.com".into() };
+        let s = serde_json::to_string(&out).unwrap();
+        assert!(s.contains("alice@example.com"));
+        assert!(s.contains(&id.to_string()));
+    }
 }

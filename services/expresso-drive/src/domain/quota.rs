@@ -413,6 +413,13 @@ mod tests {
     fn default_quota_bytes_is_10_gib() {
         assert_eq!(DEFAULT_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
     }
+
+    #[test]
+    fn folder_quota_folder_id_preserved() {
+        let fid = Uuid::new_v4();
+        let fq = FolderQuota { folder_id: fid, max_bytes: 1024, used_bytes: 0 };
+        assert_eq!(fq.folder_id, fid);
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

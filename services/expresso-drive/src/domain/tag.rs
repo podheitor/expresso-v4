@@ -169,4 +169,10 @@ mod tests {
         let tag = "IMPORTANT".to_string();
         assert_eq!(tag, "IMPORTANT");
     }
+
+    #[test]
+    fn tag_string_slash_is_valid_rust_string() {
+        let tag = "project/sub".to_string();
+        assert!(tag.contains('/'));
+    }
 }

@@ -624,4 +624,9 @@ mod tests {
     fn human_size_two_kibibytes_is_two_kb() {
         assert_eq!(human_size(2 * 1024), "2.0 KB");
     }
+
+    #[test]
+    fn human_size_one_kibibyte_is_1_kb() {
+        assert_eq!(human_size(1024), "1.0 KB");
+    }
 }

@@ -178,4 +178,10 @@ mod tests {
         let m = MultiRealmValidator::new("https://idp/{realm}/oidc", "svc").unwrap();
         assert!(m.issuer_template.contains("{realm}"));
     }
+
+    #[test]
+    fn missing_placeholder_returns_config_error() {
+        let err = MultiRealmValidator::new("https://idp/oidc", "svc").unwrap_err();
+        assert!(matches!(err, crate::error::AuthError::Config(_)));
+    }
 }

@@ -158,4 +158,10 @@ mod tests {
         let e = CalendarError::BadRequest("no uid".into());
         assert!(format!("{e}").contains("no uid"));
     }
+
+    #[test]
+    fn invalid_ical_display_contains_message() {
+        let e = CalendarError::InvalidICal("unexpected END".into());
+        assert!(format!("{e}").contains("unexpected END"));
+    }
 }

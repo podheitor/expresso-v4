@@ -3906,4 +3906,10 @@ Attachment\r\n\
         let s = String::from_utf8_lossy(&body);
         assert!(!s.contains("<p>"));
     }
+
+    #[test]
+    fn mime_boundary_absent_returns_none() {
+        let msg = b"From: a@b\r\nContent-Type: text/plain\r\n\r\nno boundary here\r\n";
+        assert!(mime_boundary(msg).is_none());
+    }
 }

@@ -496,4 +496,11 @@ mod tests {
     fn participant_role_ne_moderator_participant() {
         assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
     }
+
+    #[test]
+    fn new_meeting_title_preserved() {
+        let json = r#"{"room_name":"r","title":"Sprint Review"}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert_eq!(n.title, "Sprint Review");
+    }
 }

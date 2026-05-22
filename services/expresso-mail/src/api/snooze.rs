@@ -388,4 +388,18 @@ mod tests {
         };
         assert_eq!(r.message_id, mid);
     }
+
+    #[test]
+    fn snooze_record_user_id_preserved() {
+        use time::macros::datetime;
+        let uid = Uuid::new_v4();
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: uid,
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-09-01 08:00:00 UTC),
+            snoozed_at:   datetime!(2026-08-31 08:00:00 UTC),
+            woken_at: None,
+        };
+        assert_eq!(r.user_id, uid);
+    }
 }

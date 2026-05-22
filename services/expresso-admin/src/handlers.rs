@@ -458,4 +458,9 @@ mod tests {
         };
         assert!(f.email.contains('@'));
     }
+
+    #[test]
+    fn services_const_contains_keycloak_entry() {
+        assert!(SERVICES.iter().any(|s| s.name == "keycloak"));
+    }
 }

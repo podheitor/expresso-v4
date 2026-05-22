@@ -167,4 +167,10 @@ mod extra_tests {
         let url = build_iframe_url("https://collabora", "https://drive", "file1", "mytoken");
         assert!(url.contains("access_token=mytoken"));
     }
+
+    #[test]
+    fn sign_token_contains_file_id_as_first_segment() {
+        let tok = sign_token(b"k", "doc-42", "tenant1", "user1", 60);
+        assert!(tok.starts_with("doc-42."));
+    }
 }

@@ -348,4 +348,11 @@ mod tests {
         let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
         assert!(s.to_ascii_lowercase().contains("mime-version"));
     }
+
+    #[test]
+    fn build_raw_invalid_cc_returns_error() {
+        let mut r = req("from@example.com", None, None, None);
+        r.cc = Some(vec!["not-an-address".into()]);
+        assert!(build_raw(&r).is_err());
+    }
 }

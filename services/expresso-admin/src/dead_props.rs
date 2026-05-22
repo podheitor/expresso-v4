@@ -203,4 +203,10 @@ mod tests {
         let s = fmt_ts(ts);
         assert!(s.contains('T'));
     }
+
+    #[test]
+    fn preview_short_value_is_returned_unchanged() {
+        let s = "hello";
+        assert_eq!(preview(s.into()), "hello");
+    }
 }

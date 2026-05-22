@@ -394,4 +394,11 @@ END:VCALENDAR\r\n";
         let e = compute_etag("some content");
         assert_eq!(e.len(), 64);
     }
+
+    #[test]
+    fn parse_vevent_uid_with_special_chars() {
+        let raw = "BEGIN:VEVENT\r\nUID:special+uid_123@host.example\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.uid, "special+uid_123@host.example");
+    }
 }

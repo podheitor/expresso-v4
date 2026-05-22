@@ -108,4 +108,11 @@ mod tests {
         let d = format!("{e:?}");
         assert!(d.contains("Internal") && d.contains("quoted-printable overflow"));
     }
+
+    #[test]
+    fn internal_display_ends_with_cause_after_colon() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("base64 padding error"));
+        let s = e.to_string();
+        assert!(s.ends_with("base64 padding error"));
+    }
 }

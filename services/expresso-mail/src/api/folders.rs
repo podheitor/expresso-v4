@@ -1550,4 +1550,9 @@ mod tests {
     fn folder_name_null_byte_in_middle_rejected() {
         assert!(validate_folder_name("Fo\0lder").is_err());
     }
+
+    #[test]
+    fn folder_name_with_spaces_accepted() {
+        assert!(validate_folder_name("My Projects").is_ok());
+    }
 }

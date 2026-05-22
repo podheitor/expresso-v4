@@ -1453,6 +1453,11 @@ mod tests {
     fn max_password_bytes_is_positive() {
         assert!(MAX_PASSWORD_BYTES > 0);
     }
+
+    #[test]
+    fn room_name_rejects_null_byte() {
+        assert!(!valid_room_name("room\0name"));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

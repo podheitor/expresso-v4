@@ -199,4 +199,9 @@ mod tests {
     fn default_limit_is_less_than_max_limit() {
         assert!(DEFAULT_LIST_LIMIT < MAX_LIST_LIMIT);
     }
+
+    #[test]
+    fn max_message_body_bytes_constant_is_positive() {
+        assert!(MAX_MESSAGE_BODY_BYTES > 0);
+    }
 }

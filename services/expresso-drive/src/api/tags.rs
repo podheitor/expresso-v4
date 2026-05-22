@@ -1567,4 +1567,10 @@ mod tests {
         let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"archive"}"#).unwrap();
         assert_eq!(b.new_tag, "archive");
     }
+
+    #[test]
+    fn add_tag_body_whitespace_tag_preserved() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":" spaced "}"#).unwrap();
+        assert_eq!(b.tag, " spaced ");
+    }
 }

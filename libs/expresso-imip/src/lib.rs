@@ -467,4 +467,9 @@ mod tests {
     fn method_request_as_str_is_request() {
         assert_eq!(Method::Request.as_str(), "REQUEST");
     }
+
+    #[test]
+    fn method_cancel_and_request_are_not_equal() {
+        assert_ne!(Method::Cancel, Method::Request);
+    }
 }

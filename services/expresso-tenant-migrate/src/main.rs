@@ -452,4 +452,10 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": ["   "]}});
         assert!(extract_tenant_id(&u).is_none());
     }
+
+    #[test]
+    fn extract_tenant_id_numeric_string_returned_as_is() {
+        let u = json!({"attributes": {"tenant_id": ["12345"]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some("12345"));
+    }
 }

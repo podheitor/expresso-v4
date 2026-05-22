@@ -653,4 +653,15 @@ mod tests {
     fn max_putfile_bytes_is_256_mib() {
         assert_eq!(MAX_PUTFILE_BYTES, 256 * 1024 * 1024);
     }
+
+    #[test]
+    fn token_tenant_id_differs_from_file_id() {
+        let fid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let uid = Uuid::new_v4();
+        assert_ne!(fid, tid);
+        let tok = sign_token(b"key", fid, tid, uid, 60);
+        let claims = verify_token(b"key", &tok, fid).unwrap();
+        assert_ne!(claims.tenant_id, fid);
+    }
 }

@@ -156,4 +156,10 @@ mod tests {
         let e = ContactsError::BadRequest("missing field".into());
         assert_eq!(status(e), 400);
     }
+
+    #[test]
+    fn forbidden_display_string_is_forbidden() {
+        let e = ContactsError::Forbidden;
+        assert_eq!(format!("{e}"), "forbidden");
+    }
 }

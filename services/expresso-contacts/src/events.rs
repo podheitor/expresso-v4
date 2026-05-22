@@ -235,4 +235,15 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"contact_upserted""#));
     }
+
+    #[test]
+    fn addressbook_created_name_some_preserved() {
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            name:           Some("Work".into()),
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("Work"));
+    }
 }

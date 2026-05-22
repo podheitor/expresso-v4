@@ -266,4 +266,9 @@ mod tests {
     fn unescape_xml_no_entities_returns_same_str() {
         assert_eq!(unescape_xml("plain text no entities"), "plain text no entities");
     }
+
+    #[test]
+    fn extract_prop_returns_none_for_empty_body() {
+        assert_eq!(extract_prop("", "displayname"), None);
+    }
 }

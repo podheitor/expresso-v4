@@ -322,4 +322,11 @@ if header :contains "Subject" "[spam]" {
     fn max_sieve_script_bytes_is_64k() {
         assert_eq!(MAX_SIEVE_SCRIPT_BYTES, 64 * 1024);
     }
+
+    #[test]
+    fn sieve_test_request_script_preserved() {
+        let json = r#"{"script":"keep;","raw_message":"From: a@b.com\r\n\r\nhi"}"#;
+        let r: SieveTestRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(r.script, "keep;");
+    }
 }

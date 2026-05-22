@@ -504,4 +504,9 @@ mod tests {
     fn sanitize_accepts_filename_with_spaces() {
         assert!(sanitize_name("my document.pdf").is_ok());
     }
+
+    #[test]
+    fn sanitize_rejects_null_byte_in_name() {
+        assert!(sanitize_name("bad\0name.txt").is_err());
+    }
 }

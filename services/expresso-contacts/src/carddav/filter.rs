@@ -442,4 +442,10 @@ mod tests {
         let op = Op::default();
         assert_eq!(op, Op::AnyOf);
     }
+
+    #[test]
+    fn match_type_default_is_contains() {
+        let mt = MatchType::default();
+        assert_eq!(mt, MatchType::Contains);
+    }
 }

@@ -663,4 +663,10 @@ mod tests {
     fn extract_angle_empty_input_returns_empty() {
         assert_eq!(extract_angle(""), "");
     }
+
+    #[test]
+    fn from_matches_authed_subdomain_does_not_match() {
+        // alice@sub.example.com must not match alice@example.com
+        assert!(!from_matches_authed("alice@sub.example.com", "alice@example.com"));
+    }
 }

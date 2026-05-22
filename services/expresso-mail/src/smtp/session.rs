@@ -502,4 +502,9 @@ mod extra_tests {
         // Only the first `>` is used as the closing bracket.
         assert_eq!(extract_angle("<user@host.com> SIZE=512"), "user@host.com");
     }
+
+    #[test]
+    fn size_param_not_present_returns_none() {
+        assert_eq!(extract_size_param("<user@domain.com>"), None);
+    }
 }

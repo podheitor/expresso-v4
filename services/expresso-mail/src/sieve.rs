@@ -265,4 +265,10 @@ mod tests {
             panic!("expected Redirect");
         }
     }
+
+    #[test]
+    fn discard_action_is_not_keep() {
+        let actions = evaluate(b"discard;", MSG.as_bytes());
+        assert!(!matches!(actions[0], FilterAction::Keep { .. }));
+    }
 }

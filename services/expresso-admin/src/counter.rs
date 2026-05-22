@@ -397,4 +397,9 @@ mod tests {
         let s = fmt_opt_ts(Some(ts));
         assert!(s.contains("2026"));
     }
+
+    #[test]
+    fn fmt_opt_ts_none_returns_em_dash() {
+        assert_eq!(fmt_opt_ts(None), "—");
+    }
 }

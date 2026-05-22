@@ -220,4 +220,14 @@ mod tests {
         };
         assert!(!t.access_token.is_empty());
     }
+
+    #[test]
+    fn token_response_refresh_token_none_by_default() {
+        let t = TokenResponse {
+            access_token: "tok".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 300,
+            refresh_expires_in: None, scope: None,
+        };
+        assert!(t.refresh_token.is_none());
+    }
 }

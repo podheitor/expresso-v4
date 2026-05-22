@@ -261,4 +261,13 @@ mod tests {
         let b = PresetBody { name: "  ".into(), flags: vec![] };
         assert!(validate_preset(&b).is_err());
     }
+
+    #[test]
+    fn preset_body_serialises_and_deserialises() {
+        let b = PresetBody { name: "Urgent".into(), flags: vec!["\\Flagged".into()] };
+        let s = serde_json::to_string(&b).unwrap();
+        let back: PresetBody = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.name, "Urgent");
+        assert_eq!(back.flags.len(), 1);
+    }
 }

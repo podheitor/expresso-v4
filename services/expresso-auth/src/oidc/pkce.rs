@@ -138,4 +138,10 @@ mod tests {
         let c = challenge_s256("some-verifier-value");
         assert!(!c.contains('+'));
     }
+
+    #[test]
+    fn challenge_contains_no_slash() {
+        let c = challenge_s256("another-verifier-value");
+        assert!(!c.contains('/'));
+    }
 }

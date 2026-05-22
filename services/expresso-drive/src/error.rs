@@ -156,4 +156,10 @@ mod tests {
         let e = DriveError::Unauthorized;
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn bad_request_display_contains_message() {
+        let e = DriveError::BadRequest("missing field".into());
+        assert!(format!("{e}").contains("missing field"));
+    }
 }

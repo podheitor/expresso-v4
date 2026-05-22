@@ -280,4 +280,10 @@ mod tests {
         assert!(v.contains("UID:uid-1"));
         assert!(v.contains("FN:Alice Smith"));
     }
+
+    #[test]
+    fn build_vcard_begins_with_vcard_header() {
+        let v = build_vcard("u2", "Bob", None, None, None, None);
+        assert!(v.starts_with("BEGIN:VCARD"));
+    }
 }

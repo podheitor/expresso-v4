@@ -239,4 +239,10 @@ mod tests {
         let h = headers_with_cookie("a=1; b=2; c=3");
         assert!(extract_cookie(&h, "expresso_rt").is_none());
     }
+
+    #[test]
+    fn extract_cookie_value_with_semicolon_separator_returns_first_match() {
+        let h = headers_with_cookie("expresso_rt=token123; other=val");
+        assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("token123"));
+    }
 }

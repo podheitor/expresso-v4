@@ -145,4 +145,11 @@ mod tests {
         let e = WebError::Upstream("timed out".into());
         assert!(e.to_string().starts_with("upstream error:"));
     }
+
+    #[test]
+    fn upstream_error_status_is_500() {
+        use axum::response::IntoResponse;
+        let resp = WebError::Upstream("gone".into()).into_response();
+        assert_eq!(resp.status().as_u16(), 500);
+    }
 }

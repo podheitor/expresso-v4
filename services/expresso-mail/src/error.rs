@@ -168,4 +168,10 @@ mod tests {
         let e = MailError::Conflict("duplicate message-id".into());
         assert!(format!("{e}").contains("duplicate message-id"));
     }
+
+    #[test]
+    fn smtp_protocol_display_contains_code() {
+        let e = MailError::SmtpProtocol("550".into());
+        assert!(format!("{e}").contains("550"));
+    }
 }

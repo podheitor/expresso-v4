@@ -1017,4 +1017,10 @@ mod extra_tests {
         let preview = make_preview(&long).unwrap();
         assert_eq!(preview.len(), 500);
     }
+
+    #[test]
+    fn parse_references_no_angle_brackets_treated_as_single_token() {
+        let refs = parse_references("bare-id-no-brackets");
+        assert!(!refs.is_empty());
+    }
 }

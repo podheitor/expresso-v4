@@ -230,4 +230,14 @@ mod tests {
         }
         assert!(!l.is_locked_out("d@x.com"));
     }
+
+    #[test]
+    fn clear_failures_allows_immediate_login_attempt() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("e@x.com");
+        l.record_failure("e@x.com");
+        assert!(l.is_locked_out("e@x.com"));
+        l.clear_failures("e@x.com");
+        assert!(!l.is_locked_out("e@x.com"));
+    }
 }

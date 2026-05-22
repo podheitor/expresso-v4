@@ -261,4 +261,10 @@ mod tests {
         let ctx = ctx_with_roles(&[]);
         assert!(!is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_false_for_superadmin_substring_in_longer_name() {
+        let ctx = ctx_with_roles(&["not_superadmin_here"]);
+        assert!(!is_super(&ctx));
+    }
 }

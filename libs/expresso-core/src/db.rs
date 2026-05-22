@@ -244,6 +244,12 @@ mod tests {
         p.tables_missing.push("drive_files".into());
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn rls_posture_role_is_preserved() {
+        let p = ok();
+        assert_eq!(p.role, "expresso");
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

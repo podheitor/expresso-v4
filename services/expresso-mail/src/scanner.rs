@@ -285,4 +285,10 @@ mod tests {
         let r = ScanResult { spam_score: None, spam_action: None, virus: None };
         assert!(r.to_headers().contains("X-Virus-Status: Clean"));
     }
+
+    #[test]
+    fn to_headers_with_virus_contains_infected_status() {
+        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar".into()) };
+        assert!(r.to_headers().contains("X-Virus-Status: Infected"));
+    }
 }

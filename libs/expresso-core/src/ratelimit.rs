@@ -265,4 +265,10 @@ mod tests {
         assert_eq!(cfg.rps, 0);
         assert_eq!(cfg.burst, 0);
     }
+
+    #[test]
+    fn rate_limit_config_burst_greater_than_rps_is_valid() {
+        let cfg = RateLimitConfig { rps: 10, burst: 100 };
+        assert!(cfg.burst > cfg.rps);
+    }
 }

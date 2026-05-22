@@ -185,4 +185,9 @@ mod tests {
     fn ops_list_contains_other() {
         assert!(OPS.contains(&"other"));
     }
+
+    #[test]
+    fn ops_list_length_is_at_least_six() {
+        assert!(OPS.len() >= 6);
+    }
 }

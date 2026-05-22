@@ -310,4 +310,16 @@ mod tests {
         let ev = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
         assert_eq!(ev.kind_str(), "event_cancelled");
     }
+
+    #[test]
+    fn event_updated_serializes_sequence() {
+        let ev = Event::EventUpdated {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            summary: None,
+            sequence: 7,
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("7"));
+    }
 }

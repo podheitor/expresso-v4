@@ -203,4 +203,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"header.payload.sig"}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("header.payload.sig"));
     }
+
+    #[test]
+    fn logout_query_hint_with_equals_sign_preserved() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok=padded=="}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("tok=padded=="));
+    }
 }

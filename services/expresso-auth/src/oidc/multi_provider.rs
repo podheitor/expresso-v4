@@ -142,4 +142,9 @@ mod tests {
         let r = TenantProviderCache::new("https://kc/realms/{0}".into(), Duration::from_secs(1));
         assert!(r.is_err());
     }
+
+    #[test]
+    fn realm_placeholder_constant_is_nonempty_string() {
+        assert!(!REALM_PLACEHOLDER.is_empty());
+    }
 }

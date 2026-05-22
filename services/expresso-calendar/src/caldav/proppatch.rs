@@ -400,4 +400,9 @@ mod tests {
         let p = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn is_live_prop_caldav_calendar_description() {
+        assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-description"));
+    }
 }

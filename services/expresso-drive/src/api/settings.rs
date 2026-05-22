@@ -194,4 +194,10 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert_eq!(v["auto_purge_days"], 3650);
     }
+
+    #[test]
+    fn trash_purge_put_body_negative_allowed_by_deser() {
+        let b: TrashPurgePutBody = serde_json::from_str(r#"{"auto_purge_days":-1}"#).unwrap();
+        assert_eq!(b.auto_purge_days, Some(-1));
+    }
 }

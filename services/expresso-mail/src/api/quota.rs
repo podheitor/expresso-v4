@@ -184,4 +184,13 @@ mod tests {
         assert_eq!(q.used_bytes, 1024);
         assert_eq!(q.quota_bytes, Some(2048));
     }
+
+    #[test]
+    fn quota_dto_used_bytes_negative_boundary() {
+        // used_bytes is i64; confirm a value of zero deserialises cleanly.
+        let json = r#"{"used_bytes":0,"quota_bytes":null}"#;
+        let q: QuotaDto = serde_json::from_str(json).unwrap();
+        assert_eq!(q.used_bytes, 0);
+        assert!(q.quota_bytes.is_none());
+    }
 }

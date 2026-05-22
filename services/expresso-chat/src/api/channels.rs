@@ -382,4 +382,14 @@ mod tests {
         let b: CreateBody = serde_json::from_str(&json).unwrap();
         assert_eq!(b.invite.len(), 2);
     }
+
+    #[test]
+    fn add_member_body_user_id_preserved() {
+        use uuid::Uuid;
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{uid}","role":"owner"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.user_id, uid);
+        assert!(matches!(b.role, Some(MemberRole::Owner)));
+    }
 }

@@ -183,4 +183,11 @@ mod tests {
     fn action_lifespan_equals_one_hour_in_seconds() {
         assert_eq!(ACTION_LIFESPAN_SECS, 60 * 60);
     }
+
+    #[test]
+    fn forgot_req_email_field_name_matches_json_key() {
+        let json = r#"{"email":"check@domain.io"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert_eq!(r.email, "check@domain.io");
+    }
 }

@@ -215,4 +215,9 @@ mod tests {
     fn classify_bare_empty_string_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }
+
+    #[test]
+    fn percent_decode_encoded_at_sign() {
+        assert_eq!(percent_decode("user%40host"), "user@host");
+    }
 }

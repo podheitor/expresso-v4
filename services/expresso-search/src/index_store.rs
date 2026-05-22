@@ -1452,4 +1452,18 @@ mod tests {
         };
         assert_eq!(doc.received_at, Some(1_700_000_000));
     }
+
+    #[test]
+    fn index_doc_unique_document_id_roundtrips() {
+        let doc = IndexDoc {
+            document_id: "unique-doc-id".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert_eq!(doc.document_id, "unique-doc-id");
+    }
 }

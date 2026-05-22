@@ -373,4 +373,11 @@ mod tests {
         let (_, v) = parse_header_line("Subject:   Leading spaces").unwrap();
         assert_eq!(v, "Leading spaces");
     }
+
+    #[test]
+    fn parse_header_only_spaces_in_value() {
+        let r = parse_header_line("X-Blank:    ").unwrap();
+        // Value is all whitespace — after trim it should be empty.
+        assert_eq!(r.1, "");
+    }
 }

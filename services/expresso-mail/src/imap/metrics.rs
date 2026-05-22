@@ -225,4 +225,10 @@ mod tests {
     fn unknown_empty_command_maps_to_other() {
         assert_eq!(command_label(""), "OTHER");
     }
+
+    #[test]
+    fn list_command_maps_correctly() {
+        assert_eq!(command_label("LIST"), "LIST");
+        assert_eq!(command_label("list"), "LIST");
+    }
 }

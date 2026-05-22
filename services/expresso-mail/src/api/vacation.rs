@@ -436,4 +436,11 @@ mod tests {
     fn validate_ok_vacation_succeeds() {
         assert!(validate(&ok_vacation()).is_ok());
     }
+
+    #[test]
+    fn render_script_contains_vacation_require_when_enabled() {
+        let v = Vacation { enabled: true, ..Vacation::default() };
+        let s = render_script(&v);
+        assert!(s.contains("vacation"));
+    }
 }

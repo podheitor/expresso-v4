@@ -195,4 +195,9 @@ mod tests {
     fn strip_origin_http_no_path_returns_slash() {
         assert_eq!(strip_origin("http://host.example.com"), "/");
     }
+
+    #[test]
+    fn strip_origin_https_no_path_returns_slash() {
+        assert_eq!(strip_origin("https://host.example.com"), "/");
+    }
 }

@@ -185,4 +185,10 @@ mod tests {
         let c = cfg("i", "c", "r", None, None, Some("https://{host}/bye"));
         assert_eq!(c.post_logout_template.as_deref(), Some("https://{host}/bye"));
     }
+
+    #[test]
+    fn post_logout_redirect_uri_none_when_absent() {
+        let c = cfg("https://kc/realms/r", "my-client", "https://app/cb", None, None, None);
+        assert!(c.post_logout_redirect_uri.is_none());
+    }
 }

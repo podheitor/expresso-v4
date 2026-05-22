@@ -295,4 +295,9 @@ mod tests {
         assert_eq!(validate_priv("Write").unwrap(), "WRITE");
         assert_eq!(validate_priv("READ").unwrap(), "READ");
     }
+
+    #[test]
+    fn validate_priv_admin_normalises_to_uppercase() {
+        assert_eq!(validate_priv("admin").unwrap(), "ADMIN");
+    }
 }

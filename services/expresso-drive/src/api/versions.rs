@@ -444,4 +444,16 @@ mod tests {
         };
         assert!(v.sha256.is_none());
     }
+
+    #[test]
+    fn file_version_storage_key_none_serializes_null() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_num: 2, size_bytes: 512, sha256: None, storage_key: None,
+            created_by: Uuid::nil(), created_at: datetime!(2026-03-01 00:00:00 UTC),
+        };
+        let j: serde_json::Value = serde_json::to_value(&v).unwrap();
+        assert!(j["storage_key"].is_null());
+    }
 }

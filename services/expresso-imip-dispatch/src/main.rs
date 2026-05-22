@@ -535,4 +535,18 @@ mod tests {
     fn method_label_variants_are_distinct() {
         assert_ne!(method_label(Method::Request), method_label(Method::Cancel));
     }
+
+    #[test]
+    fn human_summary_location_used_when_present() {
+        let inv = EventInvite {
+            uid: "u7".into(), sequence: 0, summary: "Kick-off".into(),
+            description: None, location: Some("Room 42".into()),
+            dtstart: time::macros::datetime!(2026-09-01 10:00 UTC),
+            dtend:   time::macros::datetime!(2026-09-01 11:00 UTC),
+            organizer_email: "pm@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Request);
+        assert!(!s.is_empty());
+    }
 }

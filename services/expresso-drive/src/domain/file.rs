@@ -821,4 +821,11 @@ mod tests {
         let f = sample_file();
         assert_eq!(f.kind, "file");
     }
+
+    #[test]
+    fn drive_file_mime_type_preserved_in_roundtrip() {
+        let f = sample_file();
+        let back: DriveFile = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(back.mime_type.as_deref(), Some("application/pdf"));
+    }
 }

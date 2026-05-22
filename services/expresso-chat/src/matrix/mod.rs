@@ -348,4 +348,16 @@ mod tests {
     fn room_preset_trusted_private_as_str() {
         assert_eq!(RoomPreset::TrustedPrivateChat.as_str(), "trusted_private_chat");
     }
+
+    #[test]
+    fn mxid_ends_with_server_name() {
+        let cfg = MatrixConfig {
+            hs_url: "http://x".into(),
+            server_name: "chat.expresso.local".into(),
+            as_token: None, admin_token: None,
+        };
+        let c = MatrixClient::new(cfg);
+        let mxid = c.mxid_for(Uuid::nil());
+        assert!(mxid.ends_with(":chat.expresso.local"));
+    }
 }

@@ -210,4 +210,11 @@ mod tests {
         let t = classify(&format!("/carddav/{u}"));
         assert!(matches!(t, Target::Unknown));
     }
+
+    #[test]
+    fn percent_decode_null_byte_encoded() {
+        // %00 should decode to the null character (not dropped).
+        let r = percent_decode("%00");
+        assert_eq!(r, "\0");
+    }
 }

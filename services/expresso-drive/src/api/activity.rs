@@ -291,4 +291,11 @@ mod tests {
         let q: ActivityQuery = serde_json::from_str(r#"{"limit":200}"#).unwrap();
         assert_eq!(q.limit, Some(200));
     }
+
+    #[test]
+    fn activity_query_before_field_preserved() {
+        let q: ActivityQuery =
+            serde_json::from_str(r#"{"before":"2026-01-01T00:00:00Z"}"#).unwrap();
+        assert_eq!(q.before.as_deref(), Some("2026-01-01T00:00:00Z"));
+    }
 }

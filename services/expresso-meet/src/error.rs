@@ -162,4 +162,9 @@ mod tests {
         let e = MeetError::Conflict("already recording".into());
         assert!(format!("{e}").contains("already recording"));
     }
+
+    #[test]
+    fn not_found_status_is_404() {
+        assert_eq!(status(MeetError::NotFound), 404);
+    }
 }

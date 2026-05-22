@@ -352,4 +352,9 @@ mod tests {
     fn is_public_path_root_is_not_public() {
         assert!(!is_public_path("/"));
     }
+
+    #[test]
+    fn is_super_admin_false_for_empty_roles() {
+        assert!(!is_super_admin(&[]));
+    }
 }

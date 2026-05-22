@@ -343,4 +343,9 @@ mod tests {
     fn escape_single_quote_produces_apos_entity() {
         assert_eq!(escape("it's"), "it&apos;s");
     }
+
+    #[test]
+    fn escape_double_quote_produces_quot_entity() {
+        assert_eq!(escape(r#"say "hi""#), "say &quot;hi&quot;");
+    }
 }

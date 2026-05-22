@@ -1730,4 +1730,11 @@ mod tests {
         assert_eq!(v.len(), 3);
         assert!(v.contains(&"a@x.com"));
     }
+
+    #[test]
+    fn split_addrs_single_address_returns_one_element() {
+        let v = split_addrs("solo@example.com");
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0], "solo@example.com");
+    }
 }

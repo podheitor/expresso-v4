@@ -289,4 +289,17 @@ mod tests {
         };
         assert_eq!(p.xml_value, "  spaced  ");
     }
+
+    #[test]
+    fn dead_prop_clone_roundtrip_all_fields() {
+        let p = DeadProp {
+            namespace: "http://example.com/ns".into(),
+            local_name: "custom-field".into(),
+            xml_value: "<value>42</value>".into(),
+        };
+        let c = p.clone();
+        assert_eq!(c.namespace, p.namespace);
+        assert_eq!(c.local_name, p.local_name);
+        assert_eq!(c.xml_value, p.xml_value);
+    }
 }

@@ -487,4 +487,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.dkim.is_empty());
     }
+
+    #[test]
+    fn auth_results_default_dmarc_policy_is_none() {
+        let r = AuthResults::default();
+        assert!(r.dmarc_policy.is_none());
+    }
 }

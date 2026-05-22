@@ -322,4 +322,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("REQUEST"));
     }
+
+    #[test]
+    fn extract_method_cancel_returns_cancel() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("CANCEL"));
+    }
 }

@@ -448,4 +448,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("Corp Admin"));
     }
+
+    #[test]
+    fn gal_entry_directory_source_tag_in_json() {
+        let e = GalEntry::Directory {
+            user_id:      Uuid::nil(),
+            email:        "x@y.com".into(),
+            display_name: "X".into(),
+            given_name:   None,
+            family_name:  None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains(r#""source":"directory""#));
+    }
 }

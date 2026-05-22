@@ -129,4 +129,10 @@ mod tests {
         let e = AuthError::KidNotFound(Some("rsa-key-2026".into()));
         assert!(e.to_string().contains("rsa-key-2026"));
     }
+
+    #[test]
+    fn missing_bearer_display_is_not_empty() {
+        let e = AuthError::MissingBearer;
+        assert!(!e.to_string().is_empty());
+    }
 }

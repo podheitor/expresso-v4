@@ -442,4 +442,9 @@ mod tests {
         };
         assert!(!u.temporary);
     }
+
+    #[test]
+    fn token_refresh_skew_is_30_seconds() {
+        assert_eq!(TOKEN_REFRESH_SKEW.as_secs(), 30);
+    }
 }

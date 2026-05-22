@@ -25566,4 +25566,17 @@ mod tests {
         assert_eq!(back.kind, "flags_changed");
         assert_eq!(back.folder.as_deref(), Some("INBOX"));
     }
+
+    #[test]
+    fn notification_nil_uuids_serialize_as_all_zeros() {
+        let n = Notification {
+            kind: "test".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["user_id"].as_str().unwrap(), "00000000-0000-0000-0000-000000000000");
+    }
 }

@@ -216,4 +216,9 @@ mod tests {
     fn assurance_ouro_str_matches_lowercase() {
         assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
     }
+
+    #[test]
+    fn govbr_issuer_constant_is_https() {
+        assert!(GOVBR_ISSUER.starts_with("https://"));
+    }
 }

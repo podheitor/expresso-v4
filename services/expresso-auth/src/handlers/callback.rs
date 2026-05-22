@@ -298,4 +298,9 @@ mod tests {
     fn accepts_path_with_encoded_chars() {
         assert!(is_safe_local_redirect("/mail/folder%20name"));
     }
+
+    #[test]
+    fn rejects_javascript_scheme() {
+        assert!(!is_safe_local_redirect("javascript:alert(1)"));
+    }
 }

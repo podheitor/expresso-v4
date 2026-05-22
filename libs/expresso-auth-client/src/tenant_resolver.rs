@@ -163,4 +163,10 @@ mod tests {
         // Host with port should still resolve — normalize_host strips the port.
         assert_eq!(r.resolve("acme.example.com:443"), Some("corp"));
     }
+
+    #[test]
+    fn len_matches_number_of_valid_entries() {
+        let r = TenantResolver::parse("a.example.com:realm1,b.example.com:realm2");
+        assert_eq!(r.len(), 2);
+    }
 }

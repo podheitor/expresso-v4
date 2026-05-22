@@ -501,4 +501,10 @@ mod tests {
         let b = build_user_body("carol", "carol@example.com");
         assert_eq!(b["emailVerified"].as_bool(), Some(false));
     }
+
+    #[test]
+    fn realm_body_contains_realm_key() {
+        let b = build_realm_body("test-realm", "Test");
+        assert!(b.get("realm").is_some());
+    }
 }

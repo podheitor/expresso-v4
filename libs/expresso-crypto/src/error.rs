@@ -110,4 +110,11 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("chacha20poly1305 nonce reuse"));
         assert!(e.to_string().contains("chacha20poly1305"));
     }
+
+    #[test]
+    fn internal_from_anyhow_matches_internal_variant() {
+        let source = anyhow::anyhow!("scrypt params invalid");
+        let e: ExpresscryptoError = source.into();
+        assert!(matches!(e, ExpresscryptoError::Internal(_)));
+    }
 }

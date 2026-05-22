@@ -349,4 +349,9 @@ mod tests {
         assert!(!k.is_empty());
         assert!(k.chars().all(|c| c.is_ascii_hexdigit()));
     }
+
+    #[test]
+    fn cache_key_alice_and_bob_same_pass_are_not_equal() {
+        assert_ne!(cache_key("alice", "pass"), cache_key("bob", "pass"));
+    }
 }

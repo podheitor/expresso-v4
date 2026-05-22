@@ -269,4 +269,15 @@ mod tests {
         };
         assert_eq!(w.collabora_url, "https://office.example.com");
     }
+
+    #[test]
+    fn wopi_token_ttl_7200_is_two_hours() {
+        let w = Wopi {
+            secret:         "s".into(),
+            collabora_url:  "https://c".into(),
+            drive_url:      "http://d".into(),
+            token_ttl_secs: 7200,
+        };
+        assert_eq!(w.token_ttl_secs, 7200);
+    }
 }

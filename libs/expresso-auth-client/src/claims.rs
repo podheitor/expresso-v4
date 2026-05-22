@@ -344,4 +344,10 @@ mod tests {
         // Keycloak legacy path with /auth/realms/ prefix.
         assert_eq!(super::realm_from_iss("https://sso.corp.com/auth/realms/corp"), Some("corp"));
     }
+
+    #[test]
+    fn aud_claim_many_rejects_value_not_in_list() {
+        let aud = AudClaim::Many(vec!["expresso-web".into(), "expresso-dav".into()]);
+        assert!(!aud.contains("other-service"));
+    }
 }

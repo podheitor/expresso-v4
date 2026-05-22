@@ -274,4 +274,10 @@ mod tests {
         let k: ChannelKind = serde_json::from_str(r#""team""#).unwrap();
         assert!(matches!(k, ChannelKind::Team));
     }
+
+    #[test]
+    fn member_role_invalid_deser_fails() {
+        let r = serde_json::from_str::<MemberRole>(r#""superadmin""#);
+        assert!(r.is_err());
+    }
 }

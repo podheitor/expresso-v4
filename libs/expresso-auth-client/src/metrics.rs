@@ -132,4 +132,9 @@ mod tests {
     fn result_label_missing_claim_maps_forbidden() {
         assert_eq!(result_label(&AuthError::MissingClaim("tenant_id")), "forbidden");
     }
+
+    #[test]
+    fn result_label_missing_bearer_variant_returns_missing_bearer_str() {
+        assert_eq!(result_label(&AuthError::MissingBearer), "missing_bearer");
+    }
 }

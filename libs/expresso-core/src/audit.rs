@@ -225,4 +225,10 @@ mod tests {
         let e = AuditEntry::new("auth.login");
         assert!(e.target_type.is_none());
     }
+
+    #[test]
+    fn audit_entry_folder_created_action_has_no_tenant() {
+        let e = AuditEntry::new("drive.folder_created");
+        assert!(e.tenant_id.is_none());
+    }
 }

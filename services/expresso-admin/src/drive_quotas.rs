@@ -226,4 +226,10 @@ mod tests {
     fn mb_two_megabytes_returns_two() {
         assert_eq!(mb(2 * 1_048_576), "2.0");
     }
+
+    #[test]
+    fn pct_zero_usage_contains_zero() {
+        let s = pct(0, 100);
+        assert!(s.contains('0'));
+    }
 }

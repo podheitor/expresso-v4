@@ -206,4 +206,10 @@ mod tests {
         let b = "<displayname>A &lt; B</displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("A < B"));
     }
+
+    #[test]
+    fn extract_prop_gt_entity_unescaped() {
+        let b = "<displayname>A &gt; B</displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("A > B"));
+    }
 }

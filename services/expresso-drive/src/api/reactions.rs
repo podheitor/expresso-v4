@@ -270,4 +270,10 @@ mod tests {
         };
         assert_eq!(r.comment_id, cid);
     }
+
+    #[test]
+    fn reaction_body_wave_emoji_preserved() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"👋"}"#).unwrap();
+        assert!(b.emoji.contains('👋'));
+    }
 }

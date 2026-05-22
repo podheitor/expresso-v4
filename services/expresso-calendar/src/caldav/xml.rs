@@ -404,4 +404,9 @@ mod tests {
     fn escape_ampersand_in_name() {
         assert_eq!(escape("A&B"), "A&amp;B");
     }
+
+    #[test]
+    fn escape_empty_string_returns_empty() {
+        assert_eq!(escape(""), "");
+    }
 }

@@ -155,4 +155,9 @@ mod tests {
         let e = ChatError::Matrix("timeout after 5s".into());
         assert!(format!("{e}").contains("timeout after 5s"));
     }
+
+    #[test]
+    fn database_unavailable_status_is_503() {
+        assert_eq!(status(ChatError::DatabaseUnavailable), 503);
+    }
 }

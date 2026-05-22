@@ -252,4 +252,10 @@ mod tests {
         AppState::evict_expired(&mut m);
         assert!(!m.contains_key("past"));
     }
+
+    #[test]
+    fn pending_login_post_login_redirect_none_by_default() {
+        let p = make_pending(30);
+        assert!(p.post_login_redirect.is_none());
+    }
 }

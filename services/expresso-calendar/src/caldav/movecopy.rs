@@ -227,4 +227,9 @@ mod tests {
     fn strip_origin_https_with_userinfo_stripped() {
         assert_eq!(strip_origin("https://host/caldav/path/event.ics"), "/caldav/path/event.ics");
     }
+
+    #[test]
+    fn strip_origin_empty_string_passes_through() {
+        assert_eq!(strip_origin(""), "");
+    }
 }

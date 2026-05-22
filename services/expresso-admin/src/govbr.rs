@@ -358,4 +358,15 @@ mod tests {
         let b = UpsertBody { cpf_hash: "h".into(), tenant_id: t, user_id: u, assurance: None };
         assert_eq!(b.tenant_id, t);
     }
+
+    #[test]
+    fn upsert_body_assurance_none_by_default() {
+        let b = UpsertBody {
+            cpf_hash: "xyz".into(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            assurance: None,
+        };
+        assert!(b.assurance.is_none());
+    }
 }

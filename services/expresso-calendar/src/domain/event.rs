@@ -1230,4 +1230,11 @@ mod tests {
         let q: EventQuery = serde_json::from_str(r#"{"limit":50}"#).unwrap();
         assert_eq!(q.limit, Some(50));
     }
+
+    #[test]
+    fn event_status_preserved_in_serde() {
+        let e = sample();
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("CONFIRMED"));
+    }
 }

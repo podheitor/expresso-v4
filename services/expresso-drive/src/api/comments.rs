@@ -340,4 +340,10 @@ mod tests {
     fn max_comment_bytes_constant_value() {
         assert_eq!(MAX_COMMENT_BYTES, 4096);
     }
+
+    #[test]
+    fn create_comment_body_empty_string_allowed() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":""}"#).unwrap();
+        assert_eq!(b.body, "");
+    }
 }

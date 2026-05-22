@@ -374,4 +374,11 @@ mod tests {
         assert_ne!(Freq::Daily, Freq::Weekly);
         assert_ne!(Freq::Monthly, Freq::Yearly);
     }
+
+    #[test]
+    fn yearly_freq_parsed() {
+        let r = Rrule::parse("FREQ=YEARLY;COUNT=3").unwrap();
+        assert_eq!(r.freq, Freq::Yearly);
+        assert_eq!(r.count, Some(3));
+    }
 }

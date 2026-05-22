@@ -360,4 +360,11 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert_eq!(r.ssl_required, "");
     }
+
+    #[test]
+    fn kc_user_enabled_true_when_set() {
+        let json = r#"{"id":"u1","enabled":true}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert!(u.enabled);
+    }
 }
