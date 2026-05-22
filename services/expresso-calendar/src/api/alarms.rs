@@ -462,4 +462,16 @@ mod tests {
         assert!(b.action.is_none());
         assert!(b.trigger_rel.is_none());
     }
+
+    #[test]
+    fn patch_alarm_body_action_email_set() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{"action":"EMAIL"}"#).unwrap();
+        assert_eq!(b.action.as_deref(), Some("EMAIL"));
+    }
+
+    #[test]
+    fn patch_alarm_body_trigger_rel_set() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{"trigger_rel":"-PT15M"}"#).unwrap();
+        assert_eq!(b.trigger_rel.as_deref(), Some("-PT15M"));
+    }
 }

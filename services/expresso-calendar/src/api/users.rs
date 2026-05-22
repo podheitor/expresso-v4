@@ -93,4 +93,16 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":""}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some(""));
     }
+
+    #[test]
+    fn user_query_absent_email_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
+    }
+
+    #[test]
+    fn user_query_unicode_email_stored() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"usuário@empresa.com"}"#).unwrap();
+        assert!(q.email.as_deref().unwrap().contains("usuário"));
+    }
 }

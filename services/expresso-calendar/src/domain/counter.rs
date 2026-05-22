@@ -246,4 +246,30 @@ mod tests {
         };
         assert!(p.resolved_by.is_none());
     }
+
+    #[test]
+    fn counter_proposal_status_field_accessible() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.status, "pending");
+    }
+
+    #[test]
+    fn counter_proposal_email_unicode() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "usuário@empresa.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "new".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert!(p.attendee_email.contains("usuário"));
+    }
 }

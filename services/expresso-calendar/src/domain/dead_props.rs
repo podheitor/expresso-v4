@@ -189,4 +189,24 @@ mod tests {
         assert_eq!(p.namespace, "DAV:");
         assert_eq!(p.local_name, "getcontenttype");
     }
+
+    #[test]
+    fn dead_prop_apple_ical_namespace() {
+        let p = DeadProp {
+            namespace: "http://apple.com/ns/ical/".into(),
+            local_name: "calendar-color".into(),
+            xml_value: "#FF0000".into(),
+        };
+        assert!(p.namespace.contains("apple.com"));
+    }
+
+    #[test]
+    fn dead_prop_xml_value_empty_ok() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "prop".into(),
+            xml_value: "".into(),
+        };
+        assert!(p.xml_value.is_empty());
+    }
 }

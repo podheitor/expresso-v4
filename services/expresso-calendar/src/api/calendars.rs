@@ -261,4 +261,16 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"week"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("week"));
     }
+
+    #[test]
+    fn event_density_query_bucket_absent_is_none() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.bucket.is_none());
+    }
+
+    #[test]
+    fn event_density_query_bucket_month_set() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"month"}"#).unwrap();
+        assert_eq!(q.bucket.as_deref(), Some("month"));
+    }
 }

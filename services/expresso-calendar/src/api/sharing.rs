@@ -234,4 +234,14 @@ mod tests {
         assert_eq!(r.privilege, "read");
         assert_eq!(r.grantee_id, id);
     }
+
+    #[test]
+    fn validate_priv_admin_accepted() {
+        assert_eq!(validate_priv("admin").unwrap(), "ADMIN");
+    }
+
+    #[test]
+    fn validate_priv_garbage_rejected() {
+        assert!(validate_priv("owner").is_err());
+    }
 }
