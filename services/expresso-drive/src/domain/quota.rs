@@ -369,6 +369,12 @@ mod tests {
         assert!(q.fits(1024));
         assert!(!q.fits(1025));
     }
+
+    #[test]
+    fn quota_does_not_fit_when_full() {
+        let q = Quota { max_bytes: 1024, used_bytes: 1024 };
+        assert!(!q.fits(1));
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

@@ -602,4 +602,11 @@ mod tests {
         let tok = sign_token(b"correct-key", fid, Uuid::new_v4(), Uuid::new_v4(), 60);
         assert!(verify_token(b"wrong-key", &tok, fid).is_none());
     }
+
+    #[test]
+    fn correct_key_and_file_accepts_token() {
+        let fid = Uuid::new_v4();
+        let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), 3600);
+        assert!(verify_token(b"key", &tok, fid).is_some());
+    }
 }

@@ -317,4 +317,14 @@ mod tests {
         };
         assert!(patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_with_description_only_has_changes() {
+        let p = super::UpdateAddressbook {
+            name: None,
+            description: Some("My contacts".into()),
+            is_default: None,
+        };
+        assert!(patch_has_changes(&p));
+    }
 }

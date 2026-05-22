@@ -459,4 +459,10 @@ mod tests {
         let b = build_realm_body("demo", "Demo Tenant");
         assert_eq!(b["enabled"], true);
     }
+
+    #[test]
+    fn realm_body_brute_force_protected() {
+        let b = build_realm_body("test", "Test");
+        assert_eq!(b["bruteForceProtected"], true);
+    }
 }

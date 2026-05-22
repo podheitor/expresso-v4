@@ -271,4 +271,9 @@ mod tests {
     fn size_param_missing_returns_none() {
         assert_eq!(extract_size_param("<a@b>"), None);
     }
+
+    #[test]
+    fn size_param_lowercase_also_parsed() {
+        assert_eq!(extract_size_param("<a@b> size=1024"), Some(1024));
+    }
 }

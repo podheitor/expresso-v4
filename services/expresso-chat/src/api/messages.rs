@@ -162,4 +162,9 @@ mod tests {
     fn max_list_limit_not_exceeded_by_default() {
         assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
     }
+
+    #[test]
+    fn default_list_limit_is_positive() {
+        assert!(DEFAULT_LIST_LIMIT > 0);
+    }
 }

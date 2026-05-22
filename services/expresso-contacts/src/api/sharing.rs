@@ -260,4 +260,11 @@ mod tests {
         };
         assert_eq!(entry.grantee_id, gid);
     }
+
+    #[test]
+    fn share_request_privilege_preserved() {
+        let json = r#"{"grantee_id":"00000000-0000-0000-0000-000000000000","privilege":"READ"}"#;
+        let r: ShareRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(r.privilege, "READ");
+    }
 }

@@ -360,4 +360,10 @@ mod tests {
         let c = sample();
         assert_eq!(c.email_primary.as_deref(), Some("alice@example.com"));
     }
+
+    #[test]
+    fn contact_phone_primary_is_option() {
+        let c = sample();
+        let _ = c.phone_primary; // compiles only if field exists and is Option<String>
+    }
 }

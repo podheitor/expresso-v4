@@ -238,4 +238,9 @@ mod tests {
         let k: ChannelKind = serde_json::from_str(r#""direct""#).unwrap();
         assert_eq!(k, ChannelKind::Direct);
     }
+
+    #[test]
+    fn channel_kind_team_serializes() {
+        assert_eq!(serde_json::to_string(&ChannelKind::Team).unwrap(), r#""team""#);
+    }
 }

@@ -1510,7 +1510,12 @@ mod tests {
     }
 
     #[test]
-    fn empty_name_rejected() {
-        assert!(validate_folder_name("").is_err());
+    fn folder_name_null_byte_rejected() {
+        assert!(validate_folder_name("foo\0bar").is_err());
+    }
+
+    #[test]
+    fn folder_name_with_newline_rejected() {
+        assert!(validate_folder_name("foo\nbar").is_err());
     }
 }

@@ -127,4 +127,10 @@ mod tests {
         let tag = "urgent".to_string();
         assert_eq!(tag, tag.to_lowercase());
     }
+
+    #[test]
+    fn tag_string_no_spaces_after_trim() {
+        let tag = "  project  ".trim().to_string();
+        assert!(!tag.contains("  "));
+    }
 }

@@ -248,4 +248,11 @@ mod tests {
         assert_eq!(b.action, "view");
         assert!(b.detail.is_none());
     }
+
+    #[test]
+    fn create_activity_body_detail_string_value() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"download","detail":"pdf"}"#).unwrap();
+        assert_eq!(b.action, "download");
+        assert!(b.detail.is_some());
+    }
 }

@@ -307,4 +307,9 @@ mod tests {
     fn detect_report_kind_unknown_returns_none() {
         assert_eq!(super::detect_report_kind("<junk/>"), None);
     }
+
+    #[test]
+    fn detect_report_kind_empty_string_returns_none() {
+        assert_eq!(super::detect_report_kind(""), None);
+    }
 }

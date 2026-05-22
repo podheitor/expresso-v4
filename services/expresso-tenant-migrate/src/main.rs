@@ -409,4 +409,10 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": [""]}});
         assert!(extract_tenant_id(&u).is_none());
     }
+
+    #[test]
+    fn extract_tenant_id_valid_value_returned() {
+        let u = json!({"attributes": {"tenant_id": ["acme"]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some("acme"));
+    }
 }

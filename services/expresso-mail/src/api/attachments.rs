@@ -559,4 +559,10 @@ mod extra_tests {
         assert!(s.contains('%'));
         assert!(!s.contains(' '));
     }
+
+    #[test]
+    fn percent_encode_filename_alphanumeric_unchanged() {
+        let s = percent_encode_filename("report2026.pdf");
+        assert_eq!(s, "report2026.pdf");
+    }
 }

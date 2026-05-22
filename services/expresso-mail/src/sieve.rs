@@ -210,4 +210,15 @@ mod tests {
         assert_eq!(actions.len(), 1);
         assert!(matches!(actions[0], FilterAction::Discard));
     }
+
+    #[test]
+    fn keep_action_default_empty_flags() {
+        let actions = evaluate(b"keep;", MSG.as_bytes());
+        assert_eq!(actions.len(), 1);
+        if let FilterAction::Keep { flags } = &actions[0] {
+            assert!(flags.is_empty());
+        } else {
+            panic!("expected Keep");
+        }
+    }
 }

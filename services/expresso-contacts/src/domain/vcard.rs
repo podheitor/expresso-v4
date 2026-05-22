@@ -236,4 +236,10 @@ mod tests {
         let c = parse(raw).unwrap();
         assert_eq!(c.email_primary.as_deref(), Some("bob@example.com"));
     }
+
+    #[test]
+    fn compute_etag_is_deterministic() {
+        let raw = "BEGIN:VCARD\r\nUID:u1\r\nFN:Alice\r\nEND:VCARD\r\n";
+        assert_eq!(compute_etag(raw), compute_etag(raw));
+    }
 }

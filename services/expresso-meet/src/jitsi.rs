@@ -277,4 +277,12 @@ mod extra_tests {
         let req_b = IssueRequest { room: "room-b", ..req_a };
         assert_ne!(j.mint(&req_a).unwrap().token, j.mint(&req_b).unwrap().token);
     }
+
+    #[test]
+    fn issued_token_join_url_contains_room() {
+        let j = Jitsi::new(fixture_cfg());
+        let req = IssueRequest { room: "standup", user_id: Uuid::nil(), display_name: "U", email: "u@x", moderator: false, allow_recording: false };
+        let tok = j.mint(&req).unwrap();
+        assert!(tok.join_url.contains("standup"));
+    }
 }

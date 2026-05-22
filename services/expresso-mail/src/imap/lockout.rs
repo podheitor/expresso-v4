@@ -174,4 +174,13 @@ mod tests {
         l.record_failure("user@example.com");
         assert!(!l.is_locked_out("user@example.com"));
     }
+
+    #[test]
+    fn threshold_failures_triggers_lockout() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("x@y.com");
+        l.record_failure("x@y.com");
+        l.record_failure("x@y.com");
+        assert!(l.is_locked_out("x@y.com"));
+    }
 }

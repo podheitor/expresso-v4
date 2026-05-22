@@ -203,12 +203,22 @@ mod tests {
     }
 
     #[test]
-    fn dead_prop_local_name_preserved() {
+    fn dead_prop_xml_value_preserved() {
         let p = DeadProp {
             namespace: "DAV:".into(),
-            local_name: "displayname".into(),
-            xml_value: "Contacts".into(),
+            local_name: "acl".into(),
+            xml_value: "<acl/>".into(),
         };
-        assert_eq!(p.local_name, "displayname");
+        assert_eq!(p.xml_value, "<acl/>");
+    }
+
+    #[test]
+    fn dead_prop_custom_namespace_preserved() {
+        let p = DeadProp {
+            namespace: "http://apple.com/ns/ical/".into(),
+            local_name: "calendar-color".into(),
+            xml_value: "#FF0000".into(),
+        };
+        assert!(p.namespace.contains("apple.com"));
     }
 }

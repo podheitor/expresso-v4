@@ -164,7 +164,13 @@ mod tests {
     }
 
     #[test]
-    fn percent_decode_no_encoding_unchanged() {
-        assert_eq!(percent_decode("simple-name.vcf"), "simple-name.vcf");
+    fn percent_decode_uppercase_hex() {
+        assert_eq!(percent_decode("%41%42%43"), "ABC");
+    }
+
+    #[test]
+    fn percent_decode_plus_not_decoded_as_space() {
+        let r = percent_decode("hello+world");
+        assert_eq!(r, "hello+world");
     }
 }

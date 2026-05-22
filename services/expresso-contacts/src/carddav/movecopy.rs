@@ -157,7 +157,12 @@ mod tests {
     }
 
     #[test]
-    fn strip_origin_relative_url_unchanged() {
-        assert_eq!(strip_origin("/carddav/user/book/card.vcf"), "/carddav/user/book/card.vcf");
+    fn strip_origin_deep_path_preserved() {
+        assert_eq!(strip_origin("https://h/a/b/c/d.vcf"), "/a/b/c/d.vcf");
+    }
+
+    #[test]
+    fn strip_origin_preserves_path_with_tilde() {
+        assert_eq!(strip_origin("https://svc/~user/book/card.vcf"), "/~user/book/card.vcf");
     }
 }

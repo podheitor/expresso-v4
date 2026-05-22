@@ -219,4 +219,10 @@ mod tests {
     fn empty_name_is_rejected() {
         assert!(validate_preset(&body("   ", 0)).is_err());
     }
+
+    #[test]
+    fn preset_body_flags_empty_is_valid() {
+        let b = PresetBody { name: "Starred".into(), flags: vec![] };
+        assert!(validate_preset(&b).is_ok());
+    }
 }

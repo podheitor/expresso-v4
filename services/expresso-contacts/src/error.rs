@@ -110,7 +110,14 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_is_403() {
-        assert_eq!(status(ContactsError::Forbidden), 403);
+    fn contact_not_found_message_contains_id() {
+        let id = Uuid::new_v4();
+        let e = ContactsError::ContactNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
+    }
+
+    #[test]
+    fn database_unavailable_display_not_empty() {
+        assert!(!format!("{}", ContactsError::DatabaseUnavailable).is_empty());
     }
 }

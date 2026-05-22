@@ -182,4 +182,10 @@ mod tests {
         let ev = ContactsEvent::ContactUpserted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
         assert_eq!(ev.kind_str(), "contact_upserted");
     }
+
+    #[test]
+    fn addressbook_created_kind_str() {
+        let ev = ContactsEvent::AddressbookCreated { tenant_id: tid(), addressbook_id: aid(), name: None };
+        assert_eq!(ev.kind_str(), "addressbook_created");
+    }
 }

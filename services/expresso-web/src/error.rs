@@ -103,4 +103,10 @@ mod tests {
         let e = WebError::Upstream("dns failure".into());
         assert!(e.to_string().starts_with("upstream error:"));
     }
+
+    #[test]
+    fn internal_error_display_starts_with_internal() {
+        let e = WebError::Internal("json parse failed".into());
+        assert!(e.to_string().starts_with("internal:"));
+    }
 }

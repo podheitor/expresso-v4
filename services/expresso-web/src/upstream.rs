@@ -196,4 +196,9 @@ mod tests {
     fn build_url_path_no_leading_slash() {
         assert_eq!(build_url("http://svc", "health"), "http://svchealth");
     }
+
+    #[test]
+    fn build_url_path_fragment_preserved() {
+        assert_eq!(build_url("http://svc", "/api/v1/test"), "http://svc/api/v1/test");
+    }
 }

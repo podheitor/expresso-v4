@@ -466,4 +466,9 @@ mod extra_tests {
     fn extract_angle_with_space_and_params() {
         assert_eq!(extract_angle("<user@domain.com> SIZE=1024"), "user@domain.com");
     }
+
+    #[test]
+    fn extract_angle_trims_leading_whitespace() {
+        assert_eq!(extract_angle("  <trimmed@ex.com>"), "trimmed@ex.com");
+    }
 }

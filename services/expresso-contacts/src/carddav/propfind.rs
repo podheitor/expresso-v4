@@ -401,4 +401,10 @@ mod tests {
         use axum::http::HeaderMap;
         assert!(matches!(parse_depth(&HeaderMap::new()), Depth::Zero));
     }
+
+    #[test]
+    fn depth_one_variant_exists() {
+        let headers = headers_with_depth("1");
+        assert!(matches!(parse_depth(&headers), Depth::One));
+    }
 }

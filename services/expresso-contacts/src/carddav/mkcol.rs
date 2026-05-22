@@ -165,4 +165,10 @@ mod tests {
         let b = r#"<D:prop><displayname>Work</displayname></D:prop>"#;
         assert_eq!(extract_prop(b, "nonexistent-prop"), None);
     }
+
+    #[test]
+    fn extract_prop_multiline_value_preserved() {
+        let b = "<displayname>Personal Contacts</displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Personal Contacts"));
+    }
 }

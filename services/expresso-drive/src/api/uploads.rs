@@ -469,4 +469,9 @@ mod tests {
         assert!(MAX_FILENAME_BYTES >= 100);
         assert!(MAX_MIME_BYTES >= 100);
     }
+
+    #[test]
+    fn sanitize_rejects_path_traversal() {
+        assert!(sanitize_name("../etc/passwd").is_err());
+    }
 }

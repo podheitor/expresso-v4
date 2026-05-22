@@ -393,4 +393,9 @@ mod tests {
         };
         assert!(validate(&v).is_ok());
     }
+
+    #[test]
+    fn max_subject_constant_is_rfc5322_max() {
+        assert_eq!(MAX_VACATION_SUBJECT_BYTES, 998);
+    }
 }

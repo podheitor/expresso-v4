@@ -280,4 +280,10 @@ if header :contains "Subject" "[spam]" {
         let j = serde_json::to_value(&r).unwrap();
         assert_eq!(j["enabled"], true);
     }
+
+    #[test]
+    fn sieve_rules_script_preserved() {
+        let r = SieveRules { enabled: false, script: "discard;".into() };
+        assert_eq!(r.script, "discard;");
+    }
 }

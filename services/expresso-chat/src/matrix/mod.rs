@@ -306,4 +306,9 @@ mod tests {
     fn localpart_no_at_returns_none() {
         assert_eq!(localpart_from_mxid("bot:matrix.org"), None);
     }
+
+    #[test]
+    fn localpart_empty_local_returns_none() {
+        assert_eq!(localpart_from_mxid("@:matrix.org"), None);
+    }
 }

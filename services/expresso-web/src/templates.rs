@@ -582,4 +582,11 @@ mod tests {
     fn human_size_zero_bytes() {
         assert_eq!(human_size(0), "0 B");
     }
+
+    #[test]
+    fn human_size_terabytes_scale() {
+        let tb = 1_099_511_627_776i64; // 1 TiB
+        let s = human_size(tb);
+        assert!(s.ends_with("GB") || s.ends_with("TB") || s.contains('.'));
+    }
 }

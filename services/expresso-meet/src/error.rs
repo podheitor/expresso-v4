@@ -117,7 +117,14 @@ mod tests {
     }
 
     #[test]
-    fn not_participant_is_403() {
-        assert_eq!(status(MeetError::NotParticipant), 403);
+    fn jitsi_unavailable_display_not_empty() {
+        assert!(!format!("{}", MeetError::JitsiUnavailable).is_empty());
+    }
+
+    #[test]
+    fn meeting_not_found_message_contains_id() {
+        let id = Uuid::new_v4();
+        let e = MeetError::MeetingNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
     }
 }

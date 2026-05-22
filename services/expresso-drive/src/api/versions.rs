@@ -380,17 +380,23 @@ mod tests {
     }
 
     #[test]
-    fn create_version_body_mime_type_optional() {
-        let b: CreateVersionBody = serde_json::from_str(r#"{"mime_type":"text/plain"}"#).unwrap();
-        assert_eq!(b.mime_type.as_deref(), Some("text/plain"));
+    fn create_version_body_storage_key_optional() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
+        assert_eq!(b.storage_key.as_deref(), Some("blobs/abc123"));
         assert!(b.size_bytes.is_none());
     }
 
     #[test]
     fn create_version_body_all_none_when_empty() {
         let b: CreateVersionBody = serde_json::from_str(r#"{}"#).unwrap();
-        assert!(b.mime_type.is_none());
         assert!(b.size_bytes.is_none());
         assert!(b.sha256.is_none());
+    }
+
+    #[test]
+    fn create_version_body_sha256_preserved() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"sha256":"abc123","size_bytes":1024}"#).unwrap();
+        assert_eq!(b.sha256.as_deref(), Some("abc123"));
+        assert_eq!(b.size_bytes, Some(1024));
     }
 }

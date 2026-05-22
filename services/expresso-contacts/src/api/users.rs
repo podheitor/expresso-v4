@@ -100,8 +100,14 @@ mod tests {
     }
 
     #[test]
-    fn user_query_email_with_plus_tag() {
-        let q: UserQuery = serde_json::from_str(r#"{"email":"user+tag@ex.com"}"#).unwrap();
-        assert_eq!(q.email.as_deref(), Some("user+tag@ex.com"));
+    fn user_query_email_unicode_preserved() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"hélio@example.com"}"#).unwrap();
+        assert!(q.email.as_deref().unwrap().contains("hélio"));
+    }
+
+    #[test]
+    fn user_query_empty_object_gives_none_email() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
     }
 }

@@ -16896,6 +16896,21 @@ mod tests {
         };
         assert!(validate_search_params(&mut params).is_some());
     }
+
+    #[test]
+    fn valid_params_pass_validation() {
+        let mut params = SearchParams {
+            q:                 "hello".into(),
+            tenant_id:         "00000000-0000-0000-0000-000000000001".into(),
+            limit:             10,
+            offset:            0,
+            facet:             None,
+            facet_granularity: None,
+            after_secs:        None,
+            before_secs:       None,
+        };
+        assert!(validate_search_params(&mut params).is_none());
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

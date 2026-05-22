@@ -1676,4 +1676,12 @@ mod tests {
         let (_, u) = ctx_of(&me);
         assert_eq!(u, "user-xyz");
     }
+
+    #[test]
+    fn ctx_of_returns_two_elements() {
+        let me = Me { tenant_id: "t3".into(), user_id: "u3".into() };
+        let (t, u) = ctx_of(&me);
+        assert!(!t.is_empty());
+        assert!(!u.is_empty());
+    }
 }

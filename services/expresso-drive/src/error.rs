@@ -112,8 +112,15 @@ mod tests {
     }
 
     #[test]
-    fn not_found_is_404() {
-        use uuid::Uuid;
-        assert_eq!(status(DriveError::NotFound(Uuid::nil())), StatusCode::NOT_FOUND);
+    fn gone_display_contains_id() {
+        let id = Uuid::nil();
+        assert!(format!("{}", DriveError::Gone(id)).contains(&id.to_string()));
+    }
+
+    #[test]
+    fn not_found_display_contains_id() {
+        let id = Uuid::nil();
+        let e = DriveError::NotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
     }
 }

@@ -778,4 +778,10 @@ mod tests {
         let f = sample_file();
         assert!(!f.name.is_empty());
     }
+
+    #[test]
+    fn drive_file_size_bytes_accessible() {
+        let f = sample_file();
+        assert!(f.size_bytes >= 0);
+    }
 }

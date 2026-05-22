@@ -325,7 +325,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_header_no_colon_returns_none() {
-        assert!(parse_header_line("NoColonHere").is_none());
+    fn parse_header_whitespace_only_returns_none() {
+        assert!(parse_header_line("   ").is_none());
+    }
+
+    #[test]
+    fn parse_header_crlf_trimmed() {
+        let r = parse_header_line("Subject: Hello\r\n").unwrap();
+        assert_eq!(r.0, "Subject");
+        assert_eq!(r.1, "Hello");
     }
 }

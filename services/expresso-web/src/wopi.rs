@@ -125,4 +125,11 @@ mod extra_tests {
         let tok = sign_token(b"key", "file", "tenant", "user", 3600);
         assert_eq!(tok.split('.').count(), 5);
     }
+
+    #[test]
+    fn build_iframe_url_contains_wopi_src_param() {
+        let url = build_iframe_url("https://collabora", "https://drive", "file1", "tok1");
+        assert!(url.contains("WOPISrc="));
+        assert!(url.contains("access_token="));
+    }
 }

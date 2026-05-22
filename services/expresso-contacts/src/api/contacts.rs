@@ -498,4 +498,9 @@ mod tests {
         let too_big = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
         assert!(validate_vcard(&too_big, MAX_CONTACT_VCARD_BYTES).is_err());
     }
+
+    #[test]
+    fn empty_vcard_rejected() {
+        assert!(validate_vcard("   ", MAX_CONTACT_VCARD_BYTES).is_err());
+    }
 }

@@ -150,4 +150,9 @@ mod tests {
     fn outcomes_list_contains_ok() {
         assert!(OUTCOMES.contains(&"ok"));
     }
+
+    #[test]
+    fn outcomes_list_contains_quota_exceeded() {
+        assert!(OUTCOMES.contains(&"quota_exceeded"));
+    }
 }

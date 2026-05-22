@@ -482,4 +482,17 @@ mod tests {
         let s = human_summary(&inv, Method::Request);
         assert!(s.contains("Sprint Review"));
     }
+
+    #[test]
+    fn human_summary_not_empty() {
+        let inv = EventInvite {
+            uid: "u5".into(), sequence: 1, summary: "Daily".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-08-01 09:00 UTC),
+            dtend:   time::macros::datetime!(2026-08-01 09:15 UTC),
+            organizer_email: "lead@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        assert!(!human_summary(&inv, Method::Cancel).is_empty());
+    }
 }

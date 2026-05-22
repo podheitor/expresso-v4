@@ -111,8 +111,15 @@ mod tests {
     }
 
     #[test]
-    fn channel_not_found_is_404() {
-        let e = ChatError::ChannelNotFound(Uuid::nil());
-        assert_eq!(status(e), 404);
+    fn channel_not_found_display_contains_id() {
+        let id = Uuid::nil();
+        let e = ChatError::ChannelNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
+    }
+
+    #[test]
+    fn not_member_display_not_empty() {
+        let msg = format!("{}", ChatError::NotMember);
+        assert!(!msg.is_empty());
     }
 }

@@ -302,4 +302,11 @@ mod tests {
         assert!(s.contains("b@x.com"));
         assert!(s.contains("c@x.com"));
     }
+
+    #[test]
+    fn build_raw_from_addr_appears_in_output() {
+        let r = req("sender@test.com", None, None, None);
+        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        assert!(s.contains("sender@test.com"));
+    }
 }

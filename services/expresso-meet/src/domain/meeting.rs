@@ -450,7 +450,14 @@ mod tests {
     }
 
     #[test]
-    fn participant_role_moderator_serializes() {
-        assert_eq!(serde_json::to_string(&ParticipantRole::Moderator).unwrap(), r#""moderator""#);
+    fn participant_role_moderator_deserializes() {
+        let r: ParticipantRole = serde_json::from_str(r#""moderator""#).unwrap();
+        assert!(matches!(r, ParticipantRole::Moderator));
+    }
+
+    #[test]
+    fn participant_role_participant_deserializes() {
+        let r: ParticipantRole = serde_json::from_str(r#""participant""#).unwrap();
+        assert!(matches!(r, ParticipantRole::Participant));
     }
 }

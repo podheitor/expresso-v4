@@ -132,4 +132,10 @@ mod tests {
         assert_eq!(command_label("DATA"), "DATA");
         assert_eq!(command_label("QUIT"), "QUIT");
     }
+
+    #[test]
+    fn starttls_maps_correctly() {
+        assert_eq!(command_label("STARTTLS"), "STARTTLS");
+        assert_eq!(command_label("starttls"), "STARTTLS");
+    }
 }

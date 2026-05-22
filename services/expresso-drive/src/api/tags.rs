@@ -1517,4 +1517,11 @@ mod tests {
         let b: BulkTagsBody = serde_json::from_str(r#"{"tags":[]}"#).unwrap();
         assert!(b.tags.is_empty());
     }
+
+    #[test]
+    fn bulk_tags_body_multiple_tags_preserved() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["urgent","review","archive"]}"#).unwrap();
+        assert_eq!(b.tags.len(), 3);
+        assert_eq!(b.tags[0], "urgent");
+    }
 }

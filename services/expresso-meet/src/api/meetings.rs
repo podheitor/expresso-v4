@@ -1418,6 +1418,11 @@ mod tests {
     fn room_name_empty_is_invalid() {
         assert!(!valid_room_name(""));
     }
+
+    #[test]
+    fn room_name_with_hyphens_valid() {
+        assert!(valid_room_name("team-weekly-sync"));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

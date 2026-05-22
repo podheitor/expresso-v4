@@ -239,4 +239,10 @@ mod tests {
         let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":0}"#).unwrap();
         assert_eq!(b.expires_in_seconds, Some(0));
     }
+
+    #[test]
+    fn create_body_missing_expiry_is_none() {
+        let b: CreateBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.expires_in_seconds.is_none());
+    }
 }

@@ -294,4 +294,9 @@ mod tests {
         };
         assert_eq!(lock.file_id, fid);
     }
+
+    #[test]
+    fn lock_ttl_is_positive() {
+        assert!(LOCK_TTL > Duration::ZERO);
+    }
 }

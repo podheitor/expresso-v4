@@ -350,4 +350,10 @@ mod tests {
         let a = sample();
         assert!(!a.name.is_empty());
     }
+
+    #[test]
+    fn new_addressbook_is_default_false_by_default() {
+        let n: NewAddressbook = serde_json::from_str(r#"{"name":"Work"}"#).unwrap();
+        assert!(!n.is_default);
+    }
 }

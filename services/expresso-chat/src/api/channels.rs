@@ -329,4 +329,11 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.name, "engineering");
     }
+
+    #[test]
+    fn create_body_invite_empty_by_default() {
+        let json = r#"{"name":"general"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.invite.is_empty());
+    }
 }

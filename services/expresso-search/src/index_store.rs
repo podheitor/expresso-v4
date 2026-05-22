@@ -1353,4 +1353,19 @@ mod tests {
         let hits = store.search("", TENANT_A, 10, 0).unwrap();
         assert_eq!(hits.len(), 1);
     }
+
+    #[test]
+    fn index_doc_all_optional_fields_are_none_by_default() {
+        let doc = IndexDoc {
+            document_id: "x".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert!(doc.subject.is_none());
+        assert!(doc.received_at.is_none());
+    }
 }

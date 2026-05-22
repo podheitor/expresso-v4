@@ -88,4 +88,9 @@ mod tests {
         assert!(DEFAULT_INTERVAL_HOURS > 0);
         assert!(DEFAULT_RETENTION_DAYS > 0);
     }
+
+    #[test]
+    fn retention_days_is_thirty() {
+        assert_eq!(DEFAULT_RETENTION_DAYS, 30);
+    }
 }

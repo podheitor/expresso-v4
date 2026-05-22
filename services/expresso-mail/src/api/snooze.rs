@@ -292,4 +292,18 @@ mod tests {
         };
         assert!(r.woken_at.is_none());
     }
+
+    #[test]
+    fn snooze_record_serializes_snooze_until_as_rfc3339() {
+        use time::macros::datetime;
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-09-01 08:00:00 UTC),
+            snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
+            woken_at: None,
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("2026-09-01T08:00:00Z"));
+    }
 }

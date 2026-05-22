@@ -211,4 +211,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(!s.storage_key.is_empty());
     }
+
+    #[test]
+    fn session_not_expired_when_future() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(!s.is_expired());
+    }
 }

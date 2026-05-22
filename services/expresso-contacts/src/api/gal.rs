@@ -336,25 +336,38 @@ mod tests {
     }
 
     #[test]
-    fn save_request_minimal_deser() {
-        let json = r#"{"full_name":"Bob"}"#;
-        let r: SaveRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(r.full_name, "Bob");
+    fn save_request_all_none_when_empty_object() {
+        let r: SaveRequest = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(r.user_id.is_none());
         assert!(r.email.is_none());
+        assert!(r.addressbook_id.is_none());
     }
 
     #[test]
-    fn save_request_with_email_set() {
-        let json = r#"{"full_name":"Alice","email":"a@ex.com"}"#;
-        let r: SaveRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(r.full_name, "Alice");
+    fn save_request_email_preserved() {
+        let r: SaveRequest = serde_json::from_str(r#"{"email":"a@ex.com"}"#).unwrap();
         assert_eq!(r.email.as_deref(), Some("a@ex.com"));
+        assert!(r.user_id.is_none());
     }
 
     #[test]
-    fn save_request_full_name_unicode() {
-        let json = r#"{"full_name":"José da Silva"}"#;
-        let r: SaveRequest = serde_json::from_str(json).unwrap();
-        assert!(r.full_name.contains("José"));
+    fn save_request_addressbook_id_preserved() {
+        let id = Uuid::nil();
+        let json = format!(r#"{{"addressbook_id":"{}"}}"#, id);
+        let r: SaveRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.addressbook_id, Some(id));
+    }
+
+    #[test]
+    fn gal_entry_contact_full_name_in_json() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          None,
+            full_name:      Some("Carol".into()),
+            organization:   None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("Carol"));
     }
 }
