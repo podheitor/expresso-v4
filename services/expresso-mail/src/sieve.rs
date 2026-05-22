@@ -164,4 +164,42 @@ mod tests {
         assert_eq!(actions.len(), 1);
         assert!(matches!(&actions[0], FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn invalid_syntax_does_not_panic() {
+        // Malformed script must never panic — must degrade to Keep.
+        let actions = evaluate(b"this is not valid sieve syntax {{{", MSG.as_bytes());
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(&actions[0], FilterAction::Keep { .. }));
+    }
+
+    #[test]
+    fn empty_message_does_not_panic() {
+        // Empty raw_message must never panic — sieve should produce Keep.
+        let actions = evaluate(b"keep;", b"");
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(&actions[0], FilterAction::Keep { .. }));
+    }
+
+    #[test]
+    fn binary_garbage_does_not_panic() {
+        // Arbitrary bytes in both script and message must not cause a panic.
+        let garbage = &[0u8, 0xFF, 0x80, 0x01, b'\n', b'\r'] as &[u8];
+        let actions = evaluate(garbage, garbage);
+        // Whatever action is returned, it must not panic.
+        assert!(!actions.is_empty());
+    }
+
+    #[test]
+    fn redirect_action() {
+        let script = b"redirect \"relay@example.com\";";
+        let actions = evaluate(script, MSG.as_bytes());
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            FilterAction::Redirect { address } => {
+                assert_eq!(address, "relay@example.com");
+            }
+            other => panic!("expected Redirect, got {other:?}"),
+        }
+    }
 }

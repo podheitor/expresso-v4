@@ -21,6 +21,8 @@ mod sieve;
 mod scanner;
 mod smtp;
 mod state;
+#[cfg(feature = "fuzzing")]
+pub mod fuzz_entry;
 
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{signal, task::JoinSet};

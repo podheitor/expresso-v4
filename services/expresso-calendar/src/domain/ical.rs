@@ -330,4 +330,45 @@ END:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert!(ev.dtstamp.is_none());
     }
+
+    #[test]
+    fn unknown_property_is_ignored() {
+        let raw = "BEGIN:VEVENT\r\nUID:u1\r\nX-CUSTOM-PROP:arbitrary value\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.uid, "u1");
+    }
+
+    #[test]
+    fn empty_input_returns_error() {
+        assert!(parse_vevent("").is_err());
+    }
+
+    #[test]
+    fn missing_dtstart_is_accepted() {
+        // DTSTART is optional in our indexing model (stored raw; only indexed when present).
+        let raw = "BEGIN:VEVENT\r\nUID:u2\r\nSUMMARY:No start\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert!(ev.dtstart.is_none());
+    }
+
+    #[test]
+    fn very_long_summary_does_not_panic() {
+        // Simulate an allocation-bomb attempt: a SUMMARY value of 256 KiB.
+        let big_value = "A".repeat(256 * 1024);
+        let raw = format!("BEGIN:VEVENT\r\nUID:u3\r\nSUMMARY:{big_value}\r\nEND:VEVENT\r\n");
+        let ev = parse_vevent(&raw).unwrap();
+        assert_eq!(ev.summary.as_deref().map(|s| s.len()), Some(256 * 1024));
+    }
+
+    #[test]
+    fn sequence_defaults_to_zero_on_invalid() {
+        let raw = "BEGIN:VEVENT\r\nUID:u4\r\nSEQUENCE:not-a-number\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.sequence, 0);
+    }
+
+    #[test]
+    fn etag_differs_for_different_inputs() {
+        assert_ne!(compute_etag("one"), compute_etag("two"));
+    }
 }

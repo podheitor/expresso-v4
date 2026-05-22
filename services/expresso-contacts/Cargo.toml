@@ -43,5 +43,12 @@ expresso-observability = { workspace = true }
 expresso-auth-client = { path = "../../libs/expresso-auth-client", package = "expresso-auth-client" }
 sqlx = { workspace = true }
 
+[features]
+fuzzing = ["dep:tempfile"]
+
+[dependencies.tempfile]
+version  = "3"
+optional = true
+
 [dev-dependencies]
 tokio-test = "0.4"

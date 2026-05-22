@@ -150,4 +150,41 @@ Content-Type: text/plain\r\n\r\nhello world\r\n";
         assert!(!has_method_reply("METHOD:REQUEST"));
         assert!(!has_method_reply("X-METHOD:REPLY"));
     }
+
+    #[test]
+    fn empty_body_returns_none() {
+        assert!(extract_imip_reply(b"").is_none());
+    }
+
+    #[test]
+    fn truncated_headers_returns_none() {
+        // No CRLF CRLF header/body separator — mail-parser receives incomplete input.
+        assert!(extract_imip_reply(b"From: a@b\r\nContent-Type: text/calendar").is_none());
+    }
+
+    #[test]
+    fn cancel_method_returns_none() {
+        // METHOD:CANCEL must not be forwarded as a REPLY.
+        let raw = b"From: a@b\r\nTo: c@d\r\nSubject: cancel\r\n\
+Content-Type: text/calendar; method=CANCEL; charset=utf-8\r\n\
+\r\n\
+BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:CANCEL\r\nBEGIN:VEVENT\r\nUID:c1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(extract_imip_reply(raw).is_none());
+    }
+
+    #[test]
+    fn method_with_params_still_matched() {
+        // METHOD with X-extension parameter before the colon value.
+        assert!(has_method_reply("METHOD;X-TRANSPORT=email:REPLY"));
+    }
+
+    #[test]
+    fn no_method_line_returns_none() {
+        // A text/calendar part without any METHOD line must not match.
+        let raw = b"From: a@b\r\nTo: c@d\r\n\
+Content-Type: text/calendar; charset=utf-8\r\n\
+\r\n\
+BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert!(extract_imip_reply(raw).is_none());
+    }
 }

@@ -7,6 +7,8 @@ mod error;
 mod state;
 mod events;
 mod imip_publish;
+#[cfg(feature = "fuzzing")]
+pub mod fuzz_entry;
 
 use std::{env, net::SocketAddr, sync::Arc};
 

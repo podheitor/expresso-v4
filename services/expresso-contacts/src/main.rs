@@ -6,6 +6,8 @@ mod domain;
 mod error;
 mod events;
 mod state;
+#[cfg(feature = "fuzzing")]
+pub mod fuzz_entry;
 
 use std::{env, net::SocketAddr, sync::Arc};
 

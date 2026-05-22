@@ -200,4 +200,33 @@ mod tests {
         let v = parse(folded).unwrap();
         assert_eq!(v.full_name.as_deref(), Some("Very Long Continued Name"));
     }
+
+    #[test]
+    fn empty_input_returns_error() {
+        assert!(parse("").is_err());
+    }
+
+    #[test]
+    fn unknown_property_ignored() {
+        let raw = "BEGIN:VCARD\r\nUID:u2\r\nFN:X\r\nX-CUSTOM:whatever\r\nEND:VCARD\r\n";
+        let v = parse(raw).unwrap();
+        assert_eq!(v.uid, "u2");
+    }
+
+    #[test]
+    fn very_long_note_does_not_panic() {
+        // Allocation-bomb guard: NOTE of 256 KiB must not panic.
+        let note = "Z".repeat(256 * 1024);
+        let raw = format!("BEGIN:VCARD\r\nUID:u3\r\nFN:A\r\nNOTE:{note}\r\nEND:VCARD\r\n");
+        // parse() must not panic regardless of whether it stores NOTE.
+        let _ = parse(&raw);
+    }
+
+    #[test]
+    fn missing_fn_is_tolerated() {
+        // FN is REQUIRED per RFC 6350 but parsers should not panic on omission.
+        let raw = "BEGIN:VCARD\r\nUID:u4\r\nEND:VCARD\r\n";
+        // Either Ok (with empty full_name) or Err — must not panic.
+        let _ = parse(raw);
+    }
 }

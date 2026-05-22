@@ -1,0 +1,36 @@
+[package]
+name    = "expresso-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Isolate from the parent workspace so `cargo fuzz` can manage its own
+# nightly toolchain requirements without affecting the main workspace build.
+[workspace]
+
+[dependencies]
+libfuzzer-sys     = "0.4"
+expresso-mail     = { path = "../services/expresso-mail",     features = ["fuzzing"] }
+expresso-calendar = { path = "../services/expresso-calendar", features = ["fuzzing"] }
+expresso-contacts = { path = "../services/expresso-contacts", features = ["fuzzing"] }
+
+[profile.release]
+opt-level     = 3
+debug         = true   # keep symbols for crash symbolization
+overflow-checks = true
+
+[[bin]]
+name = "fuzz_imip"
+path = "fuzz_targets/fuzz_imip.rs"
+
+[[bin]]
+name = "fuzz_sieve"
+path = "fuzz_targets/fuzz_sieve.rs"
+
+[[bin]]
+name = "fuzz_ical"
+path = "fuzz_targets/fuzz_ical.rs"
+
+[[bin]]
+name = "fuzz_vcard"
+path = "fuzz_targets/fuzz_vcard.rs"

@@ -53,3 +53,24 @@ jobs:
               --manifest-path "libs/${crate}/Cargo.toml" \
               -- --test-threads=1 || true
           done
+
+  fuzz-smoke:
+    name: Fuzz smoke (5s per target)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked --quiet
+      - name: Build fuzz targets
+        working-directory: fuzz
+        run: cargo +nightly fuzz build
+      - name: Smoke-run each target (5 s)
+        working-directory: fuzz
+        run: |
+          for target in fuzz_imip fuzz_sieve fuzz_ical fuzz_vcard; do
+            cargo +nightly fuzz run "$target" -- -max_total_time=5
+          done
