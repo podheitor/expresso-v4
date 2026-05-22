@@ -118,4 +118,17 @@ mod tests {
         let c = cfg("i", "c", "r", None, None, None);
         assert_eq!(c.http_timeout.as_secs(), 5);
     }
+
+    #[test]
+    fn issuer_field_preserved() {
+        let c = cfg("https://kc/realms/demo", "cli", "https://app/cb", None, None, None);
+        assert_eq!(c.issuer, "https://kc/realms/demo");
+        assert_eq!(c.client_id, "cli");
+    }
+
+    #[test]
+    fn redirect_uri_template_stored_when_provided() {
+        let c = cfg("i", "cl", "r", Some("https://{host}/cb".into()), None, None);
+        assert_eq!(c.redirect_uri_template.as_deref(), Some("https://{host}/cb"));
+    }
 }

@@ -102,4 +102,16 @@ mod tests {
         assert_eq!(command_label(""), "OTHER");
         assert_eq!(command_label("   "), "OTHER");
     }
+
+    #[test]
+    fn lhlo_maps_directly() {
+        assert_eq!(command_label("LHLO"), "LHLO");
+        assert_eq!(command_label("lhlo"), "LHLO");
+    }
+
+    #[test]
+    fn starttls_and_auth_map() {
+        assert_eq!(command_label("STARTTLS"), "STARTTLS");
+        assert_eq!(command_label("AUTH"), "AUTH");
+    }
 }

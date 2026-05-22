@@ -240,4 +240,29 @@ mod tests {
         // RFC3339 has 'T' separator between date and time
         assert!(s.contains('T'));
     }
+
+    #[test]
+    fn fmt_opt_ts_midnight_utc() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-01-01 00:00:00 UTC);
+        let s = fmt_opt_ts(Some(ts));
+        assert!(s.starts_with("2026-01-01"));
+    }
+
+    #[test]
+    fn counter_row_debug_contains_tenant_id() {
+        let row = CounterRow {
+            id: "aaa".into(),
+            tenant_id: "bbb".into(),
+            event_id: "ccc".into(),
+            event_summary: "Standup".into(),
+            attendee_email: "a@ex.com".into(),
+            proposed_dtstart: "2026-06-01T09:00:00Z".into(),
+            proposed_dtend:   "2026-06-01T10:00:00Z".into(),
+            received_sequence: "1".into(),
+            comment: None,
+            created_at_fmt: "2026-05-22T08:00:00Z".into(),
+        };
+        assert!(format!("{row:?}").contains("bbb"));
+    }
 }

@@ -91,4 +91,16 @@ mod tests {
         let tag = "x".repeat(100);
         assert_eq!(tag.len(), 100);
     }
+
+    #[test]
+    fn tag_string_empty_is_valid_rust_string() {
+        let tag = "".to_string();
+        assert!(tag.is_empty());
+    }
+
+    #[test]
+    fn tag_type_name_accessible() {
+        let name = std::any::type_name::<TagRepo<'_>>();
+        assert!(name.contains("TagRepo"));
+    }
 }

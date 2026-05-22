@@ -241,4 +241,16 @@ mod tests {
         assert!(!is_safe_local_redirect("inbox"));
         assert!(!is_safe_local_redirect("./inbox"));
     }
+
+    #[test]
+    fn accepts_path_with_query_and_fragment() {
+        assert!(is_safe_local_redirect("/mail?folder=INBOX&uid=42"));
+        assert!(is_safe_local_redirect("/calendar#week-view"));
+    }
+
+    #[test]
+    fn rejects_http_and_https_absolute() {
+        assert!(!is_safe_local_redirect("http://evil.com/path"));
+        assert!(!is_safe_local_redirect("https://evil.com/path"));
+    }
 }

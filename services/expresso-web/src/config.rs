@@ -129,4 +129,26 @@ mod tests {
         };
         assert_eq!(_b.auth, "http://localhost:8012");
     }
+
+    #[test]
+    fn wopi_is_enabled_requires_non_empty_secret() {
+        let w = Wopi {
+            secret: "".into(),
+            collabora_url: "http://collabora:9980".into(),
+            drive_url: "http://drive:8004".into(),
+            token_ttl_secs: 3600,
+        };
+        assert!(!w.is_enabled());
+    }
+
+    #[test]
+    fn wopi_is_enabled_with_secret() {
+        let w = Wopi {
+            secret: "mysecret".into(),
+            collabora_url: "http://collabora:9980".into(),
+            drive_url: "http://drive:8004".into(),
+            token_ttl_secs: 3600,
+        };
+        assert!(w.is_enabled());
+    }
 }
