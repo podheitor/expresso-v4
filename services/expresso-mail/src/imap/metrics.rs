@@ -231,4 +231,10 @@ mod tests {
         assert_eq!(command_label("LIST"), "LIST");
         assert_eq!(command_label("list"), "LIST");
     }
+
+    #[test]
+    fn lsub_command_maps_correctly() {
+        assert_eq!(command_label("LSUB"), "LSUB");
+        assert_eq!(command_label("lsub"), "LSUB");
+    }
 }

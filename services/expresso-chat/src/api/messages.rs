@@ -204,4 +204,9 @@ mod tests {
     fn max_message_body_bytes_constant_is_positive() {
         assert!(MAX_MESSAGE_BODY_BYTES > 0);
     }
+
+    #[test]
+    fn default_limit_is_50() {
+        assert_eq!(DEFAULT_LIST_LIMIT, 50);
+    }
 }

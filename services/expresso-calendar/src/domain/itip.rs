@@ -516,4 +516,16 @@ END:VCALENDAR\r\n";
         assert_eq!(a.rsvp, Some(true));
         assert_eq!(a.role.as_deref(), Some("OPT-PARTICIPANT"));
     }
+
+    #[test]
+    fn attendee_rsvp_false_preserved() {
+        let a = Attendee {
+            email:    "dave@example.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: Some("ACCEPTED".into()),
+            rsvp:     Some(false),
+        };
+        assert_eq!(a.rsvp, Some(false));
+    }
 }

@@ -1237,4 +1237,11 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("CONFIRMED"));
     }
+
+    #[test]
+    fn event_organizer_email_preserved_in_serde() {
+        let e = sample();
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("org@example.com"));
+    }
 }

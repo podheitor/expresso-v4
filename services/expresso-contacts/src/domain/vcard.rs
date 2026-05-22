@@ -286,4 +286,10 @@ mod tests {
         let v = build_vcard("u2", "Bob", None, None, None, None);
         assert!(v.starts_with("BEGIN:VCARD"));
     }
+
+    #[test]
+    fn build_vcard_ends_with_vcard_footer() {
+        let v = build_vcard("u3", "Carol", None, None, None, None);
+        assert!(v.trim_end().ends_with("END:VCARD"));
+    }
 }

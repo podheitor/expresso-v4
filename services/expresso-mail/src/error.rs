@@ -174,4 +174,9 @@ mod tests {
         let e = MailError::SmtpProtocol("550".into());
         assert!(format!("{e}").contains("550"));
     }
+
+    #[test]
+    fn invalid_message_is_400_status() {
+        assert_eq!(status(MailError::InvalidMessage("bad mime".into())), 400);
+    }
 }

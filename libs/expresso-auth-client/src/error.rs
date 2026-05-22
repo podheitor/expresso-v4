@@ -135,4 +135,10 @@ mod tests {
         let e = AuthError::MissingBearer;
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn kid_not_found_none_display_is_not_empty() {
+        let e = AuthError::KidNotFound(None);
+        assert!(!e.to_string().is_empty());
+    }
 }

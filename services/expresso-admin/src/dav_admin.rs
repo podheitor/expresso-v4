@@ -443,4 +443,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.description, "");
     }
+
+    #[test]
+    fn to_dav_row_tenant_name_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Acme Corp".into(), "a@b.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.tenant_name, "Acme Corp");
+    }
 }

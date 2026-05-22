@@ -443,4 +443,10 @@ mod tests {
         let s = render_script(&v);
         assert!(s.contains("vacation"));
     }
+
+    #[test]
+    fn vacation_default_interval_days_is_seven() {
+        let v = Vacation::default();
+        assert_eq!(v.interval_days, 7);
+    }
 }

@@ -280,4 +280,15 @@ mod tests {
         };
         assert_eq!(w.token_ttl_secs, 7200);
     }
+
+    #[test]
+    fn wopi_drive_url_preserved() {
+        let w = Wopi {
+            secret:         "k".into(),
+            collabora_url:  "https://c".into(),
+            drive_url:      "http://drive:8004".into(),
+            token_ttl_secs: 3600,
+        };
+        assert_eq!(w.drive_url, "http://drive:8004");
+    }
 }

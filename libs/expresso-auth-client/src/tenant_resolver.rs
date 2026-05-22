@@ -169,4 +169,12 @@ mod tests {
         let r = TenantResolver::parse("a.example.com:realm1,b.example.com:realm2");
         assert_eq!(r.len(), 2);
     }
+
+    #[test]
+    fn hosts_iterator_yields_all_normalized_hosts() {
+        let r = TenantResolver::parse("Alpha.Local:realm_a,Beta.Local:realm_b");
+        let mut hosts: Vec<&str> = r.hosts().collect();
+        hosts.sort();
+        assert_eq!(hosts, vec!["alpha.local", "beta.local"]);
+    }
 }

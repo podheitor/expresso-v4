@@ -217,4 +217,9 @@ mod tests {
         let r = percent_decode("%00");
         assert_eq!(r, "\0");
     }
+
+    #[test]
+    fn percent_decode_tilde_passthrough() {
+        assert_eq!(percent_decode("~user"), "~user");
+    }
 }

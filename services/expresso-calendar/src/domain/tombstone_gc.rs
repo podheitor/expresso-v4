@@ -139,4 +139,10 @@ mod tests {
         let _: i32 = DEFAULT_RETENTION_DAYS;
         assert!(DEFAULT_RETENTION_DAYS > 0);
     }
+
+    #[test]
+    fn interval_hours_type_fits_u64() {
+        let _: u64 = DEFAULT_INTERVAL_HOURS;
+        assert!(DEFAULT_INTERVAL_HOURS > 0);
+    }
 }

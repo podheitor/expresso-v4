@@ -664,4 +664,10 @@ mod tests {
         let claims = verify_token(b"key", &tok, fid).unwrap();
         assert_ne!(claims.tenant_id, fid);
     }
+
+    #[test]
+    fn sign_token_has_five_dot_separated_parts() {
+        let tok = sign_token(b"key", Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 60);
+        assert_eq!(tok.split('.').count(), 5);
+    }
 }

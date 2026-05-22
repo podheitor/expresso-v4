@@ -1737,4 +1737,11 @@ mod tests {
         assert_eq!(v.len(), 1);
         assert_eq!(v[0], "solo@example.com");
     }
+
+    #[test]
+    fn ctx_of_tenant_and_user_are_independent() {
+        let me = Me { tenant_id: "t1".into(), user_id: "u1".into() };
+        let (t, u) = ctx_of(&me);
+        assert_ne!(t, u);
+    }
 }

@@ -354,4 +354,10 @@ mod tests {
     fn cache_key_alice_and_bob_same_pass_are_not_equal() {
         assert_ne!(cache_key("alice", "pass"), cache_key("bob", "pass"));
     }
+
+    #[test]
+    fn kc_basic_error_invalid_credentials_display_not_empty() {
+        let e = KcBasicError::InvalidCredentials;
+        assert!(!e.to_string().is_empty());
+    }
 }

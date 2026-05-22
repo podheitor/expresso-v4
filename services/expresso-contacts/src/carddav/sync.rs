@@ -277,4 +277,9 @@ mod tests {
         let tok = format!("urn:expresso:ctag:{}", i64::MAX);
         assert_eq!(parse_token_value(&tok), Some(i64::MAX));
     }
+
+    #[test]
+    fn parse_token_value_one_is_some() {
+        assert_eq!(parse_token_value("urn:expresso:ctag:1"), Some(1));
+    }
 }

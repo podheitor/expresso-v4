@@ -184,4 +184,10 @@ mod tests {
         let err = MultiRealmValidator::new("https://idp/oidc", "svc").unwrap_err();
         assert!(matches!(err, crate::error::AuthError::Config(_)));
     }
+
+    #[test]
+    fn audience_is_stored_verbatim() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "expresso-dav").unwrap();
+        assert_eq!(m.audience(), "expresso-dav");
+    }
 }

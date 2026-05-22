@@ -193,4 +193,10 @@ mod tests {
         assert_eq!(q.used_bytes, 0);
         assert!(q.quota_bytes.is_none());
     }
+
+    #[test]
+    fn quota_dto_used_above_quota_detectable() {
+        let q = QuotaDto { used_bytes: 2048, quota_bytes: Some(1024) };
+        assert!(q.used_bytes > q.quota_bytes.unwrap());
+    }
 }

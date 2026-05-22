@@ -152,4 +152,11 @@ mod tests {
         let resp = WebError::Upstream("gone".into()).into_response();
         assert_eq!(resp.status().as_u16(), 500);
     }
+
+    #[test]
+    fn internal_error_status_as_u16_is_500() {
+        use axum::response::IntoResponse;
+        let resp = WebError::Internal("crash".into()).into_response();
+        assert_eq!(resp.status().as_u16(), 500);
+    }
 }

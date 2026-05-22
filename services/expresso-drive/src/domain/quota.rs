@@ -420,6 +420,13 @@ mod tests {
         let fq = FolderQuota { folder_id: fid, max_bytes: 1024, used_bytes: 0 };
         assert_eq!(fq.folder_id, fid);
     }
+
+    #[test]
+    fn quota_used_bytes_plus_extra_at_boundary() {
+        let q = Quota { max_bytes: 100, used_bytes: 99 };
+        assert!(q.fits(1));
+        assert!(!q.fits(2));
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

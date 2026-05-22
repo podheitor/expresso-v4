@@ -458,4 +458,11 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": ["12345"]}});
         assert_eq!(extract_tenant_id(&u).as_deref(), Some("12345"));
     }
+
+    #[test]
+    fn extract_tenant_id_uuid_string_returned_as_is() {
+        let id = "550e8400-e29b-41d4-a716-446655440000";
+        let u = json!({"attributes": {"tenant_id": [id]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some(id));
+    }
 }

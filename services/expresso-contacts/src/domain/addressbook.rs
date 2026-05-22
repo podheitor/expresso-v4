@@ -409,4 +409,10 @@ mod tests {
         let u = UpdateAddressbook { name: None, description: None, is_default: Some(true) };
         assert_eq!(u.is_default, Some(true));
     }
+
+    #[test]
+    fn update_addressbook_is_default_some_false() {
+        let u = UpdateAddressbook { name: None, description: None, is_default: Some(false) };
+        assert_eq!(u.is_default, Some(false));
+    }
 }

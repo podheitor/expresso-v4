@@ -302,4 +302,14 @@ mod tests {
         assert_eq!(c.local_name, p.local_name);
         assert_eq!(c.xml_value, p.xml_value);
     }
+
+    #[test]
+    fn dead_prop_debug_contains_xml_value() {
+        let p = DeadProp {
+            namespace: "urn:ns:test".into(),
+            local_name: "token".into(),
+            xml_value: "secret-42".into(),
+        };
+        assert!(format!("{p:?}").contains("secret-42"));
+    }
 }

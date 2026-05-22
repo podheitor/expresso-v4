@@ -230,4 +230,14 @@ mod tests {
         };
         assert!(t.refresh_token.is_none());
     }
+
+    #[test]
+    fn refresh_request_client_id_preserved() {
+        let r = RefreshRequest {
+            grant_type:    "refresh_token",
+            refresh_token: "rt",
+            client_id:     "my-client",
+        };
+        assert_eq!(r.client_id, "my-client");
+    }
 }

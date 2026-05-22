@@ -385,4 +385,9 @@ mod tests {
         };
         assert!(lock.acquired_at < lock.expires_at);
     }
+
+    #[test]
+    fn lock_ttl_in_seconds_is_1800() {
+        assert_eq!(LOCK_TTL.whole_seconds(), 1800);
+    }
 }

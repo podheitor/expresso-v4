@@ -3912,4 +3912,11 @@ Attachment\r\n\
         let msg = b"From: a@b\r\nContent-Type: text/plain\r\n\r\nno boundary here\r\n";
         assert!(mime_boundary(msg).is_none());
     }
+
+    #[test]
+    fn part1_and_part2_indices_are_distinct() {
+        let body1 = mime_part_body(MULTIPART_MSG, 1);
+        let body2 = mime_part_body(MULTIPART_MSG, 2);
+        assert_ne!(body1, body2);
+    }
 }

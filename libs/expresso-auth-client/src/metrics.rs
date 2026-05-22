@@ -137,4 +137,9 @@ mod tests {
     fn result_label_missing_bearer_variant_returns_missing_bearer_str() {
         assert_eq!(result_label(&AuthError::MissingBearer), "missing_bearer");
     }
+
+    #[test]
+    fn result_label_kid_not_found_none_is_unknown_key() {
+        assert_eq!(result_label(&AuthError::KidNotFound(None)), "unknown_key");
+    }
 }

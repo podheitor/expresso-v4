@@ -16948,6 +16948,12 @@ mod tests {
     fn default_limit_is_less_than_max_limit() {
         assert!(DEFAULT_LIMIT < MAX_LIMIT);
     }
+
+    #[test]
+    fn offset_default_is_zero_in_helper() {
+        let params = p("hello", DEFAULT_LIMIT);
+        assert_eq!(params.offset, 0);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

@@ -1023,4 +1023,11 @@ mod extra_tests {
         let refs = parse_references("bare-id-no-brackets");
         assert!(!refs.is_empty());
     }
+
+    #[test]
+    fn normalize_message_id_non_empty_result() {
+        let id = normalize_message_id("<msg001@example.com>");
+        assert!(id.is_some());
+        assert!(!id.unwrap().is_empty());
+    }
 }

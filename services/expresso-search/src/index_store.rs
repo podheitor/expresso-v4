@@ -1466,4 +1466,18 @@ mod tests {
         };
         assert_eq!(doc.document_id, "unique-doc-id");
     }
+
+    #[test]
+    fn index_doc_from_addr_none_by_default() {
+        let doc = IndexDoc {
+            document_id: "d6".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert!(doc.from_addr.is_none());
+    }
 }

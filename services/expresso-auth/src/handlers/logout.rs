@@ -209,4 +209,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok=padded=="}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("tok=padded=="));
     }
+
+    #[test]
+    fn logout_query_hint_with_url_encoded_chars_preserved() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok%2Fval"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("tok%2Fval"));
+    }
 }

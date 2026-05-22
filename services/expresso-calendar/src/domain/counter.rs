@@ -399,4 +399,19 @@ mod tests {
         };
         assert_eq!(p.tenant_id, tid);
     }
+
+    #[test]
+    fn counter_proposal_event_id_preserved() {
+        use time::macros::datetime;
+        let eid = Uuid::nil();
+        let p = CounterProposal {
+            id: Uuid::nil(), event_id: eid, tenant_id: Uuid::nil(),
+            attendee_email: "e@e.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.event_id, eid);
+    }
 }

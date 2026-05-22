@@ -401,4 +401,11 @@ END:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert_eq!(ev.uid, "special+uid_123@host.example");
     }
+
+    #[test]
+    fn unescape_backslash_n_decoded_to_newline() {
+        let raw = "BEGIN:VEVENT\r\nUID:u1\r\nSUMMARY:line1\\nline2\r\nEND:VEVENT\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.summary.as_deref(), Some("line1\nline2"));
+    }
 }

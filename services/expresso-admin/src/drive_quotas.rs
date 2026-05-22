@@ -232,4 +232,9 @@ mod tests {
         let s = pct(0, 100);
         assert!(s.contains('0'));
     }
+
+    #[test]
+    fn mb_half_megabyte_returns_zero_point_five() {
+        assert_eq!(mb(524_288), "0.5");
+    }
 }

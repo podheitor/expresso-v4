@@ -137,4 +137,10 @@ mod tests {
         let e = CoreError::TenantNotSet;
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn quota_exceeded_display_contains_bytes_word() {
+        let e = CoreError::QuotaExceeded { used: 1, limit: 2 };
+        assert!(e.to_string().contains("bytes"));
+    }
 }

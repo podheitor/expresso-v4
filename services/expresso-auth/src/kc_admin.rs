@@ -351,4 +351,11 @@ mod tests {
         let c = cfg(Some("client-id"), None);
         assert!(!c.has_exchange_client());
     }
+
+    #[test]
+    fn impersonation_tokens_expires_in_zero_by_default() {
+        let json = r#"{"access_token":"tok"}"#;
+        let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
+        assert_eq!(t.expires_in, 0);
+    }
 }

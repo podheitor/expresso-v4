@@ -271,4 +271,9 @@ mod tests {
     fn extract_prop_returns_none_for_empty_body() {
         assert_eq!(extract_prop("", "displayname"), None);
     }
+
+    #[test]
+    fn unescape_xml_apos_entity_decoded() {
+        assert_eq!(unescape_xml("it&apos;s"), "it's");
+    }
 }

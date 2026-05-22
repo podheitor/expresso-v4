@@ -360,4 +360,10 @@ mod tests {
         let mxid = c.mxid_for(Uuid::nil());
         assert!(mxid.ends_with(":chat.expresso.local"));
     }
+
+    #[test]
+    fn room_preset_variants_all_different() {
+        assert_ne!(RoomPreset::PrivateChat.as_str(), RoomPreset::PublicChat.as_str());
+        assert_ne!(RoomPreset::TrustedPrivateChat.as_str(), RoomPreset::PublicChat.as_str());
+    }
 }

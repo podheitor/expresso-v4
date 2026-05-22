@@ -447,4 +447,9 @@ mod tests {
     fn token_refresh_skew_is_30_seconds() {
         assert_eq!(TOKEN_REFRESH_SKEW.as_secs(), 30);
     }
+
+    #[test]
+    fn token_max_ttl_is_300_seconds() {
+        assert_eq!(TOKEN_MAX_TTL.as_secs(), 300);
+    }
 }

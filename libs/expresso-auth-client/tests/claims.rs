@@ -174,3 +174,10 @@ fn email_is_preserved_in_context() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.email, "alice@x");
 }
+
+#[test]
+fn has_role_false_when_role_absent() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000008", Some("40894092-7ec5-4693-94f0-afb1c7fb51c4"));
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(!ctx.has_role("nonexistent_role"));
+}

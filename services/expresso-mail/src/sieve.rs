@@ -271,4 +271,10 @@ mod tests {
         let actions = evaluate(b"discard;", MSG.as_bytes());
         assert!(!matches!(actions[0], FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn keep_action_is_not_discard() {
+        let actions = evaluate(b"keep;", MSG.as_bytes());
+        assert!(!matches!(actions[0], FilterAction::Discard));
+    }
 }

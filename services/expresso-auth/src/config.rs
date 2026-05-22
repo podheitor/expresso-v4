@@ -191,4 +191,10 @@ mod tests {
         let c = cfg("https://kc/realms/r", "my-client", "https://app/cb", None, None, None);
         assert!(c.post_logout_redirect_uri.is_none());
     }
+
+    #[test]
+    fn state_ttl_is_greater_than_zero() {
+        let c = cfg("i", "c", "r", None, None, None);
+        assert!(c.state_ttl.as_secs() > 0);
+    }
 }

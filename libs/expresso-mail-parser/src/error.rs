@@ -115,4 +115,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.ends_with("base64 padding error"));
     }
+
+    #[test]
+    fn display_contains_colon_separator() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("test"));
+        assert!(e.to_string().contains(':'));
+    }
 }

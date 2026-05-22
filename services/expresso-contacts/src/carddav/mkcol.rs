@@ -212,4 +212,10 @@ mod tests {
         let b = "<displayname>A &gt; B</displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("A > B"));
     }
+
+    #[test]
+    fn extract_prop_numeric_value_preserved() {
+        let b = "<max-resource-size>102400</max-resource-size>";
+        assert_eq!(extract_prop(b, "max-resource-size").as_deref(), Some("102400"));
+    }
 }

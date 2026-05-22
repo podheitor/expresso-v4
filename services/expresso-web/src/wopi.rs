@@ -173,4 +173,11 @@ mod extra_tests {
         let tok = sign_token(b"k", "doc-42", "tenant1", "user1", 60);
         assert!(tok.starts_with("doc-42."));
     }
+
+    #[test]
+    fn sign_token_different_keys_produce_different_tokens() {
+        let tok_a = sign_token(b"key-a", "file1", "t1", "u1", 60);
+        let tok_b = sign_token(b"key-b", "file1", "t1", "u1", 60);
+        assert_ne!(tok_a, tok_b);
+    }
 }

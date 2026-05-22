@@ -529,4 +529,11 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
         assert!(b.action.is_none());
     }
+
+    #[test]
+    fn count_query_delivered_true_filter() {
+        let json = r#"{"delivered":true}"#;
+        let q: CountQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.delivered, Some(true));
+    }
 }

@@ -283,4 +283,9 @@ mod tests {
     fn default_ttl_is_less_than_max_ttl() {
         assert!(DEFAULT_TTL_SECONDS < MAX_TTL_SECONDS);
     }
+
+    #[test]
+    fn max_ttl_exceeds_one_day() {
+        assert!(MAX_TTL_SECONDS > 86400);
+    }
 }

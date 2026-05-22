@@ -162,4 +162,10 @@ mod tests {
         let e = DriveError::BadRequest("missing field".into());
         assert!(format!("{e}").contains("missing field"));
     }
+
+    #[test]
+    fn io_error_is_500() {
+        let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::Other, "oops"));
+        assert_eq!(status(e), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

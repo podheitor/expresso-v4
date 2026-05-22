@@ -551,4 +551,9 @@ mod tests {
         assert_ne!(Depth::One, Depth::Infinity);
         assert_ne!(Depth::Zero, Depth::Infinity);
     }
+
+    #[test]
+    fn parse_depth_uppercase_infinity_is_infinity() {
+        assert!(matches!(parse_depth(&headers_with_depth("INFINITY")), Depth::Infinity));
+    }
 }

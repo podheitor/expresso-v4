@@ -320,4 +320,9 @@ mod tests {
     fn validate_priv_trims_whitespace() {
         assert_eq!(validate_priv("  read  ").unwrap(), "READ");
     }
+
+    #[test]
+    fn validate_priv_uppercase_write_accepted() {
+        assert_eq!(validate_priv("WRITE").unwrap(), "WRITE");
+    }
 }

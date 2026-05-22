@@ -232,4 +232,9 @@ BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:
     fn has_method_reply_case_insensitive() {
         assert!(has_method_reply("method:reply"));
     }
+
+    #[test]
+    fn has_method_reply_returns_false_for_cancel() {
+        assert!(!has_method_reply("METHOD:CANCEL"));
+    }
 }

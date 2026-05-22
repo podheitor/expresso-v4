@@ -606,4 +606,10 @@ mod extra_tests {
         let result = sanitize_header_token("text/html", "text/plain");
         assert_eq!(result, "text/html");
     }
+
+    #[test]
+    fn percent_encode_filename_plus_encoded() {
+        let s = percent_encode_filename("file+name.pdf");
+        assert_eq!(s, "file+name.pdf");
+    }
 }

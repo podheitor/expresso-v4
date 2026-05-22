@@ -503,4 +503,9 @@ mod tests {
         let n: NewMeeting = serde_json::from_str(json).unwrap();
         assert_eq!(n.title, "Sprint Review");
     }
+
+    #[test]
+    fn participant_role_variants_are_not_equal() {
+        assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
+    }
 }

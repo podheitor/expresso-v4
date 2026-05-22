@@ -380,4 +380,10 @@ mod tests {
         // Value is all whitespace — after trim it should be empty.
         assert_eq!(r.1, "");
     }
+
+    #[test]
+    fn parse_header_tab_in_value_preserved() {
+        let r = parse_header_line("X-Tab: a\tb").unwrap();
+        assert_eq!(r.1, "a\tb");
+    }
 }

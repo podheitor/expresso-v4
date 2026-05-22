@@ -369,4 +369,12 @@ mod tests {
         };
         assert!(b.assurance.is_none());
     }
+
+    #[test]
+    fn list_query_tenant_id_round_trip_via_struct() {
+        let tid = Uuid::new_v4();
+        let q = ListQuery { tenant_id: Some(tid) };
+        assert!(q.tenant_id.is_some());
+        assert_eq!(q.tenant_id.unwrap(), tid);
+    }
 }

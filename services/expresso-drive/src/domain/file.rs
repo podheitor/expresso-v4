@@ -828,4 +828,10 @@ mod tests {
         let back: DriveFile = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(back.mime_type.as_deref(), Some("application/pdf"));
     }
+
+    #[test]
+    fn drive_file_owner_user_id_accessible() {
+        let f = sample_file();
+        let _ = f.owner_user_id;
+    }
 }

@@ -245,4 +245,9 @@ mod tests {
         let h = headers_with_cookie("expresso_rt=token123; other=val");
         assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("token123"));
     }
+
+    #[test]
+    fn refresh_token_cookie_name_constant() {
+        assert_eq!(REFRESH_TOKEN_COOKIE, "expresso_rt");
+    }
 }

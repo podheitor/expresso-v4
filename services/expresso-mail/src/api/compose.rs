@@ -1064,4 +1064,9 @@ mod tests {
     fn max_recipients_per_message_is_100() {
         assert_eq!(MAX_RECIPIENTS_PER_MESSAGE, 100);
     }
+
+    #[test]
+    fn min_schedule_seconds_is_60() {
+        assert_eq!(MIN_SCHEDULE_SECONDS, 60);
+    }
 }

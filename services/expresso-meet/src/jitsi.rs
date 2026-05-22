@@ -335,4 +335,10 @@ mod extra_tests {
         let req_b = IssueRequest { room: "r", user_id: Uuid::new_v4(), display_name: "B", email: "b@x", moderator: false, allow_recording: false };
         assert_ne!(j.mint(&req_a).unwrap().token, j.mint(&req_b).unwrap().token);
     }
+
+    #[test]
+    fn jitsi_config_room_prefix_is_nonempty() {
+        let cfg = fixture_cfg();
+        assert!(!cfg.room_prefix.is_empty());
+    }
 }

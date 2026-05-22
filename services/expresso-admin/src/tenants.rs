@@ -545,4 +545,9 @@ mod slug_tests {
     fn plans_const_contains_standard() {
         assert!(PLANS.contains(&"standard"));
     }
+
+    #[test]
+    fn statuses_const_contains_active() {
+        assert!(STATUSES.contains(&"active"));
+    }
 }

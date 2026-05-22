@@ -220,4 +220,9 @@ mod tests {
     fn percent_decode_encoded_at_sign() {
         assert_eq!(percent_decode("user%40host"), "user@host");
     }
+
+    #[test]
+    fn percent_decode_space_encoded() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+    }
 }

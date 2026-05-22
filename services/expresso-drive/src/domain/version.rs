@@ -374,4 +374,18 @@ mod tests {
         };
         assert_eq!(v.id, id);
     }
+
+    #[test]
+    fn file_version_file_id_preserved() {
+        use time::macros::datetime;
+        let fid = Uuid::new_v4();
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: fid, tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "blobs/v1".into(), size_bytes: 0,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.file_id, fid);
+    }
 }

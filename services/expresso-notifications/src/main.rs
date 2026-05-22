@@ -25579,4 +25579,16 @@ mod tests {
         let v = serde_json::to_value(&n).unwrap();
         assert_eq!(v["user_id"].as_str().unwrap(), "00000000-0000-0000-0000-000000000000");
     }
+
+    #[test]
+    fn notification_message_id_none_by_default() {
+        let n = Notification {
+            kind: "new_message".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(n.message_id.is_none());
+    }
 }

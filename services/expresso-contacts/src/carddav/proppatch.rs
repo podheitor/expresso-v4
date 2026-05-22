@@ -378,4 +378,9 @@ mod tests {
     fn is_live_prop_rejects_unknown_namespace() {
         assert!(!is_live_prop("urn:custom:", "displayname"));
     }
+
+    #[test]
+    fn is_live_prop_accepts_resourcetype() {
+        assert!(is_live_prop("DAV:", "resourcetype"));
+    }
 }

@@ -507,4 +507,10 @@ mod tests {
         let b = build_realm_body("test-realm", "Test");
         assert!(b.get("realm").is_some());
     }
+
+    #[test]
+    fn build_user_body_username_is_preserved() {
+        let b = build_user_body("zara", "zara@example.com");
+        assert_eq!(b["username"].as_str(), Some("zara"));
+    }
 }

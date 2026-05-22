@@ -117,4 +117,11 @@ mod tests {
         let e: ExpresscryptoError = source.into();
         assert!(matches!(e, ExpresscryptoError::Internal(_)));
     }
+
+    #[test]
+    fn display_contains_colon_after_prefix() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("test"));
+        let s = e.to_string();
+        assert!(s.contains(':'));
+    }
 }

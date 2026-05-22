@@ -355,4 +355,11 @@ mod tests {
         r.cc = Some(vec!["not-an-address".into()]);
         assert!(build_raw(&r).is_err());
     }
+
+    #[test]
+    fn build_raw_invalid_bcc_returns_error() {
+        let mut r = req("from@example.com", None, None, None);
+        r.bcc = Some(vec!["not-valid".into()]);
+        assert!(build_raw(&r).is_err());
+    }
 }

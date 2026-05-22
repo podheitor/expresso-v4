@@ -461,4 +461,10 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains(r#""source":"directory""#));
     }
+
+    #[test]
+    fn search_query_limit_some_preserved() {
+        let q: SearchQuery = serde_json::from_str(r#"{"q":"bob","limit":25}"#).unwrap();
+        assert_eq!(q.limit, Some(25));
+    }
 }

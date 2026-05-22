@@ -144,4 +144,10 @@ mod tests {
         let c = challenge_s256("another-verifier-value");
         assert!(!c.contains('/'));
     }
+
+    #[test]
+    fn random_token_is_not_empty() {
+        let t = random_token();
+        assert!(!t.is_empty());
+    }
 }

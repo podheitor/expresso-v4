@@ -231,4 +231,12 @@ mod tests {
         let e = AuditEntry::new("drive.folder_created");
         assert!(e.tenant_id.is_none());
     }
+
+    #[test]
+    fn enrich_metadata_folds_http_method() {
+        let mut e = AuditEntry::new("test.action");
+        e.http_method = Some("POST".into());
+        let m = enrich_metadata(&e);
+        assert_eq!(m["http_method"], json!("POST"));
+    }
 }

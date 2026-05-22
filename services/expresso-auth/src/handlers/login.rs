@@ -190,4 +190,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/correio/caixa"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/correio/caixa"));
     }
+
+    #[test]
+    fn login_query_redirect_uri_with_encoded_space() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/path%20with%20spaces"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/path%20with%20spaces"));
+    }
 }

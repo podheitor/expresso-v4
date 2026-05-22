@@ -549,4 +549,10 @@ mod tests {
         let s = human_summary(&inv, Method::Request);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn envelope_method_cancel_deserializes() {
+        let m: EnvelopeMethod = serde_json::from_str("\"CANCEL\"").unwrap();
+        assert!(matches!(m, EnvelopeMethod::Cancel));
+    }
 }

@@ -164,4 +164,10 @@ mod tests {
         let e = CalendarError::InvalidICal("unexpected END".into());
         assert!(format!("{e}").contains("unexpected END"));
     }
+
+    #[test]
+    fn conflict_display_contains_message() {
+        let e = CalendarError::Conflict("uid already exists".into());
+        assert!(format!("{e}").contains("uid already exists"));
+    }
 }

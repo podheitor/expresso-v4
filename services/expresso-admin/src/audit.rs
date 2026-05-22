@@ -616,4 +616,9 @@ mod tests {
     fn empty_input_returns_empty_string() {
         assert_eq!(csv_escape(""), "");
     }
+
+    #[test]
+    fn plus_prefix_neutralized() {
+        assert_eq!(csv_escape("+1"), "\"'+1\"");
+    }
 }

@@ -346,4 +346,9 @@ mod tests {
         let b: CreateCommentBody = serde_json::from_str(r#"{"body":""}"#).unwrap();
         assert_eq!(b.body, "");
     }
+
+    #[test]
+    fn max_comment_bytes_exceeds_zero() {
+        assert!(MAX_COMMENT_BYTES > 0);
+    }
 }

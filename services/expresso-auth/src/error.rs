@@ -129,4 +129,10 @@ mod tests {
     fn config_error_status_is_500() {
         assert_eq!(status(RpError::Config("missing var".into())), StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn discovery_error_message_preserved() {
+        let e = RpError::Discovery("no endpoint available".into());
+        assert!(e.to_string().contains("no endpoint available"));
+    }
 }

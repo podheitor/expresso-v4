@@ -175,4 +175,10 @@ mod tests {
         let tag = "project/sub".to_string();
         assert!(tag.contains('/'));
     }
+
+    #[test]
+    fn tag_string_dot_separated_is_valid() {
+        let tag = "category.sub".to_string();
+        assert!(tag.contains('.'));
+    }
 }

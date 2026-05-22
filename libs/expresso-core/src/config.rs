@@ -283,4 +283,9 @@ mod tests {
     fn default_s3_region_string_length_is_nonzero() {
         assert!(!default_s3_region().is_empty());
     }
+
+    #[test]
+    fn default_redis_pool_size_is_positive() {
+        assert!(default_redis_pool_size() > 0);
+    }
 }

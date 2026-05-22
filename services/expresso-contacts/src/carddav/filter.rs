@@ -448,4 +448,9 @@ mod tests {
         let mt = MatchType::default();
         assert_eq!(mt, MatchType::Contains);
     }
+
+    #[test]
+    fn filter_allof_op_ne_anyof() {
+        assert_ne!(Op::AllOf, Op::AnyOf);
+    }
 }

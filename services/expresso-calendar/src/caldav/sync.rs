@@ -296,4 +296,9 @@ mod tests {
     fn parse_token_value_one_is_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}1")), Some(1));
     }
+
+    #[test]
+    fn token_prefix_value_is_urn_expresso_ctag() {
+        assert_eq!(TOKEN_PREFIX, "urn:expresso:ctag:");
+    }
 }

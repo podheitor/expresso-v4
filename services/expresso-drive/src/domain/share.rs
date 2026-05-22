@@ -337,4 +337,16 @@ mod tests {
         };
         assert_eq!(s.tenant_id, tid);
     }
+
+    #[test]
+    fn share_expires_after_created() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-01-08 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert!(s.expires_at > s.created_at);
+    }
 }

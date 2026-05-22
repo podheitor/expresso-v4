@@ -409,4 +409,9 @@ mod tests {
     fn escape_empty_string_returns_empty() {
         assert_eq!(escape(""), "");
     }
+
+    #[test]
+    fn escape_single_quote_is_apos() {
+        assert_eq!(escape("it's"), "it&apos;s");
+    }
 }

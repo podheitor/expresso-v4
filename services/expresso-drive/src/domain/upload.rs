@@ -259,4 +259,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.owner_user_id, Uuid::nil());
     }
+
+    #[test]
+    fn session_id_is_nil_uuid() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.id, Uuid::nil());
+    }
 }

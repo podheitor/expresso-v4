@@ -295,4 +295,15 @@ mod tests {
         let q = p.clone();
         assert_eq!(p.namespace, q.namespace);
     }
+
+    #[test]
+    fn dead_prop_clone_gives_equal_local_name() {
+        let p = DeadProp {
+            namespace:  "DAV:".into(),
+            local_name: "resourcetype".into(),
+            xml_value:  "<collection/>".into(),
+        };
+        let q = p.clone();
+        assert_eq!(p.local_name, q.local_name);
+    }
 }

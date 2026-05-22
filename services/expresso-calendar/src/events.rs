@@ -322,4 +322,9 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("7"));
     }
+
+    #[test]
+    fn bus_capacity_is_positive() {
+        assert!(BUS_CAPACITY > 0);
+    }
 }

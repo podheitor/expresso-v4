@@ -472,4 +472,9 @@ mod tests {
     fn method_cancel_and_request_are_not_equal() {
         assert_ne!(Method::Cancel, Method::Request);
     }
+
+    #[test]
+    fn escape_text_no_special_chars_unchanged() {
+        assert_eq!(escape_text("hello world"), "hello world");
+    }
 }

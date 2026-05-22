@@ -257,4 +257,14 @@ mod tests {
         let rl = RateLimiter::with_trust_proxy(Duration::from_secs(60), 10, false);
         assert!(!rl.trust_forwarded);
     }
+
+    #[test]
+    fn limit_three_allows_three_then_blocks_fourth() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 3);
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3));
+        assert!(rl.check(ip));
+        assert!(rl.check(ip));
+        assert!(rl.check(ip));
+        assert!(!rl.check(ip));
+    }
 }

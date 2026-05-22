@@ -350,4 +350,11 @@ mod tests {
         let aud = AudClaim::Many(vec!["expresso-web".into(), "expresso-dav".into()]);
         assert!(!aud.contains("other-service"));
     }
+
+    #[test]
+    fn realm_from_iss_uuid_realm_is_extractable() {
+        let uuid = "11111111-2222-3333-4444-555555555555";
+        let iss = format!("https://kc/realms/{uuid}");
+        assert_eq!(super::realm_from_iss(&iss), Some(uuid));
+    }
 }

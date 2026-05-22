@@ -209,4 +209,12 @@ mod tests {
         let s = "hello";
         assert_eq!(preview(s.into()), "hello");
     }
+
+    #[test]
+    fn fmt_ts_year_in_output() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-08-20 07:00:00 UTC);
+        let s = fmt_ts(ts);
+        assert!(s.contains("2026"));
+    }
 }

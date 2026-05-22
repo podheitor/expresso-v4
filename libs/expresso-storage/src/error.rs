@@ -114,4 +114,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("etag mismatch"));
         assert!(e.to_string().starts_with("internal error:"));
     }
+
+    #[test]
+    fn display_contains_colon_separator() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("test"));
+        assert!(e.to_string().contains(':'));
+    }
 }

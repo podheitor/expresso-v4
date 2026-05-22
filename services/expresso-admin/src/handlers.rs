@@ -463,4 +463,9 @@ mod tests {
     fn services_const_contains_keycloak_entry() {
         assert!(SERVICES.iter().any(|s| s.name == "keycloak"));
     }
+
+    #[test]
+    fn services_const_length_is_ten() {
+        assert_eq!(SERVICES.len(), 10);
+    }
 }

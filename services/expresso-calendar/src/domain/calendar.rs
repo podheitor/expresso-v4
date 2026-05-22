@@ -531,4 +531,17 @@ mod tests {
         assert_eq!(u.color.as_deref(), Some("#123456"));
         assert!(u.name.is_none());
     }
+
+    #[test]
+    fn new_calendar_all_fields_set() {
+        let n = NewCalendar {
+            name: "Full".into(),
+            description: Some("desc".into()),
+            color: Some("#aabbcc".into()),
+            timezone: Some("Europe/London".into()),
+            is_default: true,
+        };
+        assert_eq!(n.timezone.as_deref(), Some("Europe/London"));
+        assert_eq!(n.color.as_deref(), Some("#aabbcc"));
+    }
 }

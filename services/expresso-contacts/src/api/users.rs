@@ -157,4 +157,10 @@ mod tests {
         assert!(s.contains("alice@example.com"));
         assert!(s.contains(&id.to_string()));
     }
+
+    #[test]
+    fn user_out_email_field_accessible() {
+        let out = UserOut { id: uuid::Uuid::nil(), email: "bob@example.com".into() };
+        assert_eq!(out.email, "bob@example.com");
+    }
 }

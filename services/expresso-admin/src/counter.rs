@@ -402,4 +402,21 @@ mod tests {
     fn fmt_opt_ts_none_returns_em_dash() {
         assert_eq!(fmt_opt_ts(None), "—");
     }
+
+    #[test]
+    fn counter_row_proposed_dtstart_preserved() {
+        let r = CounterRow {
+            id: "id9".into(),
+            tenant_id: "t9".into(),
+            event_id: "e9".into(),
+            event_summary: "Sprint Review".into(),
+            attendee_email: "dev@corp.com".into(),
+            proposed_dtstart: "2026-07-01T09:00:00Z".into(),
+            proposed_dtend: "2026-07-01T10:00:00Z".into(),
+            received_sequence: "2".into(),
+            comment: None,
+            created_at_fmt: "2026-07-01".into(),
+        };
+        assert_eq!(r.proposed_dtstart, "2026-07-01T09:00:00Z");
+    }
 }

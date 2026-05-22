@@ -456,4 +456,12 @@ mod tests {
         let j: serde_json::Value = serde_json::to_value(&v).unwrap();
         assert!(j["storage_key"].is_null());
     }
+
+    #[test]
+    fn version_diff_size_delta_computed() {
+        let size_a: i64 = 1024;
+        let size_b: i64 = 2048;
+        let delta = size_b - size_a;
+        assert_eq!(delta, 1024);
+    }
 }

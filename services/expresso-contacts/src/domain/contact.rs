@@ -408,4 +408,10 @@ mod tests {
         let c = sample();
         assert!(c.vcard_raw.contains("BEGIN:VCARD"));
     }
+
+    #[test]
+    fn contact_vcard_raw_ends_with_vcard() {
+        let c = sample();
+        assert!(c.vcard_raw.contains("END:VCARD"));
+    }
 }

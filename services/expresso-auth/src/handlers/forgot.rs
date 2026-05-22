@@ -190,4 +190,9 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert_eq!(r.email, "check@domain.io");
     }
+
+    #[test]
+    fn action_lifespan_is_positive() {
+        assert!(ACTION_LIFESPAN_SECS > 0);
+    }
 }

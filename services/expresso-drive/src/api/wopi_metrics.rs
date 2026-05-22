@@ -190,4 +190,9 @@ mod tests {
     fn ops_list_length_is_at_least_six() {
         assert!(OPS.len() >= 6);
     }
+
+    #[test]
+    fn outcomes_list_length_is_eight() {
+        assert_eq!(OUTCOMES.len(), 8);
+    }
 }

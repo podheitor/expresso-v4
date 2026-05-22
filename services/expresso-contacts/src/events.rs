@@ -246,4 +246,14 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("Work"));
     }
+
+    #[test]
+    fn contact_upserted_kind_str_is_contact_upserted() {
+        let ev = ContactsEvent::ContactUpserted {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            contact_id:     Uuid::nil(),
+        };
+        assert_eq!(ev.kind_str(), "contact_upserted");
+    }
 }

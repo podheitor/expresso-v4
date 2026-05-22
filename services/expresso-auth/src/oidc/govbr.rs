@@ -221,4 +221,9 @@ mod tests {
     fn govbr_issuer_constant_is_https() {
         assert!(GOVBR_ISSUER.starts_with("https://"));
     }
+
+    #[test]
+    fn govbr_default_scopes_contains_openid() {
+        assert!(GOVBR_DEFAULT_SCOPES.contains("openid"));
+    }
 }

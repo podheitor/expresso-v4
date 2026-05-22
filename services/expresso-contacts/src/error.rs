@@ -162,4 +162,10 @@ mod tests {
         let e = ContactsError::Forbidden;
         assert_eq!(format!("{e}"), "forbidden");
     }
+
+    #[test]
+    fn not_supported_status_is_501() {
+        let e = ContactsError::NotSupported("LOCK".into());
+        assert_eq!(status(e), 501);
+    }
 }

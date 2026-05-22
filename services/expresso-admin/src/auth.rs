@@ -357,4 +357,9 @@ mod tests {
     fn is_super_admin_false_for_empty_roles() {
         assert!(!is_super_admin(&[]));
     }
+
+    #[test]
+    fn is_public_path_forbidden_is_public() {
+        assert!(is_public_path("/forbidden"));
+    }
 }

@@ -392,4 +392,12 @@ mod tests {
         assert_eq!(b.user_id, uid);
         assert!(matches!(b.role, Some(MemberRole::Owner)));
     }
+
+    #[test]
+    fn create_body_team_id_preserved_when_set() {
+        let tid = Uuid::nil();
+        let json = format!(r#"{{"name":"squad","team_id":"{tid}"}}"#);
+        let b: CreateBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.team_id, Some(tid));
+    }
 }

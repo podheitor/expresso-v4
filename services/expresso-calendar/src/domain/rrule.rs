@@ -381,4 +381,10 @@ mod tests {
         assert_eq!(r.freq, Freq::Yearly);
         assert_eq!(r.count, Some(3));
     }
+
+    #[test]
+    fn interval_zero_normalised_to_one() {
+        let r = Rrule::parse("FREQ=DAILY;INTERVAL=0").unwrap();
+        assert_eq!(r.interval, 1);
+    }
 }

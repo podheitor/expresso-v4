@@ -167,4 +167,9 @@ mod tests {
     fn not_found_status_is_404() {
         assert_eq!(status(MeetError::NotFound), 404);
     }
+
+    #[test]
+    fn database_unavailable_status_is_503() {
+        assert_eq!(status(MeetError::DatabaseUnavailable), 503);
+    }
 }

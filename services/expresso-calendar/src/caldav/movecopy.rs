@@ -232,4 +232,9 @@ mod tests {
     fn strip_origin_empty_string_passes_through() {
         assert_eq!(strip_origin(""), "");
     }
+
+    #[test]
+    fn strip_origin_http_double_slash_root() {
+        assert_eq!(strip_origin("http://host//double"), "//double");
+    }
 }

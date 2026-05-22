@@ -350,4 +350,10 @@ mod tests {
         let c = OidcConfig::new("https://idp/realms/r", "client-a,client-b");
         assert_eq!(c.audiences().len(), 2);
     }
+
+    #[test]
+    fn oidc_config_default_jwks_min_refresh_is_thirty_seconds() {
+        let c = OidcConfig::new("https://kc/realms/x", "aud");
+        assert_eq!(c.jwks_min_refresh, std::time::Duration::from_secs(30));
+    }
 }

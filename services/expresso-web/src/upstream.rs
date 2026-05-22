@@ -236,4 +236,9 @@ mod tests {
     fn build_url_base_with_port_preserved() {
         assert_eq!(build_url("http://svc:9000", "/health"), "http://svc:9000/health");
     }
+
+    #[test]
+    fn build_url_https_scheme_preserved() {
+        assert_eq!(build_url("https://svc", "/ping"), "https://svc/ping");
+    }
 }

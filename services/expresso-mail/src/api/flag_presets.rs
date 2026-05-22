@@ -270,4 +270,10 @@ mod tests {
         assert_eq!(back.name, "Urgent");
         assert_eq!(back.flags.len(), 1);
     }
+
+    #[test]
+    fn preset_body_two_flags_count() {
+        let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        assert_eq!(b.flags.len(), 2);
+    }
 }

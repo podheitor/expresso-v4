@@ -669,4 +669,9 @@ mod tests {
         // alice@sub.example.com must not match alice@example.com
         assert!(!from_matches_authed("alice@sub.example.com", "alice@example.com"));
     }
+
+    #[test]
+    fn from_matches_authed_different_users_same_domain_rejected() {
+        assert!(!from_matches_authed("bob@example.com", "alice@example.com"));
+    }
 }

@@ -147,4 +147,9 @@ mod tests {
     fn realm_placeholder_constant_is_nonempty_string() {
         assert!(!REALM_PLACEHOLDER.is_empty());
     }
+
+    #[test]
+    fn realm_placeholder_length_is_seven() {
+        assert_eq!(REALM_PLACEHOLDER.len(), 7);
+    }
 }

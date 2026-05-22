@@ -298,4 +298,9 @@ mod tests {
             serde_json::from_str(r#"{"before":"2026-01-01T00:00:00Z"}"#).unwrap();
         assert_eq!(q.before.as_deref(), Some("2026-01-01T00:00:00Z"));
     }
+
+    #[test]
+    fn page_size_constant_is_positive() {
+        assert!(PAGE_SIZE > 0);
+    }
 }

@@ -280,4 +280,10 @@ mod tests {
         let r = serde_json::from_str::<MemberRole>(r#""superadmin""#);
         assert!(r.is_err());
     }
+
+    #[test]
+    fn channel_kind_project_serializes_lowercase() {
+        let s = serde_json::to_string(&ChannelKind::Project).unwrap();
+        assert_eq!(s, r#""project""#);
+    }
 }

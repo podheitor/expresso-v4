@@ -312,4 +312,9 @@ mod tests {
         // Decimal size values must not parse — only integers are valid.
         assert_eq!(extract_size_param("<a@b> SIZE=10.5"), None);
     }
+
+    #[test]
+    fn max_msg_bytes_exceeds_one_mib() {
+        assert!(super::MAX_MSG_BYTES > 1024 * 1024);
+    }
 }

@@ -328,4 +328,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("CANCEL"));
     }
+
+    #[test]
+    fn extract_method_reply_normalised_to_uppercase() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:reply\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("REPLY"));
+    }
 }

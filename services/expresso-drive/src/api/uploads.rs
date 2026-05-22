@@ -509,4 +509,9 @@ mod tests {
     fn sanitize_rejects_null_byte_in_name() {
         assert!(sanitize_name("bad\0name.txt").is_err());
     }
+
+    #[test]
+    fn max_chunk_bytes_exceeds_one_mib() {
+        assert!(MAX_CHUNK_BYTES > 1024 * 1024);
+    }
 }

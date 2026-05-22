@@ -493,4 +493,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.dmarc_policy.is_none());
     }
+
+    #[test]
+    fn auth_results_default_spf_client_ip_is_none() {
+        let r = AuthResults::default();
+        assert!(r.spf_client_ip.is_none());
+    }
 }

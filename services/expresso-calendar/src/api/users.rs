@@ -159,4 +159,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"user@host:8080"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("user@host:8080"));
     }
+
+    #[test]
+    fn user_query_email_with_dot_in_local_part() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"first.last@corp.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("first.last@corp.com"));
+    }
 }

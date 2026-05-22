@@ -327,4 +327,10 @@ mod tests {
         let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":42}"#).unwrap();
         assert_eq!(q.limit, Some(42));
     }
+
+    #[test]
+    fn stats_by_tenant_query_limit_200_at_boundary() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":200}"#).unwrap();
+        assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 200);
+    }
 }

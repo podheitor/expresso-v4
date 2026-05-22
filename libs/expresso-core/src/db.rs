@@ -250,6 +250,17 @@ mod tests {
         let p = ok();
         assert_eq!(p.role, "expresso");
     }
+
+    #[test]
+    fn rls_posture_not_strict_when_bypassrls_and_missing_table() {
+        let p = RlsPosture {
+            role: "svc".into(),
+            bypassrls: true,
+            tables_missing: vec!["contacts".into()],
+            tables_unforced: vec![],
+        };
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

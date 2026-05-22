@@ -1555,4 +1555,9 @@ mod tests {
     fn folder_name_with_spaces_accepted() {
         assert!(validate_folder_name("My Projects").is_ok());
     }
+
+    #[test]
+    fn folder_name_only_spaces_is_accepted() {
+        assert!(validate_folder_name("   ").is_ok());
+    }
 }

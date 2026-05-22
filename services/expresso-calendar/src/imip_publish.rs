@@ -317,4 +317,13 @@ mod tests {
         let hint = v["subject_hint"].as_str().unwrap();
         assert!(hint.starts_with("Convite:"), "got: {hint}");
     }
+
+    #[test]
+    fn envelope_cancel_subject_hint_starts_with_cancelado() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "CANCEL").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let hint = v["subject_hint"].as_str().unwrap();
+        assert!(hint.starts_with("Cancelado:"), "got: {hint}");
+    }
 }

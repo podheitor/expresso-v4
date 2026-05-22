@@ -1573,4 +1573,10 @@ mod tests {
         let b: AddTagBody = serde_json::from_str(r#"{"tag":" spaced "}"#).unwrap();
         assert_eq!(b.tag, " spaced ");
     }
+
+    #[test]
+    fn rename_tag_body_new_tag_unicode() {
+        let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"étiquette"}"#).unwrap();
+        assert_eq!(b.new_tag, "étiquette");
+    }
 }

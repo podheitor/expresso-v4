@@ -303,4 +303,9 @@ mod tests {
     fn rejects_javascript_scheme() {
         assert!(!is_safe_local_redirect("javascript:alert(1)"));
     }
+
+    #[test]
+    fn accepts_path_with_hash_fragment() {
+        assert!(is_safe_local_redirect("/app/page#top"));
+    }
 }

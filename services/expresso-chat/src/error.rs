@@ -160,4 +160,9 @@ mod tests {
     fn database_unavailable_status_is_503() {
         assert_eq!(status(ChatError::DatabaseUnavailable), 503);
     }
+
+    #[test]
+    fn channel_not_found_status_is_404() {
+        assert_eq!(status(ChatError::ChannelNotFound(Uuid::nil())), 404);
+    }
 }

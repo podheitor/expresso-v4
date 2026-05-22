@@ -267,4 +267,9 @@ mod tests {
         let ctx = ctx_with_roles(&["not_superadmin_here"]);
         assert!(!is_super(&ctx));
     }
+
+    #[test]
+    fn super_role_constant_is_superadmin() {
+        assert_eq!(SUPER_ROLE, "superadmin");
+    }
 }

@@ -271,4 +271,13 @@ mod tests {
         let cfg = RateLimitConfig { rps: 10, burst: 100 };
         assert!(cfg.burst > cfg.rps);
     }
+
+    #[test]
+    fn check_returns_err_with_retry_at_least_one_on_exhausted_bucket() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 2 });
+        rl.check("t").unwrap();
+        rl.check("t").unwrap();
+        let retry = rl.check("t").unwrap_err();
+        assert!(retry >= 1);
+    }
 }

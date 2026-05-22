@@ -507,4 +507,9 @@ mod extra_tests {
     fn size_param_not_present_returns_none() {
         assert_eq!(extract_size_param("<user@domain.com>"), None);
     }
+
+    #[test]
+    fn extract_angle_domain_only_address() {
+        assert_eq!(extract_angle("<postmaster@localhost>"), "postmaster@localhost");
+    }
 }

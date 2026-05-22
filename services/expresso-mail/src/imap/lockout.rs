@@ -240,4 +240,12 @@ mod tests {
         l.clear_failures("e@x.com");
         assert!(!l.is_locked_out("e@x.com"));
     }
+
+    #[test]
+    fn record_failure_below_threshold_twice_stays_unlocked() {
+        let l = LoginLockout::new(5, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("user@x.com");
+        l.record_failure("user@x.com");
+        assert!(!l.is_locked_out("user@x.com"));
+    }
 }

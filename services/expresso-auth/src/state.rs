@@ -258,4 +258,10 @@ mod tests {
         let p = make_pending(30);
         assert!(p.post_login_redirect.is_none());
     }
+
+    #[test]
+    fn pending_login_realm_none_by_default() {
+        let p = make_pending(60);
+        assert!(p.realm.is_none());
+    }
 }
