@@ -141,4 +141,36 @@ mod tests {
         let rl2 = RateLimiter::with_trust_proxy(Duration::from_secs(60), 1, true);
         assert!(rl2.trust_forwarded);
     }
+
+    #[test]
+    fn window_boundary_exact() {
+        // Requests at exactly max should still block; one above limit should fail.
+        let rl = RateLimiter::new(Duration::from_secs(60), 5);
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        for _ in 0..5 {
+            assert!(rl.check(ip), "request within limit should pass");
+        }
+        assert!(!rl.check(ip), "request at limit+1 should be blocked");
+    }
+
+    #[test]
+    fn ipv6_tracked_separately_from_ipv4() {
+        use std::net::Ipv6Addr;
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let v4 = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let v6 = IpAddr::V6(Ipv6Addr::LOCALHOST);
+        assert!(rl.check(v4));
+        assert!(!rl.check(v4));
+        // IPv6 loopback is a different key — must not be affected by IPv4 exhaustion.
+        assert!(rl.check(v6));
+    }
+
+    #[test]
+    fn high_request_volume_does_not_panic() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 10);
+        let ip = IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4));
+        for _ in 0..100 {
+            let _ = rl.check(ip);
+        }
+    }
 }

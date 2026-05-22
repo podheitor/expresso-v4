@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:corpus-vcard-002
+FN:Long Name That Is
+ Folded Across Lines
+NOTE:A very long note that wraps
+ onto the next line per RFC 6350
+ line folding rules.
+END:VCARD

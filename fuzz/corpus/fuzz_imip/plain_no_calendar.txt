@@ -1,0 +1,6 @@
+From: alice@example.com
+To: bob@example.com
+Subject: Plain text
+Content-Type: text/plain
+
+Hello, no calendar here.

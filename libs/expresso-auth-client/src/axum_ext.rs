@@ -185,6 +185,66 @@ mod tests {
         // Sanity: HeaderMap::new compiles + extract_cookie tolerates no headers.
         let _ = HeaderMap::new();
     }
+
+    fn parts_with_auth(value: &str) -> Parts {
+        let mut req = axum::http::Request::builder()
+            .header(AUTHORIZATION, value)
+            .body(())
+            .unwrap();
+        let (parts, _) = req.into_parts();
+        parts
+    }
+
+    #[test]
+    fn bearer_extracts_standard_header() {
+        let p = parts_with_auth("Bearer mytoken123");
+        assert_eq!(extract_bearer(&p), Some("mytoken123"));
+    }
+
+    #[test]
+    fn bearer_extracts_lowercase_prefix() {
+        let p = parts_with_auth("bearer lowercasetoken");
+        assert_eq!(extract_bearer(&p), Some("lowercasetoken"));
+    }
+
+    #[test]
+    fn bearer_returns_none_on_missing_header() {
+        let (parts, _) = axum::http::Request::builder().body(()).unwrap().into_parts();
+        assert!(extract_bearer(&parts).is_none());
+    }
+
+    #[test]
+    fn bearer_returns_none_on_basic_scheme() {
+        let p = parts_with_auth("Basic dXNlcjpwYXNz");
+        assert!(extract_bearer(&p).is_none());
+    }
+
+    #[test]
+    fn bearer_returns_none_on_empty_token() {
+        let p = parts_with_auth("Bearer ");
+        assert!(extract_bearer(&p).is_none());
+    }
+
+    #[test]
+    fn auth_rejection_status_codes() {
+        use axum::response::IntoResponse;
+        let cases: &[(AuthRejection, u16)] = &[
+            (AuthRejection::Expired,                         401),
+            (AuthRejection::Unauthorized("x".into()),        401),
+            (AuthRejection::Forbidden("x".into()),           403),
+            (AuthRejection::Misconfigured,                   500),
+        ];
+        for (rej, expected_status) in cases {
+            // Reconstruct since AuthRejection doesn't impl Clone.
+            let resp = match rej {
+                AuthRejection::Expired              => AuthRejection::Expired.into_response(),
+                AuthRejection::Unauthorized(m)      => AuthRejection::Unauthorized(m.clone()).into_response(),
+                AuthRejection::Forbidden(m)         => AuthRejection::Forbidden(m.clone()).into_response(),
+                AuthRejection::Misconfigured        => AuthRejection::Misconfigured.into_response(),
+            };
+            assert_eq!(resp.status().as_u16(), *expected_status);
+        }
+    }
 }
 
 // --- Multi-realm extractor (fase 2 do realm-per-tenant) ---------------

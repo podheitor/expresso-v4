@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:corpus-vcard-001
+FN:Maria Silva
+N:Silva;Maria;;;
+ORG:Expresso Corp
+EMAIL;TYPE=INTERNET:maria@expresso.com
+TEL;TYPE=CELL:+5511987654321
+END:VCARD

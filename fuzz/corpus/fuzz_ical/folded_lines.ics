@@ -1,0 +1,11 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:corpus-seed-003@example.com
+SUMMARY:Very long summary that continues
+ on the next line after a space
+DESCRIPTION:Multi-line
+ folded
+ description here
+END:VEVENT
+END:VCALENDAR

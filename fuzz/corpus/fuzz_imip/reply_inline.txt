@@ -1,0 +1,13 @@
+From: alice@example.com
+To: bob@example.com
+Subject: Meeting reply
+Content-Type: text/calendar; method=REPLY; charset=utf-8
+
+BEGIN:VCALENDAR
+VERSION:2.0
+METHOD:REPLY
+BEGIN:VEVENT
+UID:seed-uid-001@example.com
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+END:VEVENT
+END:VCALENDAR
