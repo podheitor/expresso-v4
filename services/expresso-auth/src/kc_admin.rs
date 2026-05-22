@@ -160,3 +160,63 @@ impl KcAdmin {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(client_id: Option<&str>, client_secret: Option<&str>) -> KcAdminConfig {
+        KcAdminConfig {
+            base_url:   "http://kc:8080".into(),
+            realm:      "expresso".into(),
+            admin_user: "admin".into(),
+            admin_pass: "pass".into(),
+            exchange_client_id:     client_id.map(|s| s.into()),
+            exchange_client_secret: client_secret.map(|s| s.into()),
+        }
+    }
+
+    #[test]
+    fn has_exchange_client_both_set() {
+        assert!(cfg(Some("client"), Some("secret")).has_exchange_client());
+    }
+
+    #[test]
+    fn has_exchange_client_missing_id() {
+        assert!(!cfg(None, Some("secret")).has_exchange_client());
+    }
+
+    #[test]
+    fn has_exchange_client_missing_secret() {
+        assert!(!cfg(Some("client"), None).has_exchange_client());
+    }
+
+    #[test]
+    fn has_exchange_client_both_absent() {
+        assert!(!cfg(None, None).has_exchange_client());
+    }
+
+    #[test]
+    fn impersonation_tokens_serde_minimal() {
+        let json = r#"{"access_token":"tok123","expires_in":300}"#;
+        let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
+        assert_eq!(t.access_token, "tok123");
+        assert_eq!(t.expires_in, 300);
+        assert!(t.refresh_token.is_none());
+    }
+
+    #[test]
+    fn impersonation_tokens_skip_serializing_none() {
+        let t = ImpersonationTokens {
+            access_token: "tok".into(),
+            refresh_token: None,
+            expires_in: 0,
+            refresh_expires_in: None,
+            token_type: None,
+            scope: None,
+        };
+        let j = serde_json::to_string(&t).unwrap();
+        assert!(!j.contains("refresh_token"));
+        assert!(!j.contains("token_type"));
+    }
+}

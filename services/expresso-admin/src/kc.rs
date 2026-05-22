@@ -253,3 +253,49 @@ impl KcClient {
 impl From<anyhow::Error> for crate::AdminError {
     fn from(e: anyhow::Error) -> Self { Self(e) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_user_default() {
+        let u = NewUser::default();
+        assert_eq!(u.username, "");
+        assert!(!u.enabled);
+        assert!(!u.temporary);
+    }
+
+    #[test]
+    fn new_user_fields() {
+        let u = NewUser {
+            username:   "heitor".into(),
+            email:      "h@ex.com".into(),
+            first_name: "Heitor".into(),
+            last_name:  "F".into(),
+            enabled:    true,
+            password:   "s3cr3t".into(),
+            temporary:  false,
+        };
+        assert_eq!(u.username, "heitor");
+        assert!(u.enabled);
+    }
+
+    #[test]
+    fn update_user_default_all_none() {
+        let u = UpdateUser::default();
+        assert!(u.email.is_none());
+        assert!(u.enabled.is_none());
+    }
+
+    #[test]
+    fn kc_config_defaults() {
+        let cfg = KcConfig {
+            base_url:   "http://expresso-keycloak:8080".into(),
+            realm:      "expresso".into(),
+            admin_user: "admin".into(),
+            admin_pass: "".into(),
+        };
+        assert_eq!(cfg.realm, "expresso");
+    }
+}
