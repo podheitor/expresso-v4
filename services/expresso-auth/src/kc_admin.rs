@@ -289,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn kc_admin_config_base_url_preserved() {
+    fn kc_admin_config_base_url_with_port_preserved() {
         let c = KcAdminConfig {
             base_url:               "https://keycloak.internal:8443".into(),
             realm:                  "corp".into(),
@@ -299,5 +299,18 @@ mod tests {
             exchange_client_secret: None,
         };
         assert_eq!(c.base_url, "https://keycloak.internal:8443");
+    }
+
+    #[test]
+    fn kc_admin_config_realm_name_preserved() {
+        let c = KcAdminConfig {
+            base_url:               "https://kc".into(),
+            realm:                  "myrealm".into(),
+            admin_user:             "admin".into(),
+            admin_pass:             "pass".into(),
+            exchange_client_id:     None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.realm, "myrealm");
     }
 }

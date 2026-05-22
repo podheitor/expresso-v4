@@ -183,4 +183,9 @@ mod tests {
         let b = "<displayname>Work</displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Work"));
     }
+
+    #[test]
+    fn extract_prop_empty_body_returns_none() {
+        assert!(extract_prop("", "displayname").is_none());
+    }
 }

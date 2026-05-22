@@ -207,4 +207,9 @@ mod tests {
     fn strip_origin_root_path_only() {
         assert_eq!(strip_origin("https://host.example.com/"), "/");
     }
+
+    #[test]
+    fn strip_origin_relative_path_unchanged() {
+        assert_eq!(strip_origin("/caldav/user/cal/event.ics"), "/caldav/user/cal/event.ics");
+    }
 }

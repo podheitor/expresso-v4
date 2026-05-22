@@ -195,4 +195,9 @@ mod tests {
     fn classify_random_path_is_unknown() {
         assert!(matches!(classify("/unknown/random/path"), Target::Unknown));
     }
+
+    #[test]
+    fn classify_no_prefix_is_unknown() {
+        assert!(matches!(classify("/other/path/"), Target::Unknown));
+    }
 }

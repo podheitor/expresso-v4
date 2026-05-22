@@ -384,4 +384,9 @@ mod tests {
     fn parse_time_range_junk_xml_returns_none() {
         assert!(parse_time_range("<not-a-time-range/>").is_none());
     }
+
+    #[test]
+    fn parse_time_range_empty_returns_none() {
+        assert!(parse_time_range("").is_none());
+    }
 }

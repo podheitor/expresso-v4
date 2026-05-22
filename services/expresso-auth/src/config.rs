@@ -157,8 +157,14 @@ mod tests {
     }
 
     #[test]
-    fn redirect_uri_preserved() {
+    fn redirect_uri_full_url_preserved() {
         let c = cfg("issuer", "client", "https://app.example.com/callback", None, None, None);
         assert_eq!(c.redirect_uri, "https://app.example.com/callback");
+    }
+
+    #[test]
+    fn issuer_template_none_when_not_provided() {
+        let c = cfg("iss", "cid", "https://cb", None, None, None);
+        assert!(c.issuer_template.is_none());
     }
 }

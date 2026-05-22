@@ -104,4 +104,9 @@ mod tests {
     fn token_exchange_error_is_bad_gateway() {
         assert_eq!(status(RpError::TokenExchange("upstream failed".into())), StatusCode::BAD_GATEWAY);
     }
+
+    #[test]
+    fn discovery_error_is_service_unavailable() {
+        assert_eq!(status(RpError::Discovery("no endpoint".into())), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

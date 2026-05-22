@@ -347,4 +347,14 @@ mod tests {
         };
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_with_is_default_only_has_changes() {
+        let p = super::UpdateAddressbook {
+            name: None,
+            description: None,
+            is_default: Some(true),
+        };
+        assert!(patch_has_changes(&p));
+    }
 }

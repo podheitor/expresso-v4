@@ -299,4 +299,9 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n";
         assert!(extract_organizer_email(ics).is_none());
     }
+
+    #[test]
+    fn extract_organizer_email_empty_string_returns_none() {
+        assert!(extract_organizer_email("").is_none());
+    }
 }

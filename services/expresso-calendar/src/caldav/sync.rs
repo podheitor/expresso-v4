@@ -271,4 +271,9 @@ mod tests {
     fn parse_token_negative_value_is_none() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-1")), None);
     }
+
+    #[test]
+    fn parse_token_non_numeric_is_none() {
+        assert!(parse_token_value(&format!("{TOKEN_PREFIX}abc")).is_none());
+    }
 }

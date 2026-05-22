@@ -418,4 +418,10 @@ mod tests {
         let f = Filter { op: Op::AnyOf, props: vec![] };
         assert_eq!(f.op, Op::AnyOf);
     }
+
+    #[test]
+    fn filter_allof_op_is_allof() {
+        let f = Filter { op: Op::AllOf, props: vec![] };
+        assert_eq!(f.op, Op::AllOf);
+    }
 }

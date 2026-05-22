@@ -521,7 +521,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_depth_zero_string_is_zero() {
+    fn parse_depth_zero_header_yields_zero_variant() {
         assert!(matches!(parse_depth(&headers_with_depth("0")), Depth::Zero));
+    }
+
+    #[test]
+    fn parse_depth_one_header_yields_one_variant() {
+        assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
     }
 }

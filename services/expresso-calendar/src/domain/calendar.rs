@@ -473,12 +473,22 @@ mod tests {
     }
 
     #[test]
-    fn new_calendar_name_preserved() {
+    fn new_calendar_name_field_round_trips() {
         let n = NewCalendar {
             name: "Personal".into(),
             description: None,
             color: None, timezone: None, is_default: false,
         };
         assert_eq!(n.name, "Personal");
+    }
+
+    #[test]
+    fn new_calendar_is_default_false_by_default() {
+        let n = NewCalendar {
+            name: "Work".into(),
+            description: None,
+            color: None, timezone: None, is_default: false,
+        };
+        assert!(!n.is_default);
     }
 }

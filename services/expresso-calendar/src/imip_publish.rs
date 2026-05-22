@@ -277,4 +277,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"].as_str(), Some("REPLY"));
     }
+
+    #[test]
+    fn envelope_method_request_field_is_preserved() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["method"].as_str(), Some("REQUEST"));
+    }
 }

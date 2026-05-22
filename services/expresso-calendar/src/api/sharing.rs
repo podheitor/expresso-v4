@@ -264,4 +264,9 @@ mod tests {
     fn validate_priv_empty_string_returns_error() {
         assert!(validate_priv("").is_err());
     }
+
+    #[test]
+    fn validate_priv_write_accepted() {
+        assert!(validate_priv("write").is_ok());
+    }
 }

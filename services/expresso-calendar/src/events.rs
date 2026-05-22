@@ -275,8 +275,14 @@ mod tests {
     }
 
     #[test]
-    fn event_created_kind_str_is_event_created() {
+    fn event_created_kind_str_second_instance_is_event_created() {
         let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
         assert_eq!(ev.kind_str(), "event_created");
+    }
+
+    #[test]
+    fn event_cancelled_kind_str() {
+        let ev = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        assert_eq!(ev.kind_str(), "event_cancelled");
     }
 }

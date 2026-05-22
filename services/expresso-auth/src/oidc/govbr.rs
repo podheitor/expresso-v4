@@ -191,7 +191,12 @@ mod tests {
     }
 
     #[test]
-    fn assurance_ouro_as_str() {
+    fn assurance_ouro_as_str_is_ouro() {
         assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
+    }
+
+    #[test]
+    fn assurance_bronze_as_str() {
+        assert_eq!(GovbrAssurance::Bronze.as_str(), "bronze");
     }
 }

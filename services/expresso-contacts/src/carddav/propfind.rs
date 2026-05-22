@@ -419,4 +419,9 @@ mod tests {
         let headers = headers_with_depth("1");
         assert!(matches!(parse_depth(&headers), Depth::One));
     }
+
+    #[test]
+    fn depth_zero_ne_one() {
+        assert_ne!(Depth::Zero, Depth::One);
+    }
 }

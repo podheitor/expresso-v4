@@ -278,4 +278,9 @@ mod tests {
     fn accepts_root_path() {
         assert!(is_safe_local_redirect("/"));
     }
+
+    #[test]
+    fn rejects_double_slash_protocol_relative() {
+        assert!(!is_safe_local_redirect("//evil.com/steal"));
+    }
 }

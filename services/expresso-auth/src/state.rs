@@ -219,4 +219,11 @@ mod tests {
         AppState::evict_expired(&mut m);
         assert!(m.is_empty());
     }
+
+    #[test]
+    fn evict_expired_empty_map_stays_empty() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        AppState::evict_expired(&mut m);
+        assert!(m.is_empty());
+    }
 }

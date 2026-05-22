@@ -237,4 +237,10 @@ mod tests {
         let ctx = ctx_with_roles(&["super admin"]);
         assert!(!is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_true_for_super_admin_underscore_variant() {
+        let ctx = ctx_with_roles(&["super_admin"]);
+        assert!(is_super(&ctx));
+    }
 }

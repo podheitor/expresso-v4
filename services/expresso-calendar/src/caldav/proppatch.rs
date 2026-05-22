@@ -372,4 +372,11 @@ mod tests {
         let p = UpdateCalendar { name: None, description: None, color: Some("#ff0000".into()), timezone: None, is_default: None };
         assert!(patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_all_none_has_no_changes() {
+        use super::UpdateCalendar;
+        let p = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
+        assert!(!patch_has_changes(&p));
+    }
 }

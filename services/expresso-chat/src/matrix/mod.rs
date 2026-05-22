@@ -321,4 +321,16 @@ mod tests {
     fn localpart_no_at_sign_returns_none() {
         assert_eq!(localpart_from_mxid("notanmxid"), None);
     }
+
+    #[test]
+    fn mxid_starts_with_at_sign() {
+        let cfg = MatrixConfig {
+            hs_url: "http://x".into(),
+            server_name: "s.local".into(),
+            as_token: None, admin_token: None,
+        };
+        let c = MatrixClient::new(cfg);
+        let mxid = c.mxid_for(Uuid::nil());
+        assert!(mxid.starts_with('@'));
+    }
 }

@@ -551,4 +551,10 @@ mod tests {
         let raw: Option<i64> = Some(0);
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
     }
+
+    #[test]
+    fn counter_limit_large_value_clamped_to_200() {
+        let raw: Option<i64> = Some(999);
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
+    }
 }

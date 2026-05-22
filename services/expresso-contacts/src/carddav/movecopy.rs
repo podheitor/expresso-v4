@@ -175,4 +175,9 @@ mod tests {
     fn strip_origin_http_simple_path() {
         assert_eq!(strip_origin("http://example.com/contacts/principal"), "/contacts/principal");
     }
+
+    #[test]
+    fn strip_origin_already_relative_unchanged() {
+        assert_eq!(strip_origin("/carddav/tenant/book/card.vcf"), "/carddav/tenant/book/card.vcf");
+    }
 }

@@ -136,4 +136,9 @@ mod tests {
     fn calendar_conflict_status_is_409() {
         assert_eq!(status(CalendarError::Conflict("uid dup".into())), 409);
     }
+
+    #[test]
+    fn forbidden_status_is_403() {
+        assert_eq!(status(CalendarError::Forbidden), 403);
+    }
 }

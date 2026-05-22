@@ -215,4 +215,10 @@ mod tests {
         let h = headers_with_cookie("session=abc");
         assert!(extract_cookie(&h, "expresso_rt").is_none());
     }
+
+    #[test]
+    fn extract_cookie_no_header_returns_none() {
+        let h = axum::http::HeaderMap::new();
+        assert!(extract_cookie(&h, "expresso_rt").is_none());
+    }
 }

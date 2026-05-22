@@ -133,4 +133,10 @@ mod tests {
     fn matrix_error_status_is_502() {
         assert_eq!(status(ChatError::Matrix("upstream timeout".into())), 502);
     }
+
+    #[test]
+    fn matrix_unavailable_display_not_empty() {
+        let msg = format!("{}", ChatError::MatrixUnavailable);
+        assert!(!msg.is_empty());
+    }
 }

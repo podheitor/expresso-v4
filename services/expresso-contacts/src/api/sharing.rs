@@ -277,10 +277,17 @@ mod tests {
     }
 
     #[test]
-    fn share_request_privilege_preserved() {
+    fn share_request_write_privilege_preserved() {
         let id = uuid::Uuid::nil();
-        let json = format!(r#"{{"grantee_id":"{id}","privilege":"READ"}}"#);
+        let json = format!(r#"{{"grantee_id":"{id}","privilege":"WRITE"}}"#);
         let r: ShareRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(r.privilege, "READ");
+        assert_eq!(r.privilege, "WRITE");
+    }
+
+    #[test]
+    fn share_request_nil_grantee_deserializes() {
+        let json = r#"{"grantee_id":"00000000-0000-0000-0000-000000000000","privilege":"READ"}"#;
+        let r: ShareRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(r.grantee_id, uuid::Uuid::nil());
     }
 }

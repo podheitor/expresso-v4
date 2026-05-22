@@ -510,7 +510,13 @@ mod tests {
     }
 
     #[test]
-    fn max_contact_vcard_bytes_is_64kb() {
+    fn max_contact_vcard_bytes_exact_value() {
         assert_eq!(MAX_CONTACT_VCARD_BYTES, 64 * 1024);
+    }
+
+    #[test]
+    fn oversize_vcard_rejected() {
+        let s = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
+        assert!(validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).is_err());
     }
 }
