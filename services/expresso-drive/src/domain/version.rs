@@ -200,4 +200,31 @@ mod tests {
         assert_eq!(c.storage_key, "blobs/v5/data");
         assert_eq!(c.version_no, 5);
     }
+
+    #[test]
+    fn file_version_sha256_some_in_json() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "k".into(), size_bytes: 1,
+            sha256: Some("abc123".into()), mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let j: serde_json::Value = serde_json::to_value(&v).unwrap();
+        assert_eq!(j["sha256"], "abc123");
+    }
+
+    #[test]
+    fn file_version_size_bytes_zero_allowed() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "k".into(), size_bytes: 0,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.size_bytes, 0);
+    }
 }

@@ -161,4 +161,24 @@ mod tests {
         };
         assert_eq!(p.xml_value, long);
     }
+
+    #[test]
+    fn dead_prop_namespace_preserved() {
+        let p = DeadProp {
+            namespace: "http://custom.ns/v1".into(),
+            local_name: "my-prop".into(),
+            xml_value: "value".into(),
+        };
+        assert_eq!(p.namespace, "http://custom.ns/v1");
+    }
+
+    #[test]
+    fn dead_prop_local_name_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "getcontenttype".into(),
+            xml_value: "text/vcard".into(),
+        };
+        assert_eq!(p.local_name, "getcontenttype");
+    }
 }

@@ -175,4 +175,31 @@ mod tests {
         let c = r.clone();
         assert_eq!(c.emoji, "✅");
     }
+
+    #[test]
+    fn comment_reaction_user_id_preserved() {
+        use time::macros::datetime;
+        use uuid::Uuid;
+        let uid = Uuid::new_v4();
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: uid,
+            emoji: "👍".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(r.user_id, uid);
+    }
+
+    #[test]
+    fn comment_reaction_serializes_emoji_as_string() {
+        use time::macros::datetime;
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            emoji: "🎉".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["emoji"], "🎉");
+    }
 }

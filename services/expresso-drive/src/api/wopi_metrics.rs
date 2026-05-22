@@ -118,4 +118,17 @@ mod tests {
         let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"));
         assert_eq!(outcome_for_err(&e), "error");
     }
+
+    #[test]
+    fn ops_list_contains_get_file() {
+        assert!(OPS.contains(&"get_file"));
+        assert!(OPS.contains(&"put_file"));
+        assert!(OPS.contains(&"check_file_info"));
+    }
+
+    #[test]
+    fn outcomes_list_contains_ok_and_error() {
+        assert!(OUTCOMES.contains(&"ok"));
+        assert!(OUTCOMES.contains(&"error"));
+    }
 }
