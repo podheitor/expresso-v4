@@ -75,4 +75,19 @@ mod tests {
         let e: WebError = json_err.into();
         assert!(matches!(e, WebError::Internal(_)));
     }
+
+    #[test]
+    fn from_anyhow_is_internal() {
+        let e: WebError = anyhow::anyhow!("anyhow reason").into();
+        assert!(matches!(e, WebError::Internal(_)));
+        assert!(e.to_string().contains("anyhow reason"));
+    }
+
+    #[test]
+    fn response_content_type_is_html() {
+        use axum::response::IntoResponse;
+        let resp = WebError::Internal("x".into()).into_response();
+        let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
+        assert!(ct.contains("text/html"));
+    }
 }

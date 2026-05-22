@@ -176,4 +176,14 @@ mod tests {
     fn build_url_base_without_trailing_slash() {
         assert_eq!(build_url("http://localhost:8080", "/api"), "http://localhost:8080/api");
     }
+
+    #[test]
+    fn build_url_path_with_query() {
+        assert_eq!(build_url("https://api.svc", "/items?limit=10"), "https://api.svc/items?limit=10");
+    }
+
+    #[test]
+    fn build_url_nested_path() {
+        assert_eq!(build_url("https://api.svc/", "/v2/mail/messages/abc"), "https://api.svc/v2/mail/messages/abc");
+    }
 }

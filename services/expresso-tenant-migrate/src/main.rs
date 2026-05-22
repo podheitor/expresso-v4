@@ -384,4 +384,17 @@ mod tests {
         let src = vec![json!({"name": "X"})];
         assert!(roles_to_assign(&src, &[]).is_empty());
     }
+
+    #[test]
+    fn build_payload_enabled_defaults_true_when_missing() {
+        let src = json!({"username":"bob","email":"b@b.com","firstName":"Bob","lastName":"","emailVerified":false});
+        let out = build_user_payload(&src);
+        assert_eq!(out["enabled"], true);
+    }
+
+    #[test]
+    fn extract_tenant_id_trims_whitespace() {
+        let u = json!({"attributes": {"tenant_id": ["  acme  "]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some("acme"));
+    }
 }

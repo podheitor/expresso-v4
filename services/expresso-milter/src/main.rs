@@ -302,4 +302,18 @@ mod tests {
         assert_eq!(n, "Subject");
         assert_eq!(v, "Hello World");
     }
+
+    #[test]
+    fn parse_header_only_lf_trimmed() {
+        let (n, v) = parse_header_line("X-Test: value\n").unwrap();
+        assert_eq!(n, "X-Test");
+        assert_eq!(v, "value");
+    }
+
+    #[test]
+    fn parse_header_empty_value_ok() {
+        let (n, v) = parse_header_line("X-Empty:").unwrap();
+        assert_eq!(n, "X-Empty");
+        assert_eq!(v, "");
+    }
 }
