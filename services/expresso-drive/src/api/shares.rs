@@ -199,4 +199,18 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.expires_in_seconds.is_none());
     }
+
+    #[test]
+    fn create_body_negative_expiry_allowed_by_deser() {
+        let json = r#"{"expires_in_seconds":-1}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(-1));
+    }
+
+    #[test]
+    fn create_body_large_expiry() {
+        let json = r#"{"expires_in_seconds":31536000}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(31536000));
+    }
 }
