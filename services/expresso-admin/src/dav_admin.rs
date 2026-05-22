@@ -388,4 +388,10 @@ mod tests {
         let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "My Calendar".into(), None, None, false, 0);
         assert_eq!(row.name, "My Calendar");
     }
+
+    #[test]
+    fn to_dav_row_owner_email_preserved() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "owner@example.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.owner_email, "owner@example.com");
+    }
 }

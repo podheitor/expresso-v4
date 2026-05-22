@@ -296,4 +296,11 @@ mod tests {
         assert_eq!(row.received_sequence, "3");
         assert_eq!(row.comment.as_deref(), Some("Please reschedule"));
     }
+
+    #[test]
+    fn fmt_opt_ts_some_is_not_dash() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-06-01 10:00:00 UTC);
+        assert_ne!(fmt_opt_ts(Some(ts)), "-");
+    }
 }

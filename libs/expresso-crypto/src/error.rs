@@ -61,4 +61,11 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("chave inválida: ä"));
         assert!(e.to_string().contains("chave inválida"));
     }
+
+    #[test]
+    fn long_error_message_not_truncated() {
+        let msg = "e".repeat(500);
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("{msg}"));
+        assert!(e.to_string().contains(&msg));
+    }
 }

@@ -295,4 +295,11 @@ mod tests {
         let c = OidcConfig::new("http://kc/realms/r", "my-app");
         assert_eq!(c.audience, "my-app");
     }
+
+    #[test]
+    fn oidc_config_both_fields_set() {
+        let c = OidcConfig::new("https://sso.example.com/realms/prod", "expresso-web");
+        assert_eq!(c.issuer, "https://sso.example.com/realms/prod");
+        assert_eq!(c.audience, "expresso-web");
+    }
 }

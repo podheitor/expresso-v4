@@ -282,4 +282,11 @@ mod tests {
         assert_eq!(b.cpf_hash, "sha256hashvalue");
         assert_eq!(b.assurance.as_deref(), Some("ouro"));
     }
+
+    #[test]
+    fn list_query_tenant_id_some() {
+        let tid = Uuid::new_v4();
+        let q = ListQuery { tenant_id: Some(tid) };
+        assert_eq!(q.tenant_id, Some(tid));
+    }
 }

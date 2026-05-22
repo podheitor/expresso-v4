@@ -305,4 +305,9 @@ mod tests {
     fn cache_key_same_user_different_pass_differ() {
         assert_ne!(cache_key("alice", "pass1"), cache_key("alice", "pass2"));
     }
+
+    #[test]
+    fn cache_key_empty_user_differs_from_nonempty() {
+        assert_ne!(cache_key("", "pass"), cache_key("alice", "pass"));
+    }
 }

@@ -113,4 +113,10 @@ mod tests {
         assert_eq!(r.resolve("tenant.local"), Some("t1"));
         assert_eq!(r.resolve("TENANT.LOCAL"), Some("t1"));
     }
+
+    #[test]
+    fn resolve_unknown_host_is_none() {
+        let r = TenantResolver::parse("a.x:r1");
+        assert!(r.resolve("unknown.host").is_none());
+    }
 }

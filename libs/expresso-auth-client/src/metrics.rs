@@ -85,4 +85,9 @@ mod tests {
     fn result_label_jwks_fetch() {
         assert_eq!(result_label(&AuthError::JwksFetch("timeout".into())), "jwks_fetch");
     }
+
+    #[test]
+    fn result_label_forbidden_maps_missing_claim() {
+        assert_eq!(result_label(&AuthError::MissingClaim("aud")), "forbidden");
+    }
 }

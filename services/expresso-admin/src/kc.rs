@@ -343,4 +343,18 @@ mod tests {
         };
         assert_eq!(u.enabled, Some(false));
     }
+
+    #[test]
+    fn new_user_temporary_password_flag() {
+        let u = NewUser {
+            username:   "alice".into(),
+            email:      "alice@example.com".into(),
+            first_name: "Alice".into(),
+            last_name:  "Smith".into(),
+            password:   "s3cr3t".into(),
+            temporary:  true,
+        };
+        assert!(u.temporary);
+        assert_eq!(u.username, "alice");
+    }
 }

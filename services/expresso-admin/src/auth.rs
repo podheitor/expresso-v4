@@ -311,4 +311,9 @@ mod tests {
         assert!(is_public_path("/health"));
         assert!(is_public_path("/favicon.ico"));
     }
+
+    #[test]
+    fn is_super_admin_mixed_case_superadmin() {
+        assert!(is_super_admin(&["SuPeRaDmIn".into()]));
+    }
 }

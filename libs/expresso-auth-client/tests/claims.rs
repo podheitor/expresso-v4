@@ -108,3 +108,10 @@ fn malformed_tenant_uuid_fails() {
         other => panic!("expected MalformedClaim(tenant_id), got {other:?}"),
     }
 }
+
+#[test]
+fn nil_sub_uuid_is_valid() {
+    let r = base("00000000-0000-0000-0000-000000000000", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.user_id, uuid::Uuid::nil());
+}

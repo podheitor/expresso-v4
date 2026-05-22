@@ -131,4 +131,10 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("{realm}") || matches!(err, AuthError::Config(_)));
     }
+
+    #[test]
+    fn issuer_for_numeric_realm() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert_eq!(m.issuer_for("12345"), "http://kc/realms/12345");
+    }
 }

@@ -420,4 +420,14 @@ mod tests {
         };
         assert!(!pass.should_reject());
     }
+
+    #[test]
+    fn auth_results_spf_field_preserved() {
+        let r = AuthResults {
+            spf: "pass".into(), dkim: "fail".into(), dmarc: "none".into(),
+            dmarc_policy: None, ..Default::default()
+        };
+        assert_eq!(r.spf, "pass");
+        assert_eq!(r.dkim, "fail");
+    }
 }

@@ -58,4 +58,11 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("bucket não encontrado"));
         assert!(e.to_string().contains("bucket não encontrado"));
     }
+
+    #[test]
+    fn long_message_not_truncated() {
+        let msg = "s".repeat(256);
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("{msg}"));
+        assert!(e.to_string().contains(&msg));
+    }
 }

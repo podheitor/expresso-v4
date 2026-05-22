@@ -151,4 +151,12 @@ mod tests {
         let s = fmt_ts(ts);
         assert!(s.starts_with("1970-01-01"));
     }
+
+    #[test]
+    fn preview_120_chars_unchanged() {
+        let s = "z".repeat(120);
+        let out = preview(s.clone());
+        assert_eq!(out, s);
+        assert!(!out.ends_with('…'));
+    }
 }

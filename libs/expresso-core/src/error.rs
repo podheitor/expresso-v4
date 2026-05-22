@@ -81,4 +81,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("999") && s.contains("1000"));
     }
+
+    #[test]
+    fn not_found_calendar_event_in_display() {
+        let e = CoreError::NotFound { resource: "calendar_event" };
+        assert!(e.to_string().contains("calendar_event"));
+    }
 }

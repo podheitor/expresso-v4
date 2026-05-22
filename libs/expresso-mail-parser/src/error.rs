@@ -58,4 +58,11 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("cabeçalho inválido"));
         assert!(e.to_string().contains("cabeçalho inválido"));
     }
+
+    #[test]
+    fn long_message_not_truncated() {
+        let msg = "x".repeat(256);
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("{msg}"));
+        assert!(e.to_string().contains(&msg));
+    }
 }

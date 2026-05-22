@@ -238,4 +238,9 @@ mod tests {
     fn default_host_is_all_interfaces() {
         assert_eq!(default_host(), "0.0.0.0");
     }
+
+    #[test]
+    fn default_port_is_8000() {
+        assert_eq!(default_port(), 8000);
+    }
 }

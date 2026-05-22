@@ -302,4 +302,13 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert_eq!(r.access_token_lifespan, 86400);
     }
+
+    #[test]
+    fn kc_user_enabled_false_by_default() {
+        let json = r#"{"id":"z","username":"bob"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert!(!u.enabled);
+        assert_eq!(u.first, "");
+        assert_eq!(u.last, "");
+    }
 }

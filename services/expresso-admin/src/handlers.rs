@@ -382,4 +382,10 @@ mod tests {
         assert!(f.password.is_none());
         assert!(f.enabled.is_none());
     }
+
+    #[test]
+    fn user_delete_form_empty_username() {
+        let f = UserDeleteForm { confirm_username: "".into() };
+        assert!(f.confirm_username.is_empty());
+    }
 }

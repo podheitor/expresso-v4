@@ -561,4 +561,10 @@ mod tests {
         let out = csv_escape("line1\nline2");
         assert!(out.starts_with('"') && out.ends_with('"'));
     }
+
+    #[test]
+    fn carriage_return_inside_field_quoted() {
+        let out = csv_escape("line1\rline2");
+        assert!(out.starts_with('"') && out.ends_with('"'));
+    }
 }
