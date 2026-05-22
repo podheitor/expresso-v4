@@ -1398,6 +1398,16 @@ mod tests {
         assert!(MAX_INVITE_LEN  >= 10);
         assert!(MAX_EMAIL_BYTES >= 254);  // RFC 5321 baseline
     }
+
+    #[test]
+    fn room_name_single_char_valid() {
+        assert!(valid_room_name("a"));
+    }
+
+    #[test]
+    fn room_name_rejects_dot_single() {
+        assert!(!valid_room_name("."));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

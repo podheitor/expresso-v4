@@ -241,4 +241,16 @@ mod extra_tests {
         }).unwrap();
         assert!(tok.join_url.contains("jwt="));
     }
+
+    #[test]
+    fn issued_token_has_room_field() {
+        let j = Jitsi::new(fixture_cfg());
+        let tok = j.mint(&IssueRequest {
+            room: "my-room", user_id: Uuid::nil(),
+            display_name: "X", email: "x@x",
+            moderator: false, allow_recording: true,
+        }).unwrap();
+        assert!(!tok.token.is_empty());
+        assert!(tok.join_url.contains("my-room"));
+    }
 }

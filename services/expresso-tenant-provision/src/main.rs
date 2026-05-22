@@ -439,4 +439,18 @@ mod tests {
         assert_eq!(s1.len(), 64);
         assert!(s1.chars().all(|c| c.is_ascii_hexdigit()));
     }
+
+    #[test]
+    fn generated_secrets_are_unique() {
+        let s1 = generated_secret();
+        let s2 = generated_secret();
+        assert_ne!(s1, s2);
+    }
+
+    #[test]
+    fn realm_body_display_name_set() {
+        let b = build_realm_body("acme", "Acme Corp");
+        assert_eq!(b["displayName"], "Acme Corp");
+        assert_eq!(b["realm"], "acme");
+    }
 }
