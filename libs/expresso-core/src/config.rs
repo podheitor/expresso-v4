@@ -187,3 +187,45 @@ impl AppConfig {
         Ok(cfg)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_server_port_is_8000() {
+        assert_eq!(default_port(), 8000);
+    }
+
+    #[test]
+    fn default_smtp_ports() {
+        assert_eq!(default_smtp_port(), 25);
+        assert_eq!(default_submission_port(), 587);
+        assert_eq!(default_lmtp_port(), 24);
+        assert_eq!(default_imap_port(), 143);
+        assert_eq!(default_imaps_port(), 993);
+        assert_eq!(default_smtps_port(), 465);
+    }
+
+    #[test]
+    fn default_relay_is_localhost() {
+        assert_eq!(default_relay_host(), "127.0.0.1");
+        assert_eq!(default_relay_port(), 587);
+    }
+
+    #[test]
+    fn default_db_connections() {
+        assert_eq!(default_db_max_connections(), 20);
+        assert_eq!(default_db_min_connections(), 2);
+    }
+
+    #[test]
+    fn default_s3_region_us_east_1() {
+        assert_eq!(default_s3_region(), "us-east-1");
+    }
+
+    #[test]
+    fn default_log_filter_is_info() {
+        assert_eq!(default_log_filter(), "info");
+    }
+}
