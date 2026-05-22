@@ -288,4 +288,18 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert_eq!(r.access_token_lifespan, 0);
     }
+
+    #[test]
+    fn kc_user_first_name_accessible() {
+        let json = r#"{"id":"x","firstName":"João"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.first, "João");
+    }
+
+    #[test]
+    fn kc_realm_lifespan_large_value() {
+        let json = r#"{"realm":"prod","accessTokenLifespan":86400}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.access_token_lifespan, 86400);
+    }
 }

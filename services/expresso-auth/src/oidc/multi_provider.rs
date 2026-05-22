@@ -82,4 +82,16 @@ mod tests {
         let r = TenantProviderCache::new("http://kc/realms/{tenant}".into(), Duration::from_secs(1));
         assert!(r.is_err());
     }
+
+    #[test]
+    fn realm_placeholder_is_realm_keyword() {
+        assert_eq!(REALM_PLACEHOLDER, "{realm}");
+        assert!(REALM_PLACEHOLDER.contains("realm"));
+    }
+
+    #[test]
+    fn valid_template_accepted() {
+        let r = TenantProviderCache::new("https://auth.svc/realms/{realm}".into(), Duration::from_secs(60));
+        assert!(r.is_ok());
+    }
 }

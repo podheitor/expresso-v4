@@ -201,4 +201,16 @@ mod tests {
         let ctx = ctx_with_roles(&["SuperAdmin"]);
         assert!(is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_false_for_admin_without_super() {
+        let ctx = ctx_with_roles(&["admin", "TenantAdmin"]);
+        assert!(!is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_true_only_when_exact_name_matches() {
+        let ctx = ctx_with_roles(&["not_superadmin", "SuperAdmin"]);
+        assert!(is_super(&ctx));
+    }
 }

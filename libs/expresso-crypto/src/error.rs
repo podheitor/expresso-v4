@@ -49,4 +49,16 @@ mod tests {
         }
         assert!(matches!(returns_error(), Err(ExpresscryptoError::Internal(_))));
     }
+
+    #[test]
+    fn empty_message_still_prefixed() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!(""));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn unicode_message_preserved() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("chave inválida: ä"));
+        assert!(e.to_string().contains("chave inválida"));
+    }
 }

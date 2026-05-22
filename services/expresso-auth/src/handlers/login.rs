@@ -124,4 +124,16 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":""}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some(""));
     }
+
+    #[test]
+    fn login_query_absent_is_none() {
+        let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.redirect_uri.is_none());
+    }
+
+    #[test]
+    fn login_query_deep_path_stored() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/drive/files/abc/edit"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/drive/files/abc/edit"));
+    }
 }

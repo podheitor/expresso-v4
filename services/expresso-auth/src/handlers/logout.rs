@@ -143,4 +143,16 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(&json).unwrap();
         assert!(q.id_token_hint.is_some());
     }
+
+    #[test]
+    fn logout_query_absent_is_none() {
+        let q: LogoutQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.id_token_hint.is_none());
+    }
+
+    #[test]
+    fn logout_query_opaque_token_hint() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"abc.def.ghi"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("abc.def.ghi"));
+    }
 }

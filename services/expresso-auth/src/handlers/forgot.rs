@@ -116,4 +116,16 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert_eq!(r.email, "user@example.com");
     }
+
+    #[test]
+    fn action_lifespan_is_3600() {
+        assert_eq!(ACTION_LIFESPAN_SECS, 3600);
+    }
+
+    #[test]
+    fn forgot_req_unicode_email() {
+        let json = r#"{"email":"usuário@exemplo.com.br"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(r.email.contains("usuário"));
+    }
 }

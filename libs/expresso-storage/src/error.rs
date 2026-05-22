@@ -46,4 +46,16 @@ mod tests {
         let e: ExpressstorageError = anyhow::anyhow!("test").into();
         assert!(matches!(e, ExpressstorageError::Internal(_)));
     }
+
+    #[test]
+    fn empty_message_still_prefixed() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!(""));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn unicode_message_preserved() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("bucket não encontrado"));
+        assert!(e.to_string().contains("bucket não encontrado"));
+    }
 }

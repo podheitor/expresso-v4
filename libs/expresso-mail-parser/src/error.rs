@@ -46,4 +46,16 @@ mod tests {
         let e: ExpressmailParserError = anyhow::anyhow!("test").into();
         assert!(matches!(e, ExpressmailParserError::Internal(_)));
     }
+
+    #[test]
+    fn empty_message_still_prefixed() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!(""));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn unicode_message_preserved() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("cabeçalho inválido"));
+        assert!(e.to_string().contains("cabeçalho inválido"));
+    }
 }

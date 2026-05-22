@@ -326,4 +326,21 @@ mod tests {
         assert_eq!(u.email.as_deref(), Some("new@ex.com"));
         assert!(u.first_name.is_none());
     }
+
+    #[test]
+    fn new_user_temporary_flag_false_by_default() {
+        let u = NewUser::default();
+        assert!(!u.temporary);
+    }
+
+    #[test]
+    fn update_user_enabled_set() {
+        let u = UpdateUser {
+            email:      None,
+            first_name: None,
+            last_name:  None,
+            enabled:    Some(false),
+        };
+        assert_eq!(u.enabled, Some(false));
+    }
 }
