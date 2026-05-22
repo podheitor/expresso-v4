@@ -277,4 +277,20 @@ mod tests {
         let s = String::from_utf8_lossy(&bytes);
         assert!(s.contains("sender@example.com"));
     }
+
+    #[test]
+    fn build_raw_subject_appears_in_output() {
+        let r = req("a@example.com", None, Some("My Subject"), None);
+        let bytes = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("My Subject"));
+    }
+
+    #[test]
+    fn build_raw_body_text_appears_in_output() {
+        let r = req("a@example.com", None, None, Some("Hello from draft"));
+        let bytes = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("Hello from draft"));
+    }
 }

@@ -283,4 +283,22 @@ mod tests {
     fn urlencode_empty_string() {
         assert_eq!(urlencode(""), "");
     }
+
+    #[test]
+    fn mxid_contains_uuid() {
+        let cfg = MatrixConfig {
+            hs_url: "http://x".into(),
+            server_name: "s.local".into(),
+            as_token: None, admin_token: None,
+        };
+        let c = MatrixClient::new(cfg);
+        let u = Uuid::nil();
+        let mxid = c.mxid_for(u);
+        assert!(mxid.contains("00000000-0000-0000-0000-000000000000"));
+    }
+
+    #[test]
+    fn localpart_strips_at_and_server() {
+        assert_eq!(localpart_from_mxid("@bot:matrix.org"), Some("bot"));
+    }
 }

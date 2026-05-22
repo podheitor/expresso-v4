@@ -146,4 +146,15 @@ mod tests {
         assert!(DEFAULT_LIST_LIMIT < MAX_LIST_LIMIT);
         assert!(MAX_LIST_LIMIT >= 50);
     }
+
+    #[test]
+    fn accepts_unicode_body() {
+        assert!(validate_message_body("Olá, mundo! 🎉").is_ok());
+    }
+
+    #[test]
+    fn list_query_default_limit() {
+        let q: ListQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(q.limit, DEFAULT_LIST_LIMIT);
+    }
 }
