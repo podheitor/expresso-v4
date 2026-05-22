@@ -1157,4 +1157,18 @@ mod tests {
         assert!(q.to.is_some());
         assert_eq!(q.limit, Some(50));
     }
+
+    #[test]
+    fn event_query_limit_none_by_default() {
+        let q = EventQuery::default();
+        assert!(q.limit.is_none());
+    }
+
+    #[test]
+    fn event_query_to_without_from() {
+        let json = r#"{"to":"2026-12-31T23:59:59Z"}"#;
+        let q: EventQuery = serde_json::from_str(json).unwrap();
+        assert!(q.from.is_none());
+        assert!(q.to.is_some());
+    }
 }

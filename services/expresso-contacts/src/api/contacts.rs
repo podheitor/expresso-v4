@@ -477,4 +477,19 @@ mod tests {
         let s = "x".repeat(MAX_CONTACT_VCARD_BYTES);
         assert!(validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).is_ok());
     }
+
+    #[test]
+    fn max_contact_vcard_bytes_is_64kb() {
+        assert_eq!(MAX_CONTACT_VCARD_BYTES, 64 * 1024);
+    }
+
+    #[test]
+    fn max_import_vcf_bytes_is_4mb() {
+        assert_eq!(MAX_IMPORT_VCF_BYTES, 4 * 1024 * 1024);
+    }
+
+    #[test]
+    fn empty_string_accepted_by_size_check() {
+        assert!(validate_vcard("", MAX_CONTACT_VCARD_BYTES).is_ok());
+    }
 }

@@ -221,4 +221,20 @@ mod tests {
         assert_eq!(v["invite"]["dtstart"], "2026-05-10T13:00:00Z");
         assert_eq!(v["invite"]["dtend"],   "2026-05-10T14:00:00Z");
     }
+
+    #[test]
+    fn envelope_contains_method() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "CANCEL").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["method"], "CANCEL");
+    }
+
+    #[test]
+    fn envelope_contains_uid() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["invite"]["uid"].as_str().is_some_and(|s| !s.is_empty()));
+    }
 }

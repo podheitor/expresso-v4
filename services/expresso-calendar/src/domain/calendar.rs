@@ -407,4 +407,22 @@ mod tests {
         assert_eq!(u.is_default, Some(false));
         assert!(u.color.is_none());
     }
+
+    #[test]
+    fn new_calendar_is_default_true() {
+        let n = NewCalendar {
+            name: "Main".into(),
+            description: None,
+            color: None,
+            timezone: None,
+            is_default: true,
+        };
+        assert!(n.is_default);
+    }
+
+    #[test]
+    fn update_calendar_timezone_set() {
+        let u: UpdateCalendar = serde_json::from_str(r#"{"timezone":"America/Sao_Paulo"}"#).unwrap();
+        assert_eq!(u.timezone.as_deref(), Some("America/Sao_Paulo"));
+    }
 }
