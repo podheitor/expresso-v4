@@ -207,4 +207,19 @@ mod tests {
         assert!(out.contains("etag99"));
         assert!(out.contains("200 OK"));
     }
+
+    #[test]
+    fn parse_token_value_negative() {
+        let tok = format!("{TOKEN_PREFIX}-1");
+        assert_eq!(parse_token_value(&tok), Some(-1));
+    }
+
+    #[test]
+    fn push_member_contains_uid_in_href() {
+        let user = Uuid::nil();
+        let ab   = Uuid::nil();
+        let mut out = String::new();
+        push_member(&mut out, user, ab, "my-uid", "e1");
+        assert!(out.contains("my-uid"));
+    }
 }

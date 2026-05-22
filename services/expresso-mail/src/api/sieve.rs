@@ -251,4 +251,19 @@ if header :contains "Subject" "[spam]" {
         assert_eq!(s.len(), MAX_SIEVE_SCRIPT_BYTES);
         assert!(validate_script(&s).is_ok());
     }
+
+    #[test]
+    fn sieve_rules_default_enabled_true() {
+        let r = SieveRules::default();
+        assert!(r.enabled);
+        assert!(r.script.is_empty());
+    }
+
+    #[test]
+    fn sieve_test_request_deser() {
+        let json = r#"{"script":"keep;","raw_message":"From: a@ex.com\r\n\r\nbody"}"#;
+        let r: SieveTestRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(r.script, "keep;");
+        assert!(!r.raw_message.is_empty());
+    }
 }

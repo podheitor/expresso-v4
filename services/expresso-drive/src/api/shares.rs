@@ -213,4 +213,18 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.expires_in_seconds, Some(31536000));
     }
+
+    #[test]
+    fn create_body_zero_expiry() {
+        let json = r#"{"expires_in_seconds":0}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(0));
+    }
+
+    #[test]
+    fn create_body_extra_fields_ignored() {
+        let json = r#"{"expires_in_seconds":60,"unknown_field":"ignored"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(60));
+    }
 }

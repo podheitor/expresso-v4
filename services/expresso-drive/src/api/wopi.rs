@@ -569,4 +569,23 @@ mod tests {
         assert!(MAX_PUTFILE_BYTES >= 64 * 1024 * 1024);
         assert!(MAX_PUTFILE_BYTES <= 1024 * 1024 * 1024);
     }
+
+    #[test]
+    fn token_encodes_tenant_and_user() {
+        let fid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let uid = Uuid::new_v4();
+        let tok = sign_token(b"key", fid, tid, uid, 60);
+        let claims = verify_token(b"key", &tok, fid).unwrap();
+        assert_eq!(claims.tenant_id, tid);
+        assert_eq!(claims.user_id, uid);
+    }
+
+    #[test]
+    fn mismatched_file_id_always_rejected() {
+        let fid1 = Uuid::new_v4();
+        let fid2 = Uuid::new_v4();
+        let tok = sign_token(b"k", fid1, Uuid::new_v4(), Uuid::new_v4(), 60);
+        assert!(verify_token(b"k", &tok, fid2).is_none());
+    }
 }

@@ -123,4 +123,18 @@ mod tests {
         let b: TrashPurgePutBody = serde_json::from_str(json).unwrap();
         assert!(b.auto_purge_days.is_none());
     }
+
+    #[test]
+    fn trash_purge_settings_serializes_some() {
+        let s = TrashPurgeSettings { auto_purge_days: Some(7) };
+        let v: serde_json::Value = serde_json::to_value(&s).unwrap();
+        assert_eq!(v["auto_purge_days"], 7);
+    }
+
+    #[test]
+    fn trash_purge_settings_serializes_null() {
+        let s = TrashPurgeSettings { auto_purge_days: None };
+        let v: serde_json::Value = serde_json::to_value(&s).unwrap();
+        assert!(v["auto_purge_days"].is_null());
+    }
 }
