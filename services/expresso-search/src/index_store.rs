@@ -1212,4 +1212,145 @@ mod tests {
         assert!(res.is_err());
         assert!(res.unwrap_err().to_string().starts_with("bad_query:"));
     }
+
+    // ─── unix_secs_to_bucket pure-logic tests ────────────────────────────────
+
+    #[test]
+    fn bucket_day_epoch() {
+        // 1970-01-01T00:00:00Z → "1970-01-01"
+        assert_eq!(unix_secs_to_bucket(0, "day"), "1970-01-01");
+    }
+
+    #[test]
+    fn bucket_day_known_date() {
+        // 2026-01-15 = 20469 days since epoch  (2026*365 + leap-years - ...)
+        // Use a well-known timestamp: 2026-05-22T00:00:00Z = 1748304000
+        let ts: u64 = 1748304000;
+        assert_eq!(unix_secs_to_bucket(ts, "day"), "2026-05-22");
+    }
+
+    #[test]
+    fn bucket_month_known_date() {
+        let ts: u64 = 1748304000; // 2026-05-22
+        assert_eq!(unix_secs_to_bucket(ts, "month"), "2026-05");
+    }
+
+    #[test]
+    fn bucket_week_known_date() {
+        // 2026-05-22 is a Friday in ISO week 21 of 2026
+        let ts: u64 = 1748304000;
+        assert_eq!(unix_secs_to_bucket(ts, "week"), "2026-W21");
+    }
+
+    #[test]
+    fn bucket_unknown_granularity_falls_back_to_day() {
+        let ts: u64 = 1748304000;
+        assert_eq!(unix_secs_to_bucket(ts, "quarter"), unix_secs_to_bucket(ts, "day"));
+    }
+
+    #[test]
+    fn bucket_day_end_of_year() {
+        // 2025-12-31T00:00:00Z = 1735603200
+        let ts: u64 = 1735603200;
+        assert_eq!(unix_secs_to_bucket(ts, "day"), "2025-12-31");
+        assert_eq!(unix_secs_to_bucket(ts, "month"), "2025-12");
+    }
+
+    // ─── days_to_ymd / ymd_to_days round-trip ────────────────────────────────
+
+    #[test]
+    fn ymd_roundtrip_epoch() {
+        let days = ymd_to_days(1970, 1, 1);
+        assert_eq!(days, 0);
+        let (y, m, d) = days_to_ymd(0);
+        assert_eq!((y, m, d), (1970, 1, 1));
+    }
+
+    #[test]
+    fn ymd_roundtrip_leap_year() {
+        // 2000-02-29 exists (leap year)
+        let days = ymd_to_days(2000, 2, 29);
+        let (y, m, d) = days_to_ymd(days);
+        assert_eq!((y, m, d), (2000, 2, 29));
+    }
+
+    #[test]
+    fn ymd_roundtrip_multiple_dates() {
+        let cases = [(2026, 5, 22), (2000, 1, 1), (1999, 12, 31), (2038, 1, 19)];
+        for (ey, em, ed) in cases {
+            let days = ymd_to_days(ey, em, ed);
+            let (y, m, d) = days_to_ymd(days);
+            assert_eq!((y, m, d), (ey as i32, em, ed), "roundtrip failed for {ey}-{em:02}-{ed:02}");
+        }
+    }
+
+    // ─── IndexStore facet isolation ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn facet_counts_by_kind_tenant_isolation() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+
+        store.index_document(&IndexDoc {
+            document_id: "d1".into(), tenant_id: TENANT_A.into(),
+            subject: None, from_addr: None, body: None,
+            kind: Some("mail".into()), received_at: None,
+        }).await.unwrap();
+        store.index_document(&IndexDoc {
+            document_id: "d2".into(), tenant_id: TENANT_B.into(),
+            subject: None, from_addr: None, body: None,
+            kind: Some("drive".into()), received_at: None,
+        }).await.unwrap();
+        store.reload().unwrap();
+
+        let fa = store.facet_counts_by_kind("", TENANT_A).unwrap();
+        assert_eq!(fa, vec![("mail".to_string(), 1)]);
+
+        let fb = store.facet_counts_by_kind("", TENANT_B).unwrap();
+        assert_eq!(fb, vec![("drive".to_string(), 1)]);
+    }
+
+    #[tokio::test]
+    async fn doc_stats_empty_index() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+        let (total, by_kind) = store.doc_stats(TENANT_A).unwrap();
+        assert_eq!(total, 0);
+        assert!(by_kind.is_empty());
+    }
+
+    #[tokio::test]
+    async fn doc_stats_counts_by_kind() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+        for (id, kind) in [("a", "mail"), ("b", "mail"), ("c", "drive")] {
+            store.index_document(&IndexDoc {
+                document_id: id.into(), tenant_id: TENANT_A.into(),
+                subject: None, from_addr: None, body: None,
+                kind: Some(kind.into()), received_at: None,
+            }).await.unwrap();
+        }
+        store.reload().unwrap();
+        let (total, by_kind) = store.doc_stats(TENANT_A).unwrap();
+        assert_eq!(total, 3);
+        assert!(by_kind.contains(&("mail".to_string(), 2)));
+        assert!(by_kind.contains(&("drive".to_string(), 1)));
+    }
+
+    #[tokio::test]
+    async fn index_documents_batch_rejects_invalid() {
+        let dir = tempdir().unwrap();
+        let store = IndexStore::open(dir.path()).unwrap();
+        let docs = vec![
+            IndexDoc { document_id: "ok1".into(), tenant_id: TENANT_A.into(),
+                       subject: None, from_addr: None, body: None, kind: None, received_at: None },
+            IndexDoc { document_id: "bad".into(), tenant_id: "not-a-uuid".into(),
+                       subject: None, from_addr: None, body: None, kind: None, received_at: None },
+        ];
+        let rejected = store.index_documents(&docs).await.unwrap();
+        assert_eq!(rejected, vec!["bad".to_string()]);
+        store.reload().unwrap();
+        let hits = store.search("", TENANT_A, 10, 0).unwrap();
+        assert_eq!(hits.len(), 1);
+    }
 }
