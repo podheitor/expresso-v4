@@ -39,3 +39,40 @@ pub type WebResult<T> = Result<T, WebError>;
 
 // expresso-core is required by thiserror import. re-export placeholders below.
 // (thiserror is workspace dep)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn upstream_is_500() {
+        let e = WebError::Upstream("connect refused".into());
+        assert_eq!(e.into_response().status().as_u16(), 500);
+    }
+
+    #[test]
+    fn internal_is_500() {
+        let e = WebError::Internal("template panic".into());
+        assert_eq!(e.into_response().status().as_u16(), 500);
+    }
+
+    #[test]
+    fn upstream_display_contains_message() {
+        let e = WebError::Upstream("timeout".into());
+        assert!(e.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn internal_display_contains_message() {
+        let e = WebError::Internal("nil ptr".into());
+        assert!(e.to_string().contains("nil ptr"));
+    }
+
+    #[test]
+    fn from_serde_json_error_is_internal() {
+        let json_err = serde_json::from_str::<i32>("not_json").unwrap_err();
+        let e: WebError = json_err.into();
+        assert!(matches!(e, WebError::Internal(_)));
+    }
+}

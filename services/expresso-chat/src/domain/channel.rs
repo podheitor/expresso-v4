@@ -174,3 +174,38 @@ impl<'a> ChannelRepo<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channel_kind_serde_roundtrip() {
+        for kind in [ChannelKind::Team, ChannelKind::Direct, ChannelKind::Announcement, ChannelKind::Project] {
+            let s = serde_json::to_string(&kind).unwrap();
+            let back: ChannelKind = serde_json::from_str(&s).unwrap();
+            assert_eq!(kind, back);
+        }
+    }
+
+    #[test]
+    fn channel_kind_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&ChannelKind::Team).unwrap(), r#""team""#);
+        assert_eq!(serde_json::to_string(&ChannelKind::Direct).unwrap(), r#""direct""#);
+    }
+
+    #[test]
+    fn member_role_serde_roundtrip() {
+        for role in [MemberRole::Owner, MemberRole::Admin, MemberRole::Member, MemberRole::Guest] {
+            let s = serde_json::to_string(&role).unwrap();
+            let back: MemberRole = serde_json::from_str(&s).unwrap();
+            assert_eq!(role, back);
+        }
+    }
+
+    #[test]
+    fn member_role_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
+        assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
+    }
+}

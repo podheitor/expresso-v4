@@ -378,3 +378,52 @@ impl<'a> MeetingRepo<'a> {
         Ok(row)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn participant_role_serde_roundtrip() {
+        for role in [ParticipantRole::Moderator, ParticipantRole::Participant] {
+            let s = serde_json::to_string(&role).unwrap();
+            let back: ParticipantRole = serde_json::from_str(&s).unwrap();
+            assert_eq!(role, back);
+        }
+    }
+
+    #[test]
+    fn participant_role_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&ParticipantRole::Moderator).unwrap(), r#""moderator""#);
+        assert_eq!(serde_json::to_string(&ParticipantRole::Participant).unwrap(), r#""participant""#);
+    }
+
+    #[test]
+    fn new_meeting_deserialize_minimal() {
+        let json = r#"{"room_name":"room-abc","title":"Daily standup"}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert_eq!(n.room_name, "room-abc");
+        assert_eq!(n.title, "Daily standup");
+        assert!(n.channel_id.is_none());
+        assert!(n.scheduled_for.is_none());
+        assert!(n.ends_at.is_none());
+        assert!(n.is_recurring.is_none());
+        assert!(n.lobby_enabled.is_none());
+        assert!(n.password.is_none());
+    }
+
+    #[test]
+    fn new_meeting_deserialize_full() {
+        let json = r#"{
+            "room_name":"room-xyz",
+            "title":"Weekly review",
+            "is_recurring":true,
+            "lobby_enabled":false,
+            "password":"s3cr3t"
+        }"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert_eq!(n.is_recurring, Some(true));
+        assert_eq!(n.lobby_enabled, Some(false));
+        assert_eq!(n.password.as_deref(), Some("s3cr3t"));
+    }
+}
