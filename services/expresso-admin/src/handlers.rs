@@ -324,4 +324,32 @@ mod tests {
         let f = UserDeleteForm { confirm_username: "heitor".into() };
         assert_eq!(f.confirm_username, "heitor");
     }
+
+    #[test]
+    fn user_update_form_password_optional() {
+        let f = UserUpdateForm {
+            email: "x@x.com".into(),
+            first_name: "X".into(),
+            last_name: "Y".into(),
+            enabled: None,
+            password: None,
+        };
+        assert!(f.password.is_none());
+    }
+
+    #[test]
+    fn user_create_form_all_fields() {
+        let f = UserCreateForm {
+            username: "alice".into(),
+            email: "alice@ex.com".into(),
+            first_name: "Alice".into(),
+            last_name: "Smith".into(),
+            password: "p@ss".into(),
+            enabled: Some("on".into()),
+            temporary: Some("on".into()),
+        };
+        assert_eq!(f.username, "alice");
+        assert_eq!(f.email, "alice@ex.com");
+        assert!(f.temporary.is_some());
+    }
 }

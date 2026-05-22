@@ -93,4 +93,24 @@ mod tests {
         assert_eq!(r.len(), 1);
         assert_eq!(r.resolve("valid.ex"), Some("realm1"));
     }
+
+    #[test]
+    fn resolve_strips_port_from_host() {
+        let r = TenantResolver::parse("app.example.com:my-realm");
+        assert_eq!(r.resolve("app.example.com:443"), Some("my-realm"));
+    }
+
+    #[test]
+    fn len_reflects_count_of_valid_entries() {
+        let r = TenantResolver::parse("a.x:r1,b.x:r2,c.x:r3");
+        assert_eq!(r.len(), 3);
+        assert!(!r.is_empty());
+    }
+
+    #[test]
+    fn resolve_case_insensitive() {
+        let r = TenantResolver::parse("Tenant.Local:t1");
+        assert_eq!(r.resolve("tenant.local"), Some("t1"));
+        assert_eq!(r.resolve("TENANT.LOCAL"), Some("t1"));
+    }
 }

@@ -353,4 +353,21 @@ mod tests {
         assert_eq!(row.description, "desc");
         assert_eq!(row.color, "#ff0");
     }
+
+    #[test]
+    fn to_dav_row_ctag_zero() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.ctag, 0);
+    }
+
+    #[test]
+    fn calendar_edit_form_is_default_none_means_false() {
+        let f = CalendarEditForm {
+            name: "Test".into(),
+            description: "".into(),
+            color: "#fff".into(),
+            is_default: None,
+        };
+        assert!(f.is_default.is_none());
+    }
 }

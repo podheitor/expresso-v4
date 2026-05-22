@@ -426,4 +426,21 @@ mod tests {
         assert_eq!(n.lobby_enabled, Some(false));
         assert_eq!(n.password.as_deref(), Some("s3cr3t"));
     }
+
+    #[test]
+    fn participant_role_moderator_serializes() {
+        assert_eq!(serde_json::to_string(&ParticipantRole::Moderator).unwrap(), r#""moderator""#);
+    }
+
+    #[test]
+    fn participant_role_invalid_deser_fails() {
+        assert!(serde_json::from_str::<ParticipantRole>(r#""speaker""#).is_err());
+    }
+
+    #[test]
+    fn new_meeting_channel_id_optional() {
+        let json = r#"{"room_name":"r","title":"T","channel_id":null}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert!(n.channel_id.is_none());
+    }
 }

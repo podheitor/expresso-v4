@@ -57,4 +57,14 @@ mod tests {
     fn default_interval_is_6_hours() {
         assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
     }
+
+    #[test]
+    fn retention_days_positive() {
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
+
+    #[test]
+    fn interval_hours_at_least_one() {
+        assert!(DEFAULT_INTERVAL_HOURS >= 1);
+    }
 }

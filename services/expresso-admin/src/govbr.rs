@@ -239,4 +239,21 @@ mod tests {
         let q: ListQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.tenant_id.is_none());
     }
+
+    #[test]
+    fn upsert_body_cpf_hash_preserved() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let body = UpsertBody { cpf_hash: "sha256abc".into(), tenant_id: t, user_id: u, assurance: Some("ouro".into()) };
+        assert_eq!(body.cpf_hash, "sha256abc");
+        assert_eq!(body.assurance.as_deref(), Some("ouro"));
+    }
+
+    #[test]
+    fn list_query_with_tenant_id() {
+        let tid = Uuid::new_v4();
+        let json = format!(r#"{{"tenant_id":"{tid}"}}"#);
+        let q: ListQuery = serde_json::from_str(&json).unwrap();
+        assert_eq!(q.tenant_id, Some(tid));
+    }
 }

@@ -276,4 +276,23 @@ mod tests {
         // fallback returns raw audience string
         assert_eq!(c.primary_audience(), "");
     }
+
+    #[test]
+    fn single_audience_no_csv() {
+        let c = cfg("expresso-web");
+        assert_eq!(c.audiences(), vec!["expresso-web"]);
+        assert_eq!(c.primary_audience(), "expresso-web");
+    }
+
+    #[test]
+    fn oidc_config_issuer_field() {
+        let c = OidcConfig::new("http://kc/realms/master", "aud");
+        assert_eq!(c.issuer, "http://kc/realms/master");
+    }
+
+    #[test]
+    fn oidc_config_audience_field() {
+        let c = OidcConfig::new("http://kc/realms/r", "my-app");
+        assert_eq!(c.audience, "my-app");
+    }
 }

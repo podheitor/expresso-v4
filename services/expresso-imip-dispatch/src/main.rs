@@ -428,4 +428,29 @@ mod tests {
         assert!(r.contains("convidado"));
         assert!(c.contains("cancelado"));
     }
+
+    #[test]
+    fn method_label_maps_both_variants() {
+        assert_eq!(method_label(Method::Request), "REQUEST");
+        assert_eq!(method_label(Method::Cancel),  "CANCEL");
+    }
+
+    #[test]
+    fn default_true_returns_true() {
+        assert!(default_true());
+    }
+
+    #[test]
+    fn human_summary_contains_event_summary() {
+        let inv = EventInvite {
+            uid: "u2".into(), sequence: 1, summary: "Team Sync".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-06-01 09:00 UTC),
+            dtend:   time::macros::datetime!(2026-06-01 10:00 UTC),
+            organizer_email: "org@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Request);
+        assert!(s.contains("Team Sync"));
+    }
 }
