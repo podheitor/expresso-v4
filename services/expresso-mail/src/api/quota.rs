@@ -116,4 +116,17 @@ mod tests {
         assert_eq!(back.used_bytes, 512);
         assert_eq!(back.quota_bytes, Some(2048));
     }
+
+    #[test]
+    fn quota_dto_null_quota_serializes() {
+        let q = QuotaDto { used_bytes: 100, quota_bytes: None };
+        let v: serde_json::Value = serde_json::to_value(&q).unwrap();
+        assert!(v["quota_bytes"].is_null());
+    }
+
+    #[test]
+    fn quota_dto_used_bytes_zero() {
+        let q = QuotaDto { used_bytes: 0, quota_bytes: None };
+        assert_eq!(q.used_bytes, 0);
+    }
 }

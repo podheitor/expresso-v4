@@ -245,4 +245,24 @@ mod tests {
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("2026-07-04T00:00:00"));
     }
+
+    #[test]
+    fn snooze_record_woken_at_none() {
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-07-04 00:00:00 UTC),
+            snoozed_at:   datetime!(2026-07-03 12:00:00 UTC),
+            woken_at:     None,
+        };
+        assert!(r.woken_at.is_none());
+    }
+
+    #[test]
+    fn snooze_body_different_times_deserialize() {
+        let json = r#"{"snooze_until":"2027-01-01T00:00:00Z"}"#;
+        let body: SnoozeBody = serde_json::from_str(json).unwrap();
+        let s = serde_json::to_string(&body).unwrap();
+        assert!(s.contains("2027-01-01"));
+    }
 }

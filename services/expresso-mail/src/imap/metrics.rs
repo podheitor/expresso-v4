@@ -162,4 +162,17 @@ mod tests {
         assert_eq!(command_label("FeTcH"), "FETCH");
         assert_eq!(command_label("sElEcT"), "SELECT");
     }
+
+    #[test]
+    fn unknown_command_maps_to_other() {
+        assert_eq!(command_label("CUSTOMCMD"), "OTHER");
+        assert_eq!(command_label(""), "OTHER");
+    }
+
+    #[test]
+    fn store_expunge_uid_map() {
+        assert_eq!(command_label("STORE"),   "STORE");
+        assert_eq!(command_label("EXPUNGE"), "EXPUNGE");
+        assert_eq!(command_label("UID"),     "UID");
+    }
 }
