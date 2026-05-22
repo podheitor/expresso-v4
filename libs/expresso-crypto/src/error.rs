@@ -35,4 +35,18 @@ mod tests {
         let d = format!("{e:?}");
         assert!(d.contains("Internal"));
     }
+
+    #[test]
+    fn display_includes_original_message() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("original error detail"));
+        assert!(e.to_string().contains("original error detail"));
+    }
+
+    #[test]
+    fn from_anyhow_is_internal_variant() {
+        fn returns_error() -> Result<(), ExpresscryptoError> {
+            Err(anyhow::anyhow!("test").into())
+        }
+        assert!(matches!(returns_error(), Err(ExpresscryptoError::Internal(_))));
+    }
 }

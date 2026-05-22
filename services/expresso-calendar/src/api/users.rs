@@ -81,4 +81,16 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"héitor@ex.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("héitor@ex.com"));
     }
+
+    #[test]
+    fn user_query_extra_field_ignored() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"a@x.com","extra":"ignored"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("a@x.com"));
+    }
+
+    #[test]
+    fn user_query_empty_string_email_is_some() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":""}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some(""));
+    }
 }

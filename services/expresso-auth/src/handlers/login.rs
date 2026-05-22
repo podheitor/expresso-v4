@@ -112,4 +112,16 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/calendar","extra":"x"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/calendar"));
     }
+
+    #[test]
+    fn login_query_redirect_with_path_query() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/mail?folder=INBOX"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/mail?folder=INBOX"));
+    }
+
+    #[test]
+    fn login_query_empty_string_stored_as_some() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":""}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some(""));
+    }
 }

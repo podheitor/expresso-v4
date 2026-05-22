@@ -34,4 +34,16 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("x"));
         assert!(format!("{e:?}").contains("Internal"));
     }
+
+    #[test]
+    fn display_contains_original_message() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("content-type malformed"));
+        assert!(e.to_string().contains("content-type malformed"));
+    }
+
+    #[test]
+    fn from_anyhow_produces_internal() {
+        let e: ExpressmailParserError = anyhow::anyhow!("test").into();
+        assert!(matches!(e, ExpressmailParserError::Internal(_)));
+    }
 }

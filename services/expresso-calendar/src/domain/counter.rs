@@ -219,4 +219,31 @@ mod tests {
         assert!(v["proposed_dtstart"].is_null());
         assert!(v["proposed_dtend"].is_null());
     }
+
+    #[test]
+    fn counter_proposal_comment_optional() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "z@x.com".into(),
+            proposed_dtstart: None, proposed_dtend: None,
+            comment: Some("Please reschedule".into()),
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.comment.as_deref(), Some("Please reschedule"));
+    }
+
+    #[test]
+    fn counter_proposal_resolved_by_none() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "w@x.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "resolved".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert!(p.resolved_by.is_none());
+    }
 }

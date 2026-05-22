@@ -34,4 +34,16 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("x"));
         assert!(format!("{e:?}").contains("Internal"));
     }
+
+    #[test]
+    fn display_contains_original_message() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("etag mismatch"));
+        assert!(e.to_string().contains("etag mismatch"));
+    }
+
+    #[test]
+    fn from_anyhow_produces_internal() {
+        let e: ExpressstorageError = anyhow::anyhow!("test").into();
+        assert!(matches!(e, ExpressstorageError::Internal(_)));
+    }
 }

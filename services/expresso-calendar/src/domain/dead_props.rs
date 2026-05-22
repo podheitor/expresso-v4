@@ -166,4 +166,27 @@ mod tests {
         };
         assert_eq!(p.xml_value, "Calendário de Férias 🏖️");
     }
+
+    #[test]
+    fn dead_prop_long_xml_value_preserved() {
+        let val = "x".repeat(4096);
+        let p = DeadProp {
+            namespace: "urn:ns".into(),
+            local_name: "data".into(),
+            xml_value: val.clone(),
+        };
+        assert_eq!(p.xml_value.len(), 4096);
+        assert_eq!(p.xml_value, val);
+    }
+
+    #[test]
+    fn dead_prop_fields_accessible() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "getcontenttype".into(),
+            xml_value: "text/calendar".into(),
+        };
+        assert_eq!(p.namespace, "DAV:");
+        assert_eq!(p.local_name, "getcontenttype");
+    }
 }

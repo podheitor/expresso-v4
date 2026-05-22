@@ -103,4 +103,17 @@ mod tests {
         let r = serde_json::from_str::<ForgotReq>(json);
         assert!(r.is_err());
     }
+
+    #[test]
+    fn action_lifespan_secs_is_u32() {
+        let _: u32 = ACTION_LIFESPAN_SECS;
+        assert!(ACTION_LIFESPAN_SECS > 0);
+    }
+
+    #[test]
+    fn forgot_req_email_roundtrip() {
+        let json = r#"{"email":"user@example.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert_eq!(r.email, "user@example.com");
+    }
 }

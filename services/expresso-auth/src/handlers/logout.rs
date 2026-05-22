@@ -129,4 +129,18 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"t","state":"s"}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("t"));
     }
+
+    #[test]
+    fn logout_query_empty_hint_is_some_empty() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":""}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn logout_query_long_token_hint_stored() {
+        let long = "eyJhbGciOiJSUzI1NiJ9.".repeat(10);
+        let json = format!(r#"{{"id_token_hint":"{long}"}}"#);
+        let q: LogoutQuery = serde_json::from_str(&json).unwrap();
+        assert!(q.id_token_hint.is_some());
+    }
 }
