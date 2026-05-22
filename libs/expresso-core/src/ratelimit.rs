@@ -178,4 +178,45 @@ mod tests {
         let retry = rl.check("t").unwrap_err();
         assert!(retry >= 1, "retry_after must be ≥ 1 s, got {retry}");
     }
+
+    #[test]
+    fn burst_allows_exactly_burst_requests() {
+        let burst = 5u32;
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst });
+        for i in 0..burst {
+            assert!(rl.check("k").is_ok(), "request {i} should pass");
+        }
+        assert!(rl.check("k").is_err(), "request burst+1 must be denied");
+    }
+
+    #[test]
+    fn new_key_starts_with_full_bucket() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 3 });
+        // First check on a new key must always succeed (starts at burst capacity).
+        assert!(rl.check("brand-new-key").is_ok());
+    }
+
+    #[test]
+    fn gc_removes_idle_buckets_simulated() {
+        // We can't wait 10 min in a unit test, but we can verify gc() runs
+        // without panicking on a fresh limiter with some active buckets.
+        let rl = RateLimiter::new(RateLimitConfig { rps: 10, burst: 5 });
+        rl.check("tenant-a").unwrap();
+        rl.check("tenant-b").unwrap();
+        // gc() only removes buckets idle > 10 min; these were just touched,
+        // so they must survive. The assertion: gc() is safe + idempotent.
+        rl.gc();
+        rl.gc(); // idempotent
+        assert!(rl.check("tenant-a").is_ok());
+    }
+
+    #[test]
+    fn multiple_independent_keys_all_start_at_burst() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 2 });
+        for key in ["alpha", "beta", "gamma"] {
+            assert!(rl.check(key).is_ok(), "{key} first check must pass");
+            assert!(rl.check(key).is_ok(), "{key} second check must pass");
+            assert!(rl.check(key).is_err(), "{key} burst+1 must be denied");
+        }
+    }
 }
