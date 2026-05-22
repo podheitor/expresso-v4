@@ -67,3 +67,57 @@ impl IntoResponse for CalendarError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: CalendarError) -> u16 {
+        e.into_response().status().as_u16()
+    }
+
+    #[test]
+    fn event_not_found_is_404() {
+        assert_eq!(status(CalendarError::EventNotFound(Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn calendar_not_found_is_404() {
+        assert_eq!(status(CalendarError::CalendarNotFound("default".into())), 404);
+    }
+
+    #[test]
+    fn invalid_ical_is_400() {
+        assert_eq!(status(CalendarError::InvalidICal("parse err".into())), 400);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(CalendarError::BadRequest("missing uid".into())), 400);
+    }
+
+    #[test]
+    fn conflict_is_409() {
+        assert_eq!(status(CalendarError::Conflict("uid dup".into())), 409);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(CalendarError::Forbidden), 403);
+    }
+
+    #[test]
+    fn database_unavailable_is_503() {
+        assert_eq!(status(CalendarError::DatabaseUnavailable), 503);
+    }
+
+    #[test]
+    fn not_supported_is_501() {
+        assert_eq!(status(CalendarError::NotSupported("MKCALENDAR")), 501);
+    }
+
+    #[test]
+    fn alarm_not_found_is_404() {
+        assert_eq!(status(CalendarError::AlarmNotFound(Uuid::new_v4())), 404);
+    }
+}

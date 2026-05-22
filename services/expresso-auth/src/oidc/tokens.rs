@@ -32,3 +32,60 @@ pub struct TokenResponse {
     #[serde(default)]
     pub scope:         Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_response_deserialize_minimal() {
+        let json = r#"{
+            "access_token":  "at123",
+            "token_type":    "Bearer",
+            "expires_in":    300
+        }"#;
+        let t: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(t.access_token, "at123");
+        assert_eq!(t.token_type, "Bearer");
+        assert_eq!(t.expires_in, 300);
+        assert!(t.refresh_token.is_none());
+        assert!(t.id_token.is_none());
+        assert!(t.scope.is_none());
+    }
+
+    #[test]
+    fn token_response_deserialize_full() {
+        let json = r#"{
+            "access_token":        "at",
+            "refresh_token":       "rt",
+            "id_token":            "idt",
+            "token_type":          "Bearer",
+            "expires_in":          300,
+            "refresh_expires_in":  1800,
+            "scope":               "openid email"
+        }"#;
+        let t: TokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(t.refresh_token.as_deref(), Some("rt"));
+        assert_eq!(t.id_token.as_deref(), Some("idt"));
+        assert_eq!(t.refresh_expires_in, Some(1800));
+        assert_eq!(t.scope.as_deref(), Some("openid email"));
+    }
+
+    #[test]
+    fn token_response_roundtrip_serde() {
+        let orig = TokenResponse {
+            access_token:      "at".into(),
+            refresh_token:     Some("rt".into()),
+            id_token:          None,
+            token_type:        "Bearer".into(),
+            expires_in:        600,
+            refresh_expires_in: Some(3600),
+            scope:             Some("openid".into()),
+        };
+        let json = serde_json::to_string(&orig).unwrap();
+        let back: TokenResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.access_token, orig.access_token);
+        assert_eq!(back.expires_in, orig.expires_in);
+        assert_eq!(back.refresh_token, orig.refresh_token);
+    }
+}

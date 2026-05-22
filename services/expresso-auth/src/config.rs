@@ -59,3 +59,63 @@ impl RpConfig {
 fn req(key: &str) -> anyhow::Result<String> {
     std::env::var(key).map_err(|_| anyhow::anyhow!("missing env var: {}", key))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(
+        issuer: &str,
+        client_id: &str,
+        redirect_uri: &str,
+        issuer_template: Option<&str>,
+        redirect_uri_template: Option<&str>,
+        post_logout_template: Option<&str>,
+    ) -> RpConfig {
+        RpConfig {
+            issuer:                   issuer.into(),
+            client_id:                client_id.into(),
+            redirect_uri:             redirect_uri.into(),
+            post_logout_redirect_uri: None,
+            state_ttl:                Duration::from_secs(600),
+            http_timeout:             Duration::from_secs(5),
+            issuer_template:          issuer_template.map(|s| s.into()),
+            redirect_uri_template:    redirect_uri_template.map(|s| s.into()),
+            post_logout_template:     post_logout_template.map(|s| s.into()),
+        }
+    }
+
+    #[test]
+    fn redirect_uri_template_is_stored() {
+        let c = cfg("https://kc/realms/r", "cli", "https://app/cb",
+                    None, Some("https://{host}/auth/callback"), None);
+        assert_eq!(c.redirect_uri_template.as_deref(), Some("https://{host}/auth/callback"));
+    }
+
+    #[test]
+    fn issuer_template_is_stored() {
+        let c = cfg("https://kc/realms/r", "cli", "https://app/cb",
+                    Some("https://kc/realms/{realm}"), None, None);
+        assert_eq!(c.issuer_template.as_deref(), Some("https://kc/realms/{realm}"));
+    }
+
+    #[test]
+    fn defaults_when_no_templates() {
+        let c = cfg("https://kc/realms/r", "cli", "https://app/cb", None, None, None);
+        assert!(c.issuer_template.is_none());
+        assert!(c.redirect_uri_template.is_none());
+        assert!(c.post_logout_template.is_none());
+    }
+
+    #[test]
+    fn state_ttl_default_is_ten_minutes() {
+        let c = cfg("i", "c", "r", None, None, None);
+        assert_eq!(c.state_ttl.as_secs(), 600);
+    }
+
+    #[test]
+    fn http_timeout_default_is_five_seconds() {
+        let c = cfg("i", "c", "r", None, None, None);
+        assert_eq!(c.http_timeout.as_secs(), 5);
+    }
+}
