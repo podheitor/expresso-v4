@@ -423,4 +423,14 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":512}"#).unwrap();
         assert_eq!(b.size_bytes, Some(512));
     }
+
+    #[test]
+    fn create_version_body_all_fields_set() {
+        let b: CreateVersionBody = serde_json::from_str(
+            r#"{"size_bytes":2048,"sha256":"deadbeef","storage_key":"blobs/v1"}"#,
+        ).unwrap();
+        assert_eq!(b.size_bytes, Some(2048));
+        assert_eq!(b.sha256.as_deref(), Some("deadbeef"));
+        assert_eq!(b.storage_key.as_deref(), Some("blobs/v1"));
+    }
 }

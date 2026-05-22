@@ -150,4 +150,10 @@ mod tests {
     fn conflict_status_is_409() {
         assert_eq!(status(MeetError::Conflict("dup room".into())), 409);
     }
+
+    #[test]
+    fn not_participant_display_not_empty() {
+        let e = MeetError::NotParticipant;
+        assert!(!format!("{e}").is_empty());
+    }
 }

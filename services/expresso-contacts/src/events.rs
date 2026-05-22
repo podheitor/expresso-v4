@@ -217,4 +217,11 @@ mod tests {
         };
         assert_eq!(ev.kind_str(), "contact_deleted");
     }
+
+    #[test]
+    fn addressbook_deleted_tenant_id_accessible() {
+        let t = tid();
+        let ev = ContactsEvent::AddressbookDeleted { tenant_id: t, addressbook_id: aid() };
+        assert_eq!(ev.tenant_id(), t);
+    }
 }

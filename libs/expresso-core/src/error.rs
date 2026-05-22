@@ -119,4 +119,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("100") && s.contains("50"));
     }
+
+    #[test]
+    fn core_error_database_display_not_empty() {
+        let e = CoreError::Database(sqlx::Error::RowNotFound);
+        assert!(!e.to_string().is_empty());
+    }
 }

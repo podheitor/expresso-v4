@@ -279,4 +279,10 @@ mod tests {
         let b: CreateActivityBody = serde_json::from_str(r#"{"action":"upload"}"#).unwrap();
         assert_eq!(b.action, "upload");
     }
+
+    #[test]
+    fn create_activity_body_action_delete_preserved() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"delete"}"#).unwrap();
+        assert_eq!(b.action, "delete");
+    }
 }

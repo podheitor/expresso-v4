@@ -588,4 +588,10 @@ mod extra_tests {
         let s = percent_encode_filename("my-file.pdf");
         assert_eq!(s, "my-file.pdf");
     }
+
+    #[test]
+    fn percent_encode_filename_underscore_preserved() {
+        let s = percent_encode_filename("my_file.pdf");
+        assert_eq!(s, "my_file.pdf");
+    }
 }

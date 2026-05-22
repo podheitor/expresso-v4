@@ -202,6 +202,11 @@ mod tests {
     }
 
     #[test]
+    fn classify_path_without_caldav_prefix_is_unknown() {
+        assert!(matches!(classify("/dav/something/"), Target::Unknown));
+    }
+
+    #[test]
     fn classify_empty_path_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }

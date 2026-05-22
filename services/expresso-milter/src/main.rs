@@ -361,4 +361,10 @@ mod tests {
         assert_eq!(r.0, "Subject");
         assert_eq!(r.1, "Hello World");
     }
+
+    #[test]
+    fn parse_header_name_preserved() {
+        let (n, _) = parse_header_line("X-Custom-Header: value").unwrap();
+        assert_eq!(n, "X-Custom-Header");
+    }
 }

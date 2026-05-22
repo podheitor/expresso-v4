@@ -424,4 +424,14 @@ mod tests {
         };
         assert!(!u.enabled);
     }
+
+    #[test]
+    fn new_user_email_preserved() {
+        let u = NewUser {
+            username: "grace".into(), email: "grace@corp.com".into(),
+            first_name: "Grace".into(), last_name: "Wu".into(),
+            enabled: true, password: "pw".into(), temporary: false,
+        };
+        assert_eq!(u.email, "grace@corp.com");
+    }
 }

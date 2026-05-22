@@ -98,4 +98,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("pbkdf2 iterations below minimum"));
         assert!(e.to_string().starts_with("internal error:"));
     }
+
+    #[test]
+    fn internal_error_display_contains_cause_text() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("argon2 error"));
+        assert!(e.to_string().contains("argon2 error"));
+    }
 }

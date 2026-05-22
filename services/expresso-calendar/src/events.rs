@@ -297,4 +297,11 @@ mod tests {
         };
         assert_eq!(ev.kind_str(), "counter_received");
     }
+
+    #[test]
+    fn event_cancelled_tenant_id_accessible() {
+        let t = Uuid::nil();
+        let ev = Event::EventCancelled { tenant_id: t, event_id: Uuid::nil() };
+        assert_eq!(ev.tenant_id(), t);
+    }
 }

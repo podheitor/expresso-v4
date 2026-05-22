@@ -145,4 +145,9 @@ mod tests {
     fn gone_status_is_410() {
         assert_eq!(status(DriveError::Gone(Uuid::nil())), StatusCode::GONE);
     }
+
+    #[test]
+    fn conflict_is_409() {
+        assert_eq!(status(DriveError::Conflict("lock mismatch".into())), StatusCode::CONFLICT);
+    }
 }

@@ -261,4 +261,14 @@ mod tests {
         };
         assert_eq!(p.namespace, "DAV:");
     }
+
+    #[test]
+    fn dead_prop_xml_value_whitespace_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "description".into(),
+            xml_value: "  ".into(),
+        };
+        assert_eq!(p.xml_value, "  ");
+    }
 }

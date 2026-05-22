@@ -511,4 +511,10 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
         assert!(b.description.is_none() && b.trigger_rel.is_none());
     }
+
+    #[test]
+    fn create_alarm_body_trigger_rel_preserved() {
+        let b: CreateAlarmBody = serde_json::from_str(r#"{"trigger_rel":"-PT15M"}"#).unwrap();
+        assert_eq!(b.trigger_rel.as_deref(), Some("-PT15M"));
+    }
 }

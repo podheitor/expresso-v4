@@ -613,4 +613,10 @@ mod tests {
         let s = human_size(0);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn human_size_512_bytes_displayed() {
+        let s = human_size(512);
+        assert!(s.contains("512") && s.contains("B"));
+    }
 }

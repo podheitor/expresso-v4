@@ -182,4 +182,16 @@ mod tests {
     fn max_list_limit_is_positive() {
         assert!(MAX_LIST_LIMIT > 0);
     }
+
+    #[test]
+    fn send_body_text_field_deserializes() {
+        let b: SendBody = serde_json::from_str(r#"{"body":"hello"}"#).unwrap();
+        assert_eq!(b.body, "hello");
+    }
+
+    #[test]
+    fn send_body_unicode_preserved() {
+        let b: SendBody = serde_json::from_str(r#"{"body":"Olá 🌍"}"#).unwrap();
+        assert!(b.body.contains("Olá"));
+    }
 }

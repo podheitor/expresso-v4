@@ -188,4 +188,16 @@ mod tests {
     fn extract_prop_empty_body_returns_none() {
         assert!(extract_prop("", "displayname").is_none());
     }
+
+    #[test]
+    fn extract_prop_description_tag_extracted() {
+        let b = "<description>My personal contacts</description>";
+        assert_eq!(extract_prop(b, "description").as_deref(), Some("My personal contacts"));
+    }
+
+    #[test]
+    fn extract_prop_case_sensitive_tag_name() {
+        let b = "<DisplayName>Contacts</DisplayName>";
+        assert!(extract_prop(b, "displayname").is_none());
+    }
 }

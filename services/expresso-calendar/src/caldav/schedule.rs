@@ -310,4 +310,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:boss@corp.com\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_organizer_email(ics).as_deref(), Some("boss@corp.com"));
     }
+
+    #[test]
+    fn extract_organizer_email_subdomain_preserved() {
+        let ics = "ORGANIZER:mailto:team@sub.example.org";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("team@sub.example.org"));
+    }
 }

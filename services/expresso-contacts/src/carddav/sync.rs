@@ -257,4 +257,11 @@ mod tests {
     fn token_prefix_is_urn_expresso_ctag() {
         assert!(TOKEN_PREFIX.starts_with("urn:expresso:"));
     }
+
+    #[test]
+    fn push_token_xml_contains_multistatus_tag() {
+        let mut out = String::new();
+        push_token(&mut out, "urn:expresso:ctag:42");
+        assert!(out.contains("multistatus"));
+    }
 }

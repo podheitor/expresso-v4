@@ -221,4 +221,9 @@ mod tests {
     fn build_url_api_path_joins_correctly() {
         assert_eq!(build_url("http://svc", "/api/v1"), "http://svc/api/v1");
     }
+
+    #[test]
+    fn build_url_path_with_multiple_segments() {
+        assert_eq!(build_url("http://svc", "/v1/mail/folders"), "http://svc/v1/mail/folders");
+    }
 }

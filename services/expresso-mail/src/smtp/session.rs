@@ -491,4 +491,9 @@ mod extra_tests {
     fn extract_angle_with_brackets_extracts_inner() {
         assert_eq!(extract_angle("<alice@example.com>"), "alice@example.com");
     }
+
+    #[test]
+    fn size_param_large_number_parsed() {
+        assert_eq!(extract_size_param("<a@b> SIZE=10485760"), Some(10_485_760));
+    }
 }

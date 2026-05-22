@@ -475,4 +475,10 @@ mod tests {
         };
         assert!(!r.should_quarantine());
     }
+
+    #[test]
+    fn auth_results_default_spf_is_empty_string() {
+        let r = AuthResults::default();
+        assert!(r.spf.is_empty());
+    }
 }

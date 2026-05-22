@@ -292,4 +292,12 @@ mod tests {
         let ev = sample_event(ical_no_att);
         assert!(build_envelope_bytes(&ev, "REQUEST").unwrap().is_none());
     }
+
+    #[test]
+    fn envelope_invite_has_organizer_email() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["invite"]["organizer_email"].is_string());
+    }
 }

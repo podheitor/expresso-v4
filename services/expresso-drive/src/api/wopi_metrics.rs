@@ -175,4 +175,9 @@ mod tests {
     fn outcomes_contains_not_found() {
         assert!(OUTCOMES.contains(&"not_found"));
     }
+
+    #[test]
+    fn ops_list_contains_unlock_and_relock() {
+        assert!(OPS.contains(&"unlock_and_relock"));
+    }
 }

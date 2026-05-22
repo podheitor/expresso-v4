@@ -1715,4 +1715,12 @@ mod tests {
         assert!(!t.is_empty());
         assert!(!u.is_empty());
     }
+
+    #[test]
+    fn ctx_of_uuid_format_preserved() {
+        let me = Me { tenant_id: "00000000-0000-0000-0000-000000000001".into(), user_id: "00000000-0000-0000-0000-000000000002".into() };
+        let (t, u) = ctx_of(&me);
+        assert_eq!(t, "00000000-0000-0000-0000-000000000001");
+        assert_eq!(u, "00000000-0000-0000-0000-000000000002");
+    }
 }

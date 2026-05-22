@@ -147,4 +147,9 @@ mod tests {
         use uuid::Uuid;
         assert_eq!(status(CalendarError::AlarmNotFound(Uuid::nil())), 404);
     }
+
+    #[test]
+    fn database_unavailable_display_is_nonempty() {
+        assert!(!format!("{}", CalendarError::DatabaseUnavailable).is_empty());
+    }
 }

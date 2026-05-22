@@ -173,4 +173,10 @@ mod tests {
         let c = cfg("iss", "cid", "https://cb", Some("http://kc/{realm}"), None, None);
         assert!(c.issuer_template.is_some());
     }
+
+    #[test]
+    fn client_id_field_preserved() {
+        let c = cfg("https://iss", "my-client", "https://cb", None, None, None);
+        assert_eq!(c.client_id, "my-client");
+    }
 }

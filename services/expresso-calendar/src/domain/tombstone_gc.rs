@@ -121,4 +121,9 @@ mod tests {
     fn retention_days_default_is_thirty() {
         assert_eq!(DEFAULT_RETENTION_DAYS, 30);
     }
+
+    #[test]
+    fn interval_hours_less_than_retention_days_in_hours() {
+        assert!(DEFAULT_INTERVAL_HOURS < DEFAULT_RETENTION_DAYS as u64 * 24);
+    }
 }

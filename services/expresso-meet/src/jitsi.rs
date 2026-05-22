@@ -313,4 +313,12 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert_eq!(cfg.domain, "meet.expresso.local");
     }
+
+    #[test]
+    fn issued_token_join_url_is_nonempty() {
+        let j = Jitsi::new(fixture_cfg());
+        let req = IssueRequest { room: "r", user_id: Uuid::nil(), display_name: "X", email: "x@x", moderator: false, allow_recording: false };
+        let tok = j.mint(&req).unwrap();
+        assert!(!tok.join_url.is_empty());
+    }
 }

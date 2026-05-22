@@ -519,4 +519,15 @@ mod tests {
     fn method_label_cancel_is_cancel() {
         assert_eq!(method_label(Method::Cancel), "CANCEL");
     }
+
+    #[test]
+    fn default_true_fn_returns_true() {
+        assert!(default_true());
+    }
+
+    #[test]
+    fn method_label_both_variants_nonempty() {
+        assert!(!method_label(Method::Request).is_empty());
+        assert!(!method_label(Method::Cancel).is_empty());
+    }
 }

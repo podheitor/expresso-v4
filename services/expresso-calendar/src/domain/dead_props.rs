@@ -261,12 +261,22 @@ mod tests {
     }
 
     #[test]
-    fn dead_prop_namespace_preserved() {
+    fn dead_prop_local_name_color_preserved() {
         let p = DeadProp {
-            namespace: "urn:custom:ns".into(),
+            namespace: "http://calendarserver.org/ns/".into(),
             local_name: "color".into(),
-            xml_value: "blue".into(),
+            xml_value: "#336699".into(),
         };
-        assert_eq!(p.namespace, "urn:custom:ns");
+        assert_eq!(p.local_name, "color");
+    }
+
+    #[test]
+    fn dead_prop_namespace_dav_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value: "My Calendar".into(),
+        };
+        assert_eq!(p.namespace, "DAV:");
     }
 }

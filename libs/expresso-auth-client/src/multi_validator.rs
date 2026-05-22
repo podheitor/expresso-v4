@@ -166,4 +166,10 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}/oidc", "aud").unwrap();
         assert_eq!(m.issuer_for("test"), "http://kc/realms/test/oidc");
     }
+
+    #[test]
+    fn audience_accessor_returns_configured_aud() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "my-service").unwrap();
+        assert_eq!(m.audience(), "my-service");
+    }
 }

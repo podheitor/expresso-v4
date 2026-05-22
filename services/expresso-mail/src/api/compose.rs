@@ -1049,4 +1049,9 @@ mod tests {
     fn max_ics_bytes_is_256k() {
         assert_eq!(MAX_ICS_BYTES, 256 * 1024);
     }
+
+    #[test]
+    fn max_body_bytes_is_1_mib() {
+        assert_eq!(MAX_BODY_BYTES, 1024 * 1024);
+    }
 }

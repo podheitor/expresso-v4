@@ -95,4 +95,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("base64 padding error"));
         assert!(e.to_string().contains("base64 padding error"));
     }
+
+    #[test]
+    fn internal_error_starts_with_prefix() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("mime parse failed"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }

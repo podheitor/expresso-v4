@@ -234,4 +234,16 @@ mod tests {
         AppState::evict_expired(&mut m);
         assert!(m.contains_key("live"));
     }
+
+    #[test]
+    fn evict_expired_removes_past_entry() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        let expired = PendingLogin {
+            expires_at: std::time::Instant::now() - Duration::from_secs(1),
+            ..make_pending(60)
+        };
+        m.insert("past".into(), expired);
+        AppState::evict_expired(&mut m);
+        assert!(!m.contains_key("past"));
+    }
 }

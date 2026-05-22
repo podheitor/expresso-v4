@@ -386,4 +386,10 @@ mod tests {
         let a = sample();
         assert_eq!(a.ctag, 7);
     }
+
+    #[test]
+    fn new_addressbook_description_none_by_default() {
+        let n: NewAddressbook = serde_json::from_str(r#"{"name":"Colleagues"}"#).unwrap();
+        assert!(n.description.is_none());
+    }
 }

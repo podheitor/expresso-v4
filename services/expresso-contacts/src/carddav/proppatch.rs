@@ -357,4 +357,14 @@ mod tests {
         };
         assert!(patch_has_changes(&p));
     }
+
+    #[test]
+    fn live_props_contains_dav_colon() {
+        assert!(LIVE_PROPS.iter().any(|(ns, _)| ns.contains("DAV")));
+    }
+
+    #[test]
+    fn live_props_not_empty() {
+        assert!(!LIVE_PROPS.is_empty());
+    }
 }

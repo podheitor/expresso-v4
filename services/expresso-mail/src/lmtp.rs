@@ -296,4 +296,9 @@ mod tests {
     fn size_param_no_size_keyword_returns_none() {
         assert_eq!(extract_size_param("<a@b>"), None);
     }
+
+    #[test]
+    fn angle_with_uppercase_domain_extracted() {
+        assert_eq!(extract_angle("<user@DOMAIN.COM>"), "user@DOMAIN.COM");
+    }
 }

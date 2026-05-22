@@ -180,4 +180,14 @@ mod tests {
     fn strip_origin_already_relative_unchanged() {
         assert_eq!(strip_origin("/carddav/tenant/book/card.vcf"), "/carddav/tenant/book/card.vcf");
     }
+
+    #[test]
+    fn strip_origin_root_path_preserved() {
+        assert_eq!(strip_origin("https://host.example/"), "/");
+    }
+
+    #[test]
+    fn strip_origin_vcf_extension_preserved() {
+        assert_eq!(strip_origin("https://h/book/card.vcf"), "/book/card.vcf");
+    }
 }

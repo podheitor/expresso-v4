@@ -113,4 +113,9 @@ mod tests {
     fn interval_hours_default_is_six() {
         assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
     }
+
+    #[test]
+    fn retention_days_in_hours_exceeds_interval() {
+        assert!(DEFAULT_RETENTION_DAYS as u64 * 24 > DEFAULT_INTERVAL_HOURS);
+    }
 }

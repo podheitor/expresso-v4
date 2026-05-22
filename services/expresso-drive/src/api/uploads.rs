@@ -494,4 +494,9 @@ mod tests {
     fn max_mime_bytes_is_255() {
         assert_eq!(MAX_MIME_BYTES, 255);
     }
+
+    #[test]
+    fn max_upload_bytes_exceeds_chunk_size() {
+        assert!(MAX_UPLOAD_BYTES as usize >= MAX_CHUNK_BYTES);
+    }
 }

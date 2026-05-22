@@ -346,4 +346,11 @@ mod tests {
         let u: KcUser = serde_json::from_str(json).unwrap();
         assert_eq!(u.last, "Garcia");
     }
+
+    #[test]
+    fn kc_user_id_preserved_in_roundtrip() {
+        let json = r#"{"id":"abc-123","firstName":"Ana"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.id, "abc-123");
+    }
 }

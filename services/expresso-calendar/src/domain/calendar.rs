@@ -501,4 +501,14 @@ mod tests {
         };
         assert!(n.is_default);
     }
+
+    #[test]
+    fn new_calendar_description_preserved_when_set() {
+        let n = NewCalendar {
+            name: "Events".into(),
+            description: Some("All my events".into()),
+            color: None, timezone: None, is_default: false,
+        };
+        assert_eq!(n.description.as_deref(), Some("All my events"));
+    }
 }

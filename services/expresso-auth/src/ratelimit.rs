@@ -236,4 +236,13 @@ mod tests {
         assert!(rl.check(ip));
         assert!(!rl.check(ip));
     }
+
+    #[test]
+    fn two_different_ips_are_independent() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        assert!(rl.check(ip1));
+        assert!(rl.check(ip2));
+    }
 }

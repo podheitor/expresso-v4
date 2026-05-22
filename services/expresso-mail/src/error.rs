@@ -156,4 +156,10 @@ mod tests {
     fn quota_exceeded_status_is_507() {
         assert_eq!(status(MailError::QuotaExceeded), 507);
     }
+
+    #[test]
+    fn send_failed_display_contains_message() {
+        let e = MailError::SendFailed("relay refused".into());
+        assert!(format!("{e}").contains("relay refused"));
+    }
 }

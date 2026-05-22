@@ -114,4 +114,9 @@ mod tests {
     fn auth_error_is_unauthorized() {
         assert_eq!(status(RpError::Auth("invalid token".into())), StatusCode::UNAUTHORIZED);
     }
+
+    #[test]
+    fn bad_request_error_is_400() {
+        assert_eq!(status(RpError::BadRequest("missing param".into())), StatusCode::BAD_REQUEST);
+    }
 }

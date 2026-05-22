@@ -402,6 +402,12 @@ mod tests {
         assert!(q.fits(500));
         assert!(!q.fits(501));
     }
+
+    #[test]
+    fn quota_max_bytes_field_preserved() {
+        let q = Quota { max_bytes: 8192, used_bytes: 1024 };
+        assert_eq!(q.max_bytes, 8192);
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

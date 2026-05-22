@@ -133,4 +133,10 @@ mod tests {
         let e = WebError::Upstream("service down".into());
         assert!(e.to_string().contains("service down"));
     }
+
+    #[test]
+    fn internal_error_starts_with_internal_prefix() {
+        let e = WebError::Internal("db timeout".into());
+        assert!(e.to_string().starts_with("internal:"));
+    }
 }

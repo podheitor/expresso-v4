@@ -131,4 +131,9 @@ mod tests {
     fn realm_placeholder_is_nonempty() {
         assert!(!REALM_PLACEHOLDER.is_empty());
     }
+
+    #[test]
+    fn realm_placeholder_contains_braces() {
+        assert!(REALM_PLACEHOLDER.contains('{') && REALM_PLACEHOLDER.contains('}'));
+    }
 }

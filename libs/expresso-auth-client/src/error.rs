@@ -117,4 +117,10 @@ mod tests {
         let e = AuthError::MalformedClaim("roles", "not an array".into());
         assert!(e.to_string().contains("roles"));
     }
+
+    #[test]
+    fn config_error_display_contains_message() {
+        let e = AuthError::Config("missing issuer".into());
+        assert!(e.to_string().contains("missing issuer"));
+    }
 }

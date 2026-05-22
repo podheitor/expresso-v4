@@ -358,4 +358,14 @@ mod tests {
         let w2 = datetime!(2026-05-11 00:00 UTC);
         assert!(single_instance(s, None, w1, w2).is_some());
     }
+
+    #[test]
+    fn single_instance_exactly_at_window_end_returns_none() {
+        use time::macros::datetime;
+        let s = datetime!(2026-05-11 00:00 UTC);
+        let w1 = datetime!(2026-05-10 00:00 UTC);
+        let w2 = datetime!(2026-05-11 00:00 UTC);
+        // start == w2 means the event begins at the exclusive upper bound
+        assert!(single_instance(s, None, w1, w2).is_none());
+    }
 }

@@ -333,4 +333,9 @@ mod tests {
     fn escape_ampersand_produces_amp_entity() {
         assert_eq!(escape("a&b"), "a&amp;b");
     }
+
+    #[test]
+    fn escape_lt_produces_lt_entity() {
+        assert_eq!(escape("a<b"), "a&lt;b");
+    }
 }

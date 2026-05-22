@@ -332,4 +332,10 @@ mod tests {
         let c = OidcConfig::new("https://idp/realms/myrealm", "client");
         assert!(c.issuer.contains("myrealm"));
     }
+
+    #[test]
+    fn oidc_config_primary_audience_is_first_aud() {
+        let c = OidcConfig::new("https://idp/realms/r", "my-client");
+        assert_eq!(c.primary_audience(), "my-client");
+    }
 }

@@ -426,4 +426,9 @@ mod tests {
     fn max_vacation_body_bytes_is_8k() {
         assert_eq!(MAX_VACATION_BODY_BYTES, 8 * 1024);
     }
+
+    #[test]
+    fn max_vacation_subject_bytes_is_998() {
+        assert_eq!(MAX_VACATION_SUBJECT_BYTES, 998);
+    }
 }

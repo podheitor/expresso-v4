@@ -342,4 +342,9 @@ mod tests {
     fn is_public_path_metrics_is_public() {
         assert!(is_public_path("/metrics"));
     }
+
+    #[test]
+    fn is_super_admin_true_for_super_admin_role() {
+        assert!(is_super_admin(&["super_admin".to_string()]));
+    }
 }

@@ -484,4 +484,11 @@ mod tests {
         let s = serde_json::to_string(&ParticipantRole::Participant).unwrap();
         assert_eq!(s, r#""participant""#);
     }
+
+    #[test]
+    fn new_meeting_room_name_preserved() {
+        let json = r#"{"room_name":"weekly-sync","title":"Weekly"}"#;
+        let n: NewMeeting = serde_json::from_str(json).unwrap();
+        assert_eq!(n.room_name, "weekly-sync");
+    }
 }

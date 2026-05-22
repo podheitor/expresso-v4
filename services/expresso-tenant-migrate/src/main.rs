@@ -439,4 +439,11 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": ["only"]}});
         assert_eq!(extract_tenant_id(&u).as_deref(), Some("only"));
     }
+
+    #[test]
+    fn build_user_payload_email_preserved() {
+        let src = json!({"username":"alice","email":"alice@example.com","firstName":"Alice","lastName":"Smith","emailVerified":true});
+        let out = build_user_payload(&src);
+        assert_eq!(out["email"], "alice@example.com");
+    }
 }

@@ -425,4 +425,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Cal".into(), "owner@corp.com".into(), "u".into(), None, None, false, 0);
         assert_eq!(row.owner_email, "owner@corp.com");
     }
+
+    #[test]
+    fn to_dav_row_is_default_true_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Cal".into(), "o@corp.com".into(), "u".into(), None, None, true, 0);
+        assert!(row.is_default);
+    }
 }

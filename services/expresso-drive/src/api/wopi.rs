@@ -638,4 +638,14 @@ mod tests {
         let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), 3600);
         assert!(verify_token(b"key", &tok, other).is_none());
     }
+
+    #[test]
+    fn two_tokens_for_same_file_differ_when_keys_differ() {
+        let fid = Uuid::new_v4();
+        let uid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let t1 = sign_token(b"key1", fid, uid, tid, 3600);
+        let t2 = sign_token(b"key2", fid, uid, tid, 3600);
+        assert_ne!(t1, t2);
+    }
 }

@@ -333,4 +333,14 @@ mod tests {
         let mxid = c.mxid_for(Uuid::nil());
         assert!(mxid.starts_with('@'));
     }
+
+    #[test]
+    fn room_preset_public_as_str() {
+        assert_eq!(RoomPreset::PublicChat.as_str(), "public_chat");
+    }
+
+    #[test]
+    fn room_preset_private_as_str() {
+        assert_eq!(RoomPreset::PrivateChat.as_str(), "private_chat");
+    }
 }

@@ -196,4 +196,10 @@ mod tests {
     fn classify_empty_path_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }
+
+    #[test]
+    fn percent_decode_slash_encoded_passthrough() {
+        let r = percent_decode("%2F");
+        assert_eq!(r, "/");
+    }
 }

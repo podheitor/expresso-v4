@@ -1424,4 +1424,18 @@ mod tests {
         };
         assert_eq!(doc.tenant_id, TENANT_B);
     }
+
+    #[test]
+    fn index_doc_body_none_by_default() {
+        let doc = IndexDoc {
+            document_id: "d4".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert!(doc.body.is_none());
+    }
 }

@@ -204,4 +204,9 @@ mod tests {
     fn assurance_prata_as_str_is_prata() {
         assert_eq!(GovbrAssurance::Prata.as_str(), "prata");
     }
+
+    #[test]
+    fn assurance_ouro_as_str_is_ouro() {
+        assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
+    }
 }

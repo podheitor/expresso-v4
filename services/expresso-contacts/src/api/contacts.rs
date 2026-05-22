@@ -519,4 +519,14 @@ mod tests {
         let s = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
         assert!(validate_vcard(&s, MAX_CONTACT_VCARD_BYTES).is_err());
     }
+
+    #[test]
+    fn import_cap_is_4mb() {
+        assert_eq!(MAX_IMPORT_VCF_BYTES, 4 * 1024 * 1024);
+    }
+
+    #[test]
+    fn contact_cap_smaller_than_import_cap() {
+        assert!(MAX_CONTACT_VCARD_BYTES < MAX_IMPORT_VCF_BYTES);
+    }
 }

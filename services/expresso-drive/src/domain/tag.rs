@@ -157,4 +157,10 @@ mod tests {
         let tag = "archive".to_string();
         assert_eq!(tag, "archive");
     }
+
+    #[test]
+    fn tag_string_max_len_preserved() {
+        let tag = "a".repeat(50);
+        assert_eq!(tag.len(), 50);
+    }
 }

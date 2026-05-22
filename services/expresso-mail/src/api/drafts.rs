@@ -334,4 +334,11 @@ mod tests {
         let r = req("from@example.com", None, Some("Test subject"), None);
         assert!(build_raw(&r).is_ok());
     }
+
+    #[test]
+    fn build_raw_body_appears_in_output() {
+        let r = req("from@example.com", None, None, Some("Draft body text"));
+        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        assert!(s.contains("Draft body text"));
+    }
 }

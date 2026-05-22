@@ -25539,4 +25539,16 @@ mod tests {
         let q = DlqStatsQuery { since: None, until: Some("2026-12-31T23:59:59Z".into()) };
         assert_eq!(q.until.as_deref(), Some("2026-12-31T23:59:59Z"));
     }
+
+    #[test]
+    fn notification_kind_preserved() {
+        let n = Notification {
+            kind: "new_mail".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert_eq!(n.kind, "new_mail");
+    }
 }

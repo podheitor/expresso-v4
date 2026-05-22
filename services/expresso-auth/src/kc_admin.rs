@@ -326,4 +326,10 @@ mod tests {
         };
         assert_eq!(c.admin_user, "svc-admin");
     }
+
+    #[test]
+    fn kc_admin_config_has_exchange_client_when_both_set() {
+        let c = cfg(Some("client"), Some("secret"));
+        assert!(c.has_exchange_client());
+    }
 }

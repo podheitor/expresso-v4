@@ -310,4 +310,11 @@ if header :contains "Subject" "[spam]" {
         let r = SieveRules { enabled: true, script: "keep;".into() };
         assert!(r.enabled);
     }
+
+    #[test]
+    fn sieve_test_request_raw_message_preserved() {
+        let json = r#"{"script":"keep;","raw_message":"From: x@y.com\r\n\r\nbody"}"#;
+        let r: SieveTestRequest = serde_json::from_str(json).unwrap();
+        assert!(r.raw_message.contains("From:"));
+    }
 }

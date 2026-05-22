@@ -199,4 +199,14 @@ mod tests {
         };
         assert!(t.scope.is_none());
     }
+
+    #[test]
+    fn token_response_access_token_preserved() {
+        let t = TokenResponse {
+            access_token: "my-access-token".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 3600,
+            refresh_expires_in: None, scope: None,
+        };
+        assert_eq!(t.access_token, "my-access-token");
+    }
 }

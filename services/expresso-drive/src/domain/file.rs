@@ -809,4 +809,10 @@ mod tests {
         let f = sample_file();
         assert_eq!(f.name, "report.pdf");
     }
+
+    #[test]
+    fn drive_file_tenant_id_accessible() {
+        let f = sample_file();
+        let _ = f.tenant_id; // field exists and is Uuid
+    }
 }

@@ -1549,4 +1549,16 @@ mod tests {
         let b: AddTagBody = serde_json::from_str(r#"{"tag":"archive"}"#).unwrap();
         assert_eq!(b.tag, "archive");
     }
+
+    #[test]
+    fn file_tag_tenant_id_accessible() {
+        use time::macros::datetime;
+        let tid = Uuid::new_v4();
+        let t = FileTag {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: tid,
+            tag: "report".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-07-04 00:00:00 UTC),
+        };
+        assert_eq!(t.tenant_id, tid);
+    }
 }

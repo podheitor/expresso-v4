@@ -364,4 +364,13 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.kind.is_none());
     }
+
+    #[test]
+    fn create_body_invite_vec_with_users() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"name":"team","invite":["{uid}"]}}"#);
+        let b: CreateBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.invite.len(), 1);
+        assert_eq!(b.invite[0], uid);
+    }
 }

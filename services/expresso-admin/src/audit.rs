@@ -598,4 +598,10 @@ mod tests {
         let out = csv_escape("a,b");
         assert!(out.starts_with('"') && out.ends_with('"'));
     }
+
+    #[test]
+    fn field_with_double_quote_is_quoted() {
+        let out = csv_escape("say \"hello\"");
+        assert!(out.starts_with('"'));
+    }
 }

@@ -479,4 +479,16 @@ END:VCALENDAR\r\n";
         };
         assert!(a.cn.is_none() && a.role.is_none() && a.partstat.is_none() && a.rsvp.is_none());
     }
+
+    #[test]
+    fn attendee_email_field_preserved() {
+        let a = Attendee {
+            email:    "bob@example.com".into(),
+            cn:       Some("Bob".into()),
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert_eq!(a.email, "bob@example.com");
+    }
 }

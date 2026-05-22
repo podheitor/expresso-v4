@@ -376,4 +376,17 @@ mod tests {
         };
         assert_eq!(r.attendee_email, "carol@corp.com");
     }
+
+    #[test]
+    fn counter_row_comment_none_by_default_construction() {
+        let r = CounterRow {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            event_summary: "Meeting".into(), attendee_email: "a@b.com".into(),
+            proposed_dtstart: "2026-01-01T09:00:00Z".into(),
+            proposed_dtend: "2026-01-01T10:00:00Z".into(),
+            received_sequence: "0".into(), comment: None,
+            created_at_fmt: "2026-01-01".into(),
+        };
+        assert!(r.comment.is_none());
+    }
 }

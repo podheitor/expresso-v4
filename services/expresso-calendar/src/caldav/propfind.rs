@@ -534,4 +534,9 @@ mod tests {
     fn depth_zero_ne_infinity() {
         assert_ne!(Depth::Zero, Depth::Infinity);
     }
+
+    #[test]
+    fn depth_one_ne_zero() {
+        assert_ne!(Depth::One, Depth::Zero);
+    }
 }

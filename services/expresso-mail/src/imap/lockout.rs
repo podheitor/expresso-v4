@@ -212,4 +212,12 @@ mod tests {
         let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
         assert!(!l.is_locked_out("new@x.com"));
     }
+
+    #[test]
+    fn exactly_threshold_failures_triggers_lockout() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("c@x.com");
+        l.record_failure("c@x.com");
+        assert!(l.is_locked_out("c@x.com"));
+    }
 }

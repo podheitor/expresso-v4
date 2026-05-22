@@ -333,4 +333,9 @@ mod tests {
     fn aud_claim_empty_contains_nothing_for_any_aud() {
         assert!(!AudClaim::Empty.contains("anything"));
     }
+
+    #[test]
+    fn aud_claim_one_contains_matching_value() {
+        assert!(AudClaim::One("expresso-web".into()).contains("expresso-web"));
+    }
 }

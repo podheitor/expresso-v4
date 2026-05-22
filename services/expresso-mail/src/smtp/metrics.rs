@@ -162,4 +162,10 @@ mod tests {
         assert_eq!(command_label("EHLO"), "EHLO");
         assert_eq!(command_label("ehlo"), "EHLO");
     }
+
+    #[test]
+    fn mail_command_maps_correctly() {
+        assert_eq!(command_label("MAIL"), "MAIL");
+        assert_eq!(command_label("mail"), "MAIL");
+    }
 }

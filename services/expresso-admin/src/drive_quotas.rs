@@ -215,4 +215,10 @@ mod tests {
         let s = pct(0, 100);
         assert!(s.contains('0'));
     }
+
+    #[test]
+    fn pct_half_usage_contains_50() {
+        let s = pct(50, 100);
+        assert!(s.contains("50"));
+    }
 }

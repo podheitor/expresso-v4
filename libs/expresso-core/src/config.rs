@@ -268,4 +268,9 @@ mod tests {
     fn default_shutdown_timeout_is_thirty_seconds() {
         assert_eq!(default_shutdown_timeout(), 30);
     }
+
+    #[test]
+    fn default_s3_region_starts_with_us() {
+        assert!(default_s3_region().starts_with("us-"));
+    }
 }

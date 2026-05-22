@@ -424,4 +424,16 @@ mod tests {
         let f = Filter { op: Op::AllOf, props: vec![] };
         assert_eq!(f.op, Op::AllOf);
     }
+
+    #[test]
+    fn match_type_equals_variant_exists() {
+        let m = MatchType::Equals;
+        assert_eq!(m, MatchType::Equals);
+    }
+
+    #[test]
+    fn match_type_starts_with_variant_exists() {
+        let m = MatchType::StartsWith;
+        assert_eq!(m, MatchType::StartsWith);
+    }
 }

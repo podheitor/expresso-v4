@@ -255,4 +255,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
         assert!(extract_tzid(ics).is_none());
     }
+
+    #[test]
+    fn extract_tzid_europe_berlin_extracted() {
+        let ics = "BEGIN:VCALENDAR\r\nTZID:Europe/Berlin\r\nEND:VCALENDAR";
+        assert_eq!(extract_tzid(ics).as_deref(), Some("Europe/Berlin"));
+    }
 }

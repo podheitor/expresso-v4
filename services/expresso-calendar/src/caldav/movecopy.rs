@@ -217,4 +217,9 @@ mod tests {
     fn strip_origin_https_with_port_stripped() {
         assert_eq!(strip_origin("https://host:8443/calendar/event.ics"), "/calendar/event.ics");
     }
+
+    #[test]
+    fn strip_origin_http_with_deep_path() {
+        assert_eq!(strip_origin("http://host/a/b/c/d.ics"), "/a/b/c/d.ics");
+    }
 }

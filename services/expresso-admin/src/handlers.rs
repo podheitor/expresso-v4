@@ -438,4 +438,14 @@ mod tests {
         };
         assert_eq!(f.email, "dave@corp.com");
     }
+
+    #[test]
+    fn user_create_form_username_preserved() {
+        let f = UserCreateForm {
+            username: "alice".into(), email: "a@x.com".into(),
+            first_name: "Alice".into(), last_name: "Smith".into(),
+            password: "pw".into(), enabled: None, temporary: None,
+        };
+        assert_eq!(f.username, "alice");
+    }
 }

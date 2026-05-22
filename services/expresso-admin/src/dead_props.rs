@@ -188,4 +188,11 @@ mod tests {
         let out = preview("".into());
         assert!(out.is_empty());
     }
+
+    #[test]
+    fn preview_long_value_is_nonempty() {
+        let long = "x".repeat(100);
+        let out = preview(long);
+        assert!(!out.is_empty());
+    }
 }

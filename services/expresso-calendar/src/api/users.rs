@@ -131,14 +131,20 @@ mod tests {
     }
 
     #[test]
-    fn user_query_null_email_is_none() {
-        let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
+    fn user_query_missing_email_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.email.is_none());
     }
 
     #[test]
-    fn user_query_missing_email_is_none() {
-        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+    fn user_query_email_with_hyphen_preserved() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"alice-work@corp.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("alice-work@corp.com"));
+    }
+
+    #[test]
+    fn user_query_null_email_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
         assert!(q.email.is_none());
     }
 }

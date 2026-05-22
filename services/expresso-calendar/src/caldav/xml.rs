@@ -394,4 +394,9 @@ mod tests {
     fn parse_time_range_whitespace_returns_none() {
         assert!(parse_time_range("   ").is_none());
     }
+
+    #[test]
+    fn xml_prolog_ends_with_closing_tag() {
+        assert!(XML_PROLOG.ends_with("?>"));
+    }
 }

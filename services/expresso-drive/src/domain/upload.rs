@@ -241,4 +241,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.name, "x");
     }
+
+    #[test]
+    fn session_total_size_is_one() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.total_size, 1);
+    }
 }

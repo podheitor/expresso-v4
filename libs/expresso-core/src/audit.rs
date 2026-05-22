@@ -213,4 +213,10 @@ mod tests {
         let e = AuditEntry::new("calendar.event_created");
         assert!(e.actor_email.is_none());
     }
+
+    #[test]
+    fn audit_entry_action_is_preserved() {
+        let e = AuditEntry::new("drive.file_deleted");
+        assert_eq!(e.action, "drive.file_deleted");
+    }
 }

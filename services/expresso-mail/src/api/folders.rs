@@ -1540,4 +1540,9 @@ mod tests {
     fn folder_name_valid_accepted() {
         assert!(validate_folder_name("Work").is_ok());
     }
+
+    #[test]
+    fn folder_name_unicode_accepted() {
+        assert!(validate_folder_name("Réuniões").is_ok());
+    }
 }

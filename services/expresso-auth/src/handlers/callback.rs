@@ -288,4 +288,9 @@ mod tests {
     fn accepts_path_with_query() {
         assert!(is_safe_local_redirect("/dashboard?tab=inbox"));
     }
+
+    #[test]
+    fn rejects_http_absolute_url() {
+        assert!(!is_safe_local_redirect("http://evil.com/steal"));
+    }
 }

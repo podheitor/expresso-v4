@@ -215,4 +215,10 @@ mod tests {
         assert_eq!(command_label("SELECT"), "SELECT");
         assert_eq!(command_label("select"), "SELECT");
     }
+
+    #[test]
+    fn append_command_maps_correctly() {
+        assert_eq!(command_label("APPEND"), "APPEND");
+        assert_eq!(command_label("append"), "APPEND");
+    }
 }

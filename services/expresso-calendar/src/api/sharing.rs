@@ -274,4 +274,19 @@ mod tests {
     fn validate_priv_unknown_value_returns_error() {
         assert!(validate_priv("owner").is_err());
     }
+
+    #[test]
+    fn acl_entry_privilege_field_preserved() {
+        use uuid::Uuid;
+        use time::macros::datetime;
+        let entry = AclEntry {
+            calendar_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            grantee_id: Uuid::nil(),
+            privilege: "READ".into(),
+            email: None,
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(entry.privilege, "READ");
+    }
 }

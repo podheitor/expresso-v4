@@ -227,4 +227,10 @@ mod tests {
         let h = headers_with_cookie("expresso_rt=mytoken");
         assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("mytoken"));
     }
+
+    #[test]
+    fn extract_cookie_different_name_not_extracted() {
+        let h = headers_with_cookie("other_cookie=value");
+        assert!(extract_cookie(&h, "expresso_rt").is_none());
+    }
 }

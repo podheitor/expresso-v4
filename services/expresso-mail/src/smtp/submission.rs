@@ -653,4 +653,9 @@ mod tests {
         assert_eq!(u, "user@x.com");
         assert_eq!(p, "pass1");
     }
+
+    #[test]
+    fn from_matches_authed_exact_match() {
+        assert!(from_matches_authed("alice@example.com", "alice@example.com"));
+    }
 }

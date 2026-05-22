@@ -156,4 +156,9 @@ mod extra_tests {
         let url = build_iframe_url("https://collabora.example.com", "https://drive", "file-xyz", "tok");
         assert!(url.contains("file-xyz"));
     }
+
+    #[test]
+    fn is_editable_mime_none_returns_false() {
+        assert!(!is_editable_mime(None));
+    }
 }

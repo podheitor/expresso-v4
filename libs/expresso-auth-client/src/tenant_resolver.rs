@@ -150,4 +150,10 @@ mod tests {
         let r = TenantResolver::parse("   ");
         assert!(r.resolve("any.host").is_none());
     }
+
+    #[test]
+    fn resolver_is_empty_for_blank_config() {
+        let r = TenantResolver::parse("");
+        assert!(r.is_empty());
+    }
 }

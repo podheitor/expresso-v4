@@ -249,4 +249,10 @@ mod tests {
         let b = PresetBody { name: "Flagged".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
         assert!(validate_preset(&b).is_ok());
     }
+
+    #[test]
+    fn preset_body_single_flag_count_is_one() {
+        let b = PresetBody { name: "Minimal".into(), flags: vec!["\\Seen".into()] };
+        assert_eq!(b.flags.len(), 1);
+    }
 }

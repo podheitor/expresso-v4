@@ -229,6 +229,14 @@ mod tests {
         let p = ok();
         assert!(p.tables_unforced.is_empty());
     }
+
+    #[test]
+    fn rls_posture_strict_false_when_bypassrls_and_unforced() {
+        let mut p = ok();
+        p.bypassrls = true;
+        p.tables_unforced.push("mail_inbox".into());
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

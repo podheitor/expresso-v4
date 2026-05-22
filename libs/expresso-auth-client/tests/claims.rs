@@ -151,3 +151,12 @@ fn display_name_is_non_empty() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(!ctx.display_name.is_empty());
 }
+
+#[test]
+fn roles_is_empty_when_no_roles_in_claims() {
+    let mut r = base("a1b2c3d4-0000-0000-0000-000000000005", None);
+    r.realm_access = None;
+    r.resource_access = None;
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(ctx.roles.is_empty());
+}

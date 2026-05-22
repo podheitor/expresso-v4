@@ -134,4 +134,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"x@y.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("x@y.com"));
     }
+
+    #[test]
+    fn user_query_email_with_numbers_preserved() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"user123@example.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("user123@example.com"));
+    }
 }

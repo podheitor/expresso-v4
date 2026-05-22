@@ -144,4 +144,10 @@ mod tests {
     fn invalid_vcard_status_is_400() {
         assert_eq!(status(ContactsError::InvalidVCard("bad input".into())), 400);
     }
+
+    #[test]
+    fn not_supported_display_contains_operation() {
+        let e = ContactsError::NotSupported("MKCOL");
+        assert!(format!("{e}").contains("MKCOL"));
+    }
 }

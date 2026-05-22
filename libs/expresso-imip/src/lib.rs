@@ -457,4 +457,9 @@ mod tests {
         let s = format_ical_utc(dt).unwrap();
         assert!(s.contains("T143000Z"));
     }
+
+    #[test]
+    fn method_cancel_as_str_is_cancel() {
+        assert_eq!(Method::Cancel.as_str(), "CANCEL");
+    }
 }

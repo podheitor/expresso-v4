@@ -1443,6 +1443,11 @@ mod tests {
     fn max_room_name_bytes_is_64() {
         assert_eq!(MAX_ROOM_NAME_BYTES, 64);
     }
+
+    #[test]
+    fn room_name_with_underscores_valid() {
+        assert!(valid_room_name("my_room_2026"));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

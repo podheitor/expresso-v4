@@ -139,4 +139,14 @@ mod tests {
         let msg = format!("{}", ChatError::MatrixUnavailable);
         assert!(!msg.is_empty());
     }
+
+    #[test]
+    fn bad_request_status_is_400() {
+        assert_eq!(status(ChatError::BadRequest("x".into())), 400);
+    }
+
+    #[test]
+    fn internal_status_is_500() {
+        assert_eq!(status(ChatError::Internal("x".into())), 500);
+    }
 }

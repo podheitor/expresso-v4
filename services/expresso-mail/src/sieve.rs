@@ -247,4 +247,10 @@ mod tests {
         assert!(!actions.is_empty());
         assert!(matches!(actions[0], FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn filter_action_discard_matches_discard_variant() {
+        let actions = evaluate(b"discard;", b"From: a@b\r\n\r\n");
+        assert!(matches!(actions[0], FilterAction::Discard));
+    }
 }

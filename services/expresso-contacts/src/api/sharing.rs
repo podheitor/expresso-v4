@@ -290,4 +290,24 @@ mod tests {
         let r: ShareRequest = serde_json::from_str(json).unwrap();
         assert_eq!(r.grantee_id, uuid::Uuid::nil());
     }
+
+    #[test]
+    fn validate_priv_rejects_owner() {
+        assert!(validate_priv("OWNER").is_err());
+    }
+
+    #[test]
+    fn acl_entry_email_none_allowed() {
+        use uuid::Uuid;
+        use time::macros::datetime;
+        let entry = AclEntry {
+            addressbook_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            grantee_id: Uuid::nil(),
+            privilege: "READ".into(),
+            email: None,
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert!(entry.email.is_none());
+    }
 }

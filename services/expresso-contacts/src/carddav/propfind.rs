@@ -424,4 +424,16 @@ mod tests {
     fn depth_zero_ne_one() {
         assert_ne!(Depth::Zero, Depth::One);
     }
+
+    #[test]
+    fn depth_infinity_variant_exists() {
+        let headers = headers_with_depth("infinity");
+        assert!(matches!(parse_depth(&headers), Depth::Zero));
+    }
+
+    #[test]
+    fn depth_unknown_string_defaults_to_zero() {
+        let headers = headers_with_depth("bogus");
+        assert!(matches!(parse_depth(&headers), Depth::Zero));
+    }
 }

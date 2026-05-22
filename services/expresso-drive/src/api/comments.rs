@@ -322,4 +322,17 @@ mod tests {
         };
         assert_eq!(c.user_id, uid);
     }
+
+    #[test]
+    fn file_comment_file_id_accessible() {
+        use time::macros::datetime;
+        let fid = Uuid::new_v4();
+        let c = FileComment {
+            id: Uuid::nil(), file_id: fid, tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "note".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(c.file_id, fid);
+    }
 }

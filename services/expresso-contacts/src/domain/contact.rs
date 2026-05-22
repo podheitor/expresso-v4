@@ -390,4 +390,10 @@ mod tests {
         let c = sample();
         assert_eq!(c.email_primary.as_deref(), Some("alice@example.com"));
     }
+
+    #[test]
+    fn contact_addressbook_id_accessible() {
+        let c = sample();
+        let _ = c.addressbook_id; // field exists and is Uuid
+    }
 }

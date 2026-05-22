@@ -281,4 +281,9 @@ mod tests {
     fn parse_token_zero_is_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
     }
+
+    #[test]
+    fn token_prefix_starts_with_urn() {
+        assert!(TOKEN_PREFIX.starts_with("urn:"));
+    }
 }

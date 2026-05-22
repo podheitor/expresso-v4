@@ -126,4 +126,10 @@ mod tests {
         let c = challenge_s256(&v);
         assert!(c.is_ascii());
     }
+
+    #[test]
+    fn verifier_is_not_empty() {
+        let v = generate_verifier();
+        assert!(!v.is_empty());
+    }
 }

@@ -381,4 +381,10 @@ END:VCALENDAR\r\n";
     fn etag_nonempty_for_nonempty_input() {
         assert!(!compute_etag("BEGIN:VCALENDAR").is_empty());
     }
+
+    #[test]
+    fn etag_is_hex_string() {
+        let e = compute_etag("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
+        assert!(e.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

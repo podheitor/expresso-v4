@@ -268,4 +268,9 @@ mod tests {
         let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":3600}"#).unwrap();
         assert_eq!(b.expires_in_seconds, Some(3600));
     }
+
+    #[test]
+    fn default_ttl_is_at_least_one_hour() {
+        assert!(DEFAULT_TTL_SECONDS >= 3600);
+    }
 }

@@ -171,4 +171,11 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert_eq!(r.email, "user+tag@example.com");
     }
+
+    #[test]
+    fn forgot_req_email_unicode_domain() {
+        let json = r#"{"email":"user@büro.example"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(r.email.contains("büro"));
+    }
 }

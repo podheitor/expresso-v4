@@ -3892,4 +3892,11 @@ Attachment\r\n\
     fn navigate_out_of_range_part_returns_none() {
         assert!(mime_navigate(MULTIPART_MSG, &[99]).is_none());
     }
+
+    #[test]
+    fn mime_part_body_part2_contains_html() {
+        let body = mime_part_body(MULTIPART_MSG, 2);
+        let s = String::from_utf8_lossy(&body);
+        assert!(s.contains("<p>Hello</p>"));
+    }
 }

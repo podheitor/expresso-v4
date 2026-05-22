@@ -273,4 +273,10 @@ mod tests {
         let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar".into()) };
         assert!(!r.is_clean());
     }
+
+    #[test]
+    fn scan_result_virus_name_preserved() {
+        let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar.Test.File".into()) };
+        assert_eq!(r.virus.as_deref(), Some("Eicar.Test.File"));
+    }
 }

@@ -16933,6 +16933,11 @@ mod tests {
     fn max_limit_constant_is_200() {
         assert_eq!(MAX_LIMIT, 200);
     }
+
+    #[test]
+    fn max_query_bytes_is_1024() {
+        assert_eq!(MAX_QUERY_BYTES, 1024);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

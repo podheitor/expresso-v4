@@ -530,4 +530,9 @@ mod slug_tests {
     fn valid_slug_rejects_dot() {
         assert!(!valid_slug("my.tenant"));
     }
+
+    #[test]
+    fn valid_slug_accepts_hyphenated_slug() {
+        assert!(valid_slug("my-tenant-01"));
+    }
 }

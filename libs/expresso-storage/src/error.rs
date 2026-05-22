@@ -95,4 +95,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 timeout"));
         assert!(e.to_string().starts_with("internal error:"));
     }
+
+    #[test]
+    fn display_contains_cause_text() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("bucket not found"));
+        assert!(e.to_string().contains("bucket not found"));
+    }
 }

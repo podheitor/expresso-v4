@@ -263,4 +263,9 @@ mod tests {
     fn channel_kind_announcement_serializes() {
         assert_eq!(serde_json::to_string(&ChannelKind::Announcement).unwrap(), r#""announcement""#);
     }
+
+    #[test]
+    fn member_role_admin_serializes() {
+        assert_eq!(serde_json::to_string(&MemberRole::Admin).unwrap(), r#""admin""#);
+    }
 }

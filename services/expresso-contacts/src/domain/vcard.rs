@@ -267,4 +267,10 @@ mod tests {
     fn compute_etag_differs_for_distinct_inputs() {
         assert_ne!(compute_etag("AAA"), compute_etag("BBB"));
     }
+
+    #[test]
+    fn compute_etag_nonempty_for_minimal_vcard() {
+        let raw = "BEGIN:VCARD\r\nUID:x\r\nFN:A\r\nEND:VCARD\r\n";
+        assert!(!compute_etag(raw).is_empty());
+    }
 }
