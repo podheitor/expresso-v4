@@ -362,6 +362,13 @@ mod tests {
         assert_eq!(q.used_bytes, 512);
         assert_eq!(q.max_bytes, 2048);
     }
+
+    #[test]
+    fn quota_fits_exact_max_bytes() {
+        let q = Quota { max_bytes: 1024, used_bytes: 0 };
+        assert!(q.fits(1024));
+        assert!(!q.fits(1025));
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

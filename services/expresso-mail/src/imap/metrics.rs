@@ -181,4 +181,10 @@ mod tests {
         assert_eq!(command_label("FETCH"),  "FETCH");
         assert_eq!(command_label("SEARCH"), "SEARCH");
     }
+
+    #[test]
+    fn unknown_command_maps_to_other() {
+        assert_eq!(command_label("UNKNOWN"), "OTHER");
+        assert_eq!(command_label(""), "OTHER");
+    }
 }

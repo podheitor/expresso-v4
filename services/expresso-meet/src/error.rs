@@ -115,4 +115,9 @@ mod tests {
     fn jitsi_unavailable_is_503() {
         assert_eq!(status(MeetError::JitsiUnavailable), 503);
     }
+
+    #[test]
+    fn not_participant_is_403() {
+        assert_eq!(status(MeetError::NotParticipant), 403);
+    }
 }

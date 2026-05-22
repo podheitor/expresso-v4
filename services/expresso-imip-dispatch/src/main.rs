@@ -468,4 +468,18 @@ mod tests {
         let cancel = human_summary(&inv, Method::Cancel);
         assert_ne!(req, cancel);
     }
+
+    #[test]
+    fn human_summary_request_contains_summary() {
+        let inv = EventInvite {
+            uid: "u4".into(), sequence: 0, summary: "Sprint Review".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-07-01 14:00 UTC),
+            dtend:   time::macros::datetime!(2026-07-01 15:00 UTC),
+            organizer_email: "pm@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Request);
+        assert!(s.contains("Sprint Review"));
+    }
 }

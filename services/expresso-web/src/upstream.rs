@@ -191,4 +191,9 @@ mod tests {
     fn build_url_double_trailing_slash_on_base_trimmed() {
         assert_eq!(build_url("http://svc//", "/path"), "http://svc/path");
     }
+
+    #[test]
+    fn build_url_path_no_leading_slash() {
+        assert_eq!(build_url("http://svc", "health"), "http://svchealth");
+    }
 }

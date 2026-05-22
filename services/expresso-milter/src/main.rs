@@ -323,4 +323,9 @@ mod tests {
         assert_eq!(n, "Subject");
         assert_eq!(v, "Hello World");
     }
+
+    #[test]
+    fn parse_header_no_colon_returns_none() {
+        assert!(parse_header_line("NoColonHere").is_none());
+    }
 }

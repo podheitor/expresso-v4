@@ -174,4 +174,16 @@ mod tests {
         };
         assert_eq!(b.drive, "http://localhost:8004");
     }
+
+    #[test]
+    fn backends_auth_url_accessible() {
+        let b = Backends {
+            auth:     "http://localhost:8012".into(),
+            mail:     "http://localhost:8001".into(),
+            calendar: "http://localhost:8002".into(),
+            contacts: "http://localhost:8003".into(),
+            drive:    "http://localhost:8004".into(),
+        };
+        assert_eq!(b.auth, "http://localhost:8012");
+    }
 }

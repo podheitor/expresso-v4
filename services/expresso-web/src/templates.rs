@@ -577,4 +577,9 @@ mod tests {
     fn human_size_large_gb_value() {
         assert_eq!(human_size(10 * 1_073_741_824), "10.00 GB");
     }
+
+    #[test]
+    fn human_size_zero_bytes() {
+        assert_eq!(human_size(0), "0 B");
+    }
 }

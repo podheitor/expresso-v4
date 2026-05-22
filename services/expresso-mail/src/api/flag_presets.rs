@@ -214,4 +214,9 @@ mod tests {
     fn zero_flags_passes() {
         assert!(validate_preset(&body("Empty", 0)).is_ok());
     }
+
+    #[test]
+    fn empty_name_is_rejected() {
+        assert!(validate_preset(&body("   ", 0)).is_err());
+    }
 }

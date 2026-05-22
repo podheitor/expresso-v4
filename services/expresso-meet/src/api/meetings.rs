@@ -1413,6 +1413,11 @@ mod tests {
     fn room_name_with_numbers_valid() {
         assert!(valid_room_name("room123"));
     }
+
+    #[test]
+    fn room_name_empty_is_invalid() {
+        assert!(!valid_room_name(""));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

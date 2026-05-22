@@ -453,4 +453,10 @@ mod tests {
         assert_eq!(b["displayName"], "Acme Corp");
         assert_eq!(b["realm"], "acme");
     }
+
+    #[test]
+    fn realm_body_enabled_is_true() {
+        let b = build_realm_body("demo", "Demo Tenant");
+        assert_eq!(b["enabled"], true);
+    }
 }

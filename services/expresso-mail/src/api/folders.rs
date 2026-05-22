@@ -1508,4 +1508,9 @@ mod tests {
     fn single_char_name_passes() {
         assert!(validate_folder_name("X").is_ok());
     }
+
+    #[test]
+    fn empty_name_rejected() {
+        assert!(validate_folder_name("").is_err());
+    }
 }

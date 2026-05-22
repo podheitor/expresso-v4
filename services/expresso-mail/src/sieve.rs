@@ -202,4 +202,12 @@ mod tests {
             other => panic!("expected Redirect, got {other:?}"),
         }
     }
+
+    #[test]
+    fn discard_action_is_discard() {
+        let script = b"discard;";
+        let actions = evaluate(script, MSG.as_bytes());
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], FilterAction::Discard));
+    }
 }

@@ -266,4 +266,9 @@ mod tests {
     fn size_param_large_value() {
         assert_eq!(extract_size_param("SIZE=52428800"), Some(52_428_800));
     }
+
+    #[test]
+    fn size_param_missing_returns_none() {
+        assert_eq!(extract_size_param("<a@b>"), None);
+    }
 }

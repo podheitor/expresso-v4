@@ -16881,6 +16881,21 @@ mod tests {
         assert!(validate_search_params(&mut params).is_none());
         assert_eq!(params.offset, 100);
     }
+
+    #[test]
+    fn limit_zero_returns_error() {
+        let mut params = SearchParams {
+            q:                 "x".into(),
+            tenant_id:         "00000000-0000-0000-0000-000000000000".into(),
+            limit:             0,
+            offset:            0,
+            facet:             None,
+            facet_granularity: None,
+            after_secs:        None,
+            before_secs:       None,
+        };
+        assert!(validate_search_params(&mut params).is_some());
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

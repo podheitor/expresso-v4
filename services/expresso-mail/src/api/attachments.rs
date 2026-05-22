@@ -552,4 +552,11 @@ mod extra_tests {
         let s = percent_encode_filename("relatório.pdf");
         assert!(s.contains('%'));
     }
+
+    #[test]
+    fn percent_encode_filename_space_encoded() {
+        let s = percent_encode_filename("my file.pdf");
+        assert!(s.contains('%'));
+        assert!(!s.contains(' '));
+    }
 }

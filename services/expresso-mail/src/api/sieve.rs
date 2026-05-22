@@ -273,4 +273,11 @@ if header :contains "Subject" "[spam]" {
         assert!(!r.enabled);
         assert!(r.script.contains("fileinto"));
     }
+
+    #[test]
+    fn sieve_rules_enabled_serializes_true() {
+        let r = SieveRules { enabled: true, script: "keep;".into() };
+        let j = serde_json::to_value(&r).unwrap();
+        assert_eq!(j["enabled"], true);
+    }
 }

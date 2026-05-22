@@ -167,4 +167,11 @@ mod tests {
         // bob is unaffected
         assert!(!l.is_locked_out("bob@example.com"));
     }
+
+    #[test]
+    fn one_failure_below_threshold_not_locked() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("user@example.com");
+        assert!(!l.is_locked_out("user@example.com"));
+    }
 }

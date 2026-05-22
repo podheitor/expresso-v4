@@ -461,4 +461,9 @@ mod extra_tests {
     fn extract_angle_missing_brackets_returns_whole() {
         assert_eq!(extract_angle("a@b.com"), "a@b.com");
     }
+
+    #[test]
+    fn extract_angle_with_space_and_params() {
+        assert_eq!(extract_angle("<user@domain.com> SIZE=1024"), "user@domain.com");
+    }
 }

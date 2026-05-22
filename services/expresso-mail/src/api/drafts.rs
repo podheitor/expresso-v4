@@ -293,4 +293,13 @@ mod tests {
         let s = String::from_utf8_lossy(&bytes);
         assert!(s.contains("Hello from draft"));
     }
+
+    #[test]
+    fn build_raw_multiple_recipients_all_appear() {
+        let r = req("a@example.com", Some(vec!["b@x.com", "c@x.com"]), None, None);
+        let bytes = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("b@x.com"));
+        assert!(s.contains("c@x.com"));
+    }
 }

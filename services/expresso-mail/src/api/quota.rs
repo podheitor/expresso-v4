@@ -135,4 +135,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 1024, quota_bytes: Some(10 * 1024 * 1024 * 1024) };
         assert_eq!(q.quota_bytes, Some(10 * 1024 * 1024 * 1024));
     }
+
+    #[test]
+    fn quota_dto_used_bytes_matches_quota_boundary() {
+        let q = QuotaDto { used_bytes: 512, quota_bytes: Some(512) };
+        assert_eq!(q.used_bytes, q.quota_bytes.unwrap());
+    }
 }

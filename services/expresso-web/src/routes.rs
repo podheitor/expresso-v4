@@ -1669,4 +1669,11 @@ mod tests {
         let (t, _) = ctx_of(&me);
         assert_eq!(t, "acme");
     }
+
+    #[test]
+    fn ctx_of_user_id_matches_me() {
+        let me = Me { tenant_id: "t2".into(), user_id: "user-xyz".into() };
+        let (_, u) = ctx_of(&me);
+        assert_eq!(u, "user-xyz");
+    }
 }

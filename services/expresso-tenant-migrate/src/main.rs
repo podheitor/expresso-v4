@@ -403,4 +403,10 @@ mod tests {
         let u = json!({"attributes": {}});
         assert!(extract_tenant_id(&u).is_none());
     }
+
+    #[test]
+    fn extract_tenant_id_empty_string_is_none() {
+        let u = json!({"attributes": {"tenant_id": [""]}});
+        assert!(extract_tenant_id(&u).is_none());
+    }
 }

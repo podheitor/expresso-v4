@@ -126,4 +126,10 @@ mod tests {
         assert_eq!(command_label("RSET"), "RSET");
         assert_eq!(command_label("VRFY"), "VRFY");
     }
+
+    #[test]
+    fn data_and_quit_map() {
+        assert_eq!(command_label("DATA"), "DATA");
+        assert_eq!(command_label("QUIT"), "QUIT");
+    }
 }

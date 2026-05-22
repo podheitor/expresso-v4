@@ -97,4 +97,10 @@ mod tests {
         let resp = WebError::Internal("boom".into()).into_response();
         assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn upstream_error_display_format() {
+        let e = WebError::Upstream("dns failure".into());
+        assert!(e.to_string().starts_with("upstream error:"));
+    }
 }
