@@ -220,4 +220,50 @@ mod tests {
     fn ttl_is_thirty_minutes() {
         assert_eq!(LOCK_TTL, Duration::minutes(30));
     }
+
+    #[test]
+    fn lock_at_exact_expiry_is_expired() {
+        // expires_at == now_utc() should be treated as expired (<=).
+        let l = WopiLock {
+            file_id:     Uuid::nil(),
+            tenant_id:   Uuid::nil(),
+            lock_token:  "tok".into(),
+            locked_by:   Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at:  OffsetDateTime::now_utc(), // exactly now → expired
+        };
+        assert!(l.is_expired());
+    }
+
+    #[test]
+    fn lock_one_second_remaining_not_expired() {
+        assert!(!lock("tok", Duration::seconds(1)).is_expired());
+    }
+
+    #[test]
+    fn lock_token_preserved() {
+        let l = lock("unique-token-abc", Duration::minutes(5));
+        assert_eq!(l.lock_token, "unique-token-abc");
+    }
+
+    #[test]
+    fn different_file_ids_are_independent() {
+        let fid_a = Uuid::new_v4();
+        let fid_b = Uuid::new_v4();
+        let a = WopiLock {
+            file_id: fid_a,
+            tenant_id: Uuid::nil(),
+            lock_token: "tok-a".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + Duration::minutes(5),
+        };
+        let b = WopiLock {
+            file_id: fid_b,
+            ..a.clone()
+        };
+        assert_ne!(a.file_id, b.file_id);
+        assert!(!a.is_expired());
+        assert!(!b.is_expired());
+    }
 }
