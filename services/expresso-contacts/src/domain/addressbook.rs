@@ -308,4 +308,27 @@ mod tests {
         assert_eq!(u.is_default, Some(true));
         assert!(u.description.is_none());
     }
+
+    #[test]
+    fn new_addressbook_fields_preserved() {
+        let n = NewAddressbook {
+            name: "Work Contacts".into(),
+            description: Some("Business addressbook".into()),
+            is_default: true,
+        };
+        assert_eq!(n.name, "Work Contacts");
+        assert_eq!(n.description.as_deref(), Some("Business addressbook"));
+        assert!(n.is_default);
+    }
+
+    #[test]
+    fn update_addressbook_description_only() {
+        let u = UpdateAddressbook {
+            name: None,
+            description: Some("Updated desc".into()),
+            is_default: None,
+        };
+        assert!(u.name.is_none());
+        assert_eq!(u.description.as_deref(), Some("Updated desc"));
+    }
 }

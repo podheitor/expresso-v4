@@ -320,4 +320,26 @@ mod tests {
         assert_eq!(q.q, "alice");
         assert!(q.limit.is_none());
     }
+
+    #[test]
+    fn search_query_with_limit() {
+        let q: SearchQuery = serde_json::from_str(r#"{"q":"bob","limit":50}"#).unwrap();
+        assert_eq!(q.q, "bob");
+        assert_eq!(q.limit, Some(50));
+    }
+
+    #[test]
+    fn search_response_entries_preserved_in_roundtrip() {
+        let r = SearchResponse { entries: vec![] };
+        let back: SearchResponse = serde_json::from_str(&serde_json::to_string(&r).unwrap()).unwrap();
+        assert_eq!(back.entries.len(), 0);
+    }
+
+    #[test]
+    fn save_request_minimal_deser() {
+        let json = r#"{"full_name":"Bob"}"#;
+        let r: SaveRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(r.full_name, "Bob");
+        assert!(r.email.is_none());
+    }
 }

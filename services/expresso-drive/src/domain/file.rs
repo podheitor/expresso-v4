@@ -742,4 +742,20 @@ mod tests {
         let s = serde_json::to_string(&f).unwrap();
         assert!(s.contains(r#""kind":"folder""#));
     }
+
+    #[test]
+    fn drive_file_storage_key_none_is_null() {
+        let mut f = sample_file();
+        f.storage_key = None;
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert!(v["storage_key"].is_null());
+    }
+
+    #[test]
+    fn drive_file_size_zero_serialises() {
+        let mut f = sample_file();
+        f.size_bytes = 0;
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert_eq!(v["size_bytes"], 0);
+    }
 }

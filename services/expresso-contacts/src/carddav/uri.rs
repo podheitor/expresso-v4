@@ -140,4 +140,26 @@ mod tests {
         assert!(matches!(classify("/carddav/not-a-uuid/"), Target::Unknown));
         assert!(matches!(classify("/foo/bar/"), Target::Unknown));
     }
+
+    #[test]
+    fn percent_decode_at_sign() {
+        assert_eq!(percent_decode("abc%40ex.com"), "abc@ex.com");
+    }
+
+    #[test]
+    fn percent_decode_no_encoding_passthrough() {
+        assert_eq!(percent_decode("hello-world.vcf"), "hello-world.vcf");
+    }
+
+    #[test]
+    fn percent_decode_space_as_percent20() {
+        assert_eq!(percent_decode("hello%20world"), "hello world");
+    }
+
+    #[test]
+    fn percent_decode_incomplete_sequence_passthrough() {
+        // %4 at end without second hex digit — should not panic, passes through literally
+        let r = percent_decode("abc%4");
+        assert!(r.contains('4') || r.contains('%'));
+    }
 }

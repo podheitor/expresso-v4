@@ -56,4 +56,16 @@ mod tests {
         let e = CoreError::QuotaExceeded { used: 0, limit: 100 };
         assert!(e.to_string().contains('0'));
     }
+
+    #[test]
+    fn tenant_not_set_display() {
+        let e = CoreError::TenantNotSet;
+        assert_eq!(e.to_string(), "tenant not set in context");
+    }
+
+    #[test]
+    fn internal_error_display() {
+        let e = CoreError::Internal(anyhow::anyhow!("something went wrong"));
+        assert!(e.to_string().contains("something went wrong"));
+    }
 }

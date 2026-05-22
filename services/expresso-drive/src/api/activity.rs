@@ -206,4 +206,18 @@ mod tests {
         assert_eq!(b.action, "share");
         assert!(b.detail.is_some());
     }
+
+    #[test]
+    fn create_activity_body_no_detail() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"view"}"#).unwrap();
+        assert_eq!(b.action, "view");
+        assert!(b.detail.is_none());
+    }
+
+    #[test]
+    fn activity_query_limit_none_by_default() {
+        let q: ActivityQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.limit.is_none());
+        assert!(q.before.is_none());
+    }
 }

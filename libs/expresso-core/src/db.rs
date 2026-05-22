@@ -158,6 +158,23 @@ mod tests {
         p.tables_unforced.push("drive_uploads (not FORCEd)".into());
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn not_strict_both_missing_and_bypassed() {
+        let p = RlsPosture {
+            role: "admin".into(),
+            bypassrls: true,
+            tables_missing: vec!["drive_files".into()],
+            tables_unforced: vec![],
+        };
+        assert!(!p.is_strict());
+    }
+
+    #[test]
+    fn rls_posture_debug_contains_role() {
+        let p = ok();
+        assert!(format!("{p:?}").contains("expresso"));
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

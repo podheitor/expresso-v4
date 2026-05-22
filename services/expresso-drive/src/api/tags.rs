@@ -1481,4 +1481,16 @@ mod tests {
         let b: BulkTagsBody = serde_json::from_str(json).unwrap();
         assert!(b.tags.is_empty());
     }
+
+    #[test]
+    fn add_tag_body_unicode_tag() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":"fatura-2026 🧾"}"#).unwrap();
+        assert_eq!(b.tag, "fatura-2026 🧾");
+    }
+
+    #[test]
+    fn bulk_tags_body_preserves_order() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["z","a","m"]}"#).unwrap();
+        assert_eq!(b.tags, vec!["z", "a", "m"]);
+    }
 }
