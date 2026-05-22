@@ -112,3 +112,32 @@ impl<'a> DeadPropRepo<'a> {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dead_prop_clone_preserves_fields() {
+        let p = DeadProp {
+            namespace:  "urn:ietf:params:xml:ns:carddav".into(),
+            local_name: "addressbook-description".into(),
+            xml_value:  "My addressbook".into(),
+        };
+        let cloned = p.clone();
+        assert_eq!(cloned.namespace, p.namespace);
+        assert_eq!(cloned.local_name, p.local_name);
+        assert_eq!(cloned.xml_value, p.xml_value);
+    }
+
+    #[test]
+    fn dead_prop_debug_contains_namespace() {
+        let p = DeadProp {
+            namespace:  "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value:  "Contacts".into(),
+        };
+        let dbg = format!("{p:?}");
+        assert!(dbg.contains("DAV:"));
+    }
+}

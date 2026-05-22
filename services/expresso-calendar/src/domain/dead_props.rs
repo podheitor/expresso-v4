@@ -118,3 +118,32 @@ impl<'a> DeadPropRepo<'a> {
             .collect())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dead_prop_clone_preserves_fields() {
+        let p = DeadProp {
+            namespace:  "urn:ietf:params:xml:ns:caldav".into(),
+            local_name: "calendar-color".into(),
+            xml_value:  "#ff0000".into(),
+        };
+        let cloned = p.clone();
+        assert_eq!(cloned.namespace, p.namespace);
+        assert_eq!(cloned.local_name, p.local_name);
+        assert_eq!(cloned.xml_value, "#ff0000");
+    }
+
+    #[test]
+    fn dead_prop_debug_contains_local_name() {
+        let p = DeadProp {
+            namespace:  "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value:  "My Calendar".into(),
+        };
+        let dbg = format!("{p:?}");
+        assert!(dbg.contains("displayname"));
+    }
+}
