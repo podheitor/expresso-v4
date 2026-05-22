@@ -74,3 +74,63 @@ impl IntoResponse for MailError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: MailError) -> u16 {
+        e.into_response().status().as_u16()
+    }
+
+    #[test]
+    fn message_not_found_is_404() {
+        assert_eq!(status(MailError::MessageNotFound(uuid::Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn folder_not_found_is_404() {
+        assert_eq!(status(MailError::FolderNotFound { folder: "INBOX".into() }), 404);
+    }
+
+    #[test]
+    fn not_found_is_404() {
+        assert_eq!(status(MailError::NotFound), 404);
+    }
+
+    #[test]
+    fn quota_exceeded_is_413() {
+        assert_eq!(status(MailError::QuotaExceeded), 413);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(MailError::Forbidden), 403);
+    }
+
+    #[test]
+    fn invalid_message_is_400() {
+        assert_eq!(status(MailError::InvalidMessage("bad mime".into())), 400);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(MailError::BadRequest("missing field".into())), 400);
+    }
+
+    #[test]
+    fn conflict_is_409() {
+        assert_eq!(status(MailError::Conflict("uid clash".into())), 409);
+    }
+
+    #[test]
+    fn send_failed_is_500() {
+        assert_eq!(status(MailError::SendFailed("relay down".into())), 500);
+    }
+
+    #[test]
+    fn smtp_protocol_is_500() {
+        assert_eq!(status(MailError::SmtpProtocol("421".into())), 500);
+    }
+}

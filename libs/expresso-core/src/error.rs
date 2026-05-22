@@ -28,3 +28,32 @@ pub enum CoreError {
 }
 
 pub type Result<T> = std::result::Result<T, CoreError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tenant_not_set_display() {
+        assert_eq!(CoreError::TenantNotSet.to_string(), "tenant not set in context");
+    }
+
+    #[test]
+    fn not_found_display_contains_resource() {
+        let e = CoreError::NotFound { resource: "drive_file" };
+        assert!(e.to_string().contains("drive_file"));
+    }
+
+    #[test]
+    fn quota_exceeded_display_contains_used_and_limit() {
+        let e = CoreError::QuotaExceeded { used: 512, limit: 1024 };
+        let s = e.to_string();
+        assert!(s.contains("512") && s.contains("1024"));
+    }
+
+    #[test]
+    fn quota_exceeded_zero_used() {
+        let e = CoreError::QuotaExceeded { used: 0, limit: 100 };
+        assert!(e.to_string().contains('0'));
+    }
+}
