@@ -1087,3 +1087,74 @@ impl<'a> EventRepo<'a> {
     }
 
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn sample() -> Event {
+        Event {
+            id:              Uuid::nil(),
+            calendar_id:     Uuid::nil(),
+            tenant_id:       Uuid::nil(),
+            uid:             "uid-abc@example.com".into(),
+            etag:            "etag123".into(),
+            ical_raw:        "BEGIN:VCALENDAR\r\nEND:VCALENDAR".into(),
+            summary:         Some("Team Meeting".into()),
+            description:     None,
+            location:        None,
+            dtstart:         Some(datetime!(2026-06-01 09:00:00 UTC)),
+            dtend:           Some(datetime!(2026-06-01 10:00:00 UTC)),
+            rrule:           None,
+            status:          Some("CONFIRMED".into()),
+            class:           None,
+            transp:          None,
+            sequence:        0,
+            organizer_email: Some("org@example.com".into()),
+            created_at:      datetime!(2026-05-22 08:00:00 UTC),
+            updated_at:      datetime!(2026-05-22 08:00:00 UTC),
+        }
+    }
+
+    #[test]
+    fn event_serde_roundtrip() {
+        let e = sample();
+        let s = serde_json::to_string(&e).unwrap();
+        let back: Event = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.uid, "uid-abc@example.com");
+        assert_eq!(back.sequence, 0);
+    }
+
+    #[test]
+    fn event_dtstart_in_rfc3339() {
+        let e = sample();
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("2026-06-01T09:00:00"));
+    }
+
+    #[test]
+    fn event_optional_fields_null_when_none() {
+        let e = sample();
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert!(v["description"].is_null());
+        assert!(v["rrule"].is_null());
+    }
+
+    #[test]
+    fn event_query_default_all_none() {
+        let q = EventQuery::default();
+        assert!(q.from.is_none());
+        assert!(q.to.is_none());
+        assert!(q.limit.is_none());
+    }
+
+    #[test]
+    fn event_query_deserializes_rfc3339() {
+        let json = r#"{"from":"2026-06-01T00:00:00Z","to":"2026-06-30T23:59:59Z","limit":50}"#;
+        let q: EventQuery = serde_json::from_str(json).unwrap();
+        assert!(q.from.is_some());
+        assert!(q.to.is_some());
+        assert_eq!(q.limit, Some(50));
+    }
+}

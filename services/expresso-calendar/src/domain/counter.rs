@@ -144,3 +144,49 @@ impl<'a> CounterRepo<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn counter_proposal_serde_roundtrip() {
+        let p = CounterProposal {
+            id:                Uuid::nil(),
+            tenant_id:         Uuid::nil(),
+            event_id:          Uuid::nil(),
+            attendee_email:    "att@example.com".into(),
+            proposed_dtstart:  Some(datetime!(2026-06-02 10:00:00 UTC)),
+            proposed_dtend:    Some(datetime!(2026-06-02 11:00:00 UTC)),
+            comment:           Some("Can we push it?".into()),
+            status:            "pending".into(),
+            received_sequence: Some(1),
+            created_at:        datetime!(2026-05-22 08:00:00 UTC),
+            resolved_at:       None,
+            resolved_by:       None,
+        };
+        let s = serde_json::to_string(&p).unwrap();
+        let back: CounterProposal = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.attendee_email, "att@example.com");
+        assert_eq!(back.status, "pending");
+        assert!(back.resolved_at.is_none());
+    }
+
+    #[test]
+    fn counter_proposal_proposed_dtstart_in_rfc3339() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(),
+            proposed_dtstart: Some(datetime!(2026-07-01 14:00:00 UTC)),
+            proposed_dtend:   None, comment: None,
+            status: "accepted".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            resolved_at: Some(datetime!(2026-05-23 09:00:00 UTC)),
+            resolved_by: Some(Uuid::nil()),
+        };
+        let s = serde_json::to_string(&p).unwrap();
+        assert!(s.contains("2026-07-01T14:00:00"));
+        assert!(s.contains("2026-05-23T09:00:00"));
+    }
+}

@@ -341,3 +341,70 @@ impl<'a> CalendarRepo<'a> {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn sample() -> Calendar {
+        Calendar {
+            id:            Uuid::nil(),
+            tenant_id:     Uuid::nil(),
+            owner_user_id: Uuid::nil(),
+            name:          "Personal".into(),
+            description:   Some("My calendar".into()),
+            color:         Some("#ff0000".into()),
+            timezone:      "America/Sao_Paulo".into(),
+            ctag:          42,
+            is_default:    true,
+            created_at:    datetime!(2026-05-22 08:00:00 UTC),
+            updated_at:    datetime!(2026-05-22 08:00:00 UTC),
+        }
+    }
+
+    #[test]
+    fn calendar_serde_roundtrip() {
+        let c = sample();
+        let s = serde_json::to_string(&c).unwrap();
+        let back: Calendar = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.name, "Personal");
+        assert_eq!(back.ctag, 42);
+        assert!(back.is_default);
+    }
+
+    #[test]
+    fn calendar_color_preserved() {
+        let c = sample();
+        let s = serde_json::to_string(&c).unwrap();
+        assert!(s.contains("#ff0000"));
+    }
+
+    #[test]
+    fn new_calendar_deserialize_minimal() {
+        let json = r#"{"name":"Work"}"#;
+        let n: NewCalendar = serde_json::from_str(json).unwrap();
+        assert_eq!(n.name, "Work");
+        assert!(n.description.is_none());
+        assert!(!n.is_default);
+    }
+
+    #[test]
+    fn update_calendar_default_all_none() {
+        let u = UpdateCalendar::default();
+        assert!(u.name.is_none());
+        assert!(u.description.is_none());
+        assert!(u.color.is_none());
+        assert!(u.timezone.is_none());
+        assert!(u.is_default.is_none());
+    }
+
+    #[test]
+    fn update_calendar_partial_deserialize() {
+        let json = r#"{"name":"Updated","is_default":false}"#;
+        let u: UpdateCalendar = serde_json::from_str(json).unwrap();
+        assert_eq!(u.name.as_deref(), Some("Updated"));
+        assert_eq!(u.is_default, Some(false));
+        assert!(u.color.is_none());
+    }
+}
