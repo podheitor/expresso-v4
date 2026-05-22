@@ -566,4 +566,15 @@ mod tests {
         // negative sizes shouldn't panic — just verify it doesn't
         let _ = human_size(-1);
     }
+
+    #[test]
+    fn human_size_exact_mb_boundary() {
+        assert_eq!(human_size(1024 * 1024 - 1), "1024.0 KB");
+        assert_eq!(human_size(1024 * 1024), "1.0 MB");
+    }
+
+    #[test]
+    fn human_size_large_gb_value() {
+        assert_eq!(human_size(10 * 1_073_741_824), "10.00 GB");
+    }
 }

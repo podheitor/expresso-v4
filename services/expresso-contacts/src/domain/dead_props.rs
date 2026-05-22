@@ -181,4 +181,24 @@ mod tests {
         };
         assert_eq!(p.local_name, "getcontenttype");
     }
+
+    #[test]
+    fn dead_prop_apple_carddav_namespace() {
+        let p = DeadProp {
+            namespace: "http://apple.com/ns/ical/".into(),
+            local_name: "addressbook-color".into(),
+            xml_value: "#0000FF".into(),
+        };
+        assert!(p.namespace.contains("apple.com"));
+    }
+
+    #[test]
+    fn dead_prop_unicode_xml_value_preserved() {
+        let p = DeadProp {
+            namespace: "http://example.com/ns".into(),
+            local_name: "description".into(),
+            xml_value: "Livro de endereços 📇".into(),
+        };
+        assert_eq!(p.xml_value, "Livro de endereços 📇");
+    }
 }

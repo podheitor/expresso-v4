@@ -145,4 +145,14 @@ mod tests {
     fn strip_origin_preserves_query_and_fragment() {
         assert_eq!(strip_origin("https://h/carddav/a?q=1#f"), "/carddav/a?q=1#f");
     }
+
+    #[test]
+    fn strip_origin_path_only_unchanged() {
+        assert_eq!(strip_origin("/carddav/user/book/card.vcf"), "/carddav/user/book/card.vcf");
+    }
+
+    #[test]
+    fn strip_origin_http_with_port_strips_host() {
+        assert_eq!(strip_origin("http://svc.internal:9000/carddav/a/b"), "/carddav/a/b");
+    }
 }

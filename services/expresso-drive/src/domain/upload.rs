@@ -193,4 +193,16 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(s.mime_type.is_none());
     }
+
+    #[test]
+    fn session_offset_starts_at_zero() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.offset_bytes, 0);
+    }
+
+    #[test]
+    fn session_name_preserved() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.name, "x");
+    }
 }

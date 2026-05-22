@@ -151,4 +151,27 @@ mod tests {
         };
         assert!(w.is_enabled());
     }
+
+    #[test]
+    fn wopi_token_ttl_preserved() {
+        let w = Wopi {
+            secret: "s".into(),
+            collabora_url: "http://collabora:9980".into(),
+            drive_url: "http://drive:8004".into(),
+            token_ttl_secs: 7200,
+        };
+        assert_eq!(w.token_ttl_secs, 7200);
+    }
+
+    #[test]
+    fn backends_drive_url_accessible() {
+        let b = Backends {
+            auth:     "http://localhost:8012".into(),
+            mail:     "http://localhost:8001".into(),
+            calendar: "http://localhost:8002".into(),
+            contacts: "http://localhost:8003".into(),
+            drive:    "http://localhost:8004".into(),
+        };
+        assert_eq!(b.drive, "http://localhost:8004");
+    }
 }

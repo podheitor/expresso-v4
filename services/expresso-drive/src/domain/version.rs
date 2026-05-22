@@ -227,4 +227,32 @@ mod tests {
         };
         assert_eq!(v.size_bytes, 0);
     }
+
+    #[test]
+    fn file_version_mime_type_none_serializes_null() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "k".into(), size_bytes: 1,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let j: serde_json::Value = serde_json::to_value(&v).unwrap();
+        assert!(j["mime_type"].is_null());
+    }
+
+    #[test]
+    fn file_version_storage_key_preserved() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 7, storage_key: "blobs/tenant/v7".into(), size_bytes: 512,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.storage_key, "blobs/tenant/v7");
+        assert_eq!(v.version_no, 7);
+    }
 }

@@ -114,4 +114,16 @@ mod tests {
         assert_eq!(command_label("STARTTLS"), "STARTTLS");
         assert_eq!(command_label("AUTH"), "AUTH");
     }
+
+    #[test]
+    fn ehlo_maps_to_ehlo() {
+        assert_eq!(command_label("EHLO"), "EHLO");
+        assert_eq!(command_label("ehlo"), "EHLO");
+    }
+
+    #[test]
+    fn rset_and_vrfy_map() {
+        assert_eq!(command_label("RSET"), "RSET");
+        assert_eq!(command_label("VRFY"), "VRFY");
+    }
 }

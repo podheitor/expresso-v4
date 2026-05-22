@@ -202,4 +202,16 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&r).unwrap();
         assert_eq!(v["emoji"], "🎉");
     }
+
+    #[test]
+    fn reaction_body_deser_emoji_field() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"👍"}"#).unwrap();
+        assert_eq!(b.emoji, "👍");
+    }
+
+    #[test]
+    fn reaction_body_deser_text_emoji() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"+1"}"#).unwrap();
+        assert_eq!(b.emoji, "+1");
+    }
 }

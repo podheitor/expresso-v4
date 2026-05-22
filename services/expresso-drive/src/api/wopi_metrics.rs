@@ -131,4 +131,18 @@ mod tests {
         assert!(OUTCOMES.contains(&"ok"));
         assert!(OUTCOMES.contains(&"error"));
     }
+
+    #[test]
+    fn ops_list_contains_refresh_and_relock() {
+        assert!(OPS.contains(&"refresh_lock"));
+        assert!(OPS.contains(&"unlock_and_relock"));
+        assert!(OPS.contains(&"get_lock"));
+    }
+
+    #[test]
+    fn outcomes_list_contains_unauthorized_and_forbidden() {
+        assert!(OUTCOMES.contains(&"unauthorized"));
+        assert!(OUTCOMES.contains(&"forbidden"));
+        assert!(OUTCOMES.contains(&"bad_request"));
+    }
 }
