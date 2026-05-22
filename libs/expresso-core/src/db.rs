@@ -175,6 +175,21 @@ mod tests {
         let p = ok();
         assert!(format!("{p:?}").contains("expresso"));
     }
+
+    #[test]
+    fn strict_requires_all_three_conditions() {
+        let mut p = ok();
+        p.tables_unforced.push("messages (not FORCEd)".into());
+        p.tables_missing.push("drive_files".into());
+        assert!(!p.is_strict());
+    }
+
+    #[test]
+    fn strict_false_when_only_missing() {
+        let mut p = ok();
+        p.tables_missing.push("mail_snooze".into());
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

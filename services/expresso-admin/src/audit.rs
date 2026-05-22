@@ -550,4 +550,15 @@ mod tests {
     fn empty_field() {
         assert_eq!(csv_escape(""), "");
     }
+
+    #[test]
+    fn tab_prefix_neutralized() {
+        assert_eq!(csv_escape("\tstuff"), "\"\'\tstuff\"");
+    }
+
+    #[test]
+    fn newline_inside_field_quoted() {
+        let out = csv_escape("line1\nline2");
+        assert!(out.starts_with('"') && out.ends_with('"'));
+    }
 }

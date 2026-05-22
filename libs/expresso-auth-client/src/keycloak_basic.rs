@@ -295,4 +295,14 @@ mod tests {
         a.record_failure("alice");
         assert!(!a.is_locked_out("alice"));
     }
+
+    #[test]
+    fn cache_key_different_users_same_pass_differ() {
+        assert_ne!(cache_key("alice", "pass"), cache_key("bob", "pass"));
+    }
+
+    #[test]
+    fn cache_key_same_user_different_pass_differ() {
+        assert_ne!(cache_key("alice", "pass1"), cache_key("alice", "pass2"));
+    }
 }

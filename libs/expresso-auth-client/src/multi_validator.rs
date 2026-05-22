@@ -118,4 +118,17 @@ mod tests {
         // Rust's str::replace replaces all occurrences
         assert_eq!(m.issuer_for("demo"), "http://demo.kc/realms/demo");
     }
+
+    #[test]
+    fn issuer_for_hyphenated_realm() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert_eq!(m.issuer_for("tenant-42"), "http://kc/realms/tenant-42");
+    }
+
+    #[test]
+    fn config_error_variant_on_missing_placeholder() {
+        let err = MultiRealmValidator::new("http://kc/realms/static", "aud").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("{realm}") || matches!(err, AuthError::Config(_)));
+    }
 }

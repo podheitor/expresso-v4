@@ -163,4 +163,17 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"addressbook_created""#) && s.contains("AB"));
     }
+
+    #[test]
+    fn contact_deleted_kind_str() {
+        let ev = ContactsEvent::ContactDeleted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        assert_eq!(ev.kind_str(), "contact_deleted");
+    }
+
+    #[test]
+    fn addressbook_created_name_none_serializes() {
+        let ev = ContactsEvent::AddressbookCreated { tenant_id: Uuid::nil(), addressbook_id: Uuid::nil(), name: None };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains(r#""kind":"addressbook_created""#));
+    }
 }

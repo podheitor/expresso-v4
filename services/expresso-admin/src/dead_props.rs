@@ -137,4 +137,18 @@ mod tests {
     fn preview_empty_string() {
         assert_eq!(preview(String::new()), "");
     }
+
+    #[test]
+    fn preview_121_chars_appends_ellipsis() {
+        let s = "y".repeat(121);
+        let out = preview(s);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn fmt_ts_unix_epoch_not_empty() {
+        let ts = time::OffsetDateTime::UNIX_EPOCH;
+        let s = fmt_ts(ts);
+        assert!(s.starts_with("1970-01-01"));
+    }
 }

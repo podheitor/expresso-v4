@@ -179,4 +179,16 @@ mod tests {
         let h = headers_with_cookie("not_expresso_rt=bad; expresso_rt=good");
         assert_eq!(extract_cookie(&h, "expresso_rt"), Some("good".into()));
     }
+
+    #[test]
+    fn extracts_first_matching_cookie_value() {
+        let h = headers_with_cookie("a=1; target=found; b=2");
+        assert_eq!(extract_cookie(&h, "target"), Some("found".into()));
+    }
+
+    #[test]
+    fn cookie_with_equals_in_value() {
+        let h = headers_with_cookie("token=abc=def");
+        assert_eq!(extract_cookie(&h, "token"), Some("abc".into()));
+    }
 }

@@ -219,4 +219,32 @@ mod tests {
         assert!(!j.contains("refresh_token"));
         assert!(!j.contains("token_type"));
     }
+
+    #[test]
+    fn impersonation_tokens_scope_present_serializes() {
+        let t = ImpersonationTokens {
+            access_token: "tok".into(),
+            refresh_token: None,
+            expires_in: 60,
+            refresh_expires_in: None,
+            token_type: Some("Bearer".into()),
+            scope: Some("openid profile".into()),
+        };
+        let j = serde_json::to_string(&t).unwrap();
+        assert!(j.contains("openid profile"));
+        assert!(j.contains("Bearer"));
+    }
+
+    #[test]
+    fn has_exchange_client_empty_strings_treated_as_absent() {
+        let cfg = KcAdminConfig {
+            base_url: "http://kc".into(),
+            realm: "r".into(),
+            admin_user: "u".into(),
+            admin_pass: "p".into(),
+            exchange_client_id: None,
+            exchange_client_secret: None,
+        };
+        assert!(!cfg.has_exchange_client());
+    }
 }

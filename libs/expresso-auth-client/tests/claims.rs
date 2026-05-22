@@ -87,3 +87,24 @@ fn aud_claim_handles_single_and_multi() {
     assert!(AudClaim::Many(vec!["a".into(), "b".into()]).contains("b"));
     assert!(!AudClaim::Empty.contains("anything"));
 }
+
+#[test]
+fn roles_deduplicated_across_realm_and_resource() {
+    let r = base(
+        "c7ee7d76-2113-40bd-9f8c-a28cd6ca395f",
+        Some("40894092-7ec5-4693-94f0-afb1c7fb51c4"),
+    );
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    // "admin" appears in both realm_access and resource_access["expresso-web"]
+    assert_eq!(ctx.roles.iter().filter(|r| *r == "admin").count(), 1);
+}
+
+#[test]
+fn malformed_tenant_uuid_fails() {
+    let mut r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
+    r.tenant_id = Some("not-a-uuid".into());
+    match AuthContext::from_raw(r, "expresso-web") {
+        Err(AuthError::MalformedClaim("tenant_id", _)) => {}
+        other => panic!("expected MalformedClaim(tenant_id), got {other:?}"),
+    }
+}

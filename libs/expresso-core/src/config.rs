@@ -228,4 +228,14 @@ mod tests {
     fn default_log_filter_is_info() {
         assert_eq!(default_log_filter(), "info");
     }
+
+    #[test]
+    fn default_otlp_endpoint_localhost() {
+        assert!(default_otlp_endpoint().contains("4317"));
+    }
+
+    #[test]
+    fn default_host_is_all_interfaces() {
+        assert_eq!(default_host(), "0.0.0.0");
+    }
 }

@@ -58,7 +58,7 @@ mod tests {
     }
 
     #[test]
-    fn tenant_not_set_display() {
+    fn tenant_not_set_display_via_let() {
         let e = CoreError::TenantNotSet;
         assert_eq!(e.to_string(), "tenant not set in context");
     }
@@ -67,5 +67,18 @@ mod tests {
     fn internal_error_display() {
         let e = CoreError::Internal(anyhow::anyhow!("something went wrong"));
         assert!(e.to_string().contains("something went wrong"));
+    }
+
+    #[test]
+    fn not_found_mail_message() {
+        let e = CoreError::NotFound { resource: "mail_message" };
+        assert!(e.to_string().contains("mail_message"));
+    }
+
+    #[test]
+    fn quota_exceeded_fields_in_display() {
+        let e = CoreError::QuotaExceeded { used: 999, limit: 1000 };
+        let s = e.to_string();
+        assert!(s.contains("999") && s.contains("1000"));
     }
 }
