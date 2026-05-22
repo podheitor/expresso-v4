@@ -169,4 +169,9 @@ mod tests {
         let f = GovbrFederation::from_ctx(&c).unwrap();
         assert_eq!(f.cpf_hash_short(), "01234567");
     }
+
+    #[test]
+    fn assurance_prata_from_acr() {
+        assert_eq!(GovbrAssurance::from_acr("urn:govbr:loa:prata"), Some(GovbrAssurance::Prata));
+    }
 }

@@ -173,4 +173,14 @@ mod tests {
             let _ = rl.check(ip);
         }
     }
+
+    #[test]
+    fn two_distinct_ips_tracked_independently() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let a = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        let b = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2));
+        assert!(rl.check(a));
+        assert!(!rl.check(a));
+        assert!(rl.check(b));
+    }
 }

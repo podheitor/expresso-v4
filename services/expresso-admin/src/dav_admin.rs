@@ -382,4 +382,10 @@ mod tests {
         let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "N".into(), None, None, false, 0);
         assert!(row.color.is_empty());
     }
+
+    #[test]
+    fn to_dav_row_name_preserved() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "My Calendar".into(), None, None, false, 0);
+        assert_eq!(row.name, "My Calendar");
+    }
 }

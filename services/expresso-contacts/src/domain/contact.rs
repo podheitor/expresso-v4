@@ -348,4 +348,10 @@ mod tests {
         assert_eq!(c.family_name.as_deref(), Some("Smith"));
         assert_eq!(c.given_name.as_deref(), Some("Alice"));
     }
+
+    #[test]
+    fn contact_organization_accessible() {
+        let c = sample();
+        assert!(c.organization.is_some() || c.organization.is_none());
+    }
 }

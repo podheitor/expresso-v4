@@ -131,4 +131,10 @@ mod tests {
         let c = cfg("i", "cl", "r", Some("https://{host}/cb".into()), None, None);
         assert_eq!(c.redirect_uri_template.as_deref(), Some("https://{host}/cb"));
     }
+
+    #[test]
+    fn redirect_uri_field_preserved() {
+        let c = cfg("i", "cli", "https://app/callback", None, None, None);
+        assert_eq!(c.redirect_uri, "https://app/callback");
+    }
 }

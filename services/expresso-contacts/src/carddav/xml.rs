@@ -296,4 +296,10 @@ mod tests {
         let r = super::parse_propfind(xml);
         assert!(r.supported_report_set && r.current_user_privilege_set && r.getcontentlength && r.sync_token);
     }
+
+    #[test]
+    fn detect_report_kind_addressbook_multiget_str() {
+        let xml = r#"<C:addressbook-multiget xmlns:C="urn:ietf:params:xml:ns:carddav"/>"#;
+        assert_eq!(super::detect_report_kind(xml), Some("addressbook-multiget"));
+    }
 }

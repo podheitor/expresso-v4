@@ -228,4 +228,20 @@ mod tests {
         let r: ShareRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(r.privilege, "admin");
     }
+
+    #[test]
+    fn acl_entry_privilege_in_roundtrip() {
+        use uuid::Uuid;
+        use time::macros::datetime;
+        let entry = AclEntry {
+            addressbook_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            grantee_id: Uuid::nil(),
+            privilege: "READ".into(),
+            email: None,
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let v: serde_json::Value = serde_json::to_value(&entry).unwrap();
+        assert_eq!(v["privilege"], "READ");
+    }
 }

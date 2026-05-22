@@ -253,4 +253,9 @@ mod tests {
         assert!(!is_safe_local_redirect("http://evil.com/path"));
         assert!(!is_safe_local_redirect("https://evil.com/path"));
     }
+
+    #[test]
+    fn accepts_root_slash() {
+        assert!(is_safe_local_redirect("/"));
+    }
 }

@@ -226,4 +226,10 @@ mod tests {
         let k: ChannelKind = serde_json::from_str(r#""announcement""#).unwrap();
         assert_eq!(k, ChannelKind::Announcement);
     }
+
+    #[test]
+    fn member_role_member_deser() {
+        let r: MemberRole = serde_json::from_str(r#""member""#).unwrap();
+        assert_eq!(r, MemberRole::Member);
+    }
 }

@@ -153,4 +153,10 @@ mod tests {
         let b = r#"<D:prop><displayname/></D:prop>"#;
         assert_eq!(extract_prop(b, "displayname"), None);
     }
+
+    #[test]
+    fn extracts_addressbook_description() {
+        let b = r#"<C:addressbook-description>My Contacts</C:addressbook-description>"#;
+        assert_eq!(extract_prop(b, "addressbook-description").as_deref(), Some("My Contacts"));
+    }
 }

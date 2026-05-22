@@ -273,4 +273,13 @@ mod tests {
         assert_eq!(b.user_id, u);
         assert_eq!(b.tenant_id, t);
     }
+
+    #[test]
+    fn upsert_body_cpf_hash_preserved() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let b = UpsertBody { cpf_hash: "sha256hashvalue".into(), tenant_id: t, user_id: u, assurance: Some("ouro".into()) };
+        assert_eq!(b.cpf_hash, "sha256hashvalue");
+        assert_eq!(b.assurance.as_deref(), Some("ouro"));
+    }
 }

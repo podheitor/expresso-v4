@@ -314,4 +314,12 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.kind.is_some());
     }
+
+    #[test]
+    fn add_member_body_role_none_when_absent() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{uid}"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert!(b.role.is_none());
+    }
 }

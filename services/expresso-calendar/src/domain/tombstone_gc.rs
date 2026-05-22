@@ -86,4 +86,9 @@ mod tests {
     fn interval_hours_is_reasonable() {
         assert!(DEFAULT_INTERVAL_HOURS <= 24);
     }
+
+    #[test]
+    fn retention_days_at_least_seven() {
+        assert!(DEFAULT_RETENTION_DAYS >= 7);
+    }
 }

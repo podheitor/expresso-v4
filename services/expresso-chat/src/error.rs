@@ -102,4 +102,11 @@ mod tests {
     fn matrix_error_is_502() {
         assert_eq!(status(ChatError::Matrix("upstream".into())), 502);
     }
+
+    #[test]
+    fn bad_request_message_preserved() {
+        let e = ChatError::BadRequest("invalid channel name".into());
+        let msg = format!("{e}");
+        assert!(msg.contains("invalid channel name"));
+    }
 }

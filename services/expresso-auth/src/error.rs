@@ -78,4 +78,9 @@ mod tests {
         let resp = RpError::StateNotFound.into_response();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[test]
+    fn bad_request_static_str_is_400() {
+        assert_eq!(status(RpError::BadRequest("invalid_param")), StatusCode::BAD_REQUEST);
+    }
 }

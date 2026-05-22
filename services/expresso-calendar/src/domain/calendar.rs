@@ -425,4 +425,17 @@ mod tests {
         let u: UpdateCalendar = serde_json::from_str(r#"{"timezone":"America/Sao_Paulo"}"#).unwrap();
         assert_eq!(u.timezone.as_deref(), Some("America/Sao_Paulo"));
     }
+
+    #[test]
+    fn new_calendar_description_none_by_default() {
+        let n = NewCalendar {
+            name: "Work".into(),
+            description: None,
+            color: Some("#336699".into()),
+            timezone: None,
+            is_default: false,
+        };
+        assert!(n.description.is_none());
+        assert_eq!(n.color.as_deref(), Some("#336699"));
+    }
 }

@@ -102,4 +102,10 @@ mod tests {
     fn not_supported_is_501() {
         assert_eq!(status(ContactsError::NotSupported("REPORT")), 501);
     }
+
+    #[test]
+    fn bad_request_message_in_display() {
+        let e = ContactsError::BadRequest("invalid uid".into());
+        assert!(format!("{e}").contains("invalid uid"));
+    }
 }

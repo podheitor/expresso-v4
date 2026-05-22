@@ -305,4 +305,10 @@ mod tests {
         assert!(is_super_admin(&["superadmin".into()]));
         assert!(is_super_admin(&["SUPERADMIN".into()]));
     }
+
+    #[test]
+    fn is_public_path_health_and_favicon() {
+        assert!(is_public_path("/health"));
+        assert!(is_public_path("/favicon.ico"));
+    }
 }

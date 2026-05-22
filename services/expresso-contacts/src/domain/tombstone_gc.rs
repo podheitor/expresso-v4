@@ -77,4 +77,9 @@ mod tests {
     fn interval_hours_under_day() {
         assert!(DEFAULT_INTERVAL_HOURS <= 24);
     }
+
+    #[test]
+    fn retention_days_at_least_seven() {
+        assert!(DEFAULT_RETENTION_DAYS >= 7);
+    }
 }

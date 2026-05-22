@@ -282,4 +282,18 @@ mod tests {
     fn fmt_opt_ts_dash_on_none() {
         assert_eq!(fmt_opt_ts(None), "-");
     }
+
+    #[test]
+    fn counter_row_received_sequence_stored() {
+        let row = CounterRow {
+            id: "9".into(), tenant_id: "t".into(), event_id: "e".into(),
+            event_summary: "Stand-up".into(), attendee_email: "b@x.com".into(),
+            proposed_dtstart: "2026-06-01T10:00:00Z".into(),
+            proposed_dtend: "2026-06-01T11:00:00Z".into(),
+            received_sequence: "3".into(), comment: Some("Please reschedule".into()),
+            created_at_fmt: "2026-05-22".into(),
+        };
+        assert_eq!(row.received_sequence, "3");
+        assert_eq!(row.comment.as_deref(), Some("Please reschedule"));
+    }
 }

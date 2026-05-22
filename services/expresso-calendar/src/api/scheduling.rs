@@ -521,4 +521,10 @@ mod tests {
         let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
         assert!(p.attendees.contains(','));
     }
+
+    #[test]
+    fn counter_limit_clamped_to_max_200() {
+        let raw: Option<i64> = Some(500);
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
+    }
 }

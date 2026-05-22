@@ -371,4 +371,15 @@ mod tests {
         assert_eq!(f.first_name.as_deref(), Some("Jane"));
         assert_eq!(f.last_name.as_deref(), Some("Doe"));
     }
+
+    #[test]
+    fn user_update_form_all_none_by_default() {
+        let f = UserUpdateForm {
+            email: None, first_name: None, last_name: None,
+            enabled: None, password: None,
+        };
+        assert!(f.email.is_none());
+        assert!(f.password.is_none());
+        assert!(f.enabled.is_none());
+    }
 }

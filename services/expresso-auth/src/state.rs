@@ -177,4 +177,10 @@ mod tests {
         let result = tmpl.replace("{host}", "t.example.com");
         assert_eq!(result, "https://t.example.com/logout");
     }
+
+    #[test]
+    fn fresh_pending_login_is_not_expired() {
+        let p = make_pending(9999);
+        assert!(p.expires_at > std::time::Instant::now());
+    }
 }

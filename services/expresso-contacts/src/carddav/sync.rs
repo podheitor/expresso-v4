@@ -222,4 +222,9 @@ mod tests {
         push_member(&mut out, user, ab, "my-uid", "e1");
         assert!(out.contains("my-uid"));
     }
+
+    #[test]
+    fn parse_token_value_prefix_only_is_none() {
+        assert_eq!(parse_token_value(TOKEN_PREFIX), None);
+    }
 }

@@ -237,4 +237,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(v["invite"]["uid"].as_str().is_some_and(|s| !s.is_empty()));
     }
+
+    #[test]
+    fn envelope_attendees_array_present() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["invite"]["attendees"].is_array());
+    }
 }
