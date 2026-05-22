@@ -1,0 +1,3 @@
+From: alice@example.com
+To: bob@example.com
+Content-Type: text/calendar; method=REPLY

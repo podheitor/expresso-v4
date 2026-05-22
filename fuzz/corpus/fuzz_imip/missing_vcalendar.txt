@@ -1,0 +1,6 @@
+From: alice@example.com
+Content-Type: text/calendar; method=REPLY; charset=utf-8
+
+BEGIN:VEVENT
+UID:orphan-vevent@example.com
+END:VEVENT

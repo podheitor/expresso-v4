@@ -1,0 +1,7 @@
+BEGIN:VCARD
+VERSION:4.0
+UID:no-fn-001
+N:Smith;John;;;
+ORG:Expresso Corp
+EMAIL:john@example.com
+END:VCARD

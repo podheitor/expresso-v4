@@ -1,0 +1,11 @@
+From: alice@example.com
+Content-Type: text/calendar;  method = REPLY ; charset=utf-8
+
+BEGIN:VCALENDAR
+VERSION:2.0
+METHOD:REPLY
+BEGIN:VEVENT
+UID:whitespace-uid@example.com
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:alice@example.com
+END:VEVENT
+END:VCALENDAR

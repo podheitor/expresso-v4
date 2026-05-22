@@ -1,0 +1,9 @@
+From: alice@example.com
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b1"
+
+--b1
+Content-Type: text/plain
+
+This meeting reply has no calendar attachment.
+--b1--

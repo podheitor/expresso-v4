@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:4.0
+UID:unknown-props-001
+FN:Test User
+X-CUSTOM-PROP:ignored-value
+X-ANOTHER;PARAM=x:data
+ITEM1.EMAIL:test@example.com
+ITEM1.X-ABLABEL:_$!<Work>!$_
+END:VCARD
