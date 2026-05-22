@@ -161,3 +161,57 @@ fn validate_preset(body: &PresetBody) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn body(name: &str, flag_count: usize) -> PresetBody {
+        PresetBody {
+            name:  name.into(),
+            flags: vec!["\\Flagged".into(); flag_count],
+        }
+    }
+
+    #[test]
+    fn valid_preset_passes() {
+        assert!(validate_preset(&body("Work", 3)).is_ok());
+    }
+
+    #[test]
+    fn empty_name_rejected() {
+        assert!(validate_preset(&body("", 0)).is_err());
+    }
+
+    #[test]
+    fn whitespace_only_name_rejected() {
+        assert!(validate_preset(&body("   ", 0)).is_err());
+    }
+
+    #[test]
+    fn name_exactly_100_chars_passes() {
+        let name = "x".repeat(100);
+        assert!(validate_preset(&body(&name, 1)).is_ok());
+    }
+
+    #[test]
+    fn name_101_chars_rejected() {
+        let name = "x".repeat(101);
+        assert!(validate_preset(&body(&name, 1)).is_err());
+    }
+
+    #[test]
+    fn exactly_50_flags_passes() {
+        assert!(validate_preset(&body("Preset", 50)).is_ok());
+    }
+
+    #[test]
+    fn fifty_one_flags_rejected() {
+        assert!(validate_preset(&body("Preset", 51)).is_err());
+    }
+
+    #[test]
+    fn zero_flags_passes() {
+        assert!(validate_preset(&body("Empty", 0)).is_ok());
+    }
+}

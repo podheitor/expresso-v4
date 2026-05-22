@@ -180,3 +180,48 @@ async fn wake_due(pool: &expresso_core::DbPool) -> sqlx::Result<u64> {
     .await?;
     Ok(res.rows_affected())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn snooze_body_deserializes_rfc3339() {
+        let json = r#"{"snooze_until":"2026-06-01T09:00:00Z"}"#;
+        let body: SnoozeBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.snooze_until, datetime!(2026-06-01 09:00:00 UTC));
+    }
+
+    #[test]
+    fn snooze_record_serde_roundtrip() {
+        let r = SnoozeRecord {
+            id:           Uuid::nil(),
+            tenant_id:    Uuid::nil(),
+            user_id:      Uuid::nil(),
+            message_id:   Uuid::nil(),
+            mailbox_id:   Uuid::nil(),
+            snooze_until: datetime!(2026-06-01 09:00:00 UTC),
+            snoozed_at:   datetime!(2026-05-22 08:00:00 UTC),
+            woken_at:     None,
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        let back: SnoozeRecord = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.snooze_until, r.snooze_until);
+        assert!(back.woken_at.is_none());
+    }
+
+    #[test]
+    fn snooze_record_woken_at_present_roundtrip() {
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-06-01 09:00:00 UTC),
+            snoozed_at:   datetime!(2026-05-22 08:00:00 UTC),
+            woken_at:     Some(datetime!(2026-06-01 09:00:01 UTC)),
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        let back: SnoozeRecord = serde_json::from_str(&s).unwrap();
+        assert!(back.woken_at.is_some());
+    }
+}
