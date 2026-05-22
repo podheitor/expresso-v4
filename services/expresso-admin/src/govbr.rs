@@ -209,3 +209,34 @@ pub async fn delete(
         cpf_hash = %cpf_hash);
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upsert_body_deser() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let json = format!(r#"{{"cpf_hash":"abc123","tenant_id":"{t}","user_id":"{u}","assurance":"bronze"}}"#);
+        let b: UpsertBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.cpf_hash, "abc123");
+        assert_eq!(b.tenant_id, t);
+        assert_eq!(b.assurance.as_deref(), Some("bronze"));
+    }
+
+    #[test]
+    fn upsert_body_assurance_optional() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let json = format!(r#"{{"cpf_hash":"xyz","tenant_id":"{t}","user_id":"{u}"}}"#);
+        let b: UpsertBody = serde_json::from_str(&json).unwrap();
+        assert!(b.assurance.is_none());
+    }
+
+    #[test]
+    fn list_query_tenant_id_optional() {
+        let q: ListQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.tenant_id.is_none());
+    }
+}

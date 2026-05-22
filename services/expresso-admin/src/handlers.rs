@@ -285,3 +285,43 @@ pub async fn users_totp_status(
 }
 
 pub fn kc_factory() -> KcClient { KcClient::new(crate::kc::KcConfig::from_env()) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_create_form_enabled_default_none() {
+        let q = UserCreateForm {
+            username:   "heitor".into(),
+            email:      "h@ex.com".into(),
+            first_name: "Heitor".into(),
+            last_name:  "F".into(),
+            password:   "s3cr3t".into(),
+            enabled:    None,
+            temporary:  None,
+        };
+        assert!(q.enabled.is_none());
+        assert!(q.temporary.is_none());
+    }
+
+    #[test]
+    fn user_create_form_enabled_when_present() {
+        let q = UserCreateForm {
+            username:   "x".into(),
+            email:      "x@x.com".into(),
+            first_name: "X".into(),
+            last_name:  "Y".into(),
+            password:   "pw".into(),
+            enabled:    Some("on".into()),
+            temporary:  None,
+        };
+        assert!(q.enabled.is_some());
+    }
+
+    #[test]
+    fn user_delete_form_confirm_username() {
+        let f = UserDeleteForm { confirm_username: "heitor".into() };
+        assert_eq!(f.confirm_username, "heitor");
+    }
+}
