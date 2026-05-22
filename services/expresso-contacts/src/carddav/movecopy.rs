@@ -140,4 +140,9 @@ mod tests {
     fn strip_origin_non_http_unchanged() {
         assert_eq!(strip_origin("ftp://example.com/file"), "ftp://example.com/file");
     }
+
+    #[test]
+    fn strip_origin_preserves_query_and_fragment() {
+        assert_eq!(strip_origin("https://h/carddav/a?q=1#f"), "/carddav/a?q=1#f");
+    }
 }

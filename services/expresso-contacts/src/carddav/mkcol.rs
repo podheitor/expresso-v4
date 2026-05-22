@@ -112,17 +112,18 @@ fn error(status: StatusCode, msg: &'static str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::extract_prop;
+
     #[test]
     fn displayname_prefixed() {
         let b = r#"<D:prop><D:displayname>Amigos</D:displayname></D:prop>"#;
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Amigos"));
     }
+
     #[test]
     fn displayname_plain() {
         let b = r#"<displayname>Equipe</displayname>"#;
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Equipe"));
     }
-}
 
     #[test]
     fn description_prop_extracted() {
@@ -139,5 +140,17 @@ mod tests {
     #[test]
     fn empty_body_returns_none() {
         assert_eq!(extract_prop("", "displayname"), None);
+    }
+
+    #[test]
+    fn extracts_xml_entity_amp() {
+        let b = r#"<displayname>A &amp; B</displayname>"#;
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("A & B"));
+    }
+
+    #[test]
+    fn self_closing_tag_returns_none() {
+        let b = r#"<D:prop><displayname/></D:prop>"#;
+        assert_eq!(extract_prop(b, "displayname"), None);
     }
 }

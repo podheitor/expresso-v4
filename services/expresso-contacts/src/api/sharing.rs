@@ -214,4 +214,18 @@ mod tests {
     fn validate_priv_rejects_empty() {
         assert!(validate_priv("").is_err());
     }
+
+    #[test]
+    fn validate_priv_normalizes_mixed_case() {
+        assert_eq!(validate_priv("wRiTe").unwrap(), "WRITE");
+    }
+
+    #[test]
+    fn share_request_deser() {
+        use uuid::Uuid;
+        let id = Uuid::new_v4();
+        let json = format!(r#"{{"grantee_id":"{id}","privilege":"admin"}}"#);
+        let r: ShareRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.privilege, "admin");
+    }
 }

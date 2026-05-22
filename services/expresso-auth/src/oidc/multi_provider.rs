@@ -76,4 +76,10 @@ mod tests {
         let issuer = tmpl.replace(REALM_PLACEHOLDER, "expresso");
         assert_eq!(issuer, "http://kc/realms/expresso/protocol/openid-connect");
     }
+
+    #[test]
+    fn rejects_template_with_wrong_placeholder() {
+        let r = TenantProviderCache::new("http://kc/realms/{tenant}".into(), Duration::from_secs(1));
+        assert!(r.is_err());
+    }
 }

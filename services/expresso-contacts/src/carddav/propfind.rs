@@ -380,4 +380,9 @@ mod tests {
     fn parse_depth_unknown_defaults_to_zero() {
         assert!(matches!(parse_depth(&headers_with_depth("99")), Depth::Zero));
     }
+
+    #[test]
+    fn parse_depth_infinity_uppercase_defaults_to_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("INFINITY")), Depth::Infinity));
+    }
 }

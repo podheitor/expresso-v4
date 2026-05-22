@@ -219,4 +219,19 @@ mod tests {
         assert!(validate_priv("OWNER").is_err());
         assert!(validate_priv("").is_err());
     }
+
+    #[test]
+    fn validate_priv_normalizes_mixed_case() {
+        assert_eq!(validate_priv("wRiTe").unwrap(), "WRITE");
+    }
+
+    #[test]
+    fn share_request_deser() {
+        use uuid::Uuid;
+        let id = Uuid::new_v4();
+        let json = format!(r#"{{"grantee_id":"{id}","privilege":"read"}}"#);
+        let r: ShareRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.privilege, "read");
+        assert_eq!(r.grantee_id, id);
+    }
 }
