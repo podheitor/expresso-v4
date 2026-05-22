@@ -93,4 +93,29 @@ mod tests {
         assert_eq!(outcome_for_err(&DriveError::Forbidden),             "forbidden");
         assert_eq!(outcome_for_err(&DriveError::DatabaseUnavailable),   "error");
     }
+
+    #[test]
+    fn ops_list_contains_canonical() {
+        assert!(OPS.contains(&"check_file_info"));
+        assert!(OPS.contains(&"get_file"));
+        assert!(OPS.contains(&"put_file"));
+        assert!(OPS.contains(&"lock"));
+        assert!(OPS.contains(&"unlock"));
+        assert!(OPS.contains(&"other"));
+    }
+
+    #[test]
+    fn outcomes_list_contains_canonical() {
+        assert!(OUTCOMES.contains(&"ok"));
+        assert!(OUTCOMES.contains(&"conflict"));
+        assert!(OUTCOMES.contains(&"quota_exceeded"));
+        assert!(OUTCOMES.contains(&"not_found"));
+        assert!(OUTCOMES.contains(&"error"));
+    }
+
+    #[test]
+    fn io_error_maps_to_error() {
+        let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file missing"));
+        assert_eq!(outcome_for_err(&e), "error");
+    }
 }

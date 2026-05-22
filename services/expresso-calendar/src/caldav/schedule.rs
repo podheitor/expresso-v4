@@ -253,4 +253,38 @@ mod tests {
         assert!(out.contains("1.2;ok"));
         assert!(out.contains("3.7;bad"));
     }
+
+    #[test]
+    fn extract_method_case_normalised() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:request\r\nEND:VCALENDAR";
+        assert_eq!(extract_method(ics).as_deref(), Some("REQUEST"));
+    }
+
+    #[test]
+    fn extract_method_missing() {
+        assert!(extract_method("BEGIN:VCALENDAR\r\nEND:VCALENDAR").is_none());
+    }
+
+    #[test]
+    fn extract_organizer_strips_mailto_prefix() {
+        let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:alice@ex.com\r\nEND:VCALENDAR";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("alice@ex.com"));
+    }
+
+    #[test]
+    fn extract_organizer_no_mailto_prefix() {
+        let ics = "ORGANIZER:alice@ex.com";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("alice@ex.com"));
+    }
+
+    #[test]
+    fn extract_organizer_missing() {
+        assert!(extract_organizer_email("BEGIN:VCALENDAR\r\nEND:VCALENDAR").is_none());
+    }
+
+    #[test]
+    fn extract_organizer_cn_param_ignored() {
+        let ics = "ORGANIZER;CN=Bob:mailto:bob@ex.com";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("bob@ex.com"));
+    }
 }

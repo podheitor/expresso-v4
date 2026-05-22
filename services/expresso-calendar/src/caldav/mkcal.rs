@@ -200,4 +200,47 @@ mod tests {
     fn parse_missing_returns_none() {
         assert_eq!(extract_prop("<a/>", "displayname"), None);
     }
+
+    #[test]
+    fn unescape_amp() {
+        assert_eq!(unescape_xml("AT&amp;T"), "AT&T");
+    }
+
+    #[test]
+    fn unescape_lt_gt() {
+        assert_eq!(unescape_xml("&lt;tag&gt;"), "<tag>");
+    }
+
+    #[test]
+    fn unescape_quot_apos() {
+        assert_eq!(unescape_xml("&quot;it&apos;s&quot;"), "\"it's\"");
+    }
+
+    #[test]
+    fn unescape_noop_plain_text() {
+        assert_eq!(unescape_xml("hello world"), "hello world");
+    }
+
+    #[test]
+    fn unescape_combined() {
+        assert_eq!(unescape_xml("&lt;b&gt;A &amp; B&lt;/b&gt;"), "<b>A & B</b>");
+    }
+
+    #[test]
+    fn extract_tzid_found() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VTIMEZONE\r\nTZID:America/Sao_Paulo\r\nEND:VTIMEZONE\r\nEND:VCALENDAR";
+        assert_eq!(extract_tzid(ics).as_deref(), Some("America/Sao_Paulo"));
+    }
+
+    #[test]
+    fn extract_tzid_missing() {
+        let ics = "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
+        assert!(extract_tzid(ics).is_none());
+    }
+
+    #[test]
+    fn extract_tzid_first_wins() {
+        let ics = "TZID:Europe/London\r\nTZID:America/New_York";
+        assert_eq!(extract_tzid(ics).as_deref(), Some("Europe/London"));
+    }
 }

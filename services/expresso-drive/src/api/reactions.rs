@@ -149,4 +149,30 @@ mod tests {
         let b: ReactionBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.emoji, "❤️");
     }
+
+    #[test]
+    fn comment_reaction_created_at_rfc3339() {
+        use time::macros::datetime;
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            emoji: "🔥".into(),
+            created_at: datetime!(2026-03-15 12:00:00 UTC),
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("2026-03-15T12:00:00"));
+    }
+
+    #[test]
+    fn comment_reaction_clone_preserves_emoji() {
+        use time::macros::datetime;
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            emoji: "✅".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let c = r.clone();
+        assert_eq!(c.emoji, "✅");
+    }
 }

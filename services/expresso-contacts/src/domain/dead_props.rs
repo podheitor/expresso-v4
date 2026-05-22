@@ -140,4 +140,25 @@ mod tests {
         let dbg = format!("{p:?}");
         assert!(dbg.contains("DAV:"));
     }
+
+    #[test]
+    fn dead_prop_empty_xml_value_allowed() {
+        let p = DeadProp {
+            namespace: "http://carddav.example.com/".into(),
+            local_name: "vcard-data".into(),
+            xml_value: "".into(),
+        };
+        assert!(p.xml_value.is_empty());
+    }
+
+    #[test]
+    fn dead_prop_long_value_preserved() {
+        let long = "x".repeat(2048);
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "prop-with-long-value".into(),
+            xml_value: long.clone(),
+        };
+        assert_eq!(p.xml_value, long);
+    }
 }

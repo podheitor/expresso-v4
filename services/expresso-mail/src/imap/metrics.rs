@@ -141,4 +141,25 @@ mod tests {
         assert_eq!(command_label("XFOO"),     "OTHER");
         assert_eq!(command_label(""),         "OTHER");
     }
+
+    #[test]
+    fn sort_thread_check_enable_map() {
+        assert_eq!(command_label("SORT"),   "SORT");
+        assert_eq!(command_label("THREAD"), "THREAD");
+        assert_eq!(command_label("CHECK"),  "CHECK");
+        assert_eq!(command_label("ENABLE"), "ENABLE");
+    }
+
+    #[test]
+    fn noop_logout_close_map() {
+        assert_eq!(command_label("NOOP"),   "NOOP");
+        assert_eq!(command_label("LOGOUT"), "LOGOUT");
+        assert_eq!(command_label("CLOSE"),  "CLOSE");
+    }
+
+    #[test]
+    fn mixed_case_normalised() {
+        assert_eq!(command_label("FeTcH"), "FETCH");
+        assert_eq!(command_label("sElEcT"), "SELECT");
+    }
 }

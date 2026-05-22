@@ -99,4 +99,23 @@ mod tests {
         let m = MultiRealmValidator::new("https://auth.ex/realms/{realm}/", "web").unwrap();
         assert_eq!(m.issuer_for("t-42"), "https://auth.ex/realms/t-42/");
     }
+
+    #[test]
+    fn audience_accessor() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "my-client").unwrap();
+        assert_eq!(m.audience(), "my-client");
+    }
+
+    #[test]
+    fn issuer_for_empty_realm() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert_eq!(m.issuer_for(""), "http://kc/realms/");
+    }
+
+    #[test]
+    fn template_with_multiple_placeholder_occurrences() {
+        let m = MultiRealmValidator::new("http://{realm}.kc/realms/{realm}", "aud").unwrap();
+        // Rust's str::replace replaces all occurrences
+        assert_eq!(m.issuer_for("demo"), "http://demo.kc/realms/demo");
+    }
 }

@@ -172,4 +172,32 @@ mod tests {
         let s = serde_json::to_string(&v).unwrap();
         assert!(s.contains("2026-01-01T00:00:00"));
     }
+
+    #[test]
+    fn file_version_no_sha256_serialises_null() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 2, storage_key: "k2".into(), size_bytes: 100,
+            sha256: None, mime_type: None, created_by: Uuid::nil(),
+            created_at: datetime!(2026-02-01 00:00:00 UTC),
+        };
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("\"sha256\":null"));
+    }
+
+    #[test]
+    fn file_version_clone_preserves_storage_key() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 5, storage_key: "blobs/v5/data".into(), size_bytes: 8192,
+            sha256: Some("deadbeef".into()), mime_type: Some("text/plain".into()),
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-03-01 09:00:00 UTC),
+        };
+        let c = v.clone();
+        assert_eq!(c.storage_key, "blobs/v5/data");
+        assert_eq!(c.version_no, 5);
+    }
 }

@@ -146,4 +146,24 @@ mod tests {
         let dbg = format!("{p:?}");
         assert!(dbg.contains("displayname"));
     }
+
+    #[test]
+    fn dead_prop_empty_value_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "resource-type".into(),
+            xml_value: "".into(),
+        };
+        assert!(p.xml_value.is_empty());
+    }
+
+    #[test]
+    fn dead_prop_unicode_value_preserved() {
+        let p = DeadProp {
+            namespace: "http://example.com/ns".into(),
+            local_name: "title".into(),
+            xml_value: "Calendário de Férias 🏖️".into(),
+        };
+        assert_eq!(p.xml_value, "Calendário de Férias 🏖️");
+    }
 }
