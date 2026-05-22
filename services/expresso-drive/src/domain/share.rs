@@ -112,3 +112,54 @@ impl<'a> ShareRepo<'a> {
         Ok(row)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn share_serde_roundtrip() {
+        let s = Share {
+            id:         Uuid::nil(),
+            tenant_id:  Uuid::nil(),
+            file_id:    Uuid::nil(),
+            permission: "read".into(),
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-05-22 09:00:00 UTC),
+            expires_at: datetime!(2026-05-29 09:00:00 UTC),
+            revoked_at: None,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Share = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.permission, "read");
+        assert!(back.revoked_at.is_none());
+    }
+
+    #[test]
+    fn share_revoked_at_present_roundtrip() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "write".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-05-22 09:00:00 UTC),
+            expires_at: datetime!(2026-05-29 09:00:00 UTC),
+            revoked_at: Some(datetime!(2026-05-23 10:00:00 UTC)),
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Share = serde_json::from_str(&json).unwrap();
+        assert!(back.revoked_at.is_some());
+    }
+
+    #[test]
+    fn share_expires_at_in_rfc3339() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-05-22 09:00:00 UTC),
+            expires_at: datetime!(2026-06-22 09:00:00 UTC),
+            revoked_at: None,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("2026-06-22T09:00:00"));
+    }
+}

@@ -681,3 +681,65 @@ fn map_conflict(e: sqlx::Error) -> DriveError {
     }
     DriveError::Database(e)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn sample_file() -> DriveFile {
+        DriveFile {
+            id:            Uuid::nil(),
+            tenant_id:     Uuid::nil(),
+            owner_user_id: Uuid::nil(),
+            parent_id:     None,
+            name:          "report.pdf".into(),
+            kind:          "file".into(),
+            mime_type:     Some("application/pdf".into()),
+            size_bytes:    1024,
+            sha256:        Some("deadbeef".into()),
+            storage_key:   Some("blobs/report".into()),
+            created_at:    datetime!(2026-05-22 08:00:00 UTC),
+            updated_at:    datetime!(2026-05-22 08:00:00 UTC),
+            deleted_at:    None,
+            expires_at:    None,
+            locked_by:     None,
+            locked_at:     None,
+            starred_at:    None,
+        }
+    }
+
+    #[test]
+    fn drive_file_serde_roundtrip() {
+        let f = sample_file();
+        let s = serde_json::to_string(&f).unwrap();
+        let back: DriveFile = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.name, "report.pdf");
+        assert_eq!(back.size_bytes, 1024);
+    }
+
+    #[test]
+    fn drive_file_deleted_at_none_omitted_in_json() {
+        let f = sample_file();
+        let s = serde_json::to_string(&f).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        // deleted_at=None with rfc3339::option → serialized as null
+        assert!(v["deleted_at"].is_null());
+    }
+
+    #[test]
+    fn drive_file_starred_at_some_serialized() {
+        let mut f = sample_file();
+        f.starred_at = Some(datetime!(2026-05-01 12:00:00 UTC));
+        let s = serde_json::to_string(&f).unwrap();
+        assert!(s.contains("2026-05-01T12:00:00"));
+    }
+
+    #[test]
+    fn drive_file_kind_folder_preserved() {
+        let mut f = sample_file();
+        f.kind = "folder".into();
+        let s = serde_json::to_string(&f).unwrap();
+        assert!(s.contains(r#""kind":"folder""#));
+    }
+}
