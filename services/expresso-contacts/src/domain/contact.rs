@@ -274,3 +274,52 @@ impl<'a> ContactRepo<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn sample() -> Contact {
+        Contact {
+            id:             Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            tenant_id:      Uuid::nil(),
+            uid:            "uid-xyz@example.com".into(),
+            etag:           "etag42".into(),
+            vcard_raw:      "BEGIN:VCARD\r\nEND:VCARD".into(),
+            full_name:      Some("Alice Smith".into()),
+            family_name:    Some("Smith".into()),
+            given_name:     Some("Alice".into()),
+            organization:   Some("Acme Inc.".into()),
+            email_primary:  Some("alice@example.com".into()),
+            phone_primary:  Some("+55 11 9999-9999".into()),
+            created_at:     datetime!(2026-05-22 08:00:00 UTC),
+            updated_at:     datetime!(2026-05-22 08:00:00 UTC),
+        }
+    }
+
+    #[test]
+    fn contact_serde_roundtrip() {
+        let c = sample();
+        let s = serde_json::to_string(&c).unwrap();
+        let back: Contact = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.uid, "uid-xyz@example.com");
+        assert_eq!(back.full_name.as_deref(), Some("Alice Smith"));
+    }
+
+    #[test]
+    fn contact_timestamps_in_rfc3339() {
+        let c = sample();
+        let s = serde_json::to_string(&c).unwrap();
+        assert!(s.contains("2026-05-22T08:00:00"));
+    }
+
+    #[test]
+    fn contact_optional_null_when_absent() {
+        let mut c = sample();
+        c.organization = None;
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert!(v["organization"].is_null());
+    }
+}

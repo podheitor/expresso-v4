@@ -253,3 +253,59 @@ impl<'a> AddressbookRepo<'a> {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    fn sample() -> Addressbook {
+        Addressbook {
+            id:            Uuid::nil(),
+            tenant_id:     Uuid::nil(),
+            owner_user_id: Uuid::nil(),
+            name:          "Contacts".into(),
+            description:   Some("Main addressbook".into()),
+            ctag:          7,
+            is_default:    true,
+            created_at:    datetime!(2026-05-22 08:00:00 UTC),
+            updated_at:    datetime!(2026-05-22 09:00:00 UTC),
+        }
+    }
+
+    #[test]
+    fn addressbook_serde_roundtrip() {
+        let a = sample();
+        let s = serde_json::to_string(&a).unwrap();
+        let back: Addressbook = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.name, "Contacts");
+        assert_eq!(back.ctag, 7);
+        assert!(back.is_default);
+    }
+
+    #[test]
+    fn new_addressbook_deserialize_minimal() {
+        let json = r#"{"name":"Work"}"#;
+        let n: NewAddressbook = serde_json::from_str(json).unwrap();
+        assert_eq!(n.name, "Work");
+        assert!(n.description.is_none());
+        assert!(!n.is_default);
+    }
+
+    #[test]
+    fn update_addressbook_default_all_none() {
+        let u = UpdateAddressbook::default();
+        assert!(u.name.is_none());
+        assert!(u.description.is_none());
+        assert!(u.is_default.is_none());
+    }
+
+    #[test]
+    fn update_addressbook_partial() {
+        let json = r#"{"name":"Renamed","is_default":true}"#;
+        let u: UpdateAddressbook = serde_json::from_str(json).unwrap();
+        assert_eq!(u.name.as_deref(), Some("Renamed"));
+        assert_eq!(u.is_default, Some(true));
+        assert!(u.description.is_none());
+    }
+}
