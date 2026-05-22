@@ -46,3 +46,20 @@ async fn lookup(
         None => Err(ContactsError::BadRequest(format!("user not found: {email}"))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_query_email_optional() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
+    }
+
+    #[test]
+    fn user_query_email_set() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"a@ex.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("a@ex.com"));
+    }
+}

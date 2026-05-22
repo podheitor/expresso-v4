@@ -101,3 +101,20 @@ pub async fn logout(
     tracing::info!(target: "audit", event = "auth.logout", host = %host, "user logged out");
     Ok(resp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn logout_query_id_token_hint_optional() {
+        let q: LogoutQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.id_token_hint.is_none());
+    }
+
+    #[test]
+    fn logout_query_id_token_hint_set() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tkn123"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("tkn123"));
+    }
+}

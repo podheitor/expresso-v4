@@ -84,3 +84,20 @@ pub async fn login(
     );
     Ok(Redirect::to(url.as_str()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn login_query_redirect_uri_optional() {
+        let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.redirect_uri.is_none());
+    }
+
+    #[test]
+    fn login_query_redirect_uri_set() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/mail"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/mail"));
+    }
+}

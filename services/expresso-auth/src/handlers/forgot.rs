@@ -71,3 +71,20 @@ pub async fn forgot(
 
     StatusCode::NO_CONTENT
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn forgot_req_deser() {
+        let json = r#"{"email":"heitor@ex.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert_eq!(r.email, "heitor@ex.com");
+    }
+
+    #[test]
+    fn action_lifespan_is_one_hour() {
+        assert_eq!(ACTION_LIFESPAN_SECS, 3600);
+    }
+}
