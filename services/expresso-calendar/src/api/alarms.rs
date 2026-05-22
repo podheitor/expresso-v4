@@ -446,4 +446,20 @@ mod tests {
         let q: CountQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.delivered.is_none());
     }
+
+    #[test]
+    fn create_alarm_body_all_optional_fields() {
+        let json = r#"{"trigger_rel":"-PT15M","action":"AUDIO","description":"Ring"}"#;
+        let b: CreateAlarmBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.trigger_rel.as_deref(), Some("-PT15M"));
+        assert_eq!(b.action.as_deref(), Some("AUDIO"));
+        assert_eq!(b.description.as_deref(), Some("Ring"));
+    }
+
+    #[test]
+    fn patch_alarm_body_all_none_by_default() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.action.is_none());
+        assert!(b.trigger_rel.is_none());
+    }
 }

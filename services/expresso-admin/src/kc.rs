@@ -298,4 +298,32 @@ mod tests {
         };
         assert_eq!(cfg.realm, "expresso");
     }
+
+    #[test]
+    fn new_user_required_fields() {
+        let u = NewUser {
+            username:   "alice".into(),
+            email:      "alice@ex.com".into(),
+            first_name: "Alice".into(),
+            last_name:  "Smith".into(),
+            enabled:    true,
+            password:   "pw123".into(),
+            temporary:  false,
+        };
+        assert_eq!(u.username, "alice");
+        assert!(u.enabled);
+        assert!(!u.temporary);
+    }
+
+    #[test]
+    fn update_user_email_only() {
+        let u = UpdateUser {
+            email:      Some("new@ex.com".into()),
+            first_name: None,
+            last_name:  None,
+            enabled:    None,
+        };
+        assert_eq!(u.email.as_deref(), Some("new@ex.com"));
+        assert!(u.first_name.is_none());
+    }
 }

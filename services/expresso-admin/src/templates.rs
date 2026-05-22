@@ -274,4 +274,18 @@ mod tests {
         assert_eq!(r.display_name, "");
         assert!(!r.registration_allowed);
     }
+
+    #[test]
+    fn kc_user_last_name_set() {
+        let json = r#"{"id":"a","lastName":"Silva"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.last, "Silva");
+    }
+
+    #[test]
+    fn kc_realm_access_token_lifespan_zero_ok() {
+        let json = r#"{"realm":"r","accessTokenLifespan":0}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.access_token_lifespan, 0);
+    }
 }
