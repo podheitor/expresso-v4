@@ -123,3 +123,21 @@ mod tests {
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Equipe"));
     }
 }
+
+    #[test]
+    fn description_prop_extracted() {
+        let b = r#"<C:addressbook-description>My contacts</C:addressbook-description>"#;
+        assert_eq!(extract_prop(b, "addressbook-description").as_deref(), Some("My contacts"));
+    }
+
+    #[test]
+    fn missing_prop_returns_none() {
+        let b = r#"<D:prop><D:displayname>X</D:displayname></D:prop>"#;
+        assert_eq!(extract_prop(b, "description"), None);
+    }
+
+    #[test]
+    fn empty_body_returns_none() {
+        assert_eq!(extract_prop("", "displayname"), None);
+    }
+}

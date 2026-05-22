@@ -511,3 +511,45 @@ JVBERi0xLjQKMSAwIG9iago=\r\n\
         assert_eq!(msg.attachment_count(), 0);
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_header_token_strips_control_chars() {
+        let s = sanitize_header_token("application/pdf", "text/plain");
+        assert_eq!(s, "application/pdf");
+    }
+
+    #[test]
+    fn sanitize_header_token_empty_returns_default() {
+        assert_eq!(sanitize_header_token("", "text/plain"), "text/plain");
+        assert_eq!(sanitize_header_token("  ", "text/plain"), "text/plain");
+    }
+
+    #[test]
+    fn build_content_disposition_ascii_filename() {
+        let cd = build_content_disposition("report.pdf");
+        assert!(cd.starts_with("attachment; filename=\"report.pdf\""));
+        assert!(cd.contains("filename*=UTF-8''"));
+    }
+
+    #[test]
+    fn build_content_disposition_empty_name_uses_fallback() {
+        let cd = build_content_disposition("");
+        assert!(cd.contains("filename=\"attachment\""));
+    }
+
+    #[test]
+    fn percent_encode_filename_ascii_chars_unchanged() {
+        let s = percent_encode_filename("file.txt");
+        assert_eq!(s, "file.txt");
+    }
+
+    #[test]
+    fn percent_encode_filename_non_ascii_encoded() {
+        let s = percent_encode_filename("relatório.pdf");
+        assert!(s.contains('%'));
+    }
+}

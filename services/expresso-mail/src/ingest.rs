@@ -922,3 +922,90 @@ async fn apply_sieve(
     }
     SieveDecision::Deliver { folder: "INBOX".to_string() }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn split_headers_body_crlf() {
+        let (h, b) = split_headers_body("Subject: Hi\r\n\r\nBody text");
+        assert_eq!(h, "Subject: Hi");
+        assert_eq!(b, "Body text");
+    }
+
+    #[test]
+    fn split_headers_body_lf_only() {
+        let (h, b) = split_headers_body("Subject: Hi\n\nBody text");
+        assert_eq!(h, "Subject: Hi");
+        assert_eq!(b, "Body text");
+    }
+
+    #[test]
+    fn split_headers_body_no_separator_returns_empty_body() {
+        let (h, b) = split_headers_body("no blank line here");
+        assert_eq!(h, "no blank line here");
+        assert_eq!(b, "");
+    }
+
+    #[test]
+    fn parse_single_address_angle_brackets() {
+        let (name, addr) = parse_single_address("John Doe <john@ex.com>");
+        assert_eq!(name.as_deref(), Some("John Doe"));
+        assert_eq!(addr.as_deref(), Some("john@ex.com"));
+    }
+
+    #[test]
+    fn parse_single_address_bare_email() {
+        let (name, addr) = parse_single_address("user@ex.com");
+        assert!(name.is_none());
+        assert_eq!(addr.as_deref(), Some("user@ex.com"));
+    }
+
+    #[test]
+    fn parse_single_address_non_email_returns_none() {
+        let (name, addr) = parse_single_address("Not An Email");
+        assert!(name.is_none());
+        assert!(addr.is_none());
+    }
+
+    #[test]
+    fn normalize_message_id_strips_angle_brackets() {
+        assert_eq!(
+            normalize_message_id(Some("<id@ex.com>".into())).as_deref(),
+            Some("id@ex.com")
+        );
+    }
+
+    #[test]
+    fn normalize_message_id_none_returns_none() {
+        assert!(normalize_message_id(None).is_none());
+    }
+
+    #[test]
+    fn normalize_message_id_empty_returns_none() {
+        assert!(normalize_message_id(Some("  ".into())).is_none());
+    }
+
+    #[test]
+    fn make_preview_collapses_whitespace() {
+        assert_eq!(make_preview("  hello   world  ").as_deref(), Some("hello world"));
+    }
+
+    #[test]
+    fn make_preview_empty_body_returns_none() {
+        assert!(make_preview("").is_none());
+        assert!(make_preview("   ").is_none());
+    }
+
+    #[test]
+    fn parse_references_strips_angle_brackets() {
+        let refs = parse_references("<a@ex.com> <b@ex.com>");
+        assert_eq!(refs, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn parse_references_empty_input() {
+        assert!(parse_references("").is_empty());
+    }
+}
