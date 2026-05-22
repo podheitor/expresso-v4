@@ -139,4 +139,10 @@ mod tests {
         let tag = "design2026".to_string();
         assert_eq!(tag, "design2026");
     }
+
+    #[test]
+    fn tag_string_hyphenated_is_unchanged() {
+        let tag = "front-end".to_string();
+        assert_eq!(tag, "front-end");
+    }
 }

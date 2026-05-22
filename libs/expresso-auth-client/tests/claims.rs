@@ -130,3 +130,10 @@ fn user_id_matches_sub() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.user_id.to_string(), sub);
 }
+
+#[test]
+fn email_is_preserved_in_context() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000002", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.email, "alice@x");
+}

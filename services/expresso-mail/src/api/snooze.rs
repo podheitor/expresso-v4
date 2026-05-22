@@ -319,4 +319,18 @@ mod tests {
         };
         assert!(r.woken_at.is_none());
     }
+
+    #[test]
+    fn snooze_record_snooze_until_preserved() {
+        use time::macros::datetime;
+        let until = datetime!(2026-10-15 09:00:00 UTC);
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: until,
+            snoozed_at: datetime!(2026-10-14 09:00:00 UTC),
+            woken_at: None,
+        };
+        assert_eq!(r.snooze_until, until);
+    }
 }

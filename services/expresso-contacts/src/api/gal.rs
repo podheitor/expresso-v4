@@ -383,4 +383,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("contact"));
     }
+
+    #[test]
+    fn gal_entry_contact_organization_optional() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          Some("a@x.com".into()),
+            full_name:      None,
+            organization:   Some("Acme Corp".into()),
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("Acme Corp"));
+    }
 }

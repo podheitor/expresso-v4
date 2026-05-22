@@ -343,4 +343,11 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.topic.is_none());
     }
+
+    #[test]
+    fn create_body_topic_set_when_present() {
+        let json = r#"{"name":"general","topic":"Company-wide announcements"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.topic.as_deref(), Some("Company-wide announcements"));
+    }
 }

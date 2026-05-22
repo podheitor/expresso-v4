@@ -322,4 +322,9 @@ mod tests {
     fn cache_key_same_inputs_are_deterministic() {
         assert_eq!(cache_key("admin", "secret"), cache_key("admin", "secret"));
     }
+
+    #[test]
+    fn cache_key_different_users_differ() {
+        assert_ne!(cache_key("alice", "pass"), cache_key("bob", "pass"));
+    }
 }

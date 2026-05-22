@@ -99,4 +99,10 @@ mod tests {
         let s = AuthError::InvalidToken("bad sig".into()).to_string();
         assert!(s.contains("bad sig") || !s.is_empty());
     }
+
+    #[test]
+    fn missing_bearer_display_not_empty() {
+        let s = AuthError::MissingBearer.to_string();
+        assert!(!s.is_empty());
+    }
 }

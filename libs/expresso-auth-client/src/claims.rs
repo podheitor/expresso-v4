@@ -316,4 +316,9 @@ mod tests {
         assert!(!AudClaim::Empty.contains("anything"));
         assert!(!AudClaim::Empty.contains(""));
     }
+
+    #[test]
+    fn aud_claim_one_rejects_different_aud() {
+        assert!(!AudClaim::One("web".into()).contains("mobile"));
+    }
 }

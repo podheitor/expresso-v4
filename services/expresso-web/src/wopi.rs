@@ -138,4 +138,10 @@ mod extra_tests {
         let url = build_iframe_url("https://collabora", "https://drive", "my-file-id", "tok");
         assert!(url.contains("my-file-id"));
     }
+
+    #[test]
+    fn build_iframe_url_contains_token() {
+        let url = build_iframe_url("https://collabora", "https://drive", "f1", "secret-token");
+        assert!(url.contains("secret-token"));
+    }
 }

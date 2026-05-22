@@ -160,4 +160,9 @@ mod tests {
     fn outcomes_list_contains_not_found() {
         assert!(OUTCOMES.contains(&"not_found"));
     }
+
+    #[test]
+    fn outcomes_list_contains_forbidden() {
+        assert!(OUTCOMES.contains(&"forbidden"));
+    }
 }

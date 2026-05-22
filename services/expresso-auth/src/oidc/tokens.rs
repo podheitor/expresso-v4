@@ -169,4 +169,14 @@ mod tests {
         };
         assert_eq!(t.expires_in, 900);
     }
+
+    #[test]
+    fn token_response_token_type_preserved() {
+        let t = TokenResponse {
+            access_token: "tok".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 60,
+            refresh_expires_in: None, scope: None,
+        };
+        assert_eq!(t.token_type, "Bearer");
+    }
 }

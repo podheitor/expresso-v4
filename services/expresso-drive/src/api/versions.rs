@@ -405,4 +405,10 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
         assert_eq!(b.storage_key.as_deref(), Some("blobs/abc123"));
     }
+
+    #[test]
+    fn create_version_body_mime_type_preserved() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"mime_type":"application/pdf"}"#).unwrap();
+        assert_eq!(b.mime_type.as_deref(), Some("application/pdf"));
+    }
 }

@@ -132,4 +132,10 @@ mod tests {
         assert_eq!(r.resolve("a.x"), Some("realm_a"));
         assert_eq!(r.resolve("b.y"), Some("realm_b"));
     }
+
+    #[test]
+    fn unknown_host_resolves_to_none() {
+        let r = TenantResolver::parse("a.x:realm_a");
+        assert_eq!(r.resolve("unknown.host"), None);
+    }
 }

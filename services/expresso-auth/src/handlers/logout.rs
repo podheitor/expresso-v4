@@ -173,4 +173,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.id_token_hint.is_none());
     }
+
+    #[test]
+    fn logout_query_hint_with_dots_preserved() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"a.b.c.d"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("a.b.c.d"));
+    }
 }

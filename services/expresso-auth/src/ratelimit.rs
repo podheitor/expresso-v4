@@ -207,4 +207,14 @@ mod tests {
         assert!(rl.check(ip_a));
         assert!(rl.check(ip_b));
     }
+
+    #[test]
+    fn limit_large_allows_many_requests() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 50);
+        let ip = IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1));
+        for _ in 0..50 {
+            assert!(rl.check(ip), "should allow requests within limit");
+        }
+        assert!(!rl.check(ip), "51st request should be blocked");
+    }
 }

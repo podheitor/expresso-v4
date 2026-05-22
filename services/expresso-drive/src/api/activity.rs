@@ -261,4 +261,10 @@ mod tests {
         let b: CreateActivityBody = serde_json::from_str(r#"{"action":"share"}"#).unwrap();
         assert_eq!(b.action, "share");
     }
+
+    #[test]
+    fn create_activity_body_action_view_preserved() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"view"}"#).unwrap();
+        assert_eq!(b.action, "view");
+    }
 }

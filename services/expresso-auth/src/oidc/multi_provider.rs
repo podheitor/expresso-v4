@@ -112,4 +112,12 @@ mod tests {
         let r = TenantProviderCache::new("https://{realm}.auth.example.com".into(), Duration::from_secs(60));
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn realm_placeholder_substitution_removes_placeholder() {
+        let tmpl = "https://kc/realms/{realm}";
+        let result = tmpl.replace(REALM_PLACEHOLDER, "acme");
+        assert_eq!(result, "https://kc/realms/acme");
+        assert!(!result.contains(REALM_PLACEHOLDER));
+    }
 }

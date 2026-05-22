@@ -253,4 +253,9 @@ mod tests {
     fn default_shutdown_timeout_is_thirty() {
         assert_eq!(default_shutdown_timeout(), 30);
     }
+
+    #[test]
+    fn default_shutdown_timeout_is_positive() {
+        assert!(default_shutdown_timeout() > 0);
+    }
 }

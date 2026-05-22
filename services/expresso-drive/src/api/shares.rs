@@ -250,4 +250,10 @@ mod tests {
     fn default_ttl_is_positive() {
         assert!(DEFAULT_TTL_SECONDS > 0);
     }
+
+    #[test]
+    fn create_body_large_expiry_preserved() {
+        let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":86400}"#).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(86400));
+    }
 }

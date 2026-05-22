@@ -197,4 +197,10 @@ mod tests {
     fn authenticate_command_maps_correctly() {
         assert_eq!(command_label("AUTHENTICATE"), "AUTHENTICATE");
     }
+
+    #[test]
+    fn logout_command_maps_correctly() {
+        assert_eq!(command_label("LOGOUT"), "LOGOUT");
+        assert_eq!(command_label("logout"), "LOGOUT");
+    }
 }

@@ -98,4 +98,9 @@ mod tests {
     fn interval_hours_is_positive() {
         assert!(DEFAULT_INTERVAL_HOURS > 0);
     }
+
+    #[test]
+    fn default_interval_is_six_hours() {
+        assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
+    }
 }

@@ -195,4 +195,10 @@ mod tests {
         let e = AuditEntry::new("drive.file.deleted");
         assert!(e.tenant_id.is_none());
     }
+
+    #[test]
+    fn audit_entry_action_preserved() {
+        let e = AuditEntry::new("calendar.event.created");
+        assert_eq!(e.action, "calendar.event.created");
+    }
 }

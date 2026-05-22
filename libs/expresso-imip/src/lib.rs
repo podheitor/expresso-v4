@@ -436,4 +436,11 @@ mod tests {
         let s = format_ical_utc(dt).unwrap();
         assert_eq!(s.len(), 16);
     }
+
+    #[test]
+    fn format_ical_utc_ends_with_z() {
+        let dt = datetime!(2026-01-01 00:00:00 UTC);
+        let s = format_ical_utc(dt).unwrap();
+        assert!(s.ends_with('Z'));
+    }
 }

@@ -231,4 +231,14 @@ mod tests {
         };
         assert!(!p.local_name.is_empty());
     }
+
+    #[test]
+    fn dead_prop_namespace_not_empty() {
+        let p = DeadProp {
+            namespace: "urn:ietf:params:xml:ns:carddav".into(),
+            local_name: "addressbook-description".into(),
+            xml_value: "Work contacts".into(),
+        };
+        assert!(!p.namespace.is_empty());
+    }
 }

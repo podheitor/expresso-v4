@@ -211,6 +211,12 @@ mod tests {
         let p = ok();
         assert!(p.tables_missing.is_empty());
     }
+
+    #[test]
+    fn rls_posture_ok_bypassrls_false_by_default() {
+        let p = ok();
+        assert!(!p.bypassrls);
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

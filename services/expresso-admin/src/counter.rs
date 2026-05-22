@@ -337,4 +337,17 @@ mod tests {
         };
         assert!(r.comment.is_none());
     }
+
+    #[test]
+    fn counter_row_created_at_fmt_preserved() {
+        let r = CounterRow {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            event_summary: "Sync".into(), attendee_email: "a@b.com".into(),
+            proposed_dtstart: "2026-09-01T09:00:00Z".into(),
+            proposed_dtend: "2026-09-01T10:00:00Z".into(),
+            received_sequence: "1".into(), comment: None,
+            created_at_fmt: "2026-09-01".into(),
+        };
+        assert_eq!(r.created_at_fmt, "2026-09-01");
+    }
 }

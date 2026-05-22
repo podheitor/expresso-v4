@@ -100,4 +100,10 @@ mod tests {
         let e = CoreError::Internal(anyhow::anyhow!("db pool exhausted"));
         assert!(e.to_string().contains("db pool exhausted"));
     }
+
+    #[test]
+    fn core_error_not_found_display_contains_resource() {
+        let e = CoreError::NotFound { resource: "calendar_event" };
+        assert!(e.to_string().contains("calendar_event"));
+    }
 }

@@ -327,4 +327,9 @@ mod tests {
     fn is_public_path_api_path_is_not_public() {
         assert!(!is_public_path("/api/users"));
     }
+
+    #[test]
+    fn is_public_path_health_is_public() {
+        assert!(is_public_path("/health"));
+    }
 }

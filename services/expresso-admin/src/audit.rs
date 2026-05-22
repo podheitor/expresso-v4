@@ -580,4 +580,10 @@ mod tests {
         assert!(!out.starts_with('"'));
         assert!(out.is_empty());
     }
+
+    #[test]
+    fn field_without_special_chars_unchanged() {
+        let out = csv_escape("hello");
+        assert_eq!(out, "hello");
+    }
 }

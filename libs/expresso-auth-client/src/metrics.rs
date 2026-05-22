@@ -107,4 +107,9 @@ mod tests {
             assert!(!label.is_empty());
         }
     }
+
+    #[test]
+    fn result_label_malformed_claim_maps_malformed() {
+        assert_eq!(result_label(&AuthError::MalformedClaim("iat", "not-a-number".into())), "malformed");
+    }
 }

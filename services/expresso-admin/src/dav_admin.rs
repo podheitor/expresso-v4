@@ -407,4 +407,10 @@ mod tests {
         let row = to_dav_row(Uuid::new_v4(), tid, "T".into(), "e@x".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.tenant_id, tid.to_string());
     }
+
+    #[test]
+    fn to_dav_row_name_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "My Calendar".into(), "u@x".into(), "u".into(), None, None, false, 0);
+        assert_eq!(row.name, "My Calendar");
+    }
 }

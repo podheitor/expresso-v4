@@ -77,4 +77,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("parse failed at byte 42"));
         assert!(e.to_string().contains("parse failed at byte 42"));
     }
+
+    #[test]
+    fn display_is_nonempty_for_any_error() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("x"));
+        assert!(!e.to_string().is_empty());
+    }
 }

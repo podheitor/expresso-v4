@@ -144,4 +144,10 @@ mod tests {
         assert_eq!(command_label("AUTH"), "AUTH");
         assert_eq!(command_label("auth"), "AUTH");
     }
+
+    #[test]
+    fn rcpt_command_maps_correctly() {
+        assert_eq!(command_label("RCPT"), "RCPT");
+        assert_eq!(command_label("rcpt"), "RCPT");
+    }
 }

@@ -80,4 +80,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!(""));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn internal_error_display_contains_cause() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("aes key too short"));
+        assert!(e.to_string().contains("aes key too short"));
+    }
 }

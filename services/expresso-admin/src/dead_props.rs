@@ -170,4 +170,10 @@ mod tests {
         let out = preview("   ".into());
         assert!(out.is_empty() || out == "   ");
     }
+
+    #[test]
+    fn preview_nonempty_string_is_nonempty() {
+        let out = preview("hello world".into());
+        assert!(!out.is_empty());
+    }
 }

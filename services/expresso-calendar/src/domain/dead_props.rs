@@ -239,4 +239,14 @@ mod tests {
         };
         assert_eq!(p.xml_value, "#ff0000");
     }
+
+    #[test]
+    fn dead_prop_debug_contains_priority_value() {
+        let p = DeadProp {
+            namespace: "urn:test:".into(),
+            local_name: "priority".into(),
+            xml_value: "1".into(),
+        };
+        assert!(format!("{p:?}").contains("priority"));
+    }
 }

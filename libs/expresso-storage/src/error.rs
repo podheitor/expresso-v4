@@ -77,4 +77,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 bucket not found"));
         assert!(e.to_string().contains("s3 bucket not found"));
     }
+
+    #[test]
+    fn display_is_nonempty_for_any_error() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("x"));
+        assert!(!e.to_string().is_empty());
+    }
 }

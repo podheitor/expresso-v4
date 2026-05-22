@@ -123,4 +123,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.email.is_none());
     }
+
+    #[test]
+    fn user_query_email_with_subdomain_preserved() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"user@mail.corp.example.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("user@mail.corp.example.com"));
+    }
 }

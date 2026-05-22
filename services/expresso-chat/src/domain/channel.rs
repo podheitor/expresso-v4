@@ -248,4 +248,9 @@ mod tests {
     fn channel_kind_direct_serializes() {
         assert_eq!(serde_json::to_string(&ChannelKind::Direct).unwrap(), r#""direct""#);
     }
+
+    #[test]
+    fn member_role_guest_serializes() {
+        assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
+    }
 }

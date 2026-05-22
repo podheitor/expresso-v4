@@ -154,4 +154,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.redirect_uri.is_none());
     }
+
+    #[test]
+    fn login_query_redirect_uri_with_fragment_stored() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/app#section"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/app#section"));
+    }
 }

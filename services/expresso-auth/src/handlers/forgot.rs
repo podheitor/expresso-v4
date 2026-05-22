@@ -150,4 +150,11 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert_eq!(r.email, "üser@example.com");
     }
+
+    #[test]
+    fn forgot_req_subdomain_email_preserved() {
+        let json = r#"{"email":"user@sub.domain.example.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert_eq!(r.email, "user@sub.domain.example.com");
+    }
 }

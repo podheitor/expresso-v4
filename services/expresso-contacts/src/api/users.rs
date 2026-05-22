@@ -116,4 +116,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"alice@sub.example.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("alice@sub.example.com"));
     }
+
+    #[test]
+    fn user_query_email_with_plus_sign_preserved() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"alice+tag@example.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("alice+tag@example.com"));
+    }
 }

@@ -106,4 +106,9 @@ mod tests {
     fn retention_days_is_positive() {
         assert!(DEFAULT_RETENTION_DAYS > 0);
     }
+
+    #[test]
+    fn retention_days_exceeds_one_week() {
+        assert!(DEFAULT_RETENTION_DAYS > 7);
+    }
 }

@@ -148,4 +148,10 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
         assert_eq!(m.issuer_for("acme"), "http://kc/realms/acme");
     }
+
+    #[test]
+    fn issuer_for_different_realms_differ() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert_ne!(m.issuer_for("corp"), m.issuer_for("demo"));
+    }
 }

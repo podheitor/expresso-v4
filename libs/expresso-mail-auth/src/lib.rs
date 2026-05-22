@@ -448,4 +448,13 @@ mod tests {
         };
         assert!(!r.should_reject());
     }
+
+    #[test]
+    fn auth_results_spf_fail_should_reject() {
+        let r = AuthResults {
+            spf: "fail".into(), dkim: "pass".into(), dmarc: "fail".into(),
+            dmarc_policy: Some("reject".into()), ..Default::default()
+        };
+        assert!(r.should_reject());
+    }
 }
