@@ -220,4 +220,24 @@ mod tests {
         assert!(q.limit.is_none());
         assert!(q.before.is_none());
     }
+
+    #[test]
+    fn activity_event_created_at_in_rfc3339() {
+        let e = ActivityEvent {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), action: "view".into(), detail: None,
+            created_at: datetime!(2026-06-15 12:00:00 UTC),
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("2026-06-15T12:00:00"));
+    }
+
+    #[test]
+    fn create_activity_body_detail_complex_json() {
+        let json = r#"{"action":"edit","detail":{"fields":["name","size"],"editor":"u1"}}"#;
+        let b: CreateActivityBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.action, "edit");
+        let d = b.detail.unwrap();
+        assert!(d["fields"].is_array());
+    }
 }

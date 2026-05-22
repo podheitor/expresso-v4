@@ -117,4 +117,26 @@ mod tests {
         };
         assert_eq!(r.grant_type, "refresh_token");
     }
+
+    #[test]
+    fn token_response_scope_present() {
+        let t = TokenResponse {
+            access_token: "at".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 300,
+            refresh_expires_in: None, scope: Some("openid profile email".into()),
+        };
+        assert_eq!(t.scope.as_deref(), Some("openid profile email"));
+    }
+
+    #[test]
+    fn token_response_clone_is_independent() {
+        let orig = TokenResponse {
+            access_token: "tok".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 60,
+            refresh_expires_in: None, scope: None,
+        };
+        let mut cloned = orig.clone();
+        cloned.access_token = "other".into();
+        assert_eq!(orig.access_token, "tok");
+    }
 }

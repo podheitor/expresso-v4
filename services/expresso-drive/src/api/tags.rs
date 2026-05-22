@@ -1493,4 +1493,22 @@ mod tests {
         let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["z","a","m"]}"#).unwrap();
         assert_eq!(b.tags, vec!["z", "a", "m"]);
     }
+
+    #[test]
+    fn file_tag_created_at_in_rfc3339() {
+        let t = FileTag {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            tag: "t".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-07-04 00:00:00 UTC),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        assert!(s.contains("2026-07-04T00:00:00"));
+    }
+
+    #[test]
+    fn bulk_tags_body_single_tag() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["only"]}"#).unwrap();
+        assert_eq!(b.tags.len(), 1);
+        assert_eq!(b.tags[0], "only");
+    }
 }

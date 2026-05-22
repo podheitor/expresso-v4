@@ -331,4 +331,17 @@ mod tests {
         assert!(u.name.is_none());
         assert_eq!(u.description.as_deref(), Some("Updated desc"));
     }
+
+    #[test]
+    fn addressbook_ctag_accessible() {
+        let a = sample();
+        assert_eq!(a.ctag, 7);
+    }
+
+    #[test]
+    fn addressbook_created_at_in_rfc3339() {
+        let a = sample();
+        let s = serde_json::to_string(&a).unwrap();
+        assert!(s.contains("2026-05-22T08:00:00"));
+    }
 }
