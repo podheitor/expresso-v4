@@ -20839,4 +20839,78 @@ mod tests {
         let cd = build_content_disposition("\x01\x02");
         assert!(cd.contains("filename=\"download\""));
     }
+
+    // ─── side_by_side_diff ───────────────────────────────────────────────────
+
+    #[test]
+    fn side_by_side_diff_identical_lines_no_output_without_context() {
+        let lines = &["a", "b", "c"];
+        let result = side_by_side_diff(lines, lines, 0);
+        // Identical lines are "equal" — with context=0, none are near a change
+        assert_eq!(result.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn side_by_side_diff_single_changed_line() {
+        let old = &["line1", "old", "line3"];
+        let new = &["line1", "new", "line3"];
+        let result = side_by_side_diff(old, new, 0);
+        let arr = result.as_array().unwrap();
+        // With context=0: only the changed row visible
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["type"], "changed");
+    }
+
+    #[test]
+    fn side_by_side_diff_added_line() {
+        let old: &[&str] = &["a", "b"];
+        let new: &[&str] = &["a", "extra", "b"];
+        let result = side_by_side_diff(old, new, 0);
+        let arr = result.as_array().unwrap();
+        let types: Vec<&str> = arr.iter().map(|v| v["type"].as_str().unwrap()).collect();
+        assert!(types.contains(&"inserted"));
+    }
+
+    #[test]
+    fn side_by_side_diff_deleted_line() {
+        let old: &[&str] = &["a", "remove", "b"];
+        let new: &[&str] = &["a", "b"];
+        let result = side_by_side_diff(old, new, 0);
+        let arr = result.as_array().unwrap();
+        let types: Vec<&str> = arr.iter().map(|v| v["type"].as_str().unwrap()).collect();
+        assert!(types.contains(&"deleted"));
+    }
+
+    #[test]
+    fn side_by_side_diff_empty_inputs() {
+        let result = side_by_side_diff(&[], &[], 0);
+        assert_eq!(result.as_array().unwrap().len(), 0);
+    }
+
+    // ─── unified_diff ────────────────────────────────────────────────────────
+
+    #[test]
+    fn unified_diff_identical_no_hunks() {
+        let lines = &["a", "b", "c"];
+        let result = unified_diff(lines, lines, 0);
+        assert_eq!(result.as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn unified_diff_changed_line_produces_hunk() {
+        let old = &["line1", "old", "line3"];
+        let new = &["line1", "new", "line3"];
+        let result = unified_diff(old, new, 0);
+        let arr = result.as_array().unwrap();
+        assert!(!arr.is_empty());
+        // Each hunk has "header" and "lines"
+        assert!(arr[0]["header"].is_string());
+        assert!(arr[0]["lines"].is_array());
+    }
+
+    #[test]
+    fn unified_diff_empty_inputs_no_hunks() {
+        let result = unified_diff(&[], &[], 0);
+        assert_eq!(result.as_array().unwrap().len(), 0);
+    }
 }
