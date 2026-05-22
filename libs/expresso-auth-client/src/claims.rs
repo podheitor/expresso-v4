@@ -271,4 +271,44 @@ mod tests {
         let r = AuthContext::from_raw(raw, "expresso-web");
         assert!(matches!(r, Err(AuthError::MissingClaim("tenant_id"))));
     }
+
+    #[test]
+    fn from_raw_merges_realm_and_resource_roles_dedup() {
+        let uid = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let mut resource_access = HashMap::new();
+        resource_access.insert(
+            "expresso-web".into(),
+            RolesBlock { roles: vec!["editor".into(), "user".into()] },
+        );
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::One("expresso-web".into()),
+            exp: 9_999_999,
+            email: None, preferred_username: None, name: None,
+            tenant_id: None,
+            realm_access: Some(RolesBlock { roles: vec!["user".into(), "viewer".into()] }),
+            resource_access,
+            acr: None, amr: None,
+            govbr_cpf_hash: None, govbr_confiabilidades: None,
+        };
+        let c = AuthContext::from_raw(raw, "expresso-web").unwrap();
+        // "user" from realm_access; "editor" from resource_access; "user" deduped.
+        assert!(c.has_role("user"));
+        assert!(c.has_role("viewer"));
+        assert!(c.has_role("editor"));
+        // No duplicates.
+        assert_eq!(c.roles.iter().filter(|r| *r == "user").count(), 1);
+    }
+
+    #[test]
+    fn aud_claim_contains_single_and_many() {
+        assert!(AudClaim::One("a".into()).contains("a"));
+        assert!(!AudClaim::One("a".into()).contains("b"));
+        assert!(AudClaim::Many(vec!["a".into(), "b".into()]).contains("b"));
+        assert!(!AudClaim::Many(vec!["a".into()]).contains("x"));
+        assert!(!AudClaim::Empty.contains("a"));
+    }
+
 }

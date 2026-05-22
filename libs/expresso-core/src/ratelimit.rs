@@ -159,4 +159,23 @@ mod tests {
         assert!(rl.check("b").is_ok());
         assert!(rl.check("a").is_err());
     }
+
+    #[test]
+    fn gc_does_not_panic_and_preserves_active_bucket() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 100, burst: 5 });
+        rl.check("tenant-active").unwrap();
+        // gc() prunes buckets idle for >10 min; this bucket was just touched,
+        // so it survives. The key assertion: gc() is idempotent and doesn't
+        // corrupt the bucket state.
+        rl.gc();
+        assert!(rl.check("tenant-active").is_ok());
+    }
+
+    #[test]
+    fn retry_after_is_positive() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 1 });
+        rl.check("t").unwrap();
+        let retry = rl.check("t").unwrap_err();
+        assert!(retry >= 1, "retry_after must be ≥ 1 s, got {retry}");
+    }
 }

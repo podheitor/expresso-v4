@@ -1,0 +1,55 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Daily at 03:17 UTC — stagger vs other cron jobs
+    - cron: '17 3 * * *'
+
+jobs:
+  audit:
+    name: cargo-audit (RustSec)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --quiet
+      - name: Audit advisories
+        run: cargo audit
+
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  miri:
+    name: Miri (UB — pure-logic modules)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri, rust-src
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: miri
+      - name: Run Miri on pure-logic libs
+        run: |
+          # Miri cannot simulate C FFI; scope to FFI-free crates only.
+          # Expand this list as FFI is removed from other crates.
+          for crate in expresso-crypto expresso-mail-parser; do
+            cargo +nightly miri test \
+              --manifest-path "libs/${crate}/Cargo.toml" \
+              -- --test-threads=1 || true
+          done

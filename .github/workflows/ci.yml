@@ -11,8 +11,8 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  test:
-    name: Rust — Test + Lint
+  rust:
+    name: Rust — fmt / clippy / tests / deny / machete
     runs-on: ubuntu-24.04
 
     services:
@@ -24,13 +24,21 @@ jobs:
           POSTGRES_PASSWORD: test
         ports:
           - 5432:5432
-        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
       redis:
         image: redis:7
         ports:
           - 6379:6379
-        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -55,10 +63,25 @@ jobs:
           REDIS_URL: redis://localhost:6379
         run: cargo test --workspace
 
-      - name: Security audit
+      - name: cargo-deny (bans + sources + advisories + licenses)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans sources advisories licenses
+
+      - name: cargo-machete (unused deps)
+        uses: bnjbvr/cargo-machete@main
+
+      - name: lizard (CCN ≤ 25)
         run: |
-          cargo install cargo-audit --quiet
-          cargo audit
+          pip install lizard --quiet
+          find services libs -name '*.rs' -not -path '*/target/*' \
+            | xargs lizard -l rust -C 25 -w
+
+      - name: jscpd (duplication < 5%)
+        run: |
+          npm install -g jscpd --silent
+          jscpd --min-lines 50 --min-tokens 100 --threshold 5 \
+                --reporters console --silent services/ libs/
 
   frontend:
     name: Frontend — TypeCheck + Lint
@@ -77,36 +100,20 @@ jobs:
       - run: pnpm -r lint
 
   shellcheck:
-    name: Shell — shellcheck ops/*.sh
+    name: Shell — shellcheck scripts/
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Run shellcheck
-        uses: ludeeus/action-shellcheck@master
+      - uses: ludeeus/action-shellcheck@master
         with:
           severity: warning
-          scandir: './ops'
+          scandir: './scripts'
 
   rustdoc:
-    name: Rust — cargo doc (build check)
+    name: Rust — cargo doc
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-      - name: Build docs
-        run: cargo doc --workspace --no-deps --all-features
-
-  cargo-deny:
-    name: Rust — cargo-deny (bans + sources)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked --quiet
-      - name: Check bans + sources
-        run: cargo deny check bans sources
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo doc --workspace --no-deps --all-features
