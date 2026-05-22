@@ -82,4 +82,10 @@ mod tests {
     fn retention_days_at_least_seven() {
         assert!(DEFAULT_RETENTION_DAYS >= 7);
     }
+
+    #[test]
+    fn interval_and_retention_constants_positive() {
+        assert!(DEFAULT_INTERVAL_HOURS > 0);
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

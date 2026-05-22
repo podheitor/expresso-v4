@@ -302,4 +302,9 @@ mod tests {
         let xml = r#"<C:addressbook-multiget xmlns:C="urn:ietf:params:xml:ns:carddav"/>"#;
         assert_eq!(super::detect_report_kind(xml), Some("addressbook-multiget"));
     }
+
+    #[test]
+    fn detect_report_kind_unknown_returns_none() {
+        assert_eq!(super::detect_report_kind("<junk/>"), None);
+    }
 }

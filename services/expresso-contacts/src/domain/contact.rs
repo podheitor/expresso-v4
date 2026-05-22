@@ -354,4 +354,10 @@ mod tests {
         let c = sample();
         assert!(c.organization.is_some() || c.organization.is_none());
     }
+
+    #[test]
+    fn contact_email_primary_preserved() {
+        let c = sample();
+        assert_eq!(c.email_primary.as_deref(), Some("alice@example.com"));
+    }
 }

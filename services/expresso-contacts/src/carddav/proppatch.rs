@@ -307,4 +307,14 @@ mod tests {
         };
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_with_name_only_has_changes() {
+        let p = super::UpdateAddressbook {
+            name: Some("Work".into()),
+            description: None,
+            is_default: None,
+        };
+        assert!(patch_has_changes(&p));
+    }
 }

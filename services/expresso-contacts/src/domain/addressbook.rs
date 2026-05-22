@@ -344,4 +344,10 @@ mod tests {
         let s = serde_json::to_string(&a).unwrap();
         assert!(s.contains("2026-05-22T08:00:00"));
     }
+
+    #[test]
+    fn addressbook_name_preserved() {
+        let a = sample();
+        assert!(!a.name.is_empty());
+    }
 }

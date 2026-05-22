@@ -155,4 +155,9 @@ mod tests {
     fn strip_origin_http_with_port_strips_host() {
         assert_eq!(strip_origin("http://svc.internal:9000/carddav/a/b"), "/carddav/a/b");
     }
+
+    #[test]
+    fn strip_origin_relative_url_unchanged() {
+        assert_eq!(strip_origin("/carddav/user/book/card.vcf"), "/carddav/user/book/card.vcf");
+    }
 }

@@ -162,4 +162,9 @@ mod tests {
         let r = percent_decode("abc%4");
         assert!(r.contains('4') || r.contains('%'));
     }
+
+    #[test]
+    fn percent_decode_no_encoding_unchanged() {
+        assert_eq!(percent_decode("simple-name.vcf"), "simple-name.vcf");
+    }
 }

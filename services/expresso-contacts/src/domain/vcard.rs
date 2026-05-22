@@ -229,4 +229,11 @@ mod tests {
         // Either Ok (with empty full_name) or Err — must not panic.
         let _ = parse(raw);
     }
+
+    #[test]
+    fn parse_email_in_vcard() {
+        let raw = "BEGIN:VCARD\r\nUID:u5\r\nFN:Bob\r\nEMAIL:bob@example.com\r\nEND:VCARD\r\n";
+        let c = parse(raw).unwrap();
+        assert_eq!(c.email_primary.as_deref(), Some("bob@example.com"));
+    }
 }

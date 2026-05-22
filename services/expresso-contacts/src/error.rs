@@ -108,4 +108,9 @@ mod tests {
         let e = ContactsError::BadRequest("invalid uid".into());
         assert!(format!("{e}").contains("invalid uid"));
     }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(ContactsError::Forbidden), 403);
+    }
 }

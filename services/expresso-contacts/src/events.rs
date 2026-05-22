@@ -176,4 +176,10 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"addressbook_created""#));
     }
+
+    #[test]
+    fn contact_upserted_kind_str() {
+        let ev = ContactsEvent::ContactUpserted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        assert_eq!(ev.kind_str(), "contact_upserted");
+    }
 }

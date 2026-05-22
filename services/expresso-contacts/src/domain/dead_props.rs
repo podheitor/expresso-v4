@@ -201,4 +201,14 @@ mod tests {
         };
         assert_eq!(p.xml_value, "Livro de endereços 📇");
     }
+
+    #[test]
+    fn dead_prop_local_name_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value: "Contacts".into(),
+        };
+        assert_eq!(p.local_name, "displayname");
+    }
 }

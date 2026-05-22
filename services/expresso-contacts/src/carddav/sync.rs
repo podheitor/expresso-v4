@@ -227,4 +227,9 @@ mod tests {
     fn parse_token_value_prefix_only_is_none() {
         assert_eq!(parse_token_value(TOKEN_PREFIX), None);
     }
+
+    #[test]
+    fn parse_token_value_large_positive() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}9999999")), Some(9_999_999));
+    }
 }
