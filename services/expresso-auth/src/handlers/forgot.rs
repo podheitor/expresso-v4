@@ -87,4 +87,20 @@ mod tests {
     fn action_lifespan_is_one_hour() {
         assert_eq!(ACTION_LIFESPAN_SECS, 3600);
     }
+
+    #[test]
+    fn forgot_req_email_trimmed_at_handler_level() {
+        // The struct just stores raw input; trimming happens in the handler.
+        // Verify round-trip with whitespace in JSON.
+        let json = r#"{"email":"  spaces@ex.com  "}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert_eq!(r.email, "  spaces@ex.com  ");
+    }
+
+    #[test]
+    fn forgot_req_missing_email_fails_deser() {
+        let json = r#"{}"#;
+        let r = serde_json::from_str::<ForgotReq>(json);
+        assert!(r.is_err());
+    }
 }

@@ -189,4 +189,34 @@ mod tests {
         assert!(s.contains("2026-07-01T14:00:00"));
         assert!(s.contains("2026-05-23T09:00:00"));
     }
+
+    #[test]
+    fn counter_proposal_status_pending_by_default_in_insert() {
+        // The INSERT always writes status='pending'; verify that a freshly-
+        // constructed struct carries the expected string value.
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "x@x.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.status, "pending");
+    }
+
+    #[test]
+    fn counter_proposal_no_proposed_times_null_in_json() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "y@x.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert!(v["proposed_dtstart"].is_null());
+        assert!(v["proposed_dtend"].is_null());
+    }
 }

@@ -62,4 +62,16 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"a@ex.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("a@ex.com"));
     }
+
+    #[test]
+    fn user_query_email_null_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
+        assert!(q.email.is_none());
+    }
+
+    #[test]
+    fn user_query_email_with_plus_tag() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"user+tag@ex.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("user+tag@ex.com"));
+    }
 }

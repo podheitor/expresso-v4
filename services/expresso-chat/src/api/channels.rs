@@ -275,4 +275,28 @@ mod tests {
         assert_eq!(b.user_id, uid);
         assert!(b.role.is_none());
     }
+
+    #[test]
+    fn create_body_with_topic_and_invite() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"name":"dev","topic":"engineering","invite":["{uid}"]}}"#);
+        let b: CreateBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.name, "dev");
+        assert_eq!(b.topic.as_deref(), Some("engineering"));
+        assert_eq!(b.invite.len(), 1);
+    }
+
+    #[test]
+    fn create_body_missing_name_fails() {
+        let r = serde_json::from_str::<CreateBody>(r#"{}"#);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn add_member_body_with_role() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{uid}","role":"admin"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.role.as_deref(), Some("admin"));
+    }
 }
