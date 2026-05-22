@@ -157,3 +157,53 @@ async fn record_activity(
 
     Ok((StatusCode::CREATED, Json(event)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn activity_event_serde_roundtrip() {
+        let e = ActivityEvent {
+            id:         Uuid::nil(),
+            file_id:    Uuid::nil(),
+            tenant_id:  Uuid::nil(),
+            user_id:    Uuid::nil(),
+            action:     "upload".into(),
+            detail:     Some(serde_json::json!({"size": 1024})),
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        let back: ActivityEvent = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.action, "upload");
+        assert!(back.detail.is_some());
+    }
+
+    #[test]
+    fn activity_event_detail_null_when_none() {
+        let e = ActivityEvent {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), action: "delete".into(), detail: None,
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert!(v["detail"].is_null());
+    }
+
+    #[test]
+    fn activity_query_deserializes() {
+        let json = r#"{"before":"2026-05-22T00:00:00Z","limit":20}"#;
+        let q: ActivityQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.before.as_deref(), Some("2026-05-22T00:00:00Z"));
+        assert_eq!(q.limit, Some(20));
+    }
+
+    #[test]
+    fn create_activity_body_deserializes() {
+        let json = r#"{"action":"share","detail":{"shared_with":"user-xyz"}}"#;
+        let b: CreateActivityBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.action, "share");
+        assert!(b.detail.is_some());
+    }
+}

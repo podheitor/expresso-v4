@@ -309,3 +309,45 @@ async fn create_version(
 
     Ok((StatusCode::CREATED, Json(version)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn file_version_serde_roundtrip() {
+        let v = FileVersion {
+            id:          Uuid::nil(),
+            file_id:     Uuid::nil(),
+            tenant_id:   Uuid::nil(),
+            version_num: 5,
+            size_bytes:  2048,
+            sha256:      Some("abc123".into()),
+            storage_key: Some("blobs/v5".into()),
+            created_by:  Uuid::nil(),
+            created_at:  datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let s = serde_json::to_string(&v).unwrap();
+        let back: FileVersion = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.version_num, 5);
+        assert_eq!(back.size_bytes, 2048);
+    }
+
+    #[test]
+    fn create_version_body_all_optional() {
+        let json = r#"{}"#;
+        let b: CreateVersionBody = serde_json::from_str(json).unwrap();
+        assert!(b.size_bytes.is_none());
+        assert!(b.sha256.is_none());
+        assert!(b.storage_key.is_none());
+    }
+
+    #[test]
+    fn create_version_body_full() {
+        let json = r#"{"size_bytes":4096,"sha256":"deadbeef","storage_key":"blobs/new"}"#;
+        let b: CreateVersionBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.size_bytes, Some(4096));
+        assert_eq!(b.sha256.as_deref(), Some("deadbeef"));
+    }
+}

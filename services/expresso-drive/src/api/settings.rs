@@ -84,3 +84,43 @@ async fn put_trash_purge(
 
     Ok((StatusCode::OK, Json(TrashPurgeSettings { auto_purge_days: body.auto_purge_days })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trash_purge_settings_with_days() {
+        let s = TrashPurgeSettings { auto_purge_days: Some(30) };
+        let json = serde_json::to_string(&s).unwrap();
+        assert!(json.contains("30"));
+    }
+
+    #[test]
+    fn trash_purge_settings_disabled() {
+        let s = TrashPurgeSettings { auto_purge_days: None };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(v["auto_purge_days"].is_null());
+    }
+
+    #[test]
+    fn trash_purge_put_body_deserializes_some() {
+        let json = r#"{"auto_purge_days":90}"#;
+        let b: TrashPurgePutBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.auto_purge_days, Some(90));
+    }
+
+    #[test]
+    fn trash_purge_put_body_deserializes_null() {
+        let json = r#"{"auto_purge_days":null}"#;
+        let b: TrashPurgePutBody = serde_json::from_str(json).unwrap();
+        assert!(b.auto_purge_days.is_none());
+    }
+
+    #[test]
+    fn trash_purge_put_body_deserializes_absent() {
+        let json = r#"{}"#;
+        let b: TrashPurgePutBody = serde_json::from_str(json).unwrap();
+        assert!(b.auto_purge_days.is_none());
+    }
+}
