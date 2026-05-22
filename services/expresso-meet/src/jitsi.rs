@@ -285,4 +285,12 @@ mod extra_tests {
         let tok = j.mint(&req).unwrap();
         assert!(tok.join_url.contains("standup"));
     }
+
+    #[test]
+    fn issued_token_is_nonempty() {
+        let j = Jitsi::new(fixture_cfg());
+        let req = IssueRequest { room: "daily", user_id: Uuid::nil(), display_name: "Dev", email: "dev@x", moderator: true, allow_recording: false };
+        let tok = j.mint(&req).unwrap();
+        assert!(!tok.token.is_empty());
+    }
 }

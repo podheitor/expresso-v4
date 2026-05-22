@@ -460,4 +460,10 @@ mod tests {
         let r: ParticipantRole = serde_json::from_str(r#""participant""#).unwrap();
         assert!(matches!(r, ParticipantRole::Participant));
     }
+
+    #[test]
+    fn participant_role_moderator_roundtrip() {
+        let s = serde_json::to_string(&ParticipantRole::Moderator).unwrap();
+        assert_eq!(s, r#""moderator""#);
+    }
 }

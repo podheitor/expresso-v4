@@ -122,7 +122,13 @@ mod tests {
     }
 
     #[test]
-    fn forbidden_is_403() {
+    fn calendar_forbidden_status_is_403() {
         assert_eq!(status(CalendarError::Forbidden), 403);
+    }
+
+    #[test]
+    fn calendar_not_found_display_contains_name() {
+        let e = CalendarError::CalendarNotFound("personal".into());
+        assert!(format!("{e}").contains("personal"));
     }
 }

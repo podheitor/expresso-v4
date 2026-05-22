@@ -242,4 +242,11 @@ mod tests {
         let raw = "BEGIN:VCARD\r\nUID:u1\r\nFN:Alice\r\nEND:VCARD\r\n";
         assert_eq!(compute_etag(raw), compute_etag(raw));
     }
+
+    #[test]
+    fn compute_etag_differs_for_different_inputs() {
+        let a = compute_etag("BEGIN:VCARD\r\nUID:u1\r\nFN:Alice\r\nEND:VCARD\r\n");
+        let b = compute_etag("BEGIN:VCARD\r\nUID:u2\r\nFN:Bob\r\nEND:VCARD\r\n");
+        assert_ne!(a, b);
+    }
 }

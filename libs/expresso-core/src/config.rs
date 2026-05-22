@@ -248,4 +248,9 @@ mod tests {
     fn default_s3_region_is_us_east_1() {
         assert_eq!(default_s3_region(), "us-east-1");
     }
+
+    #[test]
+    fn default_shutdown_timeout_is_thirty() {
+        assert_eq!(default_shutdown_timeout(), 30);
+    }
 }

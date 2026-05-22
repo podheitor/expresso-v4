@@ -1194,4 +1194,10 @@ mod tests {
         assert!(q.from.is_none());
         assert!(q.to.is_none());
     }
+
+    #[test]
+    fn event_query_limit_default_is_none() {
+        let q: EventQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.limit.is_none());
+    }
 }

@@ -125,4 +125,11 @@ mod tests {
         let r = TenantResolver::parse("");
         assert!(r.resolve("any.host").is_none());
     }
+
+    #[test]
+    fn multiple_entries_resolve_correct_realm() {
+        let r = TenantResolver::parse("a.x:realm_a,b.y:realm_b");
+        assert_eq!(r.resolve("a.x"), Some("realm_a"));
+        assert_eq!(r.resolve("b.y"), Some("realm_b"));
+    }
 }

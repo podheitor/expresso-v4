@@ -142,4 +142,10 @@ mod tests {
     fn missing_placeholder_returns_error() {
         assert!(MultiRealmValidator::new("http://kc/realms/fixed", "aud").is_err());
     }
+
+    #[test]
+    fn issuer_for_replaces_placeholder_exactly_once() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert_eq!(m.issuer_for("acme"), "http://kc/realms/acme");
+    }
 }

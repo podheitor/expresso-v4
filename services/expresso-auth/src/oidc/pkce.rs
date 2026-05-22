@@ -101,4 +101,10 @@ mod tests {
         let b = challenge_s256("verifier-b");
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn challenge_length_is_43_chars() {
+        let c = challenge_s256("any-verifier-for-length");
+        assert_eq!(c.len(), 43);
+    }
 }

@@ -138,4 +138,10 @@ mod tests {
         assert_eq!(command_label("STARTTLS"), "STARTTLS");
         assert_eq!(command_label("starttls"), "STARTTLS");
     }
+
+    #[test]
+    fn auth_command_maps_correctly() {
+        assert_eq!(command_label("AUTH"), "AUTH");
+        assert_eq!(command_label("auth"), "AUTH");
+    }
 }

@@ -95,4 +95,16 @@ mod tests {
     fn result_label_missing_bearer_maps_missing_bearer() {
         assert_eq!(result_label(&AuthError::MissingBearer), "missing_bearer");
     }
+
+    #[test]
+    fn result_label_all_labels_are_nonempty() {
+        use crate::error::AuthError;
+        for label in [
+            result_label(&AuthError::Expired),
+            result_label(&AuthError::MissingBearer),
+            result_label(&AuthError::InvalidToken("x".into())),
+        ] {
+            assert!(!label.is_empty());
+        }
+    }
 }

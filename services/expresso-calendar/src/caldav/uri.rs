@@ -185,4 +185,9 @@ mod tests {
     fn classify_no_leading_slash_is_unknown() {
         assert!(matches!(classify("caldav/user/cal"), Target::Unknown));
     }
+
+    #[test]
+    fn classify_empty_string_is_unknown() {
+        assert!(matches!(classify(""), Target::Unknown));
+    }
 }

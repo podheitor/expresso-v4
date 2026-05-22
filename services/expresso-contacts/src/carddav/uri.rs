@@ -173,4 +173,9 @@ mod tests {
         let r = percent_decode("hello+world");
         assert_eq!(r, "hello+world");
     }
+
+    #[test]
+    fn percent_decode_empty_string_returns_empty() {
+        assert_eq!(percent_decode(""), "");
+    }
 }

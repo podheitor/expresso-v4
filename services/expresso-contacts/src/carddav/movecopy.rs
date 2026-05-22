@@ -165,4 +165,9 @@ mod tests {
     fn strip_origin_preserves_path_with_tilde() {
         assert_eq!(strip_origin("https://svc/~user/book/card.vcf"), "/~user/book/card.vcf");
     }
+
+    #[test]
+    fn strip_origin_port_in_authority_stripped() {
+        assert_eq!(strip_origin("https://host:8443/carddav/user"), "/carddav/user");
+    }
 }

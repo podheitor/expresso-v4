@@ -356,4 +356,10 @@ mod tests {
         let n: NewAddressbook = serde_json::from_str(r#"{"name":"Work"}"#).unwrap();
         assert!(!n.is_default);
     }
+
+    #[test]
+    fn new_addressbook_name_preserved() {
+        let n: NewAddressbook = serde_json::from_str(r#"{"name":"Family"}"#).unwrap();
+        assert_eq!(n.name, "Family");
+    }
 }

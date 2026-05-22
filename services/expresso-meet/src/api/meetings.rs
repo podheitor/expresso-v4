@@ -1423,6 +1423,11 @@ mod tests {
     fn room_name_with_hyphens_valid() {
         assert!(valid_room_name("team-weekly-sync"));
     }
+
+    #[test]
+    fn max_title_bytes_is_at_least_100() {
+        assert!(MAX_TITLE_BYTES >= 100);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

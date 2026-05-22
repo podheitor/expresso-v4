@@ -374,4 +374,9 @@ mod tests {
     fn parse_time_range_returns_none_on_empty_string() {
         assert!(parse_time_range("").is_none());
     }
+
+    #[test]
+    fn parse_time_range_whitespace_only_returns_none() {
+        assert!(parse_time_range("   ").is_none());
+    }
 }

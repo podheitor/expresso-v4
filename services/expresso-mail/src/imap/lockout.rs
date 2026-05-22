@@ -183,4 +183,10 @@ mod tests {
         l.record_failure("x@y.com");
         assert!(l.is_locked_out("x@y.com"));
     }
+
+    #[test]
+    fn fresh_lockout_is_not_locked() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        assert!(!l.is_locked_out("new@user.com"));
+    }
 }

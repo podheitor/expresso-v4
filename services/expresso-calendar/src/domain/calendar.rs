@@ -461,4 +461,14 @@ mod tests {
         };
         assert!(n.color.is_none());
     }
+
+    #[test]
+    fn new_calendar_timezone_none_by_default() {
+        let n = NewCalendar {
+            name: "Team".into(),
+            description: None,
+            color: None, timezone: None, is_default: false,
+        };
+        assert!(n.timezone.is_none());
+    }
 }

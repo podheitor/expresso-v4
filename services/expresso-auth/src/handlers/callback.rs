@@ -268,4 +268,9 @@ mod tests {
     fn rejects_backslash_in_path() {
         assert!(!is_safe_local_redirect("/\\evil.com"));
     }
+
+    #[test]
+    fn rejects_empty_string() {
+        assert!(!is_safe_local_redirect(""));
+    }
 }

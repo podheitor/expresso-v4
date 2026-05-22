@@ -106,4 +106,10 @@ mod tests {
         let r = TenantProviderCache::new("https://kc/realms/{realm}".into(), Duration::from_secs(60));
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn accepts_template_with_subdomain_and_placeholder() {
+        let r = TenantProviderCache::new("https://{realm}.auth.example.com".into(), Duration::from_secs(60));
+        assert!(r.is_ok());
+    }
 }

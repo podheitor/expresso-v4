@@ -133,4 +133,10 @@ mod tests {
         let tag = "  project  ".trim().to_string();
         assert!(!tag.contains("  "));
     }
+
+    #[test]
+    fn tag_string_alphanumeric_unchanged() {
+        let tag = "design2026".to_string();
+        assert_eq!(tag, "design2026");
+    }
 }

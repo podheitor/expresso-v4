@@ -474,4 +474,9 @@ mod tests {
     fn sanitize_rejects_path_traversal() {
         assert!(sanitize_name("../etc/passwd").is_err());
     }
+
+    #[test]
+    fn sanitize_accepts_simple_filename() {
+        assert!(sanitize_name("report.pdf").is_ok());
+    }
 }

@@ -221,4 +221,10 @@ mod tests {
             panic!("expected Keep");
         }
     }
+
+    #[test]
+    fn empty_script_returns_keep() {
+        let actions = evaluate(b"", b"From: a@b\r\n\r\n");
+        assert!(matches!(&actions[0], FilterAction::Keep { .. }));
+    }
 }

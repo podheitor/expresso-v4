@@ -101,4 +101,9 @@ mod tests {
     fn interval_hours_is_positive() {
         assert!(DEFAULT_INTERVAL_HOURS > 0);
     }
+
+    #[test]
+    fn retention_days_is_positive() {
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

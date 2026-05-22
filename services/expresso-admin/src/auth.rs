@@ -318,8 +318,13 @@ mod tests {
     }
 
     #[test]
-    fn is_public_path_metrics_prefix() {
+    fn is_public_path_metrics_with_suffix() {
         assert!(is_public_path("/metrics"));
         assert!(is_public_path("/metrics/extra"));
+    }
+
+    #[test]
+    fn is_public_path_api_path_is_not_public() {
+        assert!(!is_public_path("/api/users"));
     }
 }

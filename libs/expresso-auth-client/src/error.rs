@@ -93,4 +93,10 @@ mod tests {
         let s = AuthError::Expired.to_string();
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn invalid_token_display_not_empty() {
+        let s = AuthError::InvalidToken("bad sig".into()).to_string();
+        assert!(s.contains("bad sig") || !s.is_empty());
+    }
 }

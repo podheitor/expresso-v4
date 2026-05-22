@@ -281,4 +281,17 @@ mod tests {
         };
         assert_eq!(v.size_bytes, 4096);
     }
+
+    #[test]
+    fn file_version_storage_key_roundtrip() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 3, storage_key: "blobs/v3".into(), size_bytes: 0,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.storage_key, "blobs/v3");
+    }
 }

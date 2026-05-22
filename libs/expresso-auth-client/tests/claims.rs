@@ -122,3 +122,11 @@ fn no_tenant_id_produces_none() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(ctx.tenant_id.is_none());
 }
+
+#[test]
+fn user_id_matches_sub() {
+    let sub = "a1b2c3d4-0000-0000-0000-000000000001";
+    let r = base(sub, None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.user_id.to_string(), sub);
+}

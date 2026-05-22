@@ -370,4 +370,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("Carol"));
     }
+
+    #[test]
+    fn gal_entry_contact_email_optional() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          None,
+            full_name:      None,
+            organization:   None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("contact"));
+    }
 }

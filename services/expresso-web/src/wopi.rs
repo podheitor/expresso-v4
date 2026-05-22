@@ -132,4 +132,10 @@ mod extra_tests {
         assert!(url.contains("WOPISrc="));
         assert!(url.contains("access_token="));
     }
+
+    #[test]
+    fn build_iframe_url_contains_file_id() {
+        let url = build_iframe_url("https://collabora", "https://drive", "my-file-id", "tok");
+        assert!(url.contains("my-file-id"));
+    }
 }

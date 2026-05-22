@@ -366,4 +366,10 @@ mod tests {
         let c = sample();
         let _ = c.phone_primary; // compiles only if field exists and is Option<String>
     }
+
+    #[test]
+    fn contact_full_name_preserved() {
+        let c = sample();
+        assert_eq!(c.full_name.as_deref(), Some("Alice Smith"));
+    }
 }

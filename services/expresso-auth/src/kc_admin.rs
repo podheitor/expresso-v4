@@ -274,4 +274,17 @@ mod tests {
         };
         assert_eq!(c.admin_user, "admin");
     }
+
+    #[test]
+    fn kc_admin_config_realm_preserved() {
+        let c = KcAdminConfig {
+            base_url:               "http://kc:8080".into(),
+            realm:                  "expresso".into(),
+            admin_user:             "admin".into(),
+            admin_pass:             "pw".into(),
+            exchange_client_id:     None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.realm, "expresso");
+    }
 }

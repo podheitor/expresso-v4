@@ -565,4 +565,10 @@ mod extra_tests {
         let s = percent_encode_filename("report2026.pdf");
         assert_eq!(s, "report2026.pdf");
     }
+
+    #[test]
+    fn percent_encode_filename_space_is_encoded() {
+        let s = percent_encode_filename("my file.pdf");
+        assert!(!s.contains(' '));
+    }
 }

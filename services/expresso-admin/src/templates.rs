@@ -318,4 +318,11 @@ mod tests {
         let u: KcUser = serde_json::from_str(json).unwrap();
         assert_eq!(u.username, "carol");
     }
+
+    #[test]
+    fn kc_user_id_preserved() {
+        let json = r#"{"id":"abc-123","username":"dave"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.id, "abc-123");
+    }
 }

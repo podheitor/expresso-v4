@@ -573,4 +573,11 @@ mod tests {
         let out = csv_escape("simple");
         assert!(!out.starts_with('"'));
     }
+
+    #[test]
+    fn empty_field_not_quoted() {
+        let out = csv_escape("");
+        assert!(!out.starts_with('"'));
+        assert!(out.is_empty());
+    }
 }

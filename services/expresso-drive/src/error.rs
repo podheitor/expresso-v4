@@ -123,4 +123,10 @@ mod tests {
         let e = DriveError::NotFound(id);
         assert!(format!("{e}").contains(&id.to_string()));
     }
+
+    #[test]
+    fn conflict_display_not_empty() {
+        let e = DriveError::Conflict("lock mismatch".into());
+        assert!(!format!("{e}").is_empty());
+    }
 }

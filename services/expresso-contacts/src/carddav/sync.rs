@@ -237,4 +237,9 @@ mod tests {
     fn parse_token_value_zero_is_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
     }
+
+    #[test]
+    fn parse_token_empty_string_returns_none() {
+        assert!(parse_token_value("").is_none());
+    }
 }

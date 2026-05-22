@@ -267,4 +267,10 @@ mod tests {
         let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
         assert_eq!(ev.kind_str(), "event_created");
     }
+
+    #[test]
+    fn event_updated_kind_str_is_event_updated() {
+        let ev = Event::EventUpdated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None, sequence: 0 };
+        assert_eq!(ev.kind_str(), "event_updated");
+    }
 }

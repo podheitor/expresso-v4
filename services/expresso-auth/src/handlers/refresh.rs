@@ -203,4 +203,10 @@ mod tests {
         let h = headers_with_cookie("expresso_rt=tok123");
         assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("tok123"));
     }
+
+    #[test]
+    fn multiple_cookies_picks_correct_one() {
+        let h = headers_with_cookie("session=abc; expresso_rt=tok999; other=x");
+        assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("tok999"));
+    }
 }

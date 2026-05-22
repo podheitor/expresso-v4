@@ -1684,4 +1684,12 @@ mod tests {
         assert!(!t.is_empty());
         assert!(!u.is_empty());
     }
+
+    #[test]
+    fn ctx_of_values_match_me_fields() {
+        let me = Me { tenant_id: "tenant-xyz".into(), user_id: "user-abc".into() };
+        let (t, u) = ctx_of(&me);
+        assert_eq!(t, "tenant-xyz");
+        assert_eq!(u, "user-abc");
+    }
 }

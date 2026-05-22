@@ -398,4 +398,9 @@ mod tests {
     fn max_subject_constant_is_rfc5322_max() {
         assert_eq!(MAX_VACATION_SUBJECT_BYTES, 998);
     }
+
+    #[test]
+    fn max_body_constant_is_8kib() {
+        assert_eq!(MAX_VACATION_BODY_BYTES, 8 * 1024);
+    }
 }

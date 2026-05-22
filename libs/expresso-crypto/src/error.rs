@@ -74,4 +74,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("oops"));
         assert!(e.to_string().starts_with("internal error:"));
     }
+
+    #[test]
+    fn internal_error_with_empty_message_not_empty() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!(""));
+        assert!(!e.to_string().is_empty());
+    }
 }

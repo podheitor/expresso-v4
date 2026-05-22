@@ -495,4 +495,18 @@ mod tests {
         };
         assert!(!human_summary(&inv, Method::Cancel).is_empty());
     }
+
+    #[test]
+    fn human_summary_request_contains_organizer() {
+        let inv = EventInvite {
+            uid: "u6".into(), sequence: 0, summary: "Sprint Planning".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-08-02 10:00 UTC),
+            dtend:   time::macros::datetime!(2026-08-02 11:00 UTC),
+            organizer_email: "pm@corp.com".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Request);
+        assert!(!s.is_empty());
+    }
 }

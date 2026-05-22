@@ -188,4 +188,10 @@ mod tests {
         let ev = ContactsEvent::AddressbookCreated { tenant_id: tid(), addressbook_id: aid(), name: None };
         assert_eq!(ev.kind_str(), "addressbook_created");
     }
+
+    #[test]
+    fn addressbook_deleted_kind_str() {
+        let ev = ContactsEvent::AddressbookDeleted { tenant_id: tid(), addressbook_id: aid() };
+        assert_eq!(ev.kind_str(), "addressbook_deleted");
+    }
 }

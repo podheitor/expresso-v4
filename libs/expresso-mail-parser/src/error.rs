@@ -67,8 +67,14 @@ mod tests {
     }
 
     #[test]
-    fn display_prefix_is_internal_error() {
+    fn display_starts_with_internal_error_prefix() {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("oops"));
         assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn display_contains_cause_message() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("parse failed at byte 42"));
+        assert!(e.to_string().contains("parse failed at byte 42"));
     }
 }

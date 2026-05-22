@@ -514,4 +514,9 @@ mod tests {
     fn parse_depth_one_string_is_one() {
         assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
     }
+
+    #[test]
+    fn parse_depth_infinity_string_is_infinity() {
+        assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
+    }
 }

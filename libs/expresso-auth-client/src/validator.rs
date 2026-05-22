@@ -308,4 +308,10 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/acme", "acme-app");
         assert_eq!(c.audience, "acme-app");
     }
+
+    #[test]
+    fn oidc_config_issuer_preserved() {
+        let c = OidcConfig::new("https://idp.example.com/realms/r1", "client");
+        assert_eq!(c.issuer, "https://idp.example.com/realms/r1");
+    }
 }

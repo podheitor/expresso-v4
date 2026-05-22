@@ -120,4 +120,11 @@ mod tests {
     fn database_unavailable_display_not_empty() {
         assert!(!format!("{}", ContactsError::DatabaseUnavailable).is_empty());
     }
+
+    #[test]
+    fn addressbook_not_found_display_contains_id() {
+        let id = "00000000-0000-0000-0000-000000000000";
+        let e = ContactsError::AddressbookNotFound(id.into());
+        assert!(format!("{e}").contains(id));
+    }
 }

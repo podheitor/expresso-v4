@@ -255,4 +255,10 @@ mod tests {
         assert_eq!(b.action, "download");
         assert!(b.detail.is_some());
     }
+
+    #[test]
+    fn create_activity_body_action_preserved() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"share"}"#).unwrap();
+        assert_eq!(b.action, "share");
+    }
 }

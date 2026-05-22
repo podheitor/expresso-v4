@@ -311,4 +311,9 @@ mod tests {
     fn localpart_empty_local_returns_none() {
         assert_eq!(localpart_from_mxid("@:matrix.org"), None);
     }
+
+    #[test]
+    fn localpart_with_special_chars_in_server() {
+        assert_eq!(localpart_from_mxid("@alice:chat.example.com"), Some("alice"));
+    }
 }

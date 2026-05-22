@@ -189,4 +189,10 @@ mod tests {
         let e = AuditEntry::new("contact.deleted");
         assert!(e.actor_roles.is_empty());
     }
+
+    #[test]
+    fn audit_entry_tenant_id_none_by_default() {
+        let e = AuditEntry::new("drive.file.deleted");
+        assert!(e.tenant_id.is_none());
+    }
 }

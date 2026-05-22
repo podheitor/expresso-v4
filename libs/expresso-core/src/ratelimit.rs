@@ -226,4 +226,11 @@ mod tests {
         assert!(rl.check("u").is_ok());
         assert!(rl.check("u").is_err());
     }
+
+    #[test]
+    fn different_keys_are_independent() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 1 });
+        assert!(rl.check("key_a").is_ok());
+        assert!(rl.check("key_b").is_ok());
+    }
 }

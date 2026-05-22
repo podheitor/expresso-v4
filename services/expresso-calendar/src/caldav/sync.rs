@@ -261,4 +261,9 @@ mod tests {
     fn parse_token_missing_prefix_returns_none() {
         assert_eq!(parse_token_value("ctag:100"), None);
     }
+
+    #[test]
+    fn parse_token_large_value_parsed() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}999999")), Some(999_999));
+    }
 }

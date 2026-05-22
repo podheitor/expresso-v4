@@ -465,4 +465,10 @@ mod tests {
         let b = build_realm_body("test", "Test");
         assert_eq!(b["bruteForceProtected"], true);
     }
+
+    #[test]
+    fn realm_body_realm_field_matches_input() {
+        let b = build_realm_body("myrealm", "My Realm");
+        assert_eq!(b["realm"].as_str(), Some("myrealm"));
+    }
 }

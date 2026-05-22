@@ -320,4 +320,21 @@ mod tests {
         };
         assert_eq!(r.comment.as_deref(), Some("Prefer morning"));
     }
+
+    #[test]
+    fn counter_row_comment_none_when_absent() {
+        let r = CounterRow {
+            id: "id2".into(),
+            tenant_id: "t2".into(),
+            event_id: "ev2".into(),
+            event_summary: "Weekly".into(),
+            attendee_email: "b@x.com".into(),
+            proposed_dtstart: "20260601T100000Z".into(),
+            proposed_dtend: "20260601T103000Z".into(),
+            received_sequence: "0".into(),
+            comment: None,
+            created_at_fmt: "2026-06-01".into(),
+        };
+        assert!(r.comment.is_none());
+    }
 }

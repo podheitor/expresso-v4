@@ -406,4 +406,10 @@ mod tests {
         };
         assert!(matches(SAMPLE, &f));
     }
+
+    #[test]
+    fn empty_prop_filters_matches_any_vcard() {
+        let f = ContactFilter { prop_filters: vec![] };
+        assert!(matches(SAMPLE, &f));
+    }
 }

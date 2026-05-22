@@ -197,4 +197,9 @@ mod tests {
     fn strip_origin_http_strips_host() {
         assert_eq!(strip_origin("http://example.com/some/path"), "/some/path");
     }
+
+    #[test]
+    fn strip_origin_port_in_host_also_stripped() {
+        assert_eq!(strip_origin("https://host:8443/api/v1"), "/api/v1");
+    }
 }

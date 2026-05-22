@@ -439,4 +439,13 @@ mod tests {
         };
         assert!(r.dmarc_policy.is_none());
     }
+
+    #[test]
+    fn auth_results_should_reject_false_on_pass() {
+        let r = AuthResults {
+            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            dmarc_policy: None, ..Default::default()
+        };
+        assert!(!r.should_reject());
+    }
 }

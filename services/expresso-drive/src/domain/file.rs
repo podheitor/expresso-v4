@@ -784,4 +784,10 @@ mod tests {
         let f = sample_file();
         assert!(f.size_bytes >= 0);
     }
+
+    #[test]
+    fn drive_file_locked_by_none_initially() {
+        let f = sample_file();
+        assert!(f.locked_by.is_none());
+    }
 }

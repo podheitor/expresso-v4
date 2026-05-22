@@ -503,4 +503,9 @@ mod tests {
     fn empty_vcard_rejected() {
         assert!(validate_vcard("   ", MAX_CONTACT_VCARD_BYTES).is_err());
     }
+
+    #[test]
+    fn non_empty_vcard_within_limit_accepted() {
+        assert!(validate_vcard("BEGIN:VCARD\r\nEND:VCARD\r\n", MAX_CONTACT_VCARD_BYTES).is_ok());
+    }
 }

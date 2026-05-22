@@ -147,4 +147,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 1024, quota_bytes: None };
         assert!(q.quota_bytes.is_none());
     }
+
+    #[test]
+    fn quota_dto_used_bytes_preserved() {
+        let q = QuotaDto { used_bytes: 4096, quota_bytes: Some(10240) };
+        assert_eq!(q.used_bytes, 4096);
+    }
 }

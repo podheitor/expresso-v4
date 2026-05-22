@@ -133,4 +133,11 @@ mod tests {
     fn smtp_protocol_is_500() {
         assert_eq!(status(MailError::SmtpProtocol("421".into())), 500);
     }
+
+    #[test]
+    fn message_not_found_display_contains_id() {
+        let id = uuid::Uuid::nil();
+        let e = MailError::MessageNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
+    }
 }

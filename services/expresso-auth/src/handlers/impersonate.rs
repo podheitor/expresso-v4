@@ -225,4 +225,10 @@ mod tests {
         let ctx = ctx_with_roles(&["super"]);
         assert!(!is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_false_when_no_roles_present() {
+        let ctx = ctx_with_roles(&[]);
+        assert!(!is_super(&ctx));
+    }
 }

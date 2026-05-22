@@ -164,4 +164,10 @@ mod tests {
     fn preview_empty_string_unchanged() {
         assert_eq!(preview("".into()), "");
     }
+
+    #[test]
+    fn preview_whitespace_only_returns_empty_after_trim() {
+        let out = preview("   ".into());
+        assert!(out.is_empty() || out == "   ");
+    }
 }

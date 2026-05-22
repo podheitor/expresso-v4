@@ -309,4 +309,10 @@ mod tests {
         let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
         assert!(s.contains("sender@test.com"));
     }
+
+    #[test]
+    fn build_raw_produces_nonempty_output() {
+        let r = req("any@ex.com", None, None, None);
+        assert!(!build_raw(&r).unwrap().is_empty());
+    }
 }

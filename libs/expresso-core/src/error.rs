@@ -94,4 +94,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("1024"));
     }
+
+    #[test]
+    fn core_error_internal_display_contains_message() {
+        let e = CoreError::Internal(anyhow::anyhow!("db pool exhausted"));
+        assert!(e.to_string().contains("db pool exhausted"));
+    }
 }

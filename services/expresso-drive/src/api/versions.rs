@@ -399,4 +399,10 @@ mod tests {
         assert_eq!(b.sha256.as_deref(), Some("abc123"));
         assert_eq!(b.size_bytes, Some(1024));
     }
+
+    #[test]
+    fn create_version_body_storage_key_preserved() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/abc123"}"#).unwrap();
+        assert_eq!(b.storage_key.as_deref(), Some("blobs/abc123"));
+    }
 }

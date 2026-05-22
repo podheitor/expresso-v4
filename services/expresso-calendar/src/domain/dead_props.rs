@@ -229,4 +229,14 @@ mod tests {
         };
         assert_eq!(p.namespace, "DAV:");
     }
+
+    #[test]
+    fn dead_prop_xml_value_preserved() {
+        let p = DeadProp {
+            namespace: "http://ns.example/".into(),
+            local_name: "color".into(),
+            xml_value: "#ff0000".into(),
+        };
+        assert_eq!(p.xml_value, "#ff0000");
+    }
 }

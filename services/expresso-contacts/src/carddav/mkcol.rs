@@ -171,4 +171,10 @@ mod tests {
         let b = "<displayname>Personal Contacts</displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Personal Contacts"));
     }
+
+    #[test]
+    fn extract_prop_missing_tag_returns_none() {
+        let b = "<displayname>Contacts</displayname>";
+        assert!(extract_prop(b, "description").is_none());
+    }
 }

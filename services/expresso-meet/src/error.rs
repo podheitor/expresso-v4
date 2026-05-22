@@ -127,4 +127,10 @@ mod tests {
         let e = MeetError::MeetingNotFound(id);
         assert!(format!("{e}").contains(&id.to_string()));
     }
+
+    #[test]
+    fn database_unavailable_display_not_empty() {
+        let e = MeetError::DatabaseUnavailable;
+        assert!(!format!("{e}").is_empty());
+    }
 }

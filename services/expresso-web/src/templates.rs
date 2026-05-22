@@ -589,4 +589,10 @@ mod tests {
         let s = human_size(tb);
         assert!(s.ends_with("GB") || s.ends_with("TB") || s.contains('.'));
     }
+
+    #[test]
+    fn human_size_one_byte() {
+        let s = human_size(1);
+        assert!(!s.is_empty());
+    }
 }

@@ -372,4 +372,18 @@ mod tests {
         };
         assert_eq!(u.email, "bob@corp.com");
     }
+
+    #[test]
+    fn new_user_enabled_true_preserved() {
+        let u = NewUser {
+            username:   "carol".into(),
+            email:      "c@x.com".into(),
+            first_name: "Carol".into(),
+            last_name:  "Doe".into(),
+            enabled:    true,
+            password:   "pw".into(),
+            temporary:  false,
+        };
+        assert!(u.enabled);
+    }
 }

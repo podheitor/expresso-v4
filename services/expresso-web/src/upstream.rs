@@ -201,4 +201,9 @@ mod tests {
     fn build_url_path_fragment_preserved() {
         assert_eq!(build_url("http://svc", "/api/v1/test"), "http://svc/api/v1/test");
     }
+
+    #[test]
+    fn build_url_trailing_slash_on_base_is_stripped() {
+        assert_eq!(build_url("http://svc/", "/path"), "http://svc/path");
+    }
 }

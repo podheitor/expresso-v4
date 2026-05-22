@@ -471,4 +471,9 @@ mod extra_tests {
     fn extract_angle_trims_leading_whitespace() {
         assert_eq!(extract_angle("  <trimmed@ex.com>"), "trimmed@ex.com");
     }
+
+    #[test]
+    fn extract_angle_no_brackets_returns_trimmed() {
+        assert_eq!(extract_angle("user@domain.com"), "user@domain.com");
+    }
 }

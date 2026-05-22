@@ -276,4 +276,9 @@ mod tests {
     fn size_param_lowercase_also_parsed() {
         assert_eq!(extract_size_param("<a@b> size=1024"), Some(1024));
     }
+
+    #[test]
+    fn size_param_zero_is_parsed() {
+        assert_eq!(extract_size_param("<a@b> SIZE=0"), Some(0));
+    }
 }

@@ -336,4 +336,11 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(b.invite.is_empty());
     }
+
+    #[test]
+    fn create_body_topic_none_when_absent() {
+        let json = r#"{"name":"random"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.topic.is_none());
+    }
 }

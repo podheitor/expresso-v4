@@ -400,4 +400,11 @@ mod tests {
         let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "e@x".into(), "N".into(), None, None, false, 0);
         assert!(!row.is_default);
     }
+
+    #[test]
+    fn to_dav_row_tenant_id_preserved() {
+        let tid = Uuid::new_v4();
+        let row = to_dav_row(Uuid::new_v4(), tid, "T".into(), "e@x".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.tenant_id, tid.to_string());
+    }
 }

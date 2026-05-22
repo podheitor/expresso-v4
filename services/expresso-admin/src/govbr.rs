@@ -275,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn upsert_body_cpf_hash_preserved() {
+    fn upsert_body_assurance_ouro_preserved() {
         let t = Uuid::new_v4();
         let u = Uuid::new_v4();
         let b = UpsertBody { cpf_hash: "sha256hashvalue".into(), tenant_id: t, user_id: u, assurance: Some("ouro".into()) };
@@ -294,5 +294,16 @@ mod tests {
     fn list_query_tenant_id_none() {
         let q = ListQuery { tenant_id: None };
         assert!(q.tenant_id.is_none());
+    }
+
+    #[test]
+    fn govbr_mapping_cpf_hash_preserved() {
+        let m = GovbrMapping {
+            tenant_id: uuid::Uuid::nil(),
+            cpf_hash: "abc123".into(),
+            user_id: uuid::Uuid::nil(),
+            assurance: None,
+        };
+        assert_eq!(m.cpf_hash, "abc123");
     }
 }

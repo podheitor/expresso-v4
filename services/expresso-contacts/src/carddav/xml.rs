@@ -312,4 +312,10 @@ mod tests {
     fn detect_report_kind_empty_string_returns_none() {
         assert_eq!(super::detect_report_kind(""), None);
     }
+
+    #[test]
+    fn detect_report_kind_sync_collection_str() {
+        let xml = r#"<D:sync-collection xmlns:D="DAV:"/>"#;
+        assert_eq!(super::detect_report_kind(xml), Some("sync-collection"));
+    }
 }

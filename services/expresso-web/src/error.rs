@@ -109,4 +109,10 @@ mod tests {
         let e = WebError::Internal("json parse failed".into());
         assert!(e.to_string().starts_with("internal:"));
     }
+
+    #[test]
+    fn upstream_error_display_not_empty() {
+        let e = WebError::Upstream("timeout".into());
+        assert!(!e.to_string().is_empty());
+    }
 }

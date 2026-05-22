@@ -254,4 +254,9 @@ mod tests {
     fn validate_priv_write_normalised_uppercase() {
         assert_eq!(validate_priv("write").unwrap(), "WRITE");
     }
+
+    #[test]
+    fn validate_priv_invalid_value_returns_error() {
+        assert!(validate_priv("owner").is_err());
+    }
 }

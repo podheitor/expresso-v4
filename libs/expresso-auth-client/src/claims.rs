@@ -311,4 +311,9 @@ mod tests {
         assert!(!AudClaim::Empty.contains("a"));
     }
 
+    #[test]
+    fn aud_claim_empty_contains_nothing() {
+        assert!(!AudClaim::Empty.contains("anything"));
+        assert!(!AudClaim::Empty.contains(""));
+    }
 }

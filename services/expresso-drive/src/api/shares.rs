@@ -245,4 +245,9 @@ mod tests {
         let b: CreateBody = serde_json::from_str(r#"{}"#).unwrap();
         assert!(b.expires_in_seconds.is_none());
     }
+
+    #[test]
+    fn default_ttl_is_positive() {
+        assert!(DEFAULT_TTL_SECONDS > 0);
+    }
 }

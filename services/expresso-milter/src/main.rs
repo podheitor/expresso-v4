@@ -335,4 +335,11 @@ mod tests {
         assert_eq!(r.0, "Subject");
         assert_eq!(r.1, "Hello");
     }
+
+    #[test]
+    fn parse_header_multiple_colons_value_preserved() {
+        let r = parse_header_line("X-Custom: a:b:c").unwrap();
+        assert_eq!(r.0, "X-Custom");
+        assert_eq!(r.1, "a:b:c");
+    }
 }

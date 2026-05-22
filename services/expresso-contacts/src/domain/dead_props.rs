@@ -221,4 +221,14 @@ mod tests {
         };
         assert!(p.namespace.contains("apple.com"));
     }
+
+    #[test]
+    fn dead_prop_local_name_not_empty() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value: "My Book".into(),
+        };
+        assert!(!p.local_name.is_empty());
+    }
 }

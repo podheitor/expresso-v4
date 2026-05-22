@@ -1524,4 +1524,11 @@ mod tests {
         assert_eq!(b.tags.len(), 3);
         assert_eq!(b.tags[0], "urgent");
     }
+
+    #[test]
+    fn bulk_tags_body_single_tag_preserved() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["featured"]}"#).unwrap();
+        assert_eq!(b.tags.len(), 1);
+        assert_eq!(b.tags[0], "featured");
+    }
 }

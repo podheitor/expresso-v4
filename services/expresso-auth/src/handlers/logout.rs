@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn logout_query_null_hint_is_none() {
+    fn logout_query_explicit_null_hint_is_none() {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":null}"#).unwrap();
         assert!(q.id_token_hint.is_none());
     }
@@ -166,5 +166,11 @@ mod tests {
     fn logout_query_hint_preserved() {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"eyJhb..."}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("eyJhb..."));
+    }
+
+    #[test]
+    fn logout_query_missing_hint_is_none() {
+        let q: LogoutQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.id_token_hint.is_none());
     }
 }

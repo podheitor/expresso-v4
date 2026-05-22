@@ -16911,6 +16911,11 @@ mod tests {
         };
         assert!(validate_search_params(&mut params).is_none());
     }
+
+    #[test]
+    fn default_limit_is_twenty() {
+        assert_eq!(DEFAULT_LIMIT, 20);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

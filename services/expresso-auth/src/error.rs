@@ -91,7 +91,12 @@ mod tests {
     }
 
     #[test]
-    fn bad_request_is_400() {
+    fn bad_request_invalid_state_is_400() {
         assert_eq!(status(RpError::BadRequest("invalid_state")), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn config_missing_secret_is_500() {
+        assert_eq!(status(RpError::Config("missing_secret".into())), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

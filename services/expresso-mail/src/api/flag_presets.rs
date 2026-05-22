@@ -225,4 +225,10 @@ mod tests {
         let b = PresetBody { name: "Starred".into(), flags: vec![] };
         assert!(validate_preset(&b).is_ok());
     }
+
+    #[test]
+    fn preset_body_name_preserved() {
+        let b = PresetBody { name: "Important".into(), flags: vec!["\\Flagged".into()] };
+        assert_eq!(b.name, "Important");
+    }
 }

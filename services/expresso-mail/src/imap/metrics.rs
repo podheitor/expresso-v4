@@ -192,4 +192,9 @@ mod tests {
         assert_eq!(command_label("FETCH"), "FETCH");
         assert_eq!(command_label("fetch"), "FETCH");
     }
+
+    #[test]
+    fn authenticate_command_maps_correctly() {
+        assert_eq!(command_label("AUTHENTICATE"), "AUTHENTICATE");
+    }
 }

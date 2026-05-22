@@ -122,4 +122,10 @@ mod tests {
         let msg = format!("{}", ChatError::NotMember);
         assert!(!msg.is_empty());
     }
+
+    #[test]
+    fn forbidden_display_not_empty() {
+        let msg = format!("{}", ChatError::Forbidden);
+        assert!(!msg.is_empty());
+    }
 }

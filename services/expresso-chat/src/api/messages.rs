@@ -167,4 +167,9 @@ mod tests {
     fn default_list_limit_is_positive() {
         assert!(DEFAULT_LIST_LIMIT > 0);
     }
+
+    #[test]
+    fn max_list_limit_is_at_most_200() {
+        assert!(MAX_LIST_LIMIT <= 200);
+    }
 }

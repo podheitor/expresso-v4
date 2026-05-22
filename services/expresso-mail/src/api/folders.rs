@@ -1518,4 +1518,10 @@ mod tests {
     fn folder_name_with_newline_rejected() {
         assert!(validate_folder_name("foo\nbar").is_err());
     }
+
+    #[test]
+    fn folder_name_max_200_chars_accepted() {
+        let name = "a".repeat(200);
+        assert!(validate_folder_name(&name).is_ok());
+    }
 }

@@ -148,4 +148,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/dashboard"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/dashboard"));
     }
+
+    #[test]
+    fn login_query_missing_field_gives_none() {
+        let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.redirect_uri.is_none());
+    }
 }

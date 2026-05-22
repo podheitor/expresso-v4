@@ -306,4 +306,17 @@ mod tests {
         let s = serde_json::to_string(&r).unwrap();
         assert!(s.contains("2026-09-01T08:00:00Z"));
     }
+
+    #[test]
+    fn snooze_record_woken_at_none_initially() {
+        use time::macros::datetime;
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-09-01 08:00:00 UTC),
+            snoozed_at: datetime!(2026-07-31 08:00:00 UTC),
+            woken_at: None,
+        };
+        assert!(r.woken_at.is_none());
+    }
 }

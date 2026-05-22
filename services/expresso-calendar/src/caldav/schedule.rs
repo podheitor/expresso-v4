@@ -287,4 +287,10 @@ mod tests {
         let ics = "ORGANIZER;CN=Bob:mailto:bob@ex.com";
         assert_eq!(extract_organizer_email(ics).as_deref(), Some("bob@ex.com"));
     }
+
+    #[test]
+    fn extract_organizer_email_uppercase_mailto_works() {
+        let ics = "ORGANIZER:MAILTO:upper@ex.com";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("upper@ex.com"));
+    }
 }

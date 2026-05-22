@@ -187,4 +187,14 @@ Content-Type: text/calendar; charset=utf-8\r\n\
 BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         assert!(extract_imip_reply(raw).is_none());
     }
+
+    #[test]
+    fn extract_imip_reply_nonempty_message_returns_some_or_none() {
+        let raw = b"From: a@b\r\nTo: c@d\r\n\
+Content-Type: text/calendar; charset=utf-8\r\n\
+\r\n\
+BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let result = extract_imip_reply(raw);
+        assert!(result.is_some());
+    }
 }

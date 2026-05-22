@@ -317,4 +317,9 @@ mod tests {
         assert!(k.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(k.len(), 64);
     }
+
+    #[test]
+    fn cache_key_same_inputs_are_deterministic() {
+        assert_eq!(cache_key("admin", "secret"), cache_key("admin", "secret"));
+    }
 }
