@@ -322,3 +322,35 @@ pub async fn addressbook_delete_action(
     ).await;
     Ok(Redirect::to("/addressbooks").into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn to_dav_row_maps_fields() {
+        let id = Uuid::new_v4();
+        let tid = Uuid::new_v4();
+        let row = to_dav_row(id, tid, "Tenant".into(), "owner@ex.com".into(), "Work".into(), None, None, true, 42);
+        assert_eq!(row.id, id.to_string());
+        assert_eq!(row.tenant_id, tid.to_string());
+        assert_eq!(row.name, "Work");
+        assert!(row.is_default);
+        assert_eq!(row.ctag, 42);
+    }
+
+    #[test]
+    fn to_dav_row_optional_description_defaults_empty() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@ex.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.description, "");
+        assert_eq!(row.color, "");
+    }
+
+    #[test]
+    fn to_dav_row_optional_fields_set() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@ex.com".into(), "N".into(), Some("desc".into()), Some("#ff0".into()), false, 1);
+        assert_eq!(row.description, "desc");
+        assert_eq!(row.color, "#ff0");
+    }
+}

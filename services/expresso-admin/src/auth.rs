@@ -254,3 +254,42 @@ pub async fn principal_for(st: &AppState, headers: &axum::http::HeaderMap) -> Me
     }
     resp.json::<MeResp>().await.unwrap_or(MeResp::default())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_public_path_health() {
+        assert!(is_public_path("/health"));
+        assert!(is_public_path("/ready"));
+        assert!(is_public_path("/forbidden"));
+    }
+
+    #[test]
+    fn is_public_path_static_prefix() {
+        assert!(is_public_path("/static/app.js"));
+        assert!(is_public_path("/static/"));
+        assert!(is_public_path("/metrics/prom"));
+    }
+
+    #[test]
+    fn is_public_path_private() {
+        assert!(!is_public_path("/users"));
+        assert!(!is_public_path("/dashboard"));
+        assert!(!is_public_path("/"));
+    }
+
+    #[test]
+    fn is_super_admin_case_insensitive() {
+        assert!(is_super_admin(&["super_admin".into()]));
+        assert!(is_super_admin(&["SuperAdmin".into()]));
+        assert!(is_super_admin(&["SUPER_ADMIN".into()]));
+    }
+
+    #[test]
+    fn is_super_admin_false_for_regular_roles() {
+        assert!(!is_super_admin(&["admin".into(), "user".into()]));
+        assert!(!is_super_admin(&[]));
+    }
+}

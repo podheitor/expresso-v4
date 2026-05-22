@@ -144,3 +144,49 @@ pub async fn end(
 
     Ok(Json(serde_json::json!({ "status": "recorded" })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expresso_auth_client::AuthContext;
+    use uuid::Uuid;
+
+    fn ctx_with_roles(roles: &[&str]) -> AuthContext {
+        AuthContext {
+            user_id:      Uuid::new_v4(),
+            tenant_id:    Uuid::new_v4(),
+            email:        "x@ex.com".into(),
+            display_name: "X".into(),
+            roles:        roles.iter().map(|r| r.to_string()).collect(),
+            expires_at:   9999999999,
+            acr:          None,
+            amr:          vec![],
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: vec![],
+        }
+    }
+
+    #[test]
+    fn is_super_true_for_superadmin() {
+        let ctx = ctx_with_roles(&["superadmin"]);
+        assert!(is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_true_for_super_admin_underscore() {
+        let ctx = ctx_with_roles(&["super_admin"]);
+        assert!(is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_case_insensitive() {
+        let ctx = ctx_with_roles(&["SUPERADMIN"]);
+        assert!(is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_false_for_regular_roles() {
+        let ctx = ctx_with_roles(&["admin", "user"]);
+        assert!(!is_super(&ctx));
+    }
+}
