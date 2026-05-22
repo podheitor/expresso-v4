@@ -237,4 +237,18 @@ mod tests {
         assert!(out.contains("etag42"));
         assert!(out.contains("200 OK"));
     }
+
+    #[test]
+    fn push_member_contains_uid_in_href() {
+        let user = Uuid::nil();
+        let cal  = Uuid::nil();
+        let mut out = String::new();
+        push_member(&mut out, user, cal, "my-unique-uid", "e1");
+        assert!(out.contains("my-unique-uid"));
+    }
+
+    #[test]
+    fn parse_token_negative_valid() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-5")), Some(-5));
+    }
 }

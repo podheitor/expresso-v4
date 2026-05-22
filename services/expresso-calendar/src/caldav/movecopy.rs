@@ -177,4 +177,14 @@ mod tests {
     fn strip_origin_port_in_authority() {
         assert_eq!(strip_origin("http://localhost:8080/caldav/u/c/"), "/caldav/u/c/");
     }
+
+    #[test]
+    fn strip_origin_fragment_preserved() {
+        assert_eq!(strip_origin("https://h/caldav/c/x.ics#frag"), "/caldav/c/x.ics#frag");
+    }
+
+    #[test]
+    fn strip_origin_ftp_passthrough() {
+        assert_eq!(strip_origin("ftp://host/path"), "ftp://host/path");
+    }
 }

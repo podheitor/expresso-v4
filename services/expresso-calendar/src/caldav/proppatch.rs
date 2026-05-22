@@ -323,4 +323,26 @@ mod tests {
         assert_eq!(rem[0].namespace, "http://example.com/custom");
         assert_eq!(rem[0].local, "my-prop");
     }
+
+    #[test]
+    fn build_patch_color_maps() {
+        let props = vec![super::Prop {
+            namespace: "http://apple.com/ns/ical/".into(),
+            local: "calendar-color".into(),
+            value: "#FF5733".into(),
+        }];
+        let p = build_patch(&props);
+        assert_eq!(p.color.as_deref(), Some("#FF5733"));
+    }
+
+    #[test]
+    fn build_patch_skips_unknown_live_prop() {
+        let props = vec![super::Prop {
+            namespace: "DAV:".into(),
+            local: "unknown-prop".into(),
+            value: "value".into(),
+        }];
+        let p = build_patch(&props);
+        assert!(!patch_has_changes(&p));
+    }
 }

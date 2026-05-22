@@ -163,4 +163,16 @@ mod tests {
         assert!(matches!(classify("/caldav/not-a-uuid/"), Target::Unknown));
         assert!(matches!(classify("/foo/bar/"), Target::Unknown));
     }
+
+    #[test]
+    fn classify_user_home() {
+        let u = Uuid::new_v4();
+        let t = classify(&format!("/caldav/{u}/"));
+        assert!(matches!(t, Target::Home { user_id } if user_id == u));
+    }
+
+    #[test]
+    fn classify_empty_path_is_unknown() {
+        assert!(matches!(classify(""), Target::Unknown));
+    }
 }

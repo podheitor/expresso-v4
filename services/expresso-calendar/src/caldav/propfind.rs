@@ -494,4 +494,14 @@ mod tests {
     fn parse_depth_unknown_value_defaults_to_zero() {
         assert!(matches!(parse_depth(&headers_with_depth("2")), Depth::Zero));
     }
+
+    #[test]
+    fn parse_depth_numeric_one_is_one() {
+        assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
+    }
+
+    #[test]
+    fn parse_depth_empty_header_defaults_to_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("")), Depth::Zero));
+    }
 }
