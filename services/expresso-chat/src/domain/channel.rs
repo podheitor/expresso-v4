@@ -232,4 +232,10 @@ mod tests {
         let r: MemberRole = serde_json::from_str(r#""member""#).unwrap();
         assert_eq!(r, MemberRole::Member);
     }
+
+    #[test]
+    fn channel_kind_direct_deser() {
+        let k: ChannelKind = serde_json::from_str(r#""direct""#).unwrap();
+        assert_eq!(k, ChannelKind::Direct);
+    }
 }

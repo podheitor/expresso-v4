@@ -322,4 +322,11 @@ mod tests {
         let b: AddMemberBody = serde_json::from_str(&json).unwrap();
         assert!(b.role.is_none());
     }
+
+    #[test]
+    fn create_body_name_preserved() {
+        let json = r#"{"name":"engineering"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.name, "engineering");
+    }
 }

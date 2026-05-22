@@ -159,4 +159,10 @@ mod tests {
         let b = r#"<C:addressbook-description>My Contacts</C:addressbook-description>"#;
         assert_eq!(extract_prop(b, "addressbook-description").as_deref(), Some("My Contacts"));
     }
+
+    #[test]
+    fn extract_prop_returns_none_for_unknown_name() {
+        let b = r#"<D:prop><displayname>Work</displayname></D:prop>"#;
+        assert_eq!(extract_prop(b, "nonexistent-prop"), None);
+    }
 }

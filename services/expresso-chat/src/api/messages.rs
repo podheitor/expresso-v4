@@ -157,4 +157,9 @@ mod tests {
         let q: ListQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert_eq!(q.limit, DEFAULT_LIST_LIMIT);
     }
+
+    #[test]
+    fn max_list_limit_not_exceeded_by_default() {
+        assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
+    }
 }

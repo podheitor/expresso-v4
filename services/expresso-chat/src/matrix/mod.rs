@@ -301,4 +301,9 @@ mod tests {
     fn localpart_strips_at_and_server() {
         assert_eq!(localpart_from_mxid("@bot:matrix.org"), Some("bot"));
     }
+
+    #[test]
+    fn localpart_no_at_returns_none() {
+        assert_eq!(localpart_from_mxid("bot:matrix.org"), None);
+    }
 }

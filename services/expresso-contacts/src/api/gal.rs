@@ -350,4 +350,11 @@ mod tests {
         assert_eq!(r.full_name, "Alice");
         assert_eq!(r.email.as_deref(), Some("a@ex.com"));
     }
+
+    #[test]
+    fn save_request_full_name_unicode() {
+        let json = r#"{"full_name":"José da Silva"}"#;
+        let r: SaveRequest = serde_json::from_str(json).unwrap();
+        assert!(r.full_name.contains("José"));
+    }
 }

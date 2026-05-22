@@ -492,4 +492,10 @@ mod tests {
     fn empty_string_accepted_by_size_check() {
         assert!(validate_vcard("", MAX_CONTACT_VCARD_BYTES).is_ok());
     }
+
+    #[test]
+    fn oversized_vcard_rejected() {
+        let too_big = "x".repeat(MAX_CONTACT_VCARD_BYTES + 1);
+        assert!(validate_vcard(&too_big, MAX_CONTACT_VCARD_BYTES).is_err());
+    }
 }

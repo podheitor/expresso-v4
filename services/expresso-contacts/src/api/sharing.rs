@@ -244,4 +244,20 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&entry).unwrap();
         assert_eq!(v["privilege"], "READ");
     }
+
+    #[test]
+    fn acl_entry_grantee_id_preserved() {
+        use uuid::Uuid;
+        use time::macros::datetime;
+        let gid = Uuid::new_v4();
+        let entry = AclEntry {
+            addressbook_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            grantee_id: gid,
+            privilege: "WRITE".into(),
+            email: None,
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(entry.grantee_id, gid);
+    }
 }

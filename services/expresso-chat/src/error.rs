@@ -109,4 +109,10 @@ mod tests {
         let msg = format!("{e}");
         assert!(msg.contains("invalid channel name"));
     }
+
+    #[test]
+    fn channel_not_found_is_404() {
+        let e = ChatError::ChannelNotFound(Uuid::nil());
+        assert_eq!(status(e), 404);
+    }
 }
