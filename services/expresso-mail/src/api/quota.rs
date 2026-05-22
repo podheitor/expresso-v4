@@ -74,3 +74,31 @@ async fn get_quota(
     }
     Ok(resp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quota_dto_with_quota() {
+        let q = QuotaDto { used_bytes: 1024, quota_bytes: Some(10_737_418_240) };
+        let s = serde_json::to_string(&q).unwrap();
+        assert!(s.contains("1024"));
+        assert!(s.contains("10737418240"));
+    }
+
+    #[test]
+    fn quota_dto_no_quota_null() {
+        let q = QuotaDto { used_bytes: 0, quota_bytes: None };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&q).unwrap()).unwrap();
+        assert_eq!(v["used_bytes"], 0);
+        assert!(v["quota_bytes"].is_null());
+    }
+
+    #[test]
+    fn quota_dto_used_zero() {
+        let q = QuotaDto { used_bytes: 0, quota_bytes: Some(1024) };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&q).unwrap()).unwrap();
+        assert_eq!(v["used_bytes"], 0);
+    }
+}

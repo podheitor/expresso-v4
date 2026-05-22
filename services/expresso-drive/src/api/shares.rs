@@ -174,3 +174,29 @@ async fn public_download(
         bytes,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_body_default_expires_none() {
+        let json = r#"{}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.expires_in_seconds.is_none());
+    }
+
+    #[test]
+    fn create_body_with_expiry() {
+        let json = r#"{"expires_in_seconds":86400}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(86400));
+    }
+
+    #[test]
+    fn create_body_null_expiry() {
+        let json = r#"{"expires_in_seconds":null}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.expires_in_seconds.is_none());
+    }
+}
