@@ -219,4 +219,10 @@ mod tests {
         let ctx = ctx_with_roles(&["superadmin"]);
         assert!(is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_false_for_super_only() {
+        let ctx = ctx_with_roles(&["super"]);
+        assert!(!is_super(&ctx));
+    }
 }

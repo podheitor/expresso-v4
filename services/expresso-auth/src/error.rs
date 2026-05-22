@@ -89,4 +89,9 @@ mod tests {
         let e = RpError::Config("missing_client_secret".into());
         assert!(e.to_string().contains("missing_client_secret"));
     }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(RpError::BadRequest("invalid_state")), StatusCode::BAD_REQUEST);
+    }
 }

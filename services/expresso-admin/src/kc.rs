@@ -351,10 +351,25 @@ mod tests {
             email:      "alice@example.com".into(),
             first_name: "Alice".into(),
             last_name:  "Smith".into(),
+            enabled:    true,
             password:   "s3cr3t".into(),
             temporary:  true,
         };
         assert!(u.temporary);
         assert_eq!(u.username, "alice");
+    }
+
+    #[test]
+    fn new_user_email_preserved() {
+        let u = NewUser {
+            username:   "bob".into(),
+            email:      "bob@corp.com".into(),
+            first_name: "Bob".into(),
+            last_name:  "Jones".into(),
+            enabled:    true,
+            password:   "pw".into(),
+            temporary:  false,
+        };
+        assert_eq!(u.email, "bob@corp.com");
     }
 }

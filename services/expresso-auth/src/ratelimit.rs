@@ -190,4 +190,12 @@ mod tests {
         let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1));
         assert!(!rl.check(ip));
     }
+
+    #[test]
+    fn limit_one_allows_first_denies_second() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
+        assert!(rl.check(ip));
+        assert!(!rl.check(ip));
+    }
 }

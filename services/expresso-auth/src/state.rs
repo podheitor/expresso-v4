@@ -192,4 +192,12 @@ mod tests {
         AppState::evict_expired(&mut m);
         assert_eq!(m.len(), 2);
     }
+
+    #[test]
+    fn evict_expired_removes_single_expired() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        m.insert("stale".into(), make_pending(0));
+        AppState::evict_expired(&mut m);
+        assert!(m.is_empty());
+    }
 }

@@ -94,4 +94,11 @@ mod tests {
         let b = challenge_s256("fixed-verifier");
         assert_eq!(a, b);
     }
+
+    #[test]
+    fn different_verifiers_produce_different_challenges() {
+        let a = challenge_s256("verifier-a");
+        let b = challenge_s256("verifier-b");
+        assert_ne!(a, b);
+    }
 }

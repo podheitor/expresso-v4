@@ -263,4 +263,9 @@ mod tests {
     fn rejects_protocol_relative_url() {
         assert!(!is_safe_local_redirect("//evil.com/path"));
     }
+
+    #[test]
+    fn rejects_backslash_in_path() {
+        assert!(!is_safe_local_redirect("/\\evil.com"));
+    }
 }

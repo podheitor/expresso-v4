@@ -388,4 +388,14 @@ mod tests {
         let f = UserDeleteForm { confirm_username: "".into() };
         assert!(f.confirm_username.is_empty());
     }
+
+    #[test]
+    fn user_create_form_email_preserved() {
+        let f = UserCreateForm {
+            username: "u".into(), email: "u@example.com".into(),
+            first_name: "U".into(), last_name: "Ser".into(),
+            password: "pw".into(), enabled: None, temporary: None,
+        };
+        assert_eq!(f.email, "u@example.com");
+    }
 }

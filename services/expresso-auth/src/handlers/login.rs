@@ -142,4 +142,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":null}"#).unwrap();
         assert!(q.redirect_uri.is_none());
     }
+
+    #[test]
+    fn login_query_redirect_uri_preserved() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/dashboard"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/dashboard"));
+    }
 }

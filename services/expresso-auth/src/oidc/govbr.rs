@@ -179,4 +179,9 @@ mod tests {
     fn assurance_unknown_acr_returns_none() {
         assert!(GovbrAssurance::from_acr("urn:govbr:loa:unknown").is_none());
     }
+
+    #[test]
+    fn assurance_ouro_as_str() {
+        assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
+    }
 }

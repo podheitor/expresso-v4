@@ -197,4 +197,10 @@ mod tests {
         let h = headers_with_cookie("other=val");
         assert_eq!(extract_cookie(&h, "expresso_rt"), None);
     }
+
+    #[test]
+    fn present_cookie_returns_value() {
+        let h = headers_with_cookie("expresso_rt=tok123");
+        assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("tok123"));
+    }
 }
