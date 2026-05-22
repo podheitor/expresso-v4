@@ -436,4 +436,9 @@ mod tests {
         let headers = headers_with_depth("bogus");
         assert!(matches!(parse_depth(&headers), Depth::Zero));
     }
+
+    #[test]
+    fn depth_infinity_ne_zero() {
+        assert_ne!(Depth::Infinity, Depth::Zero);
+    }
 }

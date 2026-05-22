@@ -202,4 +202,12 @@ mod tests {
         let r = percent_decode("%2F");
         assert_eq!(r, "/");
     }
+
+    #[test]
+    fn classify_home_trailing_slash_required() {
+        let u = uuid::Uuid::new_v4();
+        // Without trailing slash and without .vcf — should be Unknown.
+        let t = classify(&format!("/carddav/{u}"));
+        assert!(matches!(t, Target::Unknown));
+    }
 }

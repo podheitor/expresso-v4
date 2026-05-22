@@ -815,4 +815,10 @@ mod tests {
         let f = sample_file();
         let _ = f.tenant_id; // field exists and is Uuid
     }
+
+    #[test]
+    fn drive_file_kind_is_file() {
+        let f = sample_file();
+        assert_eq!(f.kind, "file");
+    }
 }

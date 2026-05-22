@@ -332,4 +332,17 @@ mod tests {
         let c = cfg(Some("client"), Some("secret"));
         assert!(c.has_exchange_client());
     }
+
+    #[test]
+    fn kc_admin_config_admin_pass_preserved() {
+        let c = KcAdminConfig {
+            base_url:               "https://kc".into(),
+            realm:                  "r".into(),
+            admin_user:             "admin".into(),
+            admin_pass:             "s3cr3t".into(),
+            exchange_client_id:     None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.admin_pass, "s3cr3t");
+    }
 }

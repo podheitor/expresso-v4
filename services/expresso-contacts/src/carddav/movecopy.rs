@@ -190,4 +190,9 @@ mod tests {
     fn strip_origin_vcf_extension_preserved() {
         assert_eq!(strip_origin("https://h/book/card.vcf"), "/book/card.vcf");
     }
+
+    #[test]
+    fn strip_origin_http_no_path_returns_slash() {
+        assert_eq!(strip_origin("http://host.example.com"), "/");
+    }
 }

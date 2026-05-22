@@ -338,4 +338,9 @@ mod tests {
     fn escape_lt_produces_lt_entity() {
         assert_eq!(escape("a<b"), "a&lt;b");
     }
+
+    #[test]
+    fn escape_single_quote_produces_apos_entity() {
+        assert_eq!(escape("it's"), "it&apos;s");
+    }
 }

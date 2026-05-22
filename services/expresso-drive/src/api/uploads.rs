@@ -499,4 +499,9 @@ mod tests {
     fn max_upload_bytes_exceeds_chunk_size() {
         assert!(MAX_UPLOAD_BYTES as usize >= MAX_CHUNK_BYTES);
     }
+
+    #[test]
+    fn sanitize_accepts_filename_with_spaces() {
+        assert!(sanitize_name("my document.pdf").is_ok());
+    }
 }

@@ -387,4 +387,11 @@ END:VCALENDAR\r\n";
         let e = compute_etag("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
         assert!(e.chars().all(|c| c.is_ascii_hexdigit()));
     }
+
+    #[test]
+    fn etag_length_is_fixed() {
+        // SHA-256 hex = 64 characters
+        let e = compute_etag("some content");
+        assert_eq!(e.len(), 64);
+    }
 }

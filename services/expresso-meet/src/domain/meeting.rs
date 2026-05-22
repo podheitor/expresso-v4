@@ -491,4 +491,9 @@ mod tests {
         let n: NewMeeting = serde_json::from_str(json).unwrap();
         assert_eq!(n.room_name, "weekly-sync");
     }
+
+    #[test]
+    fn participant_role_ne_moderator_participant() {
+        assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
+    }
 }

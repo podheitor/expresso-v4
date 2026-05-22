@@ -289,4 +289,10 @@ mod tests {
         };
         assert_eq!(entry.privilege, "READ");
     }
+
+    #[test]
+    fn validate_priv_mixed_case_normalises_to_uppercase() {
+        assert_eq!(validate_priv("Write").unwrap(), "WRITE");
+        assert_eq!(validate_priv("READ").unwrap(), "READ");
+    }
 }

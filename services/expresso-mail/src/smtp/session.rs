@@ -496,4 +496,10 @@ mod extra_tests {
     fn size_param_large_number_parsed() {
         assert_eq!(extract_size_param("<a@b> SIZE=10485760"), Some(10_485_760));
     }
+
+    #[test]
+    fn extract_angle_nested_angle_brackets_uses_first_close() {
+        // Only the first `>` is used as the closing bracket.
+        assert_eq!(extract_angle("<user@host.com> SIZE=512"), "user@host.com");
+    }
 }

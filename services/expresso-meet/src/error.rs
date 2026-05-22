@@ -156,4 +156,10 @@ mod tests {
         let e = MeetError::NotParticipant;
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn conflict_display_contains_message() {
+        let e = MeetError::Conflict("already recording".into());
+        assert!(format!("{e}").contains("already recording"));
+    }
 }

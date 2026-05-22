@@ -338,4 +338,10 @@ mod tests {
     fn aud_claim_one_contains_matching_value() {
         assert!(AudClaim::One("expresso-web".into()).contains("expresso-web"));
     }
+
+    #[test]
+    fn realm_from_iss_handles_auth_prefix() {
+        // Keycloak legacy path with /auth/realms/ prefix.
+        assert_eq!(super::realm_from_iss("https://sso.corp.com/auth/realms/corp"), Some("corp"));
+    }
 }

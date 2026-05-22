@@ -619,4 +619,9 @@ mod tests {
         let s = human_size(512);
         assert!(s.contains("512") && s.contains("B"));
     }
+
+    #[test]
+    fn human_size_two_kibibytes_is_two_kb() {
+        assert_eq!(human_size(2 * 1024), "2.0 KB");
+    }
 }

@@ -648,4 +648,9 @@ mod tests {
         let t2 = sign_token(b"key2", fid, uid, tid, 3600);
         assert_ne!(t1, t2);
     }
+
+    #[test]
+    fn max_putfile_bytes_is_256_mib() {
+        assert_eq!(MAX_PUTFILE_BYTES, 256 * 1024 * 1024);
+    }
 }

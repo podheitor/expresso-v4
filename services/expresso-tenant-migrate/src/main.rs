@@ -446,4 +446,10 @@ mod tests {
         let out = build_user_payload(&src);
         assert_eq!(out["email"], "alice@example.com");
     }
+
+    #[test]
+    fn extract_tenant_id_whitespace_only_returns_none() {
+        let u = json!({"attributes": {"tenant_id": ["   "]}});
+        assert!(extract_tenant_id(&u).is_none());
+    }
 }

@@ -235,11 +235,6 @@ mod tests {
     }
 
     #[test]
-    fn default_host_is_all_interfaces() {
-        assert_eq!(default_host(), "0.0.0.0");
-    }
-
-    #[test]
     fn default_port_is_8000() {
         assert_eq!(default_port(), 8000);
     }
@@ -272,5 +267,15 @@ mod tests {
     #[test]
     fn default_s3_region_starts_with_us() {
         assert!(default_s3_region().starts_with("us-"));
+    }
+
+    #[test]
+    fn default_host_is_all_interfaces() {
+        assert_eq!(default_host(), "0.0.0.0");
+    }
+
+    #[test]
+    fn default_host_is_not_loopback() {
+        assert_ne!(default_host(), "127.0.0.1");
     }
 }

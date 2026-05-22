@@ -180,4 +180,9 @@ mod tests {
     fn ops_list_contains_unlock_and_relock() {
         assert!(OPS.contains(&"unlock_and_relock"));
     }
+
+    #[test]
+    fn ops_list_contains_other() {
+        assert!(OPS.contains(&"other"));
+    }
 }

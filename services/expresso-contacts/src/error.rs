@@ -150,4 +150,10 @@ mod tests {
         let e = ContactsError::NotSupported("MKCOL");
         assert!(format!("{e}").contains("MKCOL"));
     }
+
+    #[test]
+    fn bad_request_is_400_variant() {
+        let e = ContactsError::BadRequest("missing field".into());
+        assert_eq!(status(e), 400);
+    }
 }

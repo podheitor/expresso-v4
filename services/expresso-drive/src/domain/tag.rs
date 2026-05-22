@@ -163,4 +163,10 @@ mod tests {
         let tag = "a".repeat(50);
         assert_eq!(tag.len(), 50);
     }
+
+    #[test]
+    fn tag_string_uppercase_preserved() {
+        let tag = "IMPORTANT".to_string();
+        assert_eq!(tag, "IMPORTANT");
+    }
 }

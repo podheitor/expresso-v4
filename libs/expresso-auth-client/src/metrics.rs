@@ -127,4 +127,9 @@ mod tests {
     fn result_label_expired_maps_expired() {
         assert_eq!(result_label(&AuthError::Expired), "expired");
     }
+
+    #[test]
+    fn result_label_missing_claim_maps_forbidden() {
+        assert_eq!(result_label(&AuthError::MissingClaim("tenant_id")), "forbidden");
+    }
 }

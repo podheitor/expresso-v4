@@ -389,4 +389,12 @@ mod tests {
         };
         assert!(r.comment.is_none());
     }
+
+    #[test]
+    fn fmt_opt_ts_year_2026_in_output() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-12-31 23:59:59 UTC);
+        let s = fmt_opt_ts(Some(ts));
+        assert!(s.contains("2026"));
+    }
 }

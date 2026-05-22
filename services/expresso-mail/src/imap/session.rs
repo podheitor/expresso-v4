@@ -3899,4 +3899,11 @@ Attachment\r\n\
         let s = String::from_utf8_lossy(&body);
         assert!(s.contains("<p>Hello</p>"));
     }
+
+    #[test]
+    fn mime_part_body_part1_does_not_contain_html() {
+        let body = mime_part_body(MULTIPART_MSG, 1);
+        let s = String::from_utf8_lossy(&body);
+        assert!(!s.contains("<p>"));
+    }
 }

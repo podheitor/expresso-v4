@@ -101,4 +101,11 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("mime parse failed"));
         assert!(e.to_string().starts_with("internal error:"));
     }
+
+    #[test]
+    fn debug_does_not_contain_source_variant_name_unexpectedly() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("quoted-printable overflow"));
+        let d = format!("{e:?}");
+        assert!(d.contains("Internal") && d.contains("quoted-printable overflow"));
+    }
 }

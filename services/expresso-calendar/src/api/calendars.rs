@@ -287,12 +287,6 @@ mod tests {
     }
 
     #[test]
-    fn event_density_query_bucket_week_preserved() {
-        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"week"}"#).unwrap();
-        assert_eq!(q.bucket.as_deref(), Some("week"));
-    }
-
-    #[test]
     fn event_density_query_bucket_day_preserved() {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"day"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("day"));
@@ -314,5 +308,17 @@ mod tests {
     fn event_density_query_bucket_week_preserved() {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"week"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("week"));
+    }
+
+    #[test]
+    fn stats_by_tenant_query_limit_one_preserved() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":1}"#).unwrap();
+        assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 1);
+    }
+
+    #[test]
+    fn event_density_query_bucket_week_is_some() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"week"}"#).unwrap();
+        assert!(q.bucket.is_some());
     }
 }

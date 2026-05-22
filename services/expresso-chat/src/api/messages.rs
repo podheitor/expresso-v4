@@ -194,4 +194,9 @@ mod tests {
         let b: SendBody = serde_json::from_str(r#"{"body":"Olá 🌍"}"#).unwrap();
         assert!(b.body.contains("Olá"));
     }
+
+    #[test]
+    fn default_limit_is_less_than_max_limit() {
+        assert!(DEFAULT_LIST_LIMIT < MAX_LIST_LIMIT);
+    }
 }

@@ -316,4 +316,10 @@ mod tests {
         let ics = "ORGANIZER:mailto:team@sub.example.org";
         assert_eq!(extract_organizer_email(ics).as_deref(), Some("team@sub.example.org"));
     }
+
+    #[test]
+    fn extract_method_request_returns_request() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("REQUEST"));
+    }
 }

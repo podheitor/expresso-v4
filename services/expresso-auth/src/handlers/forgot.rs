@@ -178,4 +178,9 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert!(r.email.contains("büro"));
     }
+
+    #[test]
+    fn action_lifespan_equals_one_hour_in_seconds() {
+        assert_eq!(ACTION_LIFESPAN_SECS, 60 * 60);
+    }
 }

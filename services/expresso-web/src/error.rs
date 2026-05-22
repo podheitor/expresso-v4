@@ -139,4 +139,10 @@ mod tests {
         let e = WebError::Internal("db timeout".into());
         assert!(e.to_string().starts_with("internal:"));
     }
+
+    #[test]
+    fn upstream_error_starts_with_upstream_prefix() {
+        let e = WebError::Upstream("timed out".into());
+        assert!(e.to_string().starts_with("upstream error:"));
+    }
 }

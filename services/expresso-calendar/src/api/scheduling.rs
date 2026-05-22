@@ -535,12 +535,6 @@ mod tests {
     }
 
     #[test]
-    fn counter_limit_none_defaults_to_50() {
-        let raw: Option<i64> = None;
-        assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
-    }
-
-    #[test]
     fn counter_limit_above_200_capped_at_200() {
         let raw: Option<i64> = Some(500);
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
@@ -568,5 +562,18 @@ mod tests {
     fn counter_limit_none_defaults_to_50() {
         let raw: Option<i64> = None;
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
+    }
+
+    #[test]
+    fn freebusy_params_attendees_split_by_comma() {
+        let attendees = "a@ex.com,b@ex.com,c@ex.com";
+        let parts: Vec<&str> = attendees.split(',').collect();
+        assert_eq!(parts.len(), 3);
+    }
+
+    #[test]
+    fn counter_limit_none_unwrap_or_50() {
+        let raw: Option<i64> = None;
+        assert_eq!(raw.unwrap_or(50), 50);
     }
 }

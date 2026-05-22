@@ -264,4 +264,11 @@ mod tests {
         push_token(&mut out, "urn:expresso:ctag:42");
         assert!(out.contains("multistatus"));
     }
+
+    #[test]
+    fn push_token_contains_provided_token_value() {
+        let mut out = String::new();
+        push_token(&mut out, "urn:expresso:ctag:99");
+        assert!(out.contains("urn:expresso:ctag:99"));
+    }
 }

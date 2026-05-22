@@ -200,4 +200,10 @@ mod tests {
         let b = "<DisplayName>Contacts</DisplayName>";
         assert!(extract_prop(b, "displayname").is_none());
     }
+
+    #[test]
+    fn extract_prop_entity_lt_unescaped() {
+        let b = "<displayname>A &lt; B</displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("A < B"));
+    }
 }

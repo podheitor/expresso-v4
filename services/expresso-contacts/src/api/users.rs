@@ -140,4 +140,12 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"user123@example.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("user123@example.com"));
     }
+
+    #[test]
+    fn user_out_fields_accessible() {
+        let id = uuid::Uuid::nil();
+        let out = UserOut { id, email: "test@example.com".into() };
+        assert_eq!(out.email, "test@example.com");
+        assert_eq!(out.id, id);
+    }
 }

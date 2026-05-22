@@ -350,4 +350,12 @@ mod tests {
         };
         assert_eq!(m.cpf_hash, "abc123");
     }
+
+    #[test]
+    fn upsert_body_tenant_id_preserved() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let b = UpsertBody { cpf_hash: "h".into(), tenant_id: t, user_id: u, assurance: None };
+        assert_eq!(b.tenant_id, t);
+    }
 }

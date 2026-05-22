@@ -107,12 +107,6 @@ mod tests {
     }
 
     #[test]
-    fn user_query_null_email_is_none() {
-        let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
-        assert!(q.email.is_none());
-    }
-
-    #[test]
     fn user_query_email_preserved() {
         let q: UserQuery = serde_json::from_str(r#"{"email":"admin@corp.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("admin@corp.com"));
@@ -144,6 +138,18 @@ mod tests {
 
     #[test]
     fn user_query_null_email_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
+        assert!(q.email.is_none());
+    }
+
+    #[test]
+    fn user_query_email_with_plus_tag_stored() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"user+tag@corp.com"}"#).unwrap();
+        assert_eq!(q.email.as_deref(), Some("user+tag@corp.com"));
+    }
+
+    #[test]
+    fn user_query_email_null_json_is_none() {
         let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
         assert!(q.email.is_none());
     }

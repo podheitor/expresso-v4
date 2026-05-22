@@ -1545,4 +1545,9 @@ mod tests {
     fn folder_name_unicode_accepted() {
         assert!(validate_folder_name("Réuniões").is_ok());
     }
+
+    #[test]
+    fn folder_name_null_byte_in_middle_rejected() {
+        assert!(validate_folder_name("Fo\0lder").is_err());
+    }
 }

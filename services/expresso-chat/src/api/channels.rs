@@ -373,4 +373,13 @@ mod tests {
         assert_eq!(b.invite.len(), 1);
         assert_eq!(b.invite[0], uid);
     }
+
+    #[test]
+    fn create_body_invite_two_users_preserved() {
+        let u1 = Uuid::nil();
+        let u2 = Uuid::nil();
+        let json = format!(r#"{{"name":"squad","invite":["{u1}","{u2}"]}}"#);
+        let b: CreateBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.invite.len(), 2);
+    }
 }

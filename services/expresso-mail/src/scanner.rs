@@ -279,4 +279,10 @@ mod tests {
         let r = ScanResult { spam_score: None, spam_action: None, virus: Some("Eicar.Test.File".into()) };
         assert_eq!(r.virus.as_deref(), Some("Eicar.Test.File"));
     }
+
+    #[test]
+    fn to_headers_clean_message_contains_virus_clean() {
+        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        assert!(r.to_headers().contains("X-Virus-Status: Clean"));
+    }
 }

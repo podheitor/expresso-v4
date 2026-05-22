@@ -321,4 +321,10 @@ mod extra_tests {
         let tok = j.mint(&req).unwrap();
         assert!(!tok.join_url.is_empty());
     }
+
+    #[test]
+    fn jitsi_config_jwt_ttl_positive() {
+        let cfg = fixture_cfg();
+        assert!(cfg.jwt_ttl > 0);
+    }
 }

@@ -1008,4 +1008,13 @@ mod extra_tests {
     fn parse_references_empty_input() {
         assert!(parse_references("").is_empty());
     }
+
+    #[test]
+    fn make_preview_truncates_to_500_chars() {
+        // "abcde " * 200 = 1200 chars; after split_whitespace join = 1199 chars
+        // make_preview should truncate to 500.
+        let long = "abcde ".repeat(200);
+        let preview = make_preview(&long).unwrap();
+        assert_eq!(preview.len(), 500);
+    }
 }

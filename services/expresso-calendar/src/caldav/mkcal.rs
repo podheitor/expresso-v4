@@ -261,4 +261,9 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nTZID:Europe/Berlin\r\nEND:VCALENDAR";
         assert_eq!(extract_tzid(ics).as_deref(), Some("Europe/Berlin"));
     }
+
+    #[test]
+    fn unescape_xml_no_entities_returns_same_str() {
+        assert_eq!(unescape_xml("plain text no entities"), "plain text no entities");
+    }
 }

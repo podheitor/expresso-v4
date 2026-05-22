@@ -247,4 +247,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.total_size, 1);
     }
+
+    #[test]
+    fn session_storage_key_nonempty() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(!s.storage_key.is_empty());
+    }
 }

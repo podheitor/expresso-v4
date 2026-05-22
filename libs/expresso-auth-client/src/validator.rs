@@ -338,4 +338,10 @@ mod tests {
         let c = OidcConfig::new("https://idp/realms/r", "my-client");
         assert_eq!(c.primary_audience(), "my-client");
     }
+
+    #[test]
+    fn audiences_returns_empty_vec_for_blank_aud() {
+        let c = OidcConfig::new("https://idp/realms/r", "");
+        assert!(c.audiences().is_empty());
+    }
 }

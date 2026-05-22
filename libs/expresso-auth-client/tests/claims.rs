@@ -160,3 +160,10 @@ fn roles_is_empty_when_no_roles_in_claims() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(ctx.roles.is_empty());
 }
+
+#[test]
+fn expires_at_is_preserved_in_context() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000006", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.expires_at, 9_999_999_999);
+}

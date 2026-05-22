@@ -495,4 +495,10 @@ mod tests {
         let b = build_realm_body("demo", "Demo");
         assert_eq!(b["registrationAllowed"].as_bool(), Some(false));
     }
+
+    #[test]
+    fn build_user_body_email_verified_is_false_by_default() {
+        let b = build_user_body("carol", "carol@example.com");
+        assert_eq!(b["emailVerified"].as_bool(), Some(false));
+    }
 }

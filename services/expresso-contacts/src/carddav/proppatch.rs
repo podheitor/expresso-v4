@@ -367,4 +367,10 @@ mod tests {
     fn live_props_not_empty() {
         assert!(!LIVE_PROPS.is_empty());
     }
+
+    #[test]
+    fn is_live_prop_case_insensitive_local() {
+        assert!(is_live_prop("DAV:", "Displayname"));
+        assert!(is_live_prop("DAV:", "DISPLAYNAME"));
+    }
 }

@@ -25551,4 +25551,19 @@ mod tests {
         };
         assert_eq!(n.kind, "new_mail");
     }
+
+    #[test]
+    fn notification_serde_roundtrip() {
+        let n = Notification {
+            kind: "flags_changed".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: Some("INBOX".into()),
+            message_id: None,
+        };
+        let s = serde_json::to_string(&n).unwrap();
+        let back: Notification = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.kind, "flags_changed");
+        assert_eq!(back.folder.as_deref(), Some("INBOX"));
+    }
 }

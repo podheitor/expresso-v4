@@ -220,4 +220,14 @@ mod tests {
         l.record_failure("c@x.com");
         assert!(l.is_locked_out("c@x.com"));
     }
+
+    #[test]
+    fn default_lockout_max_failures_is_ten() {
+        let l = LoginLockout::default();
+        // Default threshold is 10 — nine failures must not lock out.
+        for _ in 0..9 {
+            l.record_failure("d@x.com");
+        }
+        assert!(!l.is_locked_out("d@x.com"));
+    }
 }

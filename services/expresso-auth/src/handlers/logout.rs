@@ -197,4 +197,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"eyJhbG..."}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("eyJhbG..."));
     }
+
+    #[test]
+    fn logout_query_jwt_three_part_hint_preserved() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"header.payload.sig"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("header.payload.sig"));
+    }
 }

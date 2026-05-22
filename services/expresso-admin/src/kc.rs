@@ -360,20 +360,6 @@ mod tests {
     }
 
     #[test]
-    fn new_user_email_preserved() {
-        let u = NewUser {
-            username:   "bob".into(),
-            email:      "bob@corp.com".into(),
-            first_name: "Bob".into(),
-            last_name:  "Jones".into(),
-            enabled:    true,
-            password:   "pw".into(),
-            temporary:  false,
-        };
-        assert_eq!(u.email, "bob@corp.com");
-    }
-
-    #[test]
     fn new_user_enabled_true_preserved() {
         let u = NewUser {
             username:   "carol".into(),
@@ -433,5 +419,27 @@ mod tests {
             enabled: true, password: "pw".into(), temporary: false,
         };
         assert_eq!(u.email, "grace@corp.com");
+    }
+
+    #[test]
+    fn update_user_last_name_only() {
+        let u = UpdateUser {
+            email:      None,
+            first_name: None,
+            last_name:  Some("Nakamura".into()),
+            enabled:    None,
+        };
+        assert_eq!(u.last_name.as_deref(), Some("Nakamura"));
+        assert!(u.email.is_none());
+    }
+
+    #[test]
+    fn new_user_temporary_false_preserved() {
+        let u = NewUser {
+            username: "grace".into(), email: "grace@corp.com".into(),
+            first_name: "Grace".into(), last_name: "Wu".into(),
+            enabled: true, password: "pw".into(), temporary: false,
+        };
+        assert!(!u.temporary);
     }
 }

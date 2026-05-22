@@ -433,4 +433,15 @@ mod tests {
         assert_eq!(b.sha256.as_deref(), Some("deadbeef"));
         assert_eq!(b.storage_key.as_deref(), Some("blobs/v1"));
     }
+
+    #[test]
+    fn file_version_sha256_optional_none() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_num: 1, size_bytes: 0, sha256: None, storage_key: None,
+            created_by: Uuid::nil(), created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert!(v.sha256.is_none());
+    }
 }

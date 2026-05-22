@@ -530,4 +530,9 @@ mod tests {
         assert!(!method_label(Method::Request).is_empty());
         assert!(!method_label(Method::Cancel).is_empty());
     }
+
+    #[test]
+    fn method_label_variants_are_distinct() {
+        assert_ne!(method_label(Method::Request), method_label(Method::Cancel));
+    }
 }

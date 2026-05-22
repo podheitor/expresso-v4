@@ -400,16 +400,6 @@ mod tests {
     }
 
     #[test]
-    fn user_create_form_username_preserved() {
-        let f = UserCreateForm {
-            username: "alice".into(), email: "a@x.com".into(),
-            first_name: "Alice".into(), last_name: "Smith".into(),
-            password: "pw".into(), enabled: None, temporary: None,
-        };
-        assert_eq!(f.username, "alice");
-    }
-
-    #[test]
     fn user_create_form_first_name_preserved() {
         let f = UserCreateForm {
             username: "bob".into(), email: "b@x.com".into(),
@@ -447,5 +437,25 @@ mod tests {
             password: "pw".into(), enabled: None, temporary: None,
         };
         assert_eq!(f.username, "alice");
+    }
+
+    #[test]
+    fn user_create_form_password_preserved() {
+        let f = UserCreateForm {
+            username: "eve".into(), email: "eve@sec.com".into(),
+            first_name: "Eve".into(), last_name: "Hacker".into(),
+            password: "hunter2".into(), enabled: None, temporary: None,
+        };
+        assert_eq!(f.password, "hunter2");
+    }
+
+    #[test]
+    fn user_create_form_email_with_tld_preserved() {
+        let f = UserCreateForm {
+            username: "alice".into(), email: "a@x.com".into(),
+            first_name: "Alice".into(), last_name: "Smith".into(),
+            password: "pw".into(), enabled: None, temporary: None,
+        };
+        assert!(f.email.contains('@'));
     }
 }

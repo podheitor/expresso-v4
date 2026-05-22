@@ -399,4 +399,9 @@ mod tests {
     fn xml_prolog_ends_with_closing_tag() {
         assert!(XML_PROLOG.ends_with("?>"));
     }
+
+    #[test]
+    fn escape_ampersand_in_name() {
+        assert_eq!(escape("A&B"), "A&amp;B");
+    }
 }

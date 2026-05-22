@@ -339,7 +339,14 @@ mod tests {
     }
 
     #[test]
-    fn cache_key_empty_user_differs_from_nonempty() {
-        assert_ne!(cache_key("", "pass"), cache_key("user", "pass"));
+    fn cache_key_empty_password_differs_from_nonempty() {
+        assert_ne!(cache_key("user", ""), cache_key("user", "secret"));
+    }
+
+    #[test]
+    fn cache_key_nonempty_user_and_pass_produces_hex() {
+        let k = cache_key("admin", "secret123");
+        assert!(!k.is_empty());
+        assert!(k.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

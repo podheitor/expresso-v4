@@ -279,4 +279,14 @@ mod tests {
         };
         assert_eq!(p.namespace, "DAV:");
     }
+
+    #[test]
+    fn dead_prop_xml_value_whitespace_preserved() {
+        let p = DeadProp {
+            namespace: "urn:test:".into(),
+            local_name: "note".into(),
+            xml_value: "  spaced  ".into(),
+        };
+        assert_eq!(p.xml_value, "  spaced  ");
+    }
 }

@@ -156,4 +156,11 @@ mod tests {
         let r = TenantResolver::parse("");
         assert!(r.is_empty());
     }
+
+    #[test]
+    fn normalize_host_strips_port_on_resolve() {
+        let r = TenantResolver::parse("acme.example.com:corp");
+        // Host with port should still resolve — normalize_host strips the port.
+        assert_eq!(r.resolve("acme.example.com:443"), Some("corp"));
+    }
 }

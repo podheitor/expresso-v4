@@ -161,4 +161,10 @@ mod extra_tests {
     fn is_editable_mime_none_returns_false() {
         assert!(!is_editable_mime(None));
     }
+
+    #[test]
+    fn build_iframe_url_contains_access_token_param() {
+        let url = build_iframe_url("https://collabora", "https://drive", "file1", "mytoken");
+        assert!(url.contains("access_token=mytoken"));
+    }
 }

@@ -335,4 +335,9 @@ mod tests {
         };
         assert_eq!(c.file_id, fid);
     }
+
+    #[test]
+    fn max_comment_bytes_constant_value() {
+        assert_eq!(MAX_COMMENT_BYTES, 4096);
+    }
 }

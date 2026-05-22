@@ -300,4 +300,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(v["invite"]["organizer_email"].is_string());
     }
+
+    #[test]
+    fn envelope_cancel_method_field_is_cancel() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "CANCEL").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["method"].as_str(), Some("CANCEL"));
+    }
 }

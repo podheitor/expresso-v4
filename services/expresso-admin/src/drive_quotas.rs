@@ -221,4 +221,9 @@ mod tests {
         let s = pct(50, 100);
         assert!(s.contains("50"));
     }
+
+    #[test]
+    fn mb_two_megabytes_returns_two() {
+        assert_eq!(mb(2 * 1_048_576), "2.0");
+    }
 }

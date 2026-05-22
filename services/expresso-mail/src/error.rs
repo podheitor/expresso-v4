@@ -162,4 +162,10 @@ mod tests {
         let e = MailError::SendFailed("relay refused".into());
         assert!(format!("{e}").contains("relay refused"));
     }
+
+    #[test]
+    fn conflict_display_contains_message() {
+        let e = MailError::Conflict("duplicate message-id".into());
+        assert!(format!("{e}").contains("duplicate message-id"));
+    }
 }

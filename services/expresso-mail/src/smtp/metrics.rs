@@ -168,4 +168,10 @@ mod tests {
         assert_eq!(command_label("MAIL"), "MAIL");
         assert_eq!(command_label("mail"), "MAIL");
     }
+
+    #[test]
+    fn helo_maps_to_helo() {
+        assert_eq!(command_label("HELO"), "HELO");
+        assert_eq!(command_label("helo"), "HELO");
+    }
 }

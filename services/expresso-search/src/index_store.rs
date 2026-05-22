@@ -1438,4 +1438,18 @@ mod tests {
         };
         assert!(doc.body.is_none());
     }
+
+    #[test]
+    fn index_doc_received_at_some_preserved() {
+        let doc = IndexDoc {
+            document_id: "d5".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: Some(1_700_000_000),
+        };
+        assert_eq!(doc.received_at, Some(1_700_000_000));
+    }
 }

@@ -435,4 +435,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("Jane Doe"));
     }
+
+    #[test]
+    fn gal_entry_directory_display_name_in_serialized_output() {
+        let e = GalEntry::Directory {
+            user_id:      Uuid::nil(),
+            email:        "admin@corp.com".into(),
+            display_name: "Corp Admin".into(),
+            given_name:   None,
+            family_name:  None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("Corp Admin"));
+    }
 }

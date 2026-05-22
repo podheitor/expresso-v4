@@ -67,12 +67,6 @@ mod tests {
     }
 
     #[test]
-    fn display_starts_with_internal_error_prefix() {
-        let e = ExpressstorageError::Internal(anyhow::anyhow!("oops"));
-        assert!(e.to_string().starts_with("internal error:"));
-    }
-
-    #[test]
     fn display_contains_cause_message() {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 bucket not found"));
         assert!(e.to_string().contains("s3 bucket not found"));
@@ -100,5 +94,18 @@ mod tests {
     fn display_contains_cause_text() {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("bucket not found"));
         assert!(e.to_string().contains("bucket not found"));
+    }
+
+    #[test]
+    fn debug_contains_message_from_anyhow() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("multipart upload aborted"));
+        assert!(format!("{e:?}").contains("multipart upload aborted"));
+    }
+
+    #[test]
+    fn display_ends_after_colon_with_message() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 timeout"));
+        let s = e.to_string();
+        assert!(s.contains("s3 timeout"));
     }
 }

@@ -481,4 +481,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.spf.is_empty());
     }
+
+    #[test]
+    fn auth_results_default_dkim_is_empty_string() {
+        let r = AuthResults::default();
+        assert!(r.dkim.is_empty());
+    }
 }

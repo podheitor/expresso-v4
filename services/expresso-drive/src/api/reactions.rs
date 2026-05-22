@@ -257,4 +257,17 @@ mod tests {
         let b: ReactionBody = serde_json::from_str(r#"{"emoji":"❤️"}"#).unwrap();
         assert!(b.emoji.contains('❤'));
     }
+
+    #[test]
+    fn comment_reaction_comment_id_accessible() {
+        use time::macros::datetime;
+        let cid = Uuid::new_v4();
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: cid, file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            emoji: "👍".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(r.comment_id, cid);
+    }
 }

@@ -195,4 +195,12 @@ mod tests {
         let out = preview(long);
         assert!(!out.is_empty());
     }
+
+    #[test]
+    fn fmt_ts_contains_separator_t() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-11-30 15:45:00 UTC);
+        let s = fmt_ts(ts);
+        assert!(s.contains('T'));
+    }
 }

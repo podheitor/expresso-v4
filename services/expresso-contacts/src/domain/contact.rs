@@ -396,4 +396,10 @@ mod tests {
         let c = sample();
         let _ = c.addressbook_id; // field exists and is Uuid
     }
+
+    #[test]
+    fn contact_tenant_id_accessible() {
+        let c = sample();
+        assert_eq!(c.tenant_id, uuid::Uuid::nil());
+    }
 }

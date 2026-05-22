@@ -368,4 +368,10 @@ mod tests {
         // start == w2 means the event begins at the exclusive upper bound
         assert!(single_instance(s, None, w1, w2).is_none());
     }
+
+    #[test]
+    fn freq_variants_are_distinct() {
+        assert_ne!(Freq::Daily, Freq::Weekly);
+        assert_ne!(Freq::Monthly, Freq::Yearly);
+    }
 }

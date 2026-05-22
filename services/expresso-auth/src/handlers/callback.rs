@@ -293,4 +293,9 @@ mod tests {
     fn rejects_http_absolute_url() {
         assert!(!is_safe_local_redirect("http://evil.com/steal"));
     }
+
+    #[test]
+    fn accepts_path_with_encoded_chars() {
+        assert!(is_safe_local_redirect("/mail/folder%20name"));
+    }
 }

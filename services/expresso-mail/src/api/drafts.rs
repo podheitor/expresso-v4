@@ -341,4 +341,11 @@ mod tests {
         let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
         assert!(s.contains("Draft body text"));
     }
+
+    #[test]
+    fn build_raw_contains_mime_version_header() {
+        let r = req("from@example.com", None, None, None);
+        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        assert!(s.to_ascii_lowercase().contains("mime-version"));
+    }
 }

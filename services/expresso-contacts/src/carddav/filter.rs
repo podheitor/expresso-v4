@@ -436,4 +436,10 @@ mod tests {
         let m = MatchType::StartsWith;
         assert_eq!(m, MatchType::StartsWith);
     }
+
+    #[test]
+    fn op_default_is_anyof() {
+        let op = Op::default();
+        assert_eq!(op, Op::AnyOf);
+    }
 }

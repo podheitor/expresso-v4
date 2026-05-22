@@ -16938,6 +16938,11 @@ mod tests {
     fn max_query_bytes_is_1024() {
         assert_eq!(MAX_QUERY_BYTES, 1024);
     }
+
+    #[test]
+    fn facet_from_top_n_is_positive() {
+        assert!(FACET_FROM_TOP_N > 0);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

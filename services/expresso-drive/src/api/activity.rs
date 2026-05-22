@@ -285,4 +285,10 @@ mod tests {
         let b: CreateActivityBody = serde_json::from_str(r#"{"action":"delete"}"#).unwrap();
         assert_eq!(b.action, "delete");
     }
+
+    #[test]
+    fn activity_query_limit_max_value_preserved() {
+        let q: ActivityQuery = serde_json::from_str(r#"{"limit":200}"#).unwrap();
+        assert_eq!(q.limit, Some(200));
+    }
 }

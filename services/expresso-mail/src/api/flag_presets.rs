@@ -255,4 +255,10 @@ mod tests {
         let b = PresetBody { name: "Minimal".into(), flags: vec!["\\Seen".into()] };
         assert_eq!(b.flags.len(), 1);
     }
+
+    #[test]
+    fn validate_preset_name_only_whitespace_rejected() {
+        let b = PresetBody { name: "  ".into(), flags: vec![] };
+        assert!(validate_preset(&b).is_err());
+    }
 }

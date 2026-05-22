@@ -132,4 +132,10 @@ mod tests {
         let v = generate_verifier();
         assert!(!v.is_empty());
     }
+
+    #[test]
+    fn challenge_contains_no_plus_sign() {
+        let c = challenge_s256("some-verifier-value");
+        assert!(!c.contains('+'));
+    }
 }

@@ -1054,4 +1054,9 @@ mod tests {
     fn max_body_bytes_is_1_mib() {
         assert_eq!(MAX_BODY_BYTES, 1024 * 1024);
     }
+
+    #[test]
+    fn max_subject_bytes_is_998() {
+        assert_eq!(MAX_SUBJECT_BYTES, 998);
+    }
 }

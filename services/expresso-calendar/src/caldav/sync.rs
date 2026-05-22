@@ -286,4 +286,9 @@ mod tests {
     fn token_prefix_starts_with_urn() {
         assert!(TOKEN_PREFIX.starts_with("urn:"));
     }
+
+    #[test]
+    fn token_prefix_contains_ctag() {
+        assert!(TOKEN_PREFIX.contains("ctag"));
+    }
 }

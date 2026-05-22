@@ -104,4 +104,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("argon2 error"));
         assert!(e.to_string().contains("argon2 error"));
     }
+
+    #[test]
+    fn internal_error_display_contains_specific_algorithm_name() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("chacha20poly1305 nonce reuse"));
+        assert!(e.to_string().contains("chacha20poly1305"));
+    }
 }

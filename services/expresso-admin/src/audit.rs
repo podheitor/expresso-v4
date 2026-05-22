@@ -604,4 +604,11 @@ mod tests {
         let out = csv_escape("say \"hello\"");
         assert!(out.starts_with('"'));
     }
+
+    #[test]
+    fn at_sign_at_start_is_formula_prefix_neutralized() {
+        let out = csv_escape("@SUM(B1)");
+        assert!(out.starts_with('"'));
+        assert!(out.contains("'@SUM(B1)"));
+    }
 }

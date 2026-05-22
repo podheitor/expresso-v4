@@ -1723,4 +1723,11 @@ mod tests {
         assert_eq!(t, "00000000-0000-0000-0000-000000000001");
         assert_eq!(u, "00000000-0000-0000-0000-000000000002");
     }
+
+    #[test]
+    fn split_addrs_multiple_addresses() {
+        let v = split_addrs("a@x.com, b@y.com, c@z.com");
+        assert_eq!(v.len(), 3);
+        assert!(v.contains(&"a@x.com"));
+    }
 }

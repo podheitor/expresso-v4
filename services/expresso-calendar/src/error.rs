@@ -152,4 +152,10 @@ mod tests {
     fn database_unavailable_display_is_nonempty() {
         assert!(!format!("{}", CalendarError::DatabaseUnavailable).is_empty());
     }
+
+    #[test]
+    fn bad_request_display_contains_message() {
+        let e = CalendarError::BadRequest("no uid".into());
+        assert!(format!("{e}").contains("no uid"));
+    }
 }

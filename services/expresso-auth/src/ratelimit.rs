@@ -245,4 +245,10 @@ mod tests {
         assert!(rl.check(ip1));
         assert!(rl.check(ip2));
     }
+
+    #[test]
+    fn with_trust_proxy_true_sets_flag() {
+        let rl = RateLimiter::with_trust_proxy(Duration::from_secs(60), 5, true);
+        assert!(rl.trust_forwarded);
+    }
 }

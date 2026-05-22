@@ -147,7 +147,13 @@ mod tests {
     }
 
     #[test]
-    fn conflict_is_409() {
+    fn conflict_lock_mismatch_is_409() {
         assert_eq!(status(DriveError::Conflict("lock mismatch".into())), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn unauthorized_display_not_empty() {
+        let e = DriveError::Unauthorized;
+        assert!(!format!("{e}").is_empty());
     }
 }

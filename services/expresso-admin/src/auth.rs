@@ -347,4 +347,9 @@ mod tests {
     fn is_super_admin_true_for_super_admin_role() {
         assert!(is_super_admin(&["super_admin".to_string()]));
     }
+
+    #[test]
+    fn is_public_path_root_is_not_public() {
+        assert!(!is_public_path("/"));
+    }
 }

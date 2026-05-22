@@ -658,4 +658,9 @@ mod tests {
     fn from_matches_authed_exact_match() {
         assert!(from_matches_authed("alice@example.com", "alice@example.com"));
     }
+
+    #[test]
+    fn extract_angle_empty_input_returns_empty() {
+        assert_eq!(extract_angle(""), "");
+    }
 }

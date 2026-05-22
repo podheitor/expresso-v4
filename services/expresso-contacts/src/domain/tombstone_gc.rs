@@ -118,4 +118,11 @@ mod tests {
     fn retention_days_in_hours_exceeds_interval() {
         assert!(DEFAULT_RETENTION_DAYS as u64 * 24 > DEFAULT_INTERVAL_HOURS);
     }
+
+    #[test]
+    fn retention_constant_type_is_i32() {
+        // Ensures DEFAULT_RETENTION_DAYS fits in the sqlx BIND type (i32).
+        let _: i32 = DEFAULT_RETENTION_DAYS;
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

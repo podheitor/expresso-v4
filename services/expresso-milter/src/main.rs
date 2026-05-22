@@ -367,4 +367,10 @@ mod tests {
         let (n, _) = parse_header_line("X-Custom-Header: value").unwrap();
         assert_eq!(n, "X-Custom-Header");
     }
+
+    #[test]
+    fn parse_header_value_with_leading_space_trimmed() {
+        let (_, v) = parse_header_line("Subject:   Leading spaces").unwrap();
+        assert_eq!(v, "Leading spaces");
+    }
 }

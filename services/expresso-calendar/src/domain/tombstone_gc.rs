@@ -126,4 +126,10 @@ mod tests {
     fn interval_hours_less_than_retention_days_in_hours() {
         assert!(DEFAULT_INTERVAL_HOURS < DEFAULT_RETENTION_DAYS as u64 * 24);
     }
+
+    #[test]
+    fn default_interval_divides_24_hours_evenly() {
+        // 6 divides evenly into 24, keeping GC aligned to day boundaries.
+        assert_eq!(24 % DEFAULT_INTERVAL_HOURS, 0);
+    }
 }

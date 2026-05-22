@@ -233,4 +233,10 @@ mod tests {
         let h = headers_with_cookie("other_cookie=value");
         assert!(extract_cookie(&h, "expresso_rt").is_none());
     }
+
+    #[test]
+    fn extract_cookie_multiple_cookies_last_one_absent() {
+        let h = headers_with_cookie("a=1; b=2; c=3");
+        assert!(extract_cookie(&h, "expresso_rt").is_none());
+    }
 }

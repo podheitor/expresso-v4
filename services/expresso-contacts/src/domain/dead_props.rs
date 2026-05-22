@@ -271,4 +271,17 @@ mod tests {
         };
         assert_eq!(p.xml_value, "  ");
     }
+
+    #[test]
+    fn dead_prop_fields_all_strings() {
+        let p = DeadProp {
+            namespace:  "urn:x".into(),
+            local_name: "prop".into(),
+            xml_value:  "val".into(),
+        };
+        // Verify all three fields are String (not &str) — compile-time guard.
+        let _: String = p.namespace;
+        let _: String = p.local_name;
+        let _: String = p.xml_value;
+    }
 }

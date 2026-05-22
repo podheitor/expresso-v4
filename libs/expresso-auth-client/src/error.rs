@@ -123,4 +123,10 @@ mod tests {
         let e = AuthError::Config("missing issuer".into());
         assert!(e.to_string().contains("missing issuer"));
     }
+
+    #[test]
+    fn kid_not_found_display_with_known_kid() {
+        let e = AuthError::KidNotFound(Some("rsa-key-2026".into()));
+        assert!(e.to_string().contains("rsa-key-2026"));
+    }
 }

@@ -491,4 +491,16 @@ END:VCALENDAR\r\n";
         };
         assert_eq!(a.email, "bob@example.com");
     }
+
+    #[test]
+    fn attendee_cn_preserved_when_set() {
+        let a = Attendee {
+            email:    "alice@example.com".into(),
+            cn:       Some("Alice Smith".into()),
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert_eq!(a.cn.as_deref(), Some("Alice Smith"));
+    }
 }

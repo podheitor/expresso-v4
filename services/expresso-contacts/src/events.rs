@@ -224,4 +224,15 @@ mod tests {
         let ev = ContactsEvent::AddressbookDeleted { tenant_id: t, addressbook_id: aid() };
         assert_eq!(ev.tenant_id(), t);
     }
+
+    #[test]
+    fn contact_upserted_serializes_kind_tag() {
+        let ev = ContactsEvent::ContactUpserted {
+            tenant_id: Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            contact_id: Uuid::nil(),
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains(r#""kind":"contact_upserted""#));
+    }
 }

@@ -353,4 +353,11 @@ mod tests {
         let u: KcUser = serde_json::from_str(json).unwrap();
         assert_eq!(u.id, "abc-123");
     }
+
+    #[test]
+    fn kc_realm_ssl_required_default_is_empty() {
+        let json = r#"{"realm":"t"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.ssl_required, "");
+    }
 }

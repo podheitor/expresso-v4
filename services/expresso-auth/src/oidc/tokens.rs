@@ -151,16 +151,6 @@ mod tests {
     }
 
     #[test]
-    fn token_response_access_token_preserved() {
-        let t = TokenResponse {
-            access_token: "my-access-token".into(), refresh_token: None, id_token: None,
-            token_type: "Bearer".into(), expires_in: 3600,
-            refresh_expires_in: None, scope: None,
-        };
-        assert_eq!(t.access_token, "my-access-token");
-    }
-
-    #[test]
     fn token_response_expires_in_preserved() {
         let t = TokenResponse {
             access_token: "tok".into(), refresh_token: None, id_token: None,
@@ -208,5 +198,26 @@ mod tests {
             refresh_expires_in: None, scope: None,
         };
         assert_eq!(t.access_token, "my-access-token");
+    }
+
+    #[test]
+    fn token_response_id_token_some_when_provided() {
+        let t = TokenResponse {
+            access_token: "at".into(), refresh_token: None,
+            id_token: Some("idt".into()),
+            token_type: "Bearer".into(), expires_in: 300,
+            refresh_expires_in: None, scope: None,
+        };
+        assert_eq!(t.id_token.as_deref(), Some("idt"));
+    }
+
+    #[test]
+    fn token_response_access_token_nonempty() {
+        let t = TokenResponse {
+            access_token: "my-access-token".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 3600,
+            refresh_expires_in: None, scope: None,
+        };
+        assert!(!t.access_token.is_empty());
     }
 }

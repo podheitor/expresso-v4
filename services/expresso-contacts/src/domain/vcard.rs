@@ -273,4 +273,11 @@ mod tests {
         let raw = "BEGIN:VCARD\r\nUID:x\r\nFN:A\r\nEND:VCARD\r\n";
         assert!(!compute_etag(raw).is_empty());
     }
+
+    #[test]
+    fn build_vcard_contains_uid_and_fn() {
+        let v = build_vcard("uid-1", "Alice Smith", Some("Smith"), Some("Alice"), None, None);
+        assert!(v.contains("UID:uid-1"));
+        assert!(v.contains("FN:Alice Smith"));
+    }
 }

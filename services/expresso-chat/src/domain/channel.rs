@@ -268,4 +268,10 @@ mod tests {
     fn member_role_admin_serializes() {
         assert_eq!(serde_json::to_string(&MemberRole::Admin).unwrap(), r#""admin""#);
     }
+
+    #[test]
+    fn channel_kind_team_deser() {
+        let k: ChannelKind = serde_json::from_str(r#""team""#).unwrap();
+        assert!(matches!(k, ChannelKind::Team));
+    }
 }

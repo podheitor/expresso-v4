@@ -462,4 +462,9 @@ mod tests {
     fn method_cancel_as_str_is_cancel() {
         assert_eq!(Method::Cancel.as_str(), "CANCEL");
     }
+
+    #[test]
+    fn method_request_as_str_is_request() {
+        assert_eq!(Method::Request.as_str(), "REQUEST");
+    }
 }

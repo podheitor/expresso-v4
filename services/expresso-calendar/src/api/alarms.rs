@@ -517,4 +517,10 @@ mod tests {
         let b: CreateAlarmBody = serde_json::from_str(r#"{"trigger_rel":"-PT15M"}"#).unwrap();
         assert_eq!(b.trigger_rel.as_deref(), Some("-PT15M"));
     }
+
+    #[test]
+    fn create_alarm_body_uid_preserved_when_set() {
+        let b: CreateAlarmBody = serde_json::from_str(r#"{"uid":"alarm-uid-42"}"#).unwrap();
+        assert_eq!(b.uid.as_deref(), Some("alarm-uid-42"));
+    }
 }

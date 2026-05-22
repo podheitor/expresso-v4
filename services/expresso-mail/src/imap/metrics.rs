@@ -164,12 +164,6 @@ mod tests {
     }
 
     #[test]
-    fn unknown_command_maps_to_other() {
-        assert_eq!(command_label("CUSTOMCMD"), "OTHER");
-        assert_eq!(command_label(""), "OTHER");
-    }
-
-    #[test]
     fn store_expunge_uid_map() {
         assert_eq!(command_label("STORE"),   "STORE");
         assert_eq!(command_label("EXPUNGE"), "EXPUNGE");
@@ -220,5 +214,15 @@ mod tests {
     fn append_command_maps_correctly() {
         assert_eq!(command_label("APPEND"), "APPEND");
         assert_eq!(command_label("append"), "APPEND");
+    }
+
+    #[test]
+    fn unknown_command_maps_to_other() {
+        assert_eq!(command_label("XXXXXXXX"), "OTHER");
+    }
+
+    #[test]
+    fn unknown_empty_command_maps_to_other() {
+        assert_eq!(command_label(""), "OTHER");
     }
 }

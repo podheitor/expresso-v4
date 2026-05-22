@@ -304,4 +304,10 @@ mod tests {
         let ev = Event::EventCancelled { tenant_id: t, event_id: Uuid::nil() };
         assert_eq!(ev.tenant_id(), t);
     }
+
+    #[test]
+    fn event_cancelled_kind_str_is_event_cancelled() {
+        let ev = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        assert_eq!(ev.kind_str(), "event_cancelled");
+    }
 }

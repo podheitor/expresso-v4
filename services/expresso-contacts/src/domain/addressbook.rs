@@ -392,4 +392,15 @@ mod tests {
         let n: NewAddressbook = serde_json::from_str(r#"{"name":"Colleagues"}"#).unwrap();
         assert!(n.description.is_none());
     }
+
+    #[test]
+    fn update_addressbook_both_fields_set() {
+        let u = UpdateAddressbook {
+            name: Some("Family".into()),
+            description: Some("Family contacts".into()),
+            is_default: None,
+        };
+        assert_eq!(u.name.as_deref(), Some("Family"));
+        assert_eq!(u.description.as_deref(), Some("Family contacts"));
+    }
 }

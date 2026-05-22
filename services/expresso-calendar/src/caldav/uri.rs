@@ -172,11 +172,6 @@ mod tests {
     }
 
     #[test]
-    fn classify_empty_path_is_unknown() {
-        assert!(matches!(classify(""), Target::Unknown));
-    }
-
-    #[test]
     fn classify_root_is_unknown() {
         assert!(matches!(classify("/"), Target::Unknown));
     }
@@ -208,6 +203,16 @@ mod tests {
 
     #[test]
     fn classify_empty_path_is_unknown() {
+        assert!(matches!(classify(""), Target::Unknown));
+    }
+
+    #[test]
+    fn percent_decode_plus_sign_unchanged() {
+        assert_eq!(percent_decode("hello+world"), "hello+world");
+    }
+
+    #[test]
+    fn classify_bare_empty_string_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }
 }

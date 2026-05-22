@@ -511,4 +511,16 @@ mod tests {
         };
         assert_eq!(n.description.as_deref(), Some("All my events"));
     }
+
+    #[test]
+    fn new_calendar_color_preserved_when_set() {
+        let n = NewCalendar {
+            name: "Work".into(),
+            description: None,
+            color: Some("#FF5733".into()),
+            timezone: None,
+            is_default: false,
+        };
+        assert_eq!(n.color.as_deref(), Some("#FF5733"));
+    }
 }

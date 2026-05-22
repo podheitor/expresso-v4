@@ -125,4 +125,10 @@ mod tests {
         let e = CoreError::Database(sqlx::Error::RowNotFound);
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn core_error_not_found_display_contains_resource_name() {
+        let e = CoreError::NotFound { resource: "calendar_event" };
+        assert!(e.to_string().contains("calendar_event"));
+    }
 }

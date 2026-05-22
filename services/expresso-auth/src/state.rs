@@ -236,6 +236,12 @@ mod tests {
     }
 
     #[test]
+    fn pending_login_expires_at_is_in_the_future_when_fresh() {
+        let p = make_pending(60);
+        assert!(p.expires_at > std::time::Instant::now());
+    }
+
+    #[test]
     fn evict_expired_removes_past_entry() {
         let mut m: HashMap<String, PendingLogin> = HashMap::new();
         let expired = PendingLogin {

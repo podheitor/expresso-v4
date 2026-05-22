@@ -191,11 +191,6 @@ mod tests {
     }
 
     #[test]
-    fn assurance_ouro_as_str_is_ouro() {
-        assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
-    }
-
-    #[test]
     fn assurance_bronze_as_str() {
         assert_eq!(GovbrAssurance::Bronze.as_str(), "bronze");
     }
@@ -207,6 +202,18 @@ mod tests {
 
     #[test]
     fn assurance_ouro_as_str_is_ouro() {
+        assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
+    }
+
+    #[test]
+    fn cpf_hash_short_on_short_hash_returns_full() {
+        let c = ctx_with(Some("abc"), None, vec![]);
+        let f = GovbrFederation::from_ctx(&c).unwrap();
+        assert_eq!(f.cpf_hash_short(), "abc");
+    }
+
+    #[test]
+    fn assurance_ouro_str_matches_lowercase() {
         assert_eq!(GovbrAssurance::Ouro.as_str(), "ouro");
     }
 }

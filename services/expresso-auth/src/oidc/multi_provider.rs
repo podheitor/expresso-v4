@@ -136,4 +136,10 @@ mod tests {
     fn realm_placeholder_contains_braces() {
         assert!(REALM_PLACEHOLDER.contains('{') && REALM_PLACEHOLDER.contains('}'));
     }
+
+    #[test]
+    fn rejects_template_with_numeric_placeholder() {
+        let r = TenantProviderCache::new("https://kc/realms/{0}".into(), Duration::from_secs(1));
+        assert!(r.is_err());
+    }
 }

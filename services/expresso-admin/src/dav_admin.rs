@@ -431,4 +431,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Cal".into(), "o@corp.com".into(), "u".into(), None, None, true, 0);
         assert!(row.is_default);
     }
+
+    #[test]
+    fn to_dav_row_description_with_value_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), Some("Team calendar".into()), None, false, 0);
+        assert_eq!(row.description, "Team calendar");
+    }
 }

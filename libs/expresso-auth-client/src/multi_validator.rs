@@ -172,4 +172,10 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "my-service").unwrap();
         assert_eq!(m.audience(), "my-service");
     }
+
+    #[test]
+    fn issuer_template_stores_placeholder_verbatim() {
+        let m = MultiRealmValidator::new("https://idp/{realm}/oidc", "svc").unwrap();
+        assert!(m.issuer_template.contains("{realm}"));
+    }
 }

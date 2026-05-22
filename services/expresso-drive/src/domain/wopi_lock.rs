@@ -358,4 +358,17 @@ mod tests {
         };
         assert_eq!(lock.locked_by, uid);
     }
+
+    #[test]
+    fn wopi_lock_expired_when_past() {
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "expired-tok".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc() - Duration::hours(2),
+            expires_at: OffsetDateTime::now_utc() - Duration::hours(1),
+        };
+        assert!(lock.is_expired());
+    }
 }

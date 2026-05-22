@@ -149,4 +149,10 @@ mod tests {
     fn internal_status_is_500() {
         assert_eq!(status(ChatError::Internal("x".into())), 500);
     }
+
+    #[test]
+    fn matrix_display_contains_message() {
+        let e = ChatError::Matrix("timeout after 5s".into());
+        assert!(format!("{e}").contains("timeout after 5s"));
+    }
 }

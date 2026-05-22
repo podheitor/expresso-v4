@@ -222,4 +222,9 @@ mod tests {
     fn strip_origin_http_with_deep_path() {
         assert_eq!(strip_origin("http://host/a/b/c/d.ics"), "/a/b/c/d.ics");
     }
+
+    #[test]
+    fn strip_origin_https_with_userinfo_stripped() {
+        assert_eq!(strip_origin("https://host/caldav/path/event.ics"), "/caldav/path/event.ics");
+    }
 }

@@ -185,12 +185,6 @@ mod tests {
     }
 
     #[test]
-    fn audit_entry_actor_roles_empty_by_default() {
-        let e = AuditEntry::new("contact.deleted");
-        assert!(e.actor_roles.is_empty());
-    }
-
-    #[test]
     fn audit_entry_tenant_id_none_by_default() {
         let e = AuditEntry::new("drive.file.deleted");
         assert!(e.tenant_id.is_none());
@@ -218,5 +212,17 @@ mod tests {
     fn audit_entry_action_is_preserved() {
         let e = AuditEntry::new("drive.file_deleted");
         assert_eq!(e.action, "drive.file_deleted");
+    }
+
+    #[test]
+    fn audit_entry_actor_roles_empty_by_default() {
+        let e = AuditEntry::new("mail.delivered");
+        assert!(e.actor_roles.is_empty());
+    }
+
+    #[test]
+    fn audit_entry_target_type_none_by_default() {
+        let e = AuditEntry::new("auth.login");
+        assert!(e.target_type.is_none());
     }
 }

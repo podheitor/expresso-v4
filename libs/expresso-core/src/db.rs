@@ -237,6 +237,13 @@ mod tests {
         p.tables_unforced.push("mail_inbox".into());
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn rls_posture_strict_false_when_tables_missing() {
+        let mut p = ok();
+        p.tables_missing.push("drive_files".into());
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

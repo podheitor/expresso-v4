@@ -310,4 +310,9 @@ mod tests {
         };
         assert!(entry.email.is_none());
     }
+
+    #[test]
+    fn validate_priv_accepts_admin_lowercase() {
+        assert_eq!(validate_priv("admin").unwrap(), "ADMIN");
+    }
 }

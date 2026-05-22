@@ -179,4 +179,10 @@ mod tests {
         let c = cfg("https://iss", "my-client", "https://cb", None, None, None);
         assert_eq!(c.client_id, "my-client");
     }
+
+    #[test]
+    fn post_logout_template_stored_when_provided() {
+        let c = cfg("i", "c", "r", None, None, Some("https://{host}/bye"));
+        assert_eq!(c.post_logout_template.as_deref(), Some("https://{host}/bye"));
+    }
 }

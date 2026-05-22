@@ -301,4 +301,9 @@ mod tests {
     fn angle_with_uppercase_domain_extracted() {
         assert_eq!(extract_angle("<user@DOMAIN.COM>"), "user@DOMAIN.COM");
     }
+
+    #[test]
+    fn max_msg_bytes_is_50_mib() {
+        assert_eq!(super::MAX_MSG_BYTES, 50 * 1024 * 1024);
+    }
 }

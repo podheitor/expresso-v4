@@ -258,4 +258,15 @@ mod tests {
         };
         assert_eq!(b.calendar, "http://cal:8002");
     }
+
+    #[test]
+    fn wopi_collabora_url_preserved() {
+        let w = Wopi {
+            secret:         "key".into(),
+            collabora_url:  "https://office.example.com".into(),
+            drive_url:      "http://drive:8004".into(),
+            token_ttl_secs: 3600,
+        };
+        assert_eq!(w.collabora_url, "https://office.example.com");
+    }
 }

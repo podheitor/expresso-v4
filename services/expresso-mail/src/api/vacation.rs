@@ -431,4 +431,9 @@ mod tests {
     fn max_vacation_subject_bytes_is_998() {
         assert_eq!(MAX_VACATION_SUBJECT_BYTES, 998);
     }
+
+    #[test]
+    fn validate_ok_vacation_succeeds() {
+        assert!(validate(&ok_vacation()).is_ok());
+    }
 }

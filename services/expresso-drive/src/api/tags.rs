@@ -1561,4 +1561,10 @@ mod tests {
         };
         assert_eq!(t.tenant_id, tid);
     }
+
+    #[test]
+    fn rename_tag_body_deserializes() {
+        let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"archive"}"#).unwrap();
+        assert_eq!(b.new_tag, "archive");
+    }
 }

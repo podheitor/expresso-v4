@@ -343,4 +343,9 @@ mod tests {
     fn room_preset_private_as_str() {
         assert_eq!(RoomPreset::PrivateChat.as_str(), "private_chat");
     }
+
+    #[test]
+    fn room_preset_trusted_private_as_str() {
+        assert_eq!(RoomPreset::TrustedPrivateChat.as_str(), "trusted_private_chat");
+    }
 }

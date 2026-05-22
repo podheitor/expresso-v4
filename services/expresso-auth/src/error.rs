@@ -119,4 +119,9 @@ mod tests {
     fn bad_request_error_is_400() {
         assert_eq!(status(RpError::BadRequest("missing param".into())), StatusCode::BAD_REQUEST);
     }
+
+    #[test]
+    fn refresh_error_is_unauthorized() {
+        assert_eq!(status(RpError::Refresh("expired".into())), StatusCode::UNAUTHORIZED);
+    }
 }

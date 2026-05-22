@@ -226,4 +226,9 @@ mod tests {
     fn build_url_path_with_multiple_segments() {
         assert_eq!(build_url("http://svc", "/v1/mail/folders"), "http://svc/v1/mail/folders");
     }
+
+    #[test]
+    fn build_url_empty_path_produces_base_only() {
+        assert_eq!(build_url("http://svc", ""), "http://svc");
+    }
 }

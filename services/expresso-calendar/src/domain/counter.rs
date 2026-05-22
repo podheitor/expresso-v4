@@ -369,4 +369,19 @@ mod tests {
         };
         assert_eq!(p.status, "pending");
     }
+
+    #[test]
+    fn counter_proposal_comment_preserved_when_set() {
+        use time::macros::datetime;
+        let p = CounterProposal {
+            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            attendee_email: "z@ex.com".into(),
+            proposed_dtstart: None, proposed_dtend: None,
+            comment: Some("Please shift by one hour".into()),
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.comment.as_deref(), Some("Please shift by one hour"));
+    }
 }

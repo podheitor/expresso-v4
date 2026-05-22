@@ -253,4 +253,16 @@ mod tests {
         let actions = evaluate(b"discard;", b"From: a@b\r\n\r\n");
         assert!(matches!(actions[0], FilterAction::Discard));
     }
+
+    #[test]
+    fn redirect_address_preserved_in_action() {
+        let script = b"redirect \"forward@example.org\";";
+        let actions = evaluate(script, MSG.as_bytes());
+        assert_eq!(actions.len(), 1);
+        if let FilterAction::Redirect { address } = &actions[0] {
+            assert_eq!(address, "forward@example.org");
+        } else {
+            panic!("expected Redirect");
+        }
+    }
 }

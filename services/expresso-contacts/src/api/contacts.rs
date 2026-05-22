@@ -529,4 +529,9 @@ mod tests {
     fn contact_cap_smaller_than_import_cap() {
         assert!(MAX_CONTACT_VCARD_BYTES < MAX_IMPORT_VCF_BYTES);
     }
+
+    #[test]
+    fn max_contact_vcard_bytes_is_nonzero() {
+        assert!(MAX_CONTACT_VCARD_BYTES > 0);
+    }
 }

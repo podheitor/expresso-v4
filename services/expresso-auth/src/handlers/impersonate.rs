@@ -191,12 +191,6 @@ mod tests {
     }
 
     #[test]
-    fn is_super_false_for_empty_roles() {
-        let ctx = ctx_with_roles(&[]);
-        assert!(!is_super(&ctx));
-    }
-
-    #[test]
     fn is_super_true_for_superadmin_mixed_case() {
         let ctx = ctx_with_roles(&["SuperAdmin"]);
         assert!(is_super(&ctx));
@@ -252,6 +246,18 @@ mod tests {
 
     #[test]
     fn is_super_false_for_empty_roles() {
+        let ctx = ctx_with_roles(&[]);
+        assert!(!is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_true_for_superadmin_with_other_roles() {
+        let ctx = ctx_with_roles(&["user", "superadmin", "tenantAdmin"]);
+        assert!(is_super(&ctx));
+    }
+
+    #[test]
+    fn is_super_false_for_no_roles_at_all() {
         let ctx = ctx_with_roles(&[]);
         assert!(!is_super(&ctx));
     }
