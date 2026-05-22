@@ -335,4 +335,17 @@ mod tests {
         let back: Contact = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back.etag, "etag42");
     }
+
+    #[test]
+    fn contact_phone_primary_present() {
+        let c = sample();
+        assert_eq!(c.phone_primary.as_deref(), Some("+55 11 9999-9999"));
+    }
+
+    #[test]
+    fn contact_family_given_name_set() {
+        let c = sample();
+        assert_eq!(c.family_name.as_deref(), Some("Smith"));
+        assert_eq!(c.given_name.as_deref(), Some("Alice"));
+    }
 }

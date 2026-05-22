@@ -76,4 +76,14 @@ mod tests {
     fn interval_hours_at_least_one() {
         assert!(DEFAULT_INTERVAL_HOURS >= 1);
     }
+
+    #[test]
+    fn retention_days_less_than_365() {
+        assert!(DEFAULT_RETENTION_DAYS < 365);
+    }
+
+    #[test]
+    fn interval_hours_is_reasonable() {
+        assert!(DEFAULT_INTERVAL_HOURS <= 24);
+    }
 }

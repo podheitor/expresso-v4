@@ -297,6 +297,21 @@ mod tests {
         let uid = Uuid::nil();
         let json = format!(r#"{{"user_id":"{uid}","role":"admin"}}"#);
         let b: AddMemberBody = serde_json::from_str(&json).unwrap();
-        assert_eq!(b.role.as_deref(), Some("admin"));
+        assert!(matches!(b.role, Some(MemberRole::Admin)));
+    }
+
+    #[test]
+    fn add_member_body_role_member() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{uid}","role":"member"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert!(matches!(b.role, Some(MemberRole::Member)));
+    }
+
+    #[test]
+    fn create_body_kind_optional() {
+        let json = r#"{"name":"general","kind":"team"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.kind.is_some());
     }
 }
