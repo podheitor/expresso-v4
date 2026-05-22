@@ -265,4 +265,21 @@ mod tests {
         };
         assert!(format!("{row:?}").contains("bbb"));
     }
+
+    #[test]
+    fn counter_row_comment_none() {
+        let row = CounterRow {
+            id: "1".into(), tenant_id: "t".into(), event_id: "e".into(),
+            event_summary: "Mtg".into(), attendee_email: "a@x.com".into(),
+            proposed_dtstart: "".into(), proposed_dtend: "".into(),
+            received_sequence: "0".into(), comment: None,
+            created_at_fmt: "2026-05-22".into(),
+        };
+        assert!(row.comment.is_none());
+    }
+
+    #[test]
+    fn fmt_opt_ts_dash_on_none() {
+        assert_eq!(fmt_opt_ts(None), "-");
+    }
 }

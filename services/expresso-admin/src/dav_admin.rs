@@ -370,4 +370,16 @@ mod tests {
         };
         assert!(f.is_default.is_none());
     }
+
+    #[test]
+    fn to_dav_row_is_default_true() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "N".into(), None, None, true, 1);
+        assert!(row.is_default);
+    }
+
+    #[test]
+    fn to_dav_row_color_defaults_empty() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "o@x.com".into(), "N".into(), None, None, false, 0);
+        assert!(row.color.is_empty());
+    }
 }

@@ -256,4 +256,21 @@ mod tests {
         let q: ListQuery = serde_json::from_str(&json).unwrap();
         assert_eq!(q.tenant_id, Some(tid));
     }
+
+    #[test]
+    fn upsert_body_no_assurance() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let b = UpsertBody { cpf_hash: "hash".into(), tenant_id: t, user_id: u, assurance: None };
+        assert!(b.assurance.is_none());
+    }
+
+    #[test]
+    fn upsert_body_user_id_preserved() {
+        let t = Uuid::new_v4();
+        let u = Uuid::new_v4();
+        let b = UpsertBody { cpf_hash: "h".into(), tenant_id: t, user_id: u, assurance: None };
+        assert_eq!(b.user_id, u);
+        assert_eq!(b.tenant_id, t);
+    }
 }

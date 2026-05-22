@@ -352,4 +352,23 @@ mod tests {
         assert_eq!(f.email, "alice@ex.com");
         assert!(f.temporary.is_some());
     }
+
+    #[test]
+    fn user_delete_form_confirms_username() {
+        let f = UserDeleteForm { confirm_username: "heitor".into() };
+        assert_eq!(f.confirm_username, "heitor");
+    }
+
+    #[test]
+    fn user_update_form_first_last_name() {
+        let f = UserUpdateForm {
+            email: None,
+            first_name: Some("Jane".into()),
+            last_name: Some("Doe".into()),
+            enabled: None,
+            password: None,
+        };
+        assert_eq!(f.first_name.as_deref(), Some("Jane"));
+        assert_eq!(f.last_name.as_deref(), Some("Doe"));
+    }
 }
