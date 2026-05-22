@@ -504,4 +504,9 @@ mod tests {
     fn parse_depth_empty_header_defaults_to_zero() {
         assert!(matches!(parse_depth(&headers_with_depth("")), Depth::Zero));
     }
+
+    #[test]
+    fn parse_depth_zero_string_is_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("0")), Depth::Zero));
+    }
 }

@@ -187,4 +187,9 @@ mod tests {
     fn strip_origin_ftp_passthrough() {
         assert_eq!(strip_origin("ftp://host/path"), "ftp://host/path");
     }
+
+    #[test]
+    fn strip_origin_https_with_trailing_slash() {
+        assert_eq!(strip_origin("https://host/caldav/u/c/"), "/caldav/u/c/");
+    }
 }

@@ -251,4 +251,14 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("comment") && s.contains("later?"));
     }
+
+    #[test]
+    fn counter_received_event_contains_attendee_email() {
+        let ev = Event::CounterReceived {
+            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
+            attendee_email: "organizer@corp.com".into(), comment: None,
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("organizer@corp.com"));
+    }
 }

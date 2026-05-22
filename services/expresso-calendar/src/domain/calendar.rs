@@ -438,4 +438,17 @@ mod tests {
         assert!(n.description.is_none());
         assert_eq!(n.color.as_deref(), Some("#336699"));
     }
+
+    #[test]
+    fn new_calendar_name_preserved() {
+        let n = NewCalendar {
+            name: "Personal".into(),
+            description: Some("My personal calendar".into()),
+            color: None,
+            timezone: None,
+            is_default: true,
+        };
+        assert_eq!(n.name, "Personal");
+        assert!(n.is_default);
+    }
 }

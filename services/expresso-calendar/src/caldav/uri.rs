@@ -175,4 +175,9 @@ mod tests {
     fn classify_empty_path_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }
+
+    #[test]
+    fn classify_root_is_unknown() {
+        assert!(matches!(classify("/"), Target::Unknown));
+    }
 }

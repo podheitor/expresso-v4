@@ -474,4 +474,10 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{"trigger_rel":"-PT15M"}"#).unwrap();
         assert_eq!(b.trigger_rel.as_deref(), Some("-PT15M"));
     }
+
+    #[test]
+    fn patch_alarm_body_description_set() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{"description":"Reminder"}"#).unwrap();
+        assert_eq!(b.description.as_deref(), Some("Reminder"));
+    }
 }

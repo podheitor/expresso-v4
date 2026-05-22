@@ -209,4 +209,14 @@ mod tests {
         };
         assert!(p.xml_value.is_empty());
     }
+
+    #[test]
+    fn dead_prop_local_name_preserved() {
+        let p = DeadProp {
+            namespace: "http://calendarserver.org/ns/".into(),
+            local_name: "getctag".into(),
+            xml_value: "42".into(),
+        };
+        assert_eq!(p.local_name, "getctag");
+    }
 }

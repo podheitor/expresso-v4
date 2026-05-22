@@ -364,4 +364,9 @@ mod tests {
         assert_eq!(s, "20260101T000000Z");
         assert_eq!(e, "20260131T235959Z");
     }
+
+    #[test]
+    fn parse_time_range_returns_none_on_missing_element() {
+        assert!(parse_time_range("<junk/>").is_none());
+    }
 }

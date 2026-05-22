@@ -251,4 +251,9 @@ mod tests {
     fn parse_token_negative_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-5")), Some(-5));
     }
+
+    #[test]
+    fn parse_token_zero_valid() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
+    }
 }

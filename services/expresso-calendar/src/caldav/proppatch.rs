@@ -345,4 +345,10 @@ mod tests {
         let p = build_patch(&props);
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn empty_props_list_yields_no_changes() {
+        let p = build_patch(&[]);
+        assert!(!patch_has_changes(&p));
+    }
 }

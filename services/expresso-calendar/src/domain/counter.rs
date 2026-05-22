@@ -272,4 +272,17 @@ mod tests {
         };
         assert!(p.attendee_email.contains("usuário"));
     }
+
+    #[test]
+    fn counter_proposal_status_preserved() {
+        let p = CounterProposal {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            attendee_email: "a@ex.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "accepted".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.status, "accepted");
+    }
 }

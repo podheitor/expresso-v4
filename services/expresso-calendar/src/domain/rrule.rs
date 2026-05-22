@@ -303,4 +303,13 @@ mod tests {
         assert_eq!(r.0, w1);
         assert_eq!(r.1, e);
     }
+
+    #[test]
+    fn single_instance_outside_window_returns_none() {
+        let s = datetime!(2026-05-10 00:00 UTC);
+        let e = datetime!(2026-05-10 02:00 UTC);
+        let w1 = datetime!(2026-05-11 00:00 UTC);
+        let w2 = datetime!(2026-05-12 00:00 UTC);
+        assert!(single_instance(s, Some(e), w1, w2).is_none());
+    }
 }

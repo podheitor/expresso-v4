@@ -91,4 +91,9 @@ mod tests {
     fn retention_days_at_least_seven() {
         assert!(DEFAULT_RETENTION_DAYS >= 7);
     }
+
+    #[test]
+    fn retention_greater_than_interval_hours() {
+        assert!(DEFAULT_RETENTION_DAYS as u64 * 24 > DEFAULT_INTERVAL_HOURS);
+    }
 }

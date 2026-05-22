@@ -1179,4 +1179,12 @@ mod tests {
         assert!(q.from.is_some());
         assert!(q.to.is_some());
     }
+
+    #[test]
+    fn event_query_from_without_to() {
+        let json = r#"{"from":"2026-06-01T00:00:00Z"}"#;
+        let q: EventQuery = serde_json::from_str(json).unwrap();
+        assert!(q.from.is_some());
+        assert!(q.to.is_none());
+    }
 }

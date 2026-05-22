@@ -244,4 +244,9 @@ mod tests {
     fn validate_priv_garbage_rejected() {
         assert!(validate_priv("owner").is_err());
     }
+
+    #[test]
+    fn validate_priv_read_accepted() {
+        assert_eq!(validate_priv("read").unwrap(), "READ");
+    }
 }
