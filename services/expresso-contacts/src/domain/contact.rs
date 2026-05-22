@@ -322,4 +322,17 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert!(v["organization"].is_null());
     }
+
+    #[test]
+    fn contact_email_primary_present() {
+        let c = sample();
+        assert_eq!(c.email_primary.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn contact_etag_preserved_in_roundtrip() {
+        let c = sample();
+        let back: Contact = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.etag, "etag42");
+    }
 }

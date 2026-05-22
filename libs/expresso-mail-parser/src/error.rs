@@ -22,4 +22,16 @@ mod tests {
         let e: ExpressmailParserError = source.into();
         assert!(matches!(e, ExpressmailParserError::Internal(_)));
     }
+
+    #[test]
+    fn display_prefix_is_internal_error() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("header fold overflow"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn debug_contains_internal_variant() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("x"));
+        assert!(format!("{e:?}").contains("Internal"));
+    }
 }

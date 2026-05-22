@@ -88,4 +88,33 @@ mod tests {
         assert_eq!(back.expires_in, orig.expires_in);
         assert_eq!(back.refresh_token, orig.refresh_token);
     }
+
+    #[test]
+    fn token_response_no_id_token_omitted_in_json() {
+        let t = TokenResponse {
+            access_token: "at".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 300,
+            refresh_expires_in: None, scope: None,
+        };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&t).unwrap()).unwrap();
+        assert!(v.get("id_token").map(|x| x.is_null()).unwrap_or(true));
+    }
+
+    #[test]
+    fn auth_code_request_grant_type_constant() {
+        let r = AuthCodeRequest {
+            grant_type: "authorization_code",
+            code: "c", redirect_uri: "http://x", client_id: "cl", code_verifier: "v",
+        };
+        assert_eq!(r.grant_type, "authorization_code");
+    }
+
+    #[test]
+    fn refresh_request_grant_type_constant() {
+        let r = RefreshRequest {
+            grant_type: "refresh_token",
+            refresh_token: "rt", client_id: "cl",
+        };
+        assert_eq!(r.grant_type, "refresh_token");
+    }
 }

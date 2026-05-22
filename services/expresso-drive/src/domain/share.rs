@@ -162,4 +162,31 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         assert!(json.contains("2026-06-22T09:00:00"));
     }
+
+    #[test]
+    fn share_debug_contains_permission() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "write".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert!(format!("{s:?}").contains("write"));
+    }
+
+    #[test]
+    fn share_different_permissions_serde() {
+        for perm in ["read", "write", "admin"] {
+            let s = Share {
+                id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+                permission: perm.into(), created_by: Uuid::nil(),
+                created_at: datetime!(2026-01-01 00:00:00 UTC),
+                expires_at: datetime!(2026-02-01 00:00:00 UTC),
+                revoked_at: None,
+            };
+            let back: Share = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+            assert_eq!(back.permission, perm);
+        }
+    }
 }

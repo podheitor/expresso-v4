@@ -22,4 +22,16 @@ mod tests {
         let e: ExpressstorageError = source.into();
         assert!(matches!(e, ExpressstorageError::Internal(_)));
     }
+
+    #[test]
+    fn display_prefix_is_internal_error() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("presign failed"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn debug_contains_internal_variant() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("x"));
+        assert!(format!("{e:?}").contains("Internal"));
+    }
 }

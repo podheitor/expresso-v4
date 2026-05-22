@@ -236,4 +236,24 @@ mod tests {
         assert_eq!(extract_size_param("<a@b>"), None);
         assert_eq!(extract_size_param("SIZE=abc"), None);
     }
+
+    #[test]
+    fn angle_empty_input() {
+        assert_eq!(extract_angle(""), "");
+    }
+
+    #[test]
+    fn angle_no_brackets_with_params() {
+        assert_eq!(extract_angle("user@example.com BODY=8BITMIME"), "user@example.com");
+    }
+
+    #[test]
+    fn size_param_case_insensitive() {
+        assert_eq!(extract_size_param("<a@b> size=1024"), Some(1024));
+    }
+
+    #[test]
+    fn size_param_zero() {
+        assert_eq!(extract_size_param("SIZE=0"), Some(0));
+    }
 }

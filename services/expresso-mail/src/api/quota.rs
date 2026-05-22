@@ -101,4 +101,19 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&q).unwrap()).unwrap();
         assert_eq!(v["used_bytes"], 0);
     }
+
+    #[test]
+    fn quota_dto_large_values() {
+        let q = QuotaDto { used_bytes: i64::MAX, quota_bytes: Some(i64::MAX) };
+        let s = serde_json::to_string(&q).unwrap();
+        assert!(s.contains(&i64::MAX.to_string()));
+    }
+
+    #[test]
+    fn quota_dto_roundtrip_preserves_quota() {
+        let q = QuotaDto { used_bytes: 512, quota_bytes: Some(2048) };
+        let back: QuotaDto = serde_json::from_str(&serde_json::to_string(&q).unwrap()).unwrap();
+        assert_eq!(back.used_bytes, 512);
+        assert_eq!(back.quota_bytes, Some(2048));
+    }
 }

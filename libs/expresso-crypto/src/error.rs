@@ -22,4 +22,17 @@ mod tests {
         let e: ExpresscryptoError = source.into();
         assert!(matches!(e, ExpresscryptoError::Internal(_)));
     }
+
+    #[test]
+    fn display_prefix_is_internal_error() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("hmac mismatch"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
+
+    #[test]
+    fn debug_contains_type_name() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("x"));
+        let d = format!("{e:?}");
+        assert!(d.contains("Internal"));
+    }
 }
