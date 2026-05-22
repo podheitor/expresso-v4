@@ -198,6 +198,13 @@ mod tests {
         p.tables_missing.push("drive_files".into());
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn strict_false_when_bypassrls_is_true() {
+        let mut p = ok();
+        p.bypassrls = true;
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

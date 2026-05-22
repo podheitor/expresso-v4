@@ -119,4 +119,10 @@ mod tests {
         let r = TenantResolver::parse("a.x:r1");
         assert!(r.resolve("unknown.host").is_none());
     }
+
+    #[test]
+    fn empty_raw_resolves_nothing() {
+        let r = TenantResolver::parse("");
+        assert!(r.resolve("any.host").is_none());
+    }
 }

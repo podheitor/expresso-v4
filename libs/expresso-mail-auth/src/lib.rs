@@ -430,4 +430,13 @@ mod tests {
         assert_eq!(r.spf, "pass");
         assert_eq!(r.dkim, "fail");
     }
+
+    #[test]
+    fn auth_results_dmarc_none_dmarc_policy_is_none() {
+        let r = AuthResults {
+            spf: "pass".into(), dkim: "pass".into(), dmarc: "none".into(),
+            dmarc_policy: None, ..Default::default()
+        };
+        assert!(r.dmarc_policy.is_none());
+    }
 }

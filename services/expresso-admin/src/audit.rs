@@ -567,4 +567,10 @@ mod tests {
         let out = csv_escape("line1\rline2");
         assert!(out.starts_with('"') && out.ends_with('"'));
     }
+
+    #[test]
+    fn plain_field_not_quoted() {
+        let out = csv_escape("simple");
+        assert!(!out.starts_with('"'));
+    }
 }

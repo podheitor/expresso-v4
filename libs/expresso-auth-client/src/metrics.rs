@@ -90,4 +90,9 @@ mod tests {
     fn result_label_forbidden_maps_missing_claim() {
         assert_eq!(result_label(&AuthError::MissingClaim("aud")), "forbidden");
     }
+
+    #[test]
+    fn result_label_missing_bearer_maps_missing_bearer() {
+        assert_eq!(result_label(&AuthError::MissingBearer), "missing_bearer");
+    }
 }

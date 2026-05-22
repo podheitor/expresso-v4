@@ -87,4 +87,11 @@ mod tests {
         let e = CoreError::NotFound { resource: "calendar_event" };
         assert!(e.to_string().contains("calendar_event"));
     }
+
+    #[test]
+    fn quota_exceeded_equal_used_limit_in_display() {
+        let e = CoreError::QuotaExceeded { used: 1024, limit: 1024 };
+        let s = e.to_string();
+        assert!(s.contains("1024"));
+    }
 }

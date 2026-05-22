@@ -422,4 +422,11 @@ mod tests {
         let s = format_ical_utc(dt).unwrap();
         assert_eq!(s, "20260424T001234Z");
     }
+
+    #[test]
+    fn format_ical_utc_midnight_has_t000000z() {
+        let dt = datetime!(2026-01-01 00:00:00 UTC);
+        let s = format_ical_utc(dt).unwrap();
+        assert!(s.ends_with("T000000Z"));
+    }
 }

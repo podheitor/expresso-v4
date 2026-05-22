@@ -115,3 +115,10 @@ fn nil_sub_uuid_is_valid() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.user_id, uuid::Uuid::nil());
 }
+
+#[test]
+fn no_tenant_id_produces_none() {
+    let r = base("c7ee7d76-2113-40bd-9f8c-a28cd6ca395f", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(ctx.tenant_id.is_none());
+}

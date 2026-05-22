@@ -243,4 +243,9 @@ mod tests {
     fn default_port_is_8000() {
         assert_eq!(default_port(), 8000);
     }
+
+    #[test]
+    fn default_s3_region_is_us_east_1() {
+        assert_eq!(default_s3_region(), "us-east-1");
+    }
 }

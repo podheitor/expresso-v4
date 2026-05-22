@@ -137,4 +137,9 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
         assert_eq!(m.issuer_for("12345"), "http://kc/realms/12345");
     }
+
+    #[test]
+    fn missing_placeholder_returns_error() {
+        assert!(MultiRealmValidator::new("http://kc/realms/fixed", "aud").is_err());
+    }
 }

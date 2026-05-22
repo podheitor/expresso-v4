@@ -316,4 +316,10 @@ mod tests {
     fn is_super_admin_mixed_case_superadmin() {
         assert!(is_super_admin(&["SuPeRaDmIn".into()]));
     }
+
+    #[test]
+    fn is_public_path_metrics_prefix() {
+        assert!(is_public_path("/metrics"));
+        assert!(is_public_path("/metrics/extra"));
+    }
 }

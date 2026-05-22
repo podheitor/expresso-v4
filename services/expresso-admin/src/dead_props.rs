@@ -159,4 +159,9 @@ mod tests {
         assert_eq!(out, s);
         assert!(!out.ends_with('…'));
     }
+
+    #[test]
+    fn preview_empty_string_unchanged() {
+        assert_eq!(preview("".into()), "");
+    }
 }

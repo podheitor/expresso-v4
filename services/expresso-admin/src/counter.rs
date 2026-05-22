@@ -303,4 +303,21 @@ mod tests {
         let ts = datetime!(2026-06-01 10:00:00 UTC);
         assert_ne!(fmt_opt_ts(Some(ts)), "-");
     }
+
+    #[test]
+    fn counter_row_comment_some_preserved() {
+        let r = CounterRow {
+            id: "id1".into(),
+            tenant_id: "t1".into(),
+            event_id: "ev1".into(),
+            event_summary: "Stand-up".into(),
+            attendee_email: "a@x.com".into(),
+            proposed_dtstart: "20260601T100000Z".into(),
+            proposed_dtend: "20260601T103000Z".into(),
+            received_sequence: "1".into(),
+            comment: Some("Prefer morning".into()),
+            created_at_fmt: "2026-06-01".into(),
+        };
+        assert_eq!(r.comment.as_deref(), Some("Prefer morning"));
+    }
 }

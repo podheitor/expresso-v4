@@ -302,4 +302,10 @@ mod tests {
         assert_eq!(c.issuer, "https://sso.example.com/realms/prod");
         assert_eq!(c.audience, "expresso-web");
     }
+
+    #[test]
+    fn oidc_config_audience_preserved() {
+        let c = OidcConfig::new("https://kc/realms/acme", "acme-app");
+        assert_eq!(c.audience, "acme-app");
+    }
 }

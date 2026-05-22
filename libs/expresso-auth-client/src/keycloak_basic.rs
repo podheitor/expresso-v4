@@ -310,4 +310,11 @@ mod tests {
     fn cache_key_empty_user_differs_from_nonempty() {
         assert_ne!(cache_key("", "pass"), cache_key("alice", "pass"));
     }
+
+    #[test]
+    fn cache_key_is_hex_string() {
+        let k = cache_key("user", "pass");
+        assert!(k.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(k.len(), 64);
+    }
 }

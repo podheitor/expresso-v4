@@ -65,4 +65,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("{msg}"));
         assert!(e.to_string().contains(&msg));
     }
+
+    #[test]
+    fn display_prefix_is_internal_error() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("oops"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }

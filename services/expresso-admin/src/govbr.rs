@@ -289,4 +289,10 @@ mod tests {
         let q = ListQuery { tenant_id: Some(tid) };
         assert_eq!(q.tenant_id, Some(tid));
     }
+
+    #[test]
+    fn list_query_tenant_id_none() {
+        let q = ListQuery { tenant_id: None };
+        assert!(q.tenant_id.is_none());
+    }
 }

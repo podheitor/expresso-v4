@@ -219,4 +219,11 @@ mod tests {
             assert!(rl.check(key).is_err(), "{key} burst+1 must be denied");
         }
     }
+
+    #[test]
+    fn burst_one_allows_only_one_request() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 1 });
+        assert!(rl.check("u").is_ok());
+        assert!(rl.check("u").is_err());
+    }
 }

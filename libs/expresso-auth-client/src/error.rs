@@ -87,4 +87,10 @@ mod tests {
         let s = AuthError::MissingBearer.to_string();
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn expired_display_not_empty() {
+        let s = AuthError::Expired.to_string();
+        assert!(!s.is_empty());
+    }
 }

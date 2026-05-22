@@ -394,4 +394,10 @@ mod tests {
         let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "owner@example.com".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.owner_email, "owner@example.com");
     }
+
+    #[test]
+    fn to_dav_row_is_default_false_by_default() {
+        let row = to_dav_row(Uuid::new_v4(), Uuid::new_v4(), "T".into(), "e@x".into(), "N".into(), None, None, false, 0);
+        assert!(!row.is_default);
+    }
 }

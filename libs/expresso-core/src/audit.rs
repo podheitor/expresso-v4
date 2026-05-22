@@ -183,4 +183,10 @@ mod tests {
         let e = AuditEntry::new("calendar.event.created");
         assert_eq!(e.action, "calendar.event.created");
     }
+
+    #[test]
+    fn audit_entry_actor_roles_empty_by_default() {
+        let e = AuditEntry::new("contact.deleted");
+        assert!(e.actor_roles.is_empty());
+    }
 }

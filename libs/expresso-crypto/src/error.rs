@@ -68,4 +68,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("{msg}"));
         assert!(e.to_string().contains(&msg));
     }
+
+    #[test]
+    fn display_starts_with_internal_error_prefix() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("oops"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }
