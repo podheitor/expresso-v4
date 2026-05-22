@@ -40,3 +40,49 @@ pub fn result_label(err: &crate::error::AuthError) -> &'static str {
         JwksFetch(_)       => "jwks_fetch",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::AuthError;
+
+    #[test]
+    fn result_label_expired() {
+        assert_eq!(result_label(&AuthError::Expired), "expired");
+    }
+
+    #[test]
+    fn result_label_missing_bearer() {
+        assert_eq!(result_label(&AuthError::MissingBearer), "missing_bearer");
+    }
+
+    #[test]
+    fn result_label_invalid_token() {
+        assert_eq!(result_label(&AuthError::InvalidToken("bad sig".into())), "invalid");
+    }
+
+    #[test]
+    fn result_label_kid_not_found() {
+        assert_eq!(result_label(&AuthError::KidNotFound(Some("k1".into()))), "unknown_key");
+    }
+
+    #[test]
+    fn result_label_malformed_claim() {
+        assert_eq!(result_label(&AuthError::MalformedClaim("exp", "nan".into())), "malformed");
+    }
+
+    #[test]
+    fn result_label_missing_claim() {
+        assert_eq!(result_label(&AuthError::MissingClaim("sub")), "forbidden");
+    }
+
+    #[test]
+    fn result_label_config() {
+        assert_eq!(result_label(&AuthError::Config("bad url".into())), "misconfigured");
+    }
+
+    #[test]
+    fn result_label_jwks_fetch() {
+        assert_eq!(result_label(&AuthError::JwksFetch("timeout".into())), "jwks_fetch");
+    }
+}

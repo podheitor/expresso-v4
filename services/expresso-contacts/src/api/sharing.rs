@@ -185,3 +185,33 @@ async fn revoke(
 
     Ok(Json(serde_json::json!({ "revoked": res.rows_affected() })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_priv_accepts_read() {
+        assert_eq!(validate_priv("read").unwrap(), "READ");
+    }
+
+    #[test]
+    fn validate_priv_accepts_write() {
+        assert_eq!(validate_priv("write").unwrap(), "WRITE");
+    }
+
+    #[test]
+    fn validate_priv_accepts_admin() {
+        assert_eq!(validate_priv(" Admin ").unwrap(), "ADMIN");
+    }
+
+    #[test]
+    fn validate_priv_rejects_unknown() {
+        assert!(validate_priv("OWNER").is_err());
+    }
+
+    #[test]
+    fn validate_priv_rejects_empty() {
+        assert!(validate_priv("").is_err());
+    }
+}

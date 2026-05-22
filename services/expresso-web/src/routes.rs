@@ -1614,3 +1614,52 @@ async fn addrbook_share_revoke(
     ).await?;
     Ok(Redirect::to(&format!("/contacts/{enc_b}/share")).into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::templates::Me;
+
+    #[test]
+    fn split_addrs_comma_separated() {
+        let v = split_addrs("a@ex.com,b@ex.com");
+        assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn split_addrs_semicolon_separated() {
+        let v = split_addrs("a@ex.com; b@ex.com");
+        assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn split_addrs_trims_whitespace() {
+        let v = split_addrs("  a@ex.com ,  b@ex.com  ");
+        assert_eq!(v, vec!["a@ex.com", "b@ex.com"]);
+    }
+
+    #[test]
+    fn split_addrs_filters_empty_segments() {
+        let v = split_addrs(",, a@ex.com ,,");
+        assert_eq!(v, vec!["a@ex.com"]);
+    }
+
+    #[test]
+    fn split_addrs_empty_string_returns_empty() {
+        assert!(split_addrs("").is_empty());
+    }
+
+    #[test]
+    fn split_addrs_single_addr() {
+        let v = split_addrs("user@mail.example");
+        assert_eq!(v, vec!["user@mail.example"]);
+    }
+
+    #[test]
+    fn ctx_of_returns_tenant_and_user() {
+        let me = Me { tenant_id: "t1".into(), user_id: "u1".into() };
+        let (t, u) = ctx_of(&me);
+        assert_eq!(t, "t1");
+        assert_eq!(u, "u1");
+    }
+}

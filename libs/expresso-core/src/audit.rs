@@ -112,3 +112,69 @@ pub fn record_async(pool: PgPool, e: AuditEntry) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn status_enum_2xx_is_success() {
+        assert_eq!(status_enum(Some(200)), "success");
+        assert_eq!(status_enum(Some(201)), "success");
+        assert_eq!(status_enum(Some(204)), "success");
+        assert_eq!(status_enum(Some(302)), "success");
+    }
+
+    #[test]
+    fn status_enum_4xx_5xx_is_failure() {
+        assert_eq!(status_enum(Some(400)), "failure");
+        assert_eq!(status_enum(Some(404)), "failure");
+        assert_eq!(status_enum(Some(500)), "failure");
+    }
+
+    #[test]
+    fn status_enum_none_is_success() {
+        assert_eq!(status_enum(None), "success");
+    }
+
+    #[test]
+    fn enrich_metadata_folds_actor_email() {
+        let mut e = AuditEntry::new("test.action");
+        e.actor_email = Some("user@example.com".into());
+        let m = enrich_metadata(&e);
+        assert_eq!(m["actor_email"], json!("user@example.com"));
+    }
+
+    #[test]
+    fn enrich_metadata_folds_actor_roles() {
+        let mut e = AuditEntry::new("test.action");
+        e.actor_roles = vec!["admin".into(), "user".into()];
+        let m = enrich_metadata(&e);
+        assert_eq!(m["actor_roles"], json!(["admin", "user"]));
+    }
+
+    #[test]
+    fn enrich_metadata_folds_status_code() {
+        let mut e = AuditEntry::new("test.action");
+        e.status_code = Some(403);
+        let m = enrich_metadata(&e);
+        assert_eq!(m["status_code"], json!(403));
+    }
+
+    #[test]
+    fn enrich_metadata_non_uuid_actor_sub_stored_as_raw() {
+        let mut e = AuditEntry::new("test.action");
+        e.actor_sub = Some("not-a-uuid".into());
+        let m = enrich_metadata(&e);
+        assert_eq!(m["actor_sub_raw"], json!("not-a-uuid"));
+    }
+
+    #[test]
+    fn enrich_metadata_uuid_actor_sub_not_stored_as_raw() {
+        let mut e = AuditEntry::new("test.action");
+        e.actor_sub = Some("00000000-0000-0000-0000-000000000001".into());
+        let m = enrich_metadata(&e);
+        assert!(m.get("actor_sub_raw").is_none());
+    }
+}

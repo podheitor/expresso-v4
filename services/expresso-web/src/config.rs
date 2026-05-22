@@ -79,3 +79,54 @@ impl Wopi {
         !self.secret.trim().is_empty()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wopi_is_enabled_with_non_empty_secret() {
+        let w = Wopi {
+            secret:        "supersecret".into(),
+            collabora_url: "http://localhost:9980".into(),
+            drive_url:     "http://drive:8004".into(),
+            token_ttl_secs: 14400,
+        };
+        assert!(w.is_enabled());
+    }
+
+    #[test]
+    fn wopi_is_disabled_with_empty_secret() {
+        let w = Wopi {
+            secret:        "".into(),
+            collabora_url: "http://localhost:9980".into(),
+            drive_url:     "http://drive:8004".into(),
+            token_ttl_secs: 14400,
+        };
+        assert!(!w.is_enabled());
+    }
+
+    #[test]
+    fn wopi_is_disabled_with_whitespace_only_secret() {
+        let w = Wopi {
+            secret:        "   ".into(),
+            collabora_url: "http://localhost:9980".into(),
+            drive_url:     "http://drive:8004".into(),
+            token_ttl_secs: 14400,
+        };
+        assert!(!w.is_enabled());
+    }
+
+    #[test]
+    fn backends_defaults_compile() {
+        // Verify all default URL strings are valid string literals (pure compile-time smoke)
+        let _b = Backends {
+            auth:     "http://localhost:8012".into(),
+            mail:     "http://localhost:8001".into(),
+            calendar: "http://localhost:8002".into(),
+            contacts: "http://localhost:8003".into(),
+            drive:    "http://localhost:8004".into(),
+        };
+        assert_eq!(_b.auth, "http://localhost:8012");
+    }
+}
