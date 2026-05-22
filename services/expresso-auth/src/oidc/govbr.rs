@@ -148,4 +148,25 @@ mod tests {
         assert!(f.assurance.is_none());
         assert_eq!(f.cpf_hash_short(), "hash");
     }
+
+    #[test]
+    fn assurance_as_str_all_variants() {
+        assert_eq!(GovbrAssurance::Bronze.as_str(), "bronze");
+        assert_eq!(GovbrAssurance::Prata.as_str(),  "prata");
+        assert_eq!(GovbrAssurance::Ouro.as_str(),   "ouro");
+    }
+
+    #[test]
+    fn assurance_from_acr_bronze() {
+        assert_eq!(GovbrAssurance::from_acr("urn:govbr:loa:bronze"), Some(GovbrAssurance::Bronze));
+        assert_eq!(GovbrAssurance::from_acr("urn:govbr:loa:ouro"),   Some(GovbrAssurance::Ouro));
+        assert_eq!(GovbrAssurance::from_acr(""),                      None);
+    }
+
+    #[test]
+    fn cpf_hash_short_truncates_at_8_chars() {
+        let c = ctx_with(Some("0123456789abcdef"), None, vec![]);
+        let f = GovbrFederation::from_ctx(&c).unwrap();
+        assert_eq!(f.cpf_hash_short(), "01234567");
+    }
 }

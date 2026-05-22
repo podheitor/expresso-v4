@@ -224,4 +224,25 @@ mod tests {
         let back: SnoozeRecord = serde_json::from_str(&s).unwrap();
         assert!(back.woken_at.is_some());
     }
+
+    #[test]
+    fn snooze_body_snooze_until_in_rfc3339() {
+        let json = r#"{"snooze_until":"2026-12-31T23:59:59Z"}"#;
+        let body: SnoozeBody = serde_json::from_str(json).unwrap();
+        let s = serde_json::to_string(&body).unwrap();
+        assert!(s.contains("2026-12-31T23:59:59"));
+    }
+
+    #[test]
+    fn snooze_record_snooze_until_in_json() {
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-07-04 00:00:00 UTC),
+            snoozed_at:   datetime!(2026-07-03 12:00:00 UTC),
+            woken_at:     None,
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains("2026-07-04T00:00:00"));
+    }
 }

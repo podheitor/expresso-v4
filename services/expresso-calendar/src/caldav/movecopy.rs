@@ -162,4 +162,19 @@ mod tests {
     fn empty_authority_root() {
         assert_eq!(strip_origin("http://host"), "/");
     }
+
+    #[test]
+    fn strip_origin_with_query_string() {
+        assert_eq!(strip_origin("https://h/caldav/u/c/x.ics?v=1"), "/caldav/u/c/x.ics?v=1");
+    }
+
+    #[test]
+    fn strip_origin_no_scheme_passes_through() {
+        assert_eq!(strip_origin("/already/path"), "/already/path");
+    }
+
+    #[test]
+    fn strip_origin_port_in_authority() {
+        assert_eq!(strip_origin("http://localhost:8080/caldav/u/c/"), "/caldav/u/c/");
+    }
 }

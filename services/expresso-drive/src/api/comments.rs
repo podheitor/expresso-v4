@@ -196,4 +196,23 @@ mod tests {
         let b: CreateCommentBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.body, "hello world");
     }
+
+    #[test]
+    fn file_comment_body_empty_string_allowed_by_serde() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":""}"#).unwrap();
+        assert_eq!(b.body, "");
+    }
+
+    #[test]
+    fn file_comment_clone_preserves_body() {
+        use time::macros::datetime;
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "test comment".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let cloned = c.clone();
+        assert_eq!(cloned.body, "test comment");
+    }
 }

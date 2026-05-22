@@ -350,4 +350,17 @@ mod tests {
         assert_eq!(b.size_bytes, Some(4096));
         assert_eq!(b.sha256.as_deref(), Some("deadbeef"));
     }
+
+    #[test]
+    fn create_version_body_roundtrip_storage_key_optional() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"storage_key":"blobs/v2"}"#).unwrap();
+        assert_eq!(b.storage_key.as_deref(), Some("blobs/v2"));
+        assert!(b.size_bytes.is_none());
+    }
+
+    #[test]
+    fn create_version_body_size_zero_allowed() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":0}"#).unwrap();
+        assert_eq!(b.size_bytes, Some(0));
+    }
 }

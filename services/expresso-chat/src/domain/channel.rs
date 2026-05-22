@@ -208,4 +208,22 @@ mod tests {
         assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
         assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
     }
+
+    #[test]
+    fn channel_kind_invalid_deser_fails() {
+        let r = serde_json::from_str::<ChannelKind>(r#""unknown_kind""#);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn member_role_admin_deser() {
+        let r: MemberRole = serde_json::from_str(r#""admin""#).unwrap();
+        assert_eq!(r, MemberRole::Admin);
+    }
+
+    #[test]
+    fn channel_kind_announcement_deser() {
+        let k: ChannelKind = serde_json::from_str(r#""announcement""#).unwrap();
+        assert_eq!(k, ChannelKind::Announcement);
+    }
 }
