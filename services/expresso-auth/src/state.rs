@@ -157,4 +157,24 @@ mod tests {
             .unwrap_or_else(|| cfg.redirect_uri.clone());
         assert_eq!(result, "https://static.example.com/callback");
     }
+
+    #[test]
+    fn evict_expired_partial_cleanup() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        m.insert("stale".into(), PendingLogin {
+            expires_at: Instant::now() - Duration::from_secs(1),
+            ..make_pending(0)
+        });
+        m.insert("fresh".into(), make_pending(9999));
+        AppState::evict_expired(&mut m);
+        assert!(!m.contains_key("stale"));
+        assert!(m.contains_key("fresh"));
+    }
+
+    #[test]
+    fn post_logout_template_replaces_host() {
+        let tmpl = "https://{host}/logout";
+        let result = tmpl.replace("{host}", "t.example.com");
+        assert_eq!(result, "https://t.example.com/logout");
+    }
 }

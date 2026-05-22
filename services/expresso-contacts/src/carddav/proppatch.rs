@@ -276,4 +276,25 @@ mod tests {
         assert_eq!(set[0].local, "my-prop");
         assert_eq!(set[0].value, "hello");
     }
+
+    #[test]
+    fn build_patch_skips_empty_value_props() {
+        let props = vec![super::Prop {
+            namespace: "DAV:".into(),
+            local: "displayname".into(),
+            value: "".into(),
+        }];
+        let p = build_patch(&props);
+        assert!(p.name.is_none());
+    }
+
+    #[test]
+    fn patch_has_changes_description_only() {
+        let p = super::UpdateAddressbook {
+            name: None,
+            description: Some("desc".into()),
+            is_default: None,
+        };
+        assert!(patch_has_changes(&p));
+    }
 }

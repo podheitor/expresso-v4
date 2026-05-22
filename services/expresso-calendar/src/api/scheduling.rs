@@ -508,4 +508,17 @@ mod tests {
         let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
         assert!(p.include_transparent);
     }
+
+    #[test]
+    fn counter_list_limit_default_50() {
+        let raw: Option<i64> = None;
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
+    }
+
+    #[test]
+    fn freebusy_params_attendees_stored_as_string() {
+        let json = r#"{"attendees":"a@ex.com,b@ex.com","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z"}"#;
+        let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
+        assert!(p.attendees.contains(','));
+    }
 }

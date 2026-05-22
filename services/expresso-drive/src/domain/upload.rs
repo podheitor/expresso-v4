@@ -181,4 +181,16 @@ mod tests {
     fn is_expired_large_positive_offset() {
         assert!(!session_with_expiry(Duration::days(7)).is_expired());
     }
+
+    #[test]
+    fn session_parent_id_none_by_default() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(s.parent_id.is_none());
+    }
+
+    #[test]
+    fn session_mime_type_none_by_default() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(s.mime_type.is_none());
+    }
 }

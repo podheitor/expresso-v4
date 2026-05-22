@@ -292,4 +292,17 @@ mod tests {
         assert!(!is_super_admin(&["admin".into(), "user".into()]));
         assert!(!is_super_admin(&[]));
     }
+
+    #[test]
+    fn is_public_path_metrics_prefix() {
+        assert!(is_public_path("/metrics"));
+        assert!(is_public_path("/metrics/prom"));
+        assert!(!is_public_path("/dashboard"));
+    }
+
+    #[test]
+    fn is_super_admin_superadmin_no_underscore() {
+        assert!(is_super_admin(&["superadmin".into()]));
+        assert!(is_super_admin(&["SUPERADMIN".into()]));
+    }
 }
