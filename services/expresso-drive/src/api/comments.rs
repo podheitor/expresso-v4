@@ -159,3 +159,41 @@ async fn delete_comment(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn file_comment_serde_roundtrip() {
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "Great work!".into(),
+            created_at: datetime!(2026-05-22 09:00:00 UTC),
+            updated_at: datetime!(2026-05-22 09:01:00 UTC),
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        let back: FileComment = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.body, "Great work!");
+    }
+
+    #[test]
+    fn file_comment_timestamps_in_rfc3339() {
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "note".into(),
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+            updated_at: datetime!(2026-05-22 08:00:00 UTC),
+        };
+        let s = serde_json::to_string(&c).unwrap();
+        assert!(s.contains("2026-05-22T08:00:00"));
+    }
+
+    #[test]
+    fn create_comment_body_deserializes() {
+        let json = r#"{"body":"hello world"}"#;
+        let b: CreateCommentBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.body, "hello world");
+    }
+}

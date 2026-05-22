@@ -134,3 +134,42 @@ impl<'a> VersionRepo<'a> {
         Ok(row)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn file_version_serde_roundtrip() {
+        let v = FileVersion {
+            id:          Uuid::nil(),
+            file_id:     Uuid::nil(),
+            tenant_id:   Uuid::nil(),
+            version_no:  3,
+            storage_key: "blobs/abc".into(),
+            size_bytes:  4096,
+            sha256:      Some("abcdef".into()),
+            mime_type:   Some("application/pdf".into()),
+            created_by:  Uuid::nil(),
+            created_at:  datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let s = serde_json::to_string(&v).unwrap();
+        let back: FileVersion = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.version_no, 3);
+        assert_eq!(back.size_bytes, 4096);
+        assert_eq!(back.sha256.as_deref(), Some("abcdef"));
+    }
+
+    #[test]
+    fn file_version_created_at_rfc3339() {
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "k".into(), size_bytes: 0,
+            sha256: None, mime_type: None, created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        let s = serde_json::to_string(&v).unwrap();
+        assert!(s.contains("2026-01-01T00:00:00"));
+    }
+}

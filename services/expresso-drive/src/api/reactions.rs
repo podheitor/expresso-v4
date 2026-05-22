@@ -124,3 +124,29 @@ async fn remove_reaction(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn comment_reaction_serde_roundtrip() {
+        let r = CommentReaction {
+            id: Uuid::nil(), comment_id: Uuid::nil(), file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            emoji: "👍".into(),
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        let back: CommentReaction = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.emoji, "👍");
+    }
+
+    #[test]
+    fn reaction_body_deserializes() {
+        let json = r#"{"emoji":"❤️"}"#;
+        let b: ReactionBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.emoji, "❤️");
+    }
+}
