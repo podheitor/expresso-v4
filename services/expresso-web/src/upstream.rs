@@ -147,3 +147,33 @@ pub async fn put_body(
     if let Some((t, u)) = ctx { req = inject_ctx(req, t, u); }
     Ok(req.send().await?.status().as_u16())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_url_joins_base_and_path() {
+        assert_eq!(build_url("https://api.example.com", "/v1/messages"), "https://api.example.com/v1/messages");
+    }
+
+    #[test]
+    fn build_url_trims_trailing_slash_from_base() {
+        assert_eq!(build_url("https://api.example.com/", "/v1/users"), "https://api.example.com/v1/users");
+    }
+
+    #[test]
+    fn build_url_multiple_trailing_slashes_trimmed() {
+        assert_eq!(build_url("https://svc.internal///", "/health"), "https://svc.internal/health");
+    }
+
+    #[test]
+    fn build_url_empty_path() {
+        assert_eq!(build_url("https://svc.internal", ""), "https://svc.internal");
+    }
+
+    #[test]
+    fn build_url_base_without_trailing_slash() {
+        assert_eq!(build_url("http://localhost:8080", "/api"), "http://localhost:8080/api");
+    }
+}

@@ -453,3 +453,45 @@ fn not_found() -> Response {
         .body(Body::from("not found"))
         .unwrap()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn headers_with_depth(val: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("depth", HeaderValue::from_str(val).unwrap());
+        h
+    }
+
+    #[test]
+    fn parse_depth_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("0")), Depth::Zero));
+    }
+
+    #[test]
+    fn parse_depth_one() {
+        assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
+    }
+
+    #[test]
+    fn parse_depth_infinity() {
+        assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
+    }
+
+    #[test]
+    fn parse_depth_infinity_case_insensitive() {
+        assert!(matches!(parse_depth(&headers_with_depth("Infinity")), Depth::Infinity));
+    }
+
+    #[test]
+    fn parse_depth_missing_defaults_to_zero() {
+        assert!(matches!(parse_depth(&HeaderMap::new()), Depth::Zero));
+    }
+
+    #[test]
+    fn parse_depth_unknown_value_defaults_to_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("2")), Depth::Zero));
+    }
+}
