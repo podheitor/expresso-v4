@@ -215,4 +215,24 @@ mod tests {
         let cloned = c.clone();
         assert_eq!(cloned.body, "test comment");
     }
+
+    #[test]
+    fn file_comment_user_id_preserved() {
+        use time::macros::datetime;
+        use uuid::Uuid;
+        let uid = Uuid::new_v4();
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: uid, body: "x".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(c.user_id, uid);
+    }
+
+    #[test]
+    fn create_comment_body_unicode() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":"Ótimo trabalho 🎉"}"#).unwrap();
+        assert!(b.body.contains("Ótimo"));
+    }
 }

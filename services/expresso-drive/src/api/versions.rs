@@ -363,4 +363,19 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":0}"#).unwrap();
         assert_eq!(b.size_bytes, Some(0));
     }
+
+    #[test]
+    fn create_version_body_all_absent() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.size_bytes.is_none());
+        assert!(b.sha256.is_none());
+        assert!(b.storage_key.is_none());
+    }
+
+    #[test]
+    fn create_version_body_sha256_optional() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":100}"#).unwrap();
+        assert_eq!(b.size_bytes, Some(100));
+        assert!(b.sha256.is_none());
+    }
 }

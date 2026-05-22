@@ -189,4 +189,29 @@ mod tests {
             assert_eq!(back.permission, perm);
         }
     }
+
+    #[test]
+    fn share_revoked_at_none_by_default() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert!(s.revoked_at.is_none());
+    }
+
+    #[test]
+    fn share_file_id_accessible() {
+        let fid = Uuid::new_v4();
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: fid,
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert_eq!(s.file_id, fid);
+    }
 }

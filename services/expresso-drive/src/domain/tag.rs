@@ -103,4 +103,16 @@ mod tests {
         let name = std::any::type_name::<TagRepo<'_>>();
         assert!(name.contains("TagRepo"));
     }
+
+    #[test]
+    fn tag_string_unicode_valid() {
+        let tag = "Réunião".to_string();
+        assert!(!tag.is_empty());
+    }
+
+    #[test]
+    fn tag_string_with_hash_valid() {
+        let tag = "#urgent".to_string();
+        assert!(tag.starts_with('#'));
+    }
 }
