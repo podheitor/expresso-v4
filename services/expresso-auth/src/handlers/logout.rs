@@ -155,4 +155,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"abc.def.ghi"}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("abc.def.ghi"));
     }
+
+    #[test]
+    fn logout_query_null_hint_is_none() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":null}"#).unwrap();
+        assert!(q.id_token_hint.is_none());
+    }
 }

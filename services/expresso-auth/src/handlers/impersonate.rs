@@ -213,4 +213,10 @@ mod tests {
         let ctx = ctx_with_roles(&["not_superadmin", "SuperAdmin"]);
         assert!(is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_true_for_superadmin_lowercase() {
+        let ctx = ctx_with_roles(&["superadmin"]);
+        assert!(is_super(&ctx));
+    }
 }

@@ -137,4 +137,10 @@ mod tests {
         let c = cfg("i", "cli", "https://app/callback", None, None, None);
         assert_eq!(c.redirect_uri, "https://app/callback");
     }
+
+    #[test]
+    fn redirect_uri_template_none_when_omitted() {
+        let c = cfg("i", "cli", "https://app/callback", None, None, None);
+        assert!(c.redirect_uri_template.is_none());
+    }
 }

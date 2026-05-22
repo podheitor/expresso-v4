@@ -136,4 +136,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/drive/files/abc/edit"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/drive/files/abc/edit"));
     }
+
+    #[test]
+    fn login_query_null_redirect_uri_is_none() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":null}"#).unwrap();
+        assert!(q.redirect_uri.is_none());
+    }
 }

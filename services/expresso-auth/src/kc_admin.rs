@@ -247,4 +247,18 @@ mod tests {
         };
         assert!(!cfg.has_exchange_client());
     }
+
+    #[test]
+    fn kc_admin_config_base_url_preserved() {
+        let c = KcAdminConfig {
+            base_url: "http://keycloak:8080".into(),
+            realm: "expresso".into(),
+            admin_user: "admin".into(),
+            admin_pass: "pw".into(),
+            exchange_client_id: None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.base_url, "http://keycloak:8080");
+        assert_eq!(c.realm, "expresso");
+    }
 }

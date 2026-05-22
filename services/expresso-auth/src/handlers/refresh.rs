@@ -191,4 +191,10 @@ mod tests {
         let h = headers_with_cookie("token=abc=def");
         assert_eq!(extract_cookie(&h, "token"), Some("abc".into()));
     }
+
+    #[test]
+    fn missing_cookie_name_returns_none() {
+        let h = headers_with_cookie("other=val");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), None);
+    }
 }

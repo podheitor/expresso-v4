@@ -94,4 +94,10 @@ mod tests {
         let r = TenantProviderCache::new("https://auth.svc/realms/{realm}".into(), Duration::from_secs(60));
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn rejects_template_without_realm_placeholder() {
+        let r = TenantProviderCache::new("https://auth.svc/realms/fixed".into(), Duration::from_secs(60));
+        assert!(r.is_err());
+    }
 }

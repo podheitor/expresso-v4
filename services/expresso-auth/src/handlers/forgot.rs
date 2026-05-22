@@ -128,4 +128,12 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert!(r.email.contains("usuário"));
     }
+
+    #[test]
+    fn forgot_req_long_email_stored() {
+        let email = format!("{}@example.com", "a".repeat(60));
+        let json = format!(r#"{{"email":"{email}"}}"#);
+        let r: ForgotReq = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.email, email);
+    }
 }

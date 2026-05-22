@@ -87,4 +87,11 @@ mod tests {
         assert!(!c.contains('+'), "must be URL-safe base64");
         assert!(!c.contains('/'), "must be URL-safe base64");
     }
+
+    #[test]
+    fn same_input_produces_same_challenge() {
+        let a = challenge_s256("fixed-verifier");
+        let b = challenge_s256("fixed-verifier");
+        assert_eq!(a, b);
+    }
 }

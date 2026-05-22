@@ -139,4 +139,14 @@ mod tests {
         cloned.access_token = "other".into();
         assert_eq!(orig.access_token, "tok");
     }
+
+    #[test]
+    fn token_response_refresh_expires_in_none_by_default() {
+        let t = TokenResponse {
+            access_token: "at".into(), refresh_token: None, id_token: None,
+            token_type: "Bearer".into(), expires_in: 300,
+            refresh_expires_in: None, scope: None,
+        };
+        assert!(t.refresh_expires_in.is_none());
+    }
 }

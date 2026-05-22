@@ -83,4 +83,10 @@ mod tests {
     fn bad_request_static_str_is_400() {
         assert_eq!(status(RpError::BadRequest("invalid_param")), StatusCode::BAD_REQUEST);
     }
+
+    #[test]
+    fn config_error_message_preserved() {
+        let e = RpError::Config("missing_client_secret".into());
+        assert!(e.to_string().contains("missing_client_secret"));
+    }
 }

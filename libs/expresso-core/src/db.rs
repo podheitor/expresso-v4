@@ -190,6 +190,14 @@ mod tests {
         p.tables_missing.push("mail_snooze".into());
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn strict_false_when_both_unforced_and_missing() {
+        let mut p = ok();
+        p.tables_unforced.push("calendar_events".into());
+        p.tables_missing.push("drive_files".into());
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

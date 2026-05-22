@@ -183,4 +183,11 @@ mod tests {
         assert!(!rl.check(a));
         assert!(rl.check(b));
     }
+
+    #[test]
+    fn limit_zero_blocks_immediately() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 0);
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1));
+        assert!(!rl.check(ip));
+    }
 }

@@ -183,4 +183,13 @@ mod tests {
         let p = make_pending(9999);
         assert!(p.expires_at > std::time::Instant::now());
     }
+
+    #[test]
+    fn evict_expired_removes_nothing_when_all_fresh() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        m.insert("a".into(), make_pending(9999));
+        m.insert("b".into(), make_pending(9999));
+        AppState::evict_expired(&mut m);
+        assert_eq!(m.len(), 2);
+    }
 }

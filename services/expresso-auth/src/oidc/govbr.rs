@@ -174,4 +174,9 @@ mod tests {
     fn assurance_prata_from_acr() {
         assert_eq!(GovbrAssurance::from_acr("urn:govbr:loa:prata"), Some(GovbrAssurance::Prata));
     }
+
+    #[test]
+    fn assurance_unknown_acr_returns_none() {
+        assert!(GovbrAssurance::from_acr("urn:govbr:loa:unknown").is_none());
+    }
 }

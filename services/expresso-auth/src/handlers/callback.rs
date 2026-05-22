@@ -258,4 +258,9 @@ mod tests {
     fn accepts_root_slash() {
         assert!(is_safe_local_redirect("/"));
     }
+
+    #[test]
+    fn rejects_protocol_relative_url() {
+        assert!(!is_safe_local_redirect("//evil.com/path"));
+    }
 }
