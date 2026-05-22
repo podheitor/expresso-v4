@@ -89,3 +89,52 @@ pub async fn page(
         Err(e)   => (StatusCode::INTERNAL_SERVER_ERROR, format!("template: {e}")).into_response(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn fmt_ts_formats_rfc3339() {
+        let ts = datetime!(2026-05-22 09:15:00 UTC);
+        let s = fmt_ts(ts);
+        assert!(s.starts_with("2026-05-22T09:15:00"));
+    }
+
+    #[test]
+    fn preview_short_string_unchanged() {
+        let s = "hello world".to_string();
+        assert_eq!(preview(s.clone()), s);
+    }
+
+    #[test]
+    fn preview_exactly_120_chars_unchanged() {
+        let s = "a".repeat(120);
+        let out = preview(s.clone());
+        assert_eq!(out, s);
+        assert!(!out.contains('…'));
+    }
+
+    #[test]
+    fn preview_over_120_chars_truncated() {
+        let s = "x".repeat(200);
+        let out = preview(s);
+        // 120 chars + '…'
+        assert!(out.ends_with('…'));
+        let chars: Vec<char> = out.chars().collect();
+        assert_eq!(chars.len(), 121); // 120 'x' + '…'
+    }
+
+    #[test]
+    fn preview_trims_leading_whitespace() {
+        let s = "   trimmed".to_string();
+        // trim() applied before take(120)
+        assert_eq!(preview(s), "trimmed");
+    }
+
+    #[test]
+    fn preview_empty_string() {
+        assert_eq!(preview(String::new()), "");
+    }
+}

@@ -220,3 +220,61 @@ async fn store_draft(
     tx.commit().await?;
     Ok(msg_id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(from: &str, to: Option<Vec<&str>>, subject: Option<&str>, body_text: Option<&str>) -> DraftRequest {
+        DraftRequest {
+            from:      from.into(),
+            to:        to.map(|v| v.iter().map(|s| s.to_string()).collect()),
+            cc:        None,
+            bcc:       None,
+            subject:   subject.map(|s| s.into()),
+            body_text: body_text.map(|s| s.into()),
+            body_html: None,
+        }
+    }
+
+    #[test]
+    fn build_raw_minimal_produces_bytes() {
+        let r = req("user@example.com", None, Some("Test"), Some("hello"));
+        let bytes = build_raw(&r).expect("build_raw must succeed for valid addr");
+        assert!(!bytes.is_empty());
+    }
+
+    #[test]
+    fn build_raw_invalid_from_returns_error() {
+        let r = req("not-an-email", None, None, None);
+        assert!(build_raw(&r).is_err());
+    }
+
+    #[test]
+    fn build_raw_with_recipients_succeeds() {
+        let r = req("a@example.com", Some(vec!["b@example.com", "c@example.com"]), None, None);
+        assert!(build_raw(&r).is_ok());
+    }
+
+    #[test]
+    fn build_raw_invalid_to_returns_error() {
+        let mut r = req("a@example.com", None, None, None);
+        r.to = Some(vec!["bad-address".into()]);
+        assert!(build_raw(&r).is_err());
+    }
+
+    #[test]
+    fn build_raw_no_subject_defaults() {
+        // subject = None → "(no subject)" used internally — must not error
+        let r = req("a@example.com", None, None, Some("body"));
+        assert!(build_raw(&r).is_ok());
+    }
+
+    #[test]
+    fn build_raw_output_contains_from_header() {
+        let r = req("sender@example.com", None, Some("Subj"), Some("body"));
+        let bytes = build_raw(&r).unwrap();
+        let s = String::from_utf8_lossy(&bytes);
+        assert!(s.contains("sender@example.com"));
+    }
+}
