@@ -256,4 +256,14 @@ mod tests {
     fn size_param_zero() {
         assert_eq!(extract_size_param("SIZE=0"), Some(0));
     }
+
+    #[test]
+    fn angle_nested_brackets_outer_stripped() {
+        assert_eq!(extract_angle("<<a@b>>"), "<a@b>");
+    }
+
+    #[test]
+    fn size_param_large_value() {
+        assert_eq!(extract_size_param("SIZE=52428800"), Some(52_428_800));
+    }
 }

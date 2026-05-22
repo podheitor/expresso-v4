@@ -758,4 +758,18 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert_eq!(v["size_bytes"], 0);
     }
+
+    #[test]
+    fn drive_file_locked_by_none_is_null() {
+        let f = sample_file();
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert!(v["locked_by"].is_null());
+    }
+
+    #[test]
+    fn drive_file_parent_id_none_is_null() {
+        let f = sample_file();
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
+        assert!(v["parent_id"].is_null());
+    }
 }
