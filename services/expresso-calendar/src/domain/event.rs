@@ -1187,4 +1187,11 @@ mod tests {
         assert!(q.from.is_some());
         assert!(q.to.is_none());
     }
+
+    #[test]
+    fn event_query_empty_is_all_none() {
+        let q: EventQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.from.is_none());
+        assert!(q.to.is_none());
+    }
 }

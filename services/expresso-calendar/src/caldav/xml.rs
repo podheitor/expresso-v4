@@ -369,4 +369,9 @@ mod tests {
     fn parse_time_range_returns_none_on_missing_element() {
         assert!(parse_time_range("<junk/>").is_none());
     }
+
+    #[test]
+    fn parse_time_range_returns_none_on_empty_string() {
+        assert!(parse_time_range("").is_none());
+    }
 }

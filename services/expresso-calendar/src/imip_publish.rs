@@ -253,4 +253,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"], "CANCEL");
     }
+
+    #[test]
+    fn envelope_invite_has_uid() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(v["invite"]["uid"].is_string());
+    }
 }

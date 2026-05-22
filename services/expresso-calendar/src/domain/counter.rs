@@ -285,4 +285,18 @@ mod tests {
         };
         assert_eq!(p.status, "accepted");
     }
+
+    #[test]
+    fn counter_proposal_comment_none_by_default() {
+        use time::macros::datetime;
+        let p = CounterProposal {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            attendee_email: "a@x.com".into(), organizer_email: "o@x.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-06-01 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert!(p.comment.is_none());
+    }
 }

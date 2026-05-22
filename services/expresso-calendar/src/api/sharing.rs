@@ -249,4 +249,9 @@ mod tests {
     fn validate_priv_read_accepted() {
         assert_eq!(validate_priv("read").unwrap(), "READ");
     }
+
+    #[test]
+    fn validate_priv_write_normalised_uppercase() {
+        assert_eq!(validate_priv("write").unwrap(), "WRITE");
+    }
 }

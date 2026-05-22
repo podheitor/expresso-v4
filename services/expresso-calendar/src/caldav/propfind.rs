@@ -509,4 +509,9 @@ mod tests {
     fn parse_depth_zero_string_is_zero() {
         assert!(matches!(parse_depth(&headers_with_depth("0")), Depth::Zero));
     }
+
+    #[test]
+    fn parse_depth_one_string_is_one() {
+        assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
+    }
 }

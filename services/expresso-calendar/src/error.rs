@@ -120,4 +120,9 @@ mod tests {
     fn alarm_not_found_is_404() {
         assert_eq!(status(CalendarError::AlarmNotFound(Uuid::new_v4())), 404);
     }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(CalendarError::Forbidden), 403);
+    }
 }

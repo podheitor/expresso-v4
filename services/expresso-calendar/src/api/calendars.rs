@@ -279,4 +279,10 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"year"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("year"));
     }
+
+    #[test]
+    fn event_density_query_bucket_none_when_absent() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.bucket.is_none());
+    }
 }

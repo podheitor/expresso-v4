@@ -451,4 +451,14 @@ mod tests {
         assert_eq!(n.name, "Personal");
         assert!(n.is_default);
     }
+
+    #[test]
+    fn new_calendar_color_none_by_default() {
+        let n = NewCalendar {
+            name: "Work".into(),
+            description: None,
+            color: None, timezone: None, is_default: false,
+        };
+        assert!(n.color.is_none());
+    }
 }

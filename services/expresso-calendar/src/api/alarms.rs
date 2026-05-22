@@ -480,4 +480,11 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{"description":"Reminder"}"#).unwrap();
         assert_eq!(b.description.as_deref(), Some("Reminder"));
     }
+
+    #[test]
+    fn patch_alarm_body_all_none_when_empty() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.action.is_none());
+        assert!(b.description.is_none());
+    }
 }

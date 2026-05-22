@@ -219,4 +219,14 @@ mod tests {
         };
         assert_eq!(p.local_name, "getctag");
     }
+
+    #[test]
+    fn dead_prop_namespace_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value: "My Calendar".into(),
+        };
+        assert_eq!(p.namespace, "DAV:");
+    }
 }

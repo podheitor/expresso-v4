@@ -256,4 +256,9 @@ mod tests {
     fn parse_token_zero_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}0")), Some(0));
     }
+
+    #[test]
+    fn parse_token_missing_prefix_returns_none() {
+        assert_eq!(parse_token_value("ctag:100"), None);
+    }
 }

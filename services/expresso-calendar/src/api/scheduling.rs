@@ -533,4 +533,10 @@ mod tests {
         let raw: Option<i64> = Some(0);
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
     }
+
+    #[test]
+    fn counter_limit_none_defaults_to_50() {
+        let raw: Option<i64> = None;
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 50);
+    }
 }

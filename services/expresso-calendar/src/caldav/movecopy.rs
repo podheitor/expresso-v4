@@ -192,4 +192,9 @@ mod tests {
     fn strip_origin_https_with_trailing_slash() {
         assert_eq!(strip_origin("https://host/caldav/u/c/"), "/caldav/u/c/");
     }
+
+    #[test]
+    fn strip_origin_http_strips_host() {
+        assert_eq!(strip_origin("http://example.com/some/path"), "/some/path");
+    }
 }

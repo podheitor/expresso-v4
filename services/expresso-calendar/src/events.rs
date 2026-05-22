@@ -261,4 +261,10 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains("organizer@corp.com"));
     }
+
+    #[test]
+    fn event_created_kind_str_is_event_created() {
+        let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        assert_eq!(ev.kind_str(), "event_created");
+    }
 }

@@ -180,4 +180,9 @@ mod tests {
     fn classify_root_is_unknown() {
         assert!(matches!(classify("/"), Target::Unknown));
     }
+
+    #[test]
+    fn classify_no_leading_slash_is_unknown() {
+        assert!(matches!(classify("caldav/user/cal"), Target::Unknown));
+    }
 }

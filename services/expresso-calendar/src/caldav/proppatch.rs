@@ -351,4 +351,11 @@ mod tests {
         let p = build_patch(&[]);
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_has_changes_true_when_name_set() {
+        use super::UpdateCalendar;
+        let p = UpdateCalendar { name: Some("New Name".into()), description: None, color: None, timezone: None };
+        assert!(patch_has_changes(&p));
+    }
 }
