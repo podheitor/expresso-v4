@@ -274,3 +274,50 @@ async fn resolve_addressbook(
     .await?;
     Ok(id)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gal_entry_directory_tag_in_json() {
+        let e = GalEntry::Directory {
+            user_id:      Uuid::nil(),
+            email:        "user@example.com".into(),
+            display_name: "Alice".into(),
+            given_name:   Some("Alice".into()),
+            family_name:  None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains(r#""source":"directory""#));
+        assert!(s.contains("user@example.com"));
+    }
+
+    #[test]
+    fn gal_entry_contact_tag_in_json() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          Some("c@example.com".into()),
+            full_name:      Some("Bob".into()),
+            organization:   None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains(r#""source":"contact""#));
+    }
+
+    #[test]
+    fn search_response_empty_entries() {
+        let r = SearchResponse { entries: vec![] };
+        let s = serde_json::to_string(&r).unwrap();
+        assert!(s.contains(r#""entries":[]"#));
+    }
+
+    #[test]
+    fn search_query_limit_defaults_to_none() {
+        let json = r#"{"q":"alice"}"#;
+        let q: SearchQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.q, "alice");
+        assert!(q.limit.is_none());
+    }
+}

@@ -1439,3 +1439,46 @@ async fn union_files_by_tags(
 
     Ok(Json(UnionResult { tags, file_ids, file_count }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use time::macros::datetime;
+
+    #[test]
+    fn file_tag_serde_roundtrip() {
+        let t = FileTag {
+            id:         Uuid::nil(),
+            file_id:    Uuid::nil(),
+            tenant_id:  Uuid::nil(),
+            tag:        "important".into(),
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-05-22 08:00:00 UTC),
+        };
+        let s = serde_json::to_string(&t).unwrap();
+        let back: FileTag = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.tag, "important");
+    }
+
+    #[test]
+    fn add_tag_body_deserializes() {
+        let json = r#"{"tag":"invoice"}"#;
+        let b: AddTagBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.tag, "invoice");
+    }
+
+    #[test]
+    fn bulk_tags_body_deserializes() {
+        let json = r#"{"tags":["a","b","c"]}"#;
+        let b: BulkTagsBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.tags.len(), 3);
+        assert_eq!(b.tags[0], "a");
+    }
+
+    #[test]
+    fn bulk_tags_body_empty() {
+        let json = r#"{"tags":[]}"#;
+        let b: BulkTagsBody = serde_json::from_str(json).unwrap();
+        assert!(b.tags.is_empty());
+    }
+}
