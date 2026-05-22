@@ -167,4 +167,10 @@ mod tests {
         let c = cfg("iss", "cid", "https://cb", None, None, None);
         assert!(c.issuer_template.is_none());
     }
+
+    #[test]
+    fn issuer_template_some_when_provided() {
+        let c = cfg("iss", "cid", "https://cb", Some("http://kc/{realm}"), None, None);
+        assert!(c.issuer_template.is_some());
+    }
 }

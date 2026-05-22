@@ -141,4 +141,10 @@ mod tests {
     fn forbidden_status_is_403() {
         assert_eq!(status(CalendarError::Forbidden), 403);
     }
+
+    #[test]
+    fn alarm_not_found_status_is_404() {
+        use uuid::Uuid;
+        assert_eq!(status(CalendarError::AlarmNotFound(Uuid::nil())), 404);
+    }
 }

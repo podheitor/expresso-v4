@@ -489,4 +489,9 @@ mod tests {
     fn max_filename_bytes_is_255() {
         assert_eq!(MAX_FILENAME_BYTES, 255);
     }
+
+    #[test]
+    fn max_mime_bytes_is_255() {
+        assert_eq!(MAX_MIME_BYTES, 255);
+    }
 }

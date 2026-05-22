@@ -216,4 +216,9 @@ mod tests {
     fn build_url_root_path_produces_base_with_slash() {
         assert_eq!(build_url("http://svc", "/"), "http://svc/");
     }
+
+    #[test]
+    fn build_url_api_path_joins_correctly() {
+        assert_eq!(build_url("http://svc", "/api/v1"), "http://svc/api/v1");
+    }
 }

@@ -285,4 +285,11 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["method"].as_str(), Some("REQUEST"));
     }
+
+    #[test]
+    fn envelope_no_attendees_returns_none() {
+        let ical_no_att = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:uid-2@x\r\nSUMMARY:Solo\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ev = sample_event(ical_no_att);
+        assert!(build_envelope_bytes(&ev, "REQUEST").unwrap().is_none());
+    }
 }

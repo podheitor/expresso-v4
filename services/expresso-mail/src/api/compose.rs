@@ -1044,4 +1044,9 @@ mod tests {
         r.ics = "x".repeat(MAX_ICS_BYTES);
         assert!(validate_itip_request(&r).is_ok());
     }
+
+    #[test]
+    fn max_ics_bytes_is_256k() {
+        assert_eq!(MAX_ICS_BYTES, 256 * 1024);
+    }
 }

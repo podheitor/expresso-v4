@@ -421,4 +421,9 @@ mod tests {
         };
         assert!(validate(&v).is_err());
     }
+
+    #[test]
+    fn max_vacation_body_bytes_is_8k() {
+        assert_eq!(MAX_VACATION_BODY_BYTES, 8 * 1024);
+    }
 }

@@ -407,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn create_version_body_sha256_preserved() {
+    fn create_version_body_sha256_short_value_preserved() {
         let b: CreateVersionBody = serde_json::from_str(r#"{"sha256":"abc123"}"#).unwrap();
         assert_eq!(b.sha256.as_deref(), Some("abc123"));
     }
@@ -416,5 +416,11 @@ mod tests {
     fn create_version_body_all_none_on_empty_object() {
         let b: CreateVersionBody = serde_json::from_str(r#"{}"#).unwrap();
         assert!(b.size_bytes.is_none() && b.sha256.is_none() && b.storage_key.is_none());
+    }
+
+    #[test]
+    fn create_version_body_size_bytes_preserved() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":512}"#).unwrap();
+        assert_eq!(b.size_bytes, Some(512));
     }
 }

@@ -557,4 +557,10 @@ mod tests {
         let raw: Option<i64> = Some(999);
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
     }
+
+    #[test]
+    fn counter_limit_negative_clamped_to_one() {
+        let raw: Option<i64> = Some(-5);
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
+    }
 }

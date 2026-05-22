@@ -161,8 +161,14 @@ mod tests {
     }
 
     #[test]
-    fn quota_dto_used_bytes_preserved() {
+    fn quota_dto_used_bytes_without_quota_preserved() {
         let q = QuotaDto { used_bytes: 512_000, quota_bytes: None };
         assert_eq!(q.used_bytes, 512_000);
+    }
+
+    #[test]
+    fn quota_dto_quota_bytes_none_by_default() {
+        let q = QuotaDto { used_bytes: 0, quota_bytes: None };
+        assert!(q.quota_bytes.is_none());
     }
 }

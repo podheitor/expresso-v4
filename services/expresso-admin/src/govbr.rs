@@ -328,4 +328,15 @@ mod tests {
         };
         assert!(!m.cpf_hash.is_empty());
     }
+
+    #[test]
+    fn govbr_mapping_user_id_nil_is_nil() {
+        let m = GovbrMapping {
+            cpf_hash: "x".into(),
+            tenant_id: uuid::Uuid::nil(),
+            user_id: uuid::Uuid::nil(),
+            assurance: None,
+        };
+        assert_eq!(m.user_id, uuid::Uuid::nil());
+    }
 }

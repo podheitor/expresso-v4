@@ -283,4 +283,9 @@ mod tests {
     fn rejects_double_slash_protocol_relative() {
         assert!(!is_safe_local_redirect("//evil.com/steal"));
     }
+
+    #[test]
+    fn accepts_path_with_query() {
+        assert!(is_safe_local_redirect("/dashboard?tab=inbox"));
+    }
 }

@@ -259,4 +259,14 @@ mod tests {
         };
         assert!(p.xml_value.is_empty());
     }
+
+    #[test]
+    fn dead_prop_namespace_preserved() {
+        let p = DeadProp {
+            namespace: "urn:custom:ns".into(),
+            local_name: "color".into(),
+            xml_value: "blue".into(),
+        };
+        assert_eq!(p.namespace, "urn:custom:ns");
+    }
 }

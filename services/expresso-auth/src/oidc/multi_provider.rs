@@ -126,4 +126,9 @@ mod tests {
         assert!(REALM_PLACEHOLDER.starts_with('{'));
         assert!(REALM_PLACEHOLDER.ends_with('}'));
     }
+
+    #[test]
+    fn realm_placeholder_is_nonempty() {
+        assert!(!REALM_PLACEHOLDER.is_empty());
+    }
 }

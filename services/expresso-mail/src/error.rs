@@ -151,4 +151,9 @@ mod tests {
     fn forbidden_status_is_403() {
         assert_eq!(status(MailError::Forbidden), 403);
     }
+
+    #[test]
+    fn quota_exceeded_status_is_507() {
+        assert_eq!(status(MailError::QuotaExceeded), 507);
+    }
 }

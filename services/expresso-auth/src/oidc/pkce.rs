@@ -119,4 +119,11 @@ mod tests {
         let v = generate_verifier();
         assert!(v.is_ascii());
     }
+
+    #[test]
+    fn challenge_s256_is_ascii_only() {
+        let v = generate_verifier();
+        let c = challenge_s256(&v);
+        assert!(c.is_ascii());
+    }
 }

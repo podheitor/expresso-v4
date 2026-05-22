@@ -331,4 +331,17 @@ mod tests {
     fn lock_ttl_is_30_minutes() {
         assert_eq!(LOCK_TTL, Duration::minutes(30));
     }
+
+    #[test]
+    fn wopi_lock_token_roundtrip_preserved() {
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "my-lock-token".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + Duration::hours(1),
+        };
+        assert_eq!(lock.lock_token, "my-lock-token");
+    }
 }

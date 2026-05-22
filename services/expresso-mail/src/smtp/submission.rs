@@ -645,4 +645,12 @@ mod tests {
         assert_eq!(u, "alice@example.com");
         assert_eq!(p, "secret");
     }
+
+    #[test]
+    fn decode_plain_with_authzid_returns_user_and_pass() {
+        let cred = B64.encode(b"authzid\0user@x.com\0pass1");
+        let (u, p) = decode_plain(&cred).unwrap();
+        assert_eq!(u, "user@x.com");
+        assert_eq!(p, "pass1");
+    }
 }

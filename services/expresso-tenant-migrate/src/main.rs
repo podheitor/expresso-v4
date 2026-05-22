@@ -433,4 +433,10 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": ["first", "second"]}});
         assert_eq!(extract_tenant_id(&u).as_deref(), Some("first"));
     }
+
+    #[test]
+    fn extract_tenant_id_single_value_extracted() {
+        let u = json!({"attributes": {"tenant_id": ["only"]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some("only"));
+    }
 }

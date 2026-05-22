@@ -326,4 +326,10 @@ mod tests {
         let c = OidcConfig::new("https://idp/realms/r", "client");
         assert!(!c.issuer.ends_with('/'));
     }
+
+    #[test]
+    fn oidc_config_issuer_contains_realm() {
+        let c = OidcConfig::new("https://idp/realms/myrealm", "client");
+        assert!(c.issuer.contains("myrealm"));
+    }
 }

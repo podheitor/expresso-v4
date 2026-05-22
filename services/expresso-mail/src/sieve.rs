@@ -240,4 +240,11 @@ mod tests {
             assert!(flags.is_empty());
         }
     }
+
+    #[test]
+    fn evaluate_empty_script_returns_keep() {
+        let actions = evaluate(b"", b"From: a@b\r\n\r\n");
+        assert!(!actions.is_empty());
+        assert!(matches!(actions[0], FilterAction::Keep { .. }));
+    }
 }

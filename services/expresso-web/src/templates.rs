@@ -607,4 +607,10 @@ mod tests {
         let s = human_size(-1);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn human_size_zero_produces_string() {
+        let s = human_size(0);
+        assert!(!s.is_empty());
+    }
 }

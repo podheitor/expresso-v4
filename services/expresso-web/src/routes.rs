@@ -1707,4 +1707,12 @@ mod tests {
         assert!(t.contains('-'));
         assert!(u.contains('_'));
     }
+
+    #[test]
+    fn ctx_of_non_empty_tenant_and_user() {
+        let me = Me { tenant_id: "acme-corp".into(), user_id: "user-42".into() };
+        let (t, u) = ctx_of(&me);
+        assert!(!t.is_empty());
+        assert!(!u.is_empty());
+    }
 }

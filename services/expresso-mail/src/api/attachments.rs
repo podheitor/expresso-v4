@@ -582,4 +582,10 @@ mod extra_tests {
         let s = percent_encode_filename("archive.tar.gz");
         assert_eq!(s, "archive.tar.gz");
     }
+
+    #[test]
+    fn percent_encode_filename_hyphen_preserved() {
+        let s = percent_encode_filename("my-file.pdf");
+        assert_eq!(s, "my-file.pdf");
+    }
 }

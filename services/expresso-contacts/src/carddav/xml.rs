@@ -328,4 +328,9 @@ mod tests {
     fn xml_prolog_starts_with_xml_decl() {
         assert!(XML_PROLOG.starts_with("<?xml"));
     }
+
+    #[test]
+    fn escape_ampersand_produces_amp_entity() {
+        assert_eq!(escape("a&b"), "a&amp;b");
+    }
 }

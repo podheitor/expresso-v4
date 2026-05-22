@@ -191,4 +191,9 @@ mod tests {
         let t = classify(&format!("/carddav/{u}/{c}/no-suffix"));
         assert!(matches!(t, Target::Unknown));
     }
+
+    #[test]
+    fn classify_empty_path_is_unknown() {
+        assert!(matches!(classify(""), Target::Unknown));
+    }
 }

@@ -205,8 +205,14 @@ mod tests {
     }
 
     #[test]
-    fn fetch_command_maps_correctly() {
+    fn fetch_command_case_insensitive_maps_correctly() {
         assert_eq!(command_label("FETCH"), "FETCH");
         assert_eq!(command_label("fetch"), "FETCH");
+    }
+
+    #[test]
+    fn select_command_maps_correctly() {
+        assert_eq!(command_label("SELECT"), "SELECT");
+        assert_eq!(command_label("select"), "SELECT");
     }
 }

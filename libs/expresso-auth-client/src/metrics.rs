@@ -117,4 +117,9 @@ mod tests {
     fn result_label_config_maps_misconfigured() {
         assert_eq!(result_label(&AuthError::Config("bad jwks url".into())), "misconfigured");
     }
+
+    #[test]
+    fn result_label_jwks_fetch_maps_jwks_fetch() {
+        assert_eq!(result_label(&AuthError::JwksFetch("timeout".into())), "jwks_fetch");
+    }
 }

@@ -486,4 +486,9 @@ mod extra_tests {
     fn extract_angle_empty_string_returns_empty() {
         assert_eq!(extract_angle(""), "");
     }
+
+    #[test]
+    fn extract_angle_with_brackets_extracts_inner() {
+        assert_eq!(extract_angle("<alice@example.com>"), "alice@example.com");
+    }
 }

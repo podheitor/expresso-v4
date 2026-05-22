@@ -466,4 +466,13 @@ mod tests {
         };
         assert!(r.should_quarantine());
     }
+
+    #[test]
+    fn auth_results_pass_dmarc_does_not_quarantine() {
+        let r = AuthResults {
+            dmarc: "pass".into(), dmarc_policy: Some("quarantine".into()),
+            ..Default::default()
+        };
+        assert!(!r.should_quarantine());
+    }
 }

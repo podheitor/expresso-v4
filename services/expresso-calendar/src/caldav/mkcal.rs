@@ -249,4 +249,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nTZID:America/New_York\r\nEND:VCALENDAR";
         assert_eq!(extract_tzid(ics).as_deref(), Some("America/New_York"));
     }
+
+    #[test]
+    fn extract_tzid_missing_returns_none() {
+        let ics = "BEGIN:VCALENDAR\r\nEND:VCALENDAR";
+        assert!(extract_tzid(ics).is_none());
+    }
 }

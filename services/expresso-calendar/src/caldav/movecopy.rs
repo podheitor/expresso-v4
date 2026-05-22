@@ -212,4 +212,9 @@ mod tests {
     fn strip_origin_relative_path_unchanged() {
         assert_eq!(strip_origin("/caldav/user/cal/event.ics"), "/caldav/user/cal/event.ics");
     }
+
+    #[test]
+    fn strip_origin_https_with_port_stripped() {
+        assert_eq!(strip_origin("https://host:8443/calendar/event.ics"), "/calendar/event.ics");
+    }
 }

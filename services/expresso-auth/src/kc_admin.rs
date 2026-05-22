@@ -313,4 +313,17 @@ mod tests {
         };
         assert_eq!(c.realm, "myrealm");
     }
+
+    #[test]
+    fn kc_admin_config_svc_admin_user_preserved() {
+        let c = KcAdminConfig {
+            base_url:               "https://kc".into(),
+            realm:                  "r".into(),
+            admin_user:             "svc-admin".into(),
+            admin_pass:             "secret".into(),
+            exchange_client_id:     None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.admin_user, "svc-admin");
+    }
 }

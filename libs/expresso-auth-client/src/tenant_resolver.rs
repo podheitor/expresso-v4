@@ -144,4 +144,10 @@ mod tests {
         let r = TenantResolver::parse("");
         assert!(r.resolve("any.host").is_none());
     }
+
+    #[test]
+    fn whitespace_only_input_resolves_nothing() {
+        let r = TenantResolver::parse("   ");
+        assert!(r.resolve("any.host").is_none());
+    }
 }

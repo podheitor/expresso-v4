@@ -304,4 +304,10 @@ if header :contains "Subject" "[spam]" {
         let r = SieveRules { enabled: false, script: String::new() };
         assert!(r.script.is_empty());
     }
+
+    #[test]
+    fn sieve_rules_enabled_field_preserved() {
+        let r = SieveRules { enabled: true, script: "keep;".into() };
+        assert!(r.enabled);
+    }
 }

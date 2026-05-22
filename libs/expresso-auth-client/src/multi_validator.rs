@@ -160,4 +160,10 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
         assert!(m.issuer_for("mytenant").contains("mytenant"));
     }
+
+    #[test]
+    fn issuer_for_replaces_placeholder_with_realm() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}/oidc", "aud").unwrap();
+        assert_eq!(m.issuer_for("test"), "http://kc/realms/test/oidc");
+    }
 }

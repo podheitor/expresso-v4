@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn snooze_record_woken_at_none_by_default() {
+    fn snooze_record_october_woken_at_none() {
         use time::macros::datetime;
         let r = SnoozeRecord {
             id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
@@ -345,5 +345,19 @@ mod tests {
             woken_at: None,
         };
         assert!(r.woken_at.is_none());
+    }
+
+    #[test]
+    fn snooze_record_december_snooze_until_preserved() {
+        use time::macros::datetime;
+        let target = datetime!(2026-12-01 08:00:00 UTC);
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: target,
+            snoozed_at: datetime!(2026-11-30 08:00:00 UTC),
+            woken_at: None,
+        };
+        assert_eq!(r.snooze_until, target);
     }
 }

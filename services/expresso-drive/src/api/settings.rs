@@ -175,4 +175,10 @@ mod tests {
         let s = TrashPurgeSettings { auto_purge_days: None };
         assert!(s.auto_purge_days.is_none());
     }
+
+    #[test]
+    fn trash_purge_settings_seven_days_preserved() {
+        let s = TrashPurgeSettings { auto_purge_days: Some(7) };
+        assert_eq!(s.auto_purge_days, Some(7));
+    }
 }

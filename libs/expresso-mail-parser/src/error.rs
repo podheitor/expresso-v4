@@ -89,4 +89,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("mime boundary missing"));
         assert!(format!("{e:?}").contains("Internal"));
     }
+
+    #[test]
+    fn display_contains_cause_for_different_message() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("base64 padding error"));
+        assert!(e.to_string().contains("base64 padding error"));
+    }
 }

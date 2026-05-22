@@ -243,4 +243,10 @@ mod tests {
         let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into()] };
         assert!(validate_preset(&b).is_ok());
     }
+
+    #[test]
+    fn validate_preset_multiple_flags_ok() {
+        let b = PresetBody { name: "Flagged".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        assert!(validate_preset(&b).is_ok());
+    }
 }

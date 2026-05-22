@@ -803,4 +803,10 @@ mod tests {
         let f = sample_file();
         let _ = f.sha256; // compiles only if field exists and is Option<String>
     }
+
+    #[test]
+    fn drive_file_name_preserved() {
+        let f = sample_file();
+        assert_eq!(f.name, "report.pdf");
+    }
 }

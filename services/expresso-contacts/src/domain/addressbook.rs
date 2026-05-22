@@ -380,4 +380,10 @@ mod tests {
         let a = sample();
         assert!(a.is_default);
     }
+
+    #[test]
+    fn addressbook_ctag_field_accessible() {
+        let a = sample();
+        assert_eq!(a.ctag, 7);
+    }
 }

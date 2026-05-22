@@ -151,4 +151,10 @@ mod tests {
         let tag = "v2".to_string();
         assert_eq!(tag, "v2");
     }
+
+    #[test]
+    fn tag_string_lowercase_unchanged() {
+        let tag = "archive".to_string();
+        assert_eq!(tag, "archive");
+    }
 }

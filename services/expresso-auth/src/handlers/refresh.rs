@@ -221,4 +221,10 @@ mod tests {
         let h = axum::http::HeaderMap::new();
         assert!(extract_cookie(&h, "expresso_rt").is_none());
     }
+
+    #[test]
+    fn extract_cookie_present_name_returns_value() {
+        let h = headers_with_cookie("expresso_rt=mytoken");
+        assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("mytoken"));
+    }
 }

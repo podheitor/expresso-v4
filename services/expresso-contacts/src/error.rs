@@ -139,4 +139,9 @@ mod tests {
         let e = ContactsError::Forbidden;
         assert_eq!(format!("{e}"), "forbidden");
     }
+
+    #[test]
+    fn invalid_vcard_status_is_400() {
+        assert_eq!(status(ContactsError::InvalidVCard("bad input".into())), 400);
+    }
 }

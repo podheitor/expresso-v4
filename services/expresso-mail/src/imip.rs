@@ -212,4 +212,9 @@ BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:
         // result may be None or Some depending on impl; we just assert no panic
         let _ = result;
     }
+
+    #[test]
+    fn empty_slice_returns_none() {
+        assert!(extract_imip_reply(b"").is_none());
+    }
 }

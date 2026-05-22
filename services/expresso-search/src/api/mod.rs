@@ -16928,6 +16928,11 @@ mod tests {
         let q = SearchQuery { q: "test".into(), limit: DEFAULT_LIMIT };
         assert_eq!(q.limit, 20);
     }
+
+    #[test]
+    fn max_limit_constant_is_200() {
+        assert_eq!(MAX_LIMIT, 200);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

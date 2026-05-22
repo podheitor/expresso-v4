@@ -630,4 +630,12 @@ mod tests {
         let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), -1);
         assert!(verify_token(b"key", &tok, fid).is_none());
     }
+
+    #[test]
+    fn token_wrong_file_id_is_rejected() {
+        let fid = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), 3600);
+        assert!(verify_token(b"key", &tok, other).is_none());
+    }
 }

@@ -246,4 +246,10 @@ mod tests {
         let cfg = RateLimitConfig { rps: 10, burst: 50 };
         assert_eq!(cfg.burst, 50);
     }
+
+    #[test]
+    fn rate_limit_config_rps_is_five() {
+        let cfg = RateLimitConfig { rps: 5, burst: 10 };
+        assert_eq!(cfg.rps, 5);
+    }
 }

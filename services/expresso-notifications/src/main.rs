@@ -25533,4 +25533,10 @@ mod tests {
         let q = DlqStatsQuery { since: Some("2026-01-01T00:00:00Z".into()), until: None };
         assert!(q.since.is_some());
     }
+
+    #[test]
+    fn dlq_stats_query_until_preserved() {
+        let q = DlqStatsQuery { since: None, until: Some("2026-12-31T23:59:59Z".into()) };
+        assert_eq!(q.until.as_deref(), Some("2026-12-31T23:59:59Z"));
+    }
 }

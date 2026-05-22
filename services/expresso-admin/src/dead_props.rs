@@ -182,4 +182,10 @@ mod tests {
         let out = preview("test value".into());
         assert_eq!(out, "test value");
     }
+
+    #[test]
+    fn preview_empty_string_returns_empty() {
+        let out = preview("".into());
+        assert!(out.is_empty());
+    }
 }

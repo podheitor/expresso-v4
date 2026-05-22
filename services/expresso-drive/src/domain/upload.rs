@@ -235,4 +235,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(s.mime_type.is_none());
     }
+
+    #[test]
+    fn session_filename_equals_x() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.name, "x");
+    }
 }

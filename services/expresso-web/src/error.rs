@@ -127,4 +127,10 @@ mod tests {
         let e = WebError::Internal("parse failed".into());
         assert!(e.to_string().contains("parse failed"));
     }
+
+    #[test]
+    fn upstream_service_down_in_display() {
+        let e = WebError::Upstream("service down".into());
+        assert!(e.to_string().contains("service down"));
+    }
 }

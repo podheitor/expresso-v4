@@ -376,4 +376,9 @@ END:VCALENDAR\r\n";
     fn etag_same_input_same_output() {
         assert_eq!(compute_etag("hello"), compute_etag("hello"));
     }
+
+    #[test]
+    fn etag_nonempty_for_nonempty_input() {
+        assert!(!compute_etag("BEGIN:VCALENDAR").is_empty());
+    }
 }

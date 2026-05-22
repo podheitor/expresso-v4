@@ -269,4 +269,9 @@ mod tests {
     fn validate_priv_write_accepted() {
         assert!(validate_priv("write").is_ok());
     }
+
+    #[test]
+    fn validate_priv_unknown_value_returns_error() {
+        assert!(validate_priv("owner").is_err());
+    }
 }

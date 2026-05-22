@@ -3887,4 +3887,9 @@ Attachment\r\n\
         // empty path → whole raw bytes per RFC 3501
         assert!(mime_navigate(MULTIPART_MSG, &[]).is_some());
     }
+
+    #[test]
+    fn navigate_out_of_range_part_returns_none() {
+        assert!(mime_navigate(MULTIPART_MSG, &[99]).is_none());
+    }
 }

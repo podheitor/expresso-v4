@@ -258,4 +258,9 @@ mod tests {
     fn member_role_owner_serializes() {
         assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
     }
+
+    #[test]
+    fn channel_kind_announcement_serializes() {
+        assert_eq!(serde_json::to_string(&ChannelKind::Announcement).unwrap(), r#""announcement""#);
+    }
 }

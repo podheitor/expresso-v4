@@ -243,12 +243,22 @@ mod tests {
     }
 
     #[test]
-    fn dead_prop_xml_value_preserved() {
+    fn dead_prop_carddav_xml_value_preserved() {
         let p = DeadProp {
             namespace: "urn:ietf:params:xml:ns:carddav".into(),
             local_name: "notes".into(),
             xml_value: "internal note".into(),
         };
         assert_eq!(p.xml_value, "internal note");
+    }
+
+    #[test]
+    fn dead_prop_dav_namespace_preserved() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value: "Work".into(),
+        };
+        assert_eq!(p.namespace, "DAV:");
     }
 }

@@ -328,4 +328,9 @@ mod tests {
         assert!(claim.contains("api"));
         assert!(!claim.contains("mobile"));
     }
+
+    #[test]
+    fn aud_claim_empty_contains_nothing_for_any_aud() {
+        assert!(!AudClaim::Empty.contains("anything"));
+    }
 }

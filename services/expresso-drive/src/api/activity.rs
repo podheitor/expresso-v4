@@ -273,4 +273,10 @@ mod tests {
         let b: CreateActivityBody = serde_json::from_str(r#"{"action":"edit"}"#).unwrap();
         assert_eq!(b.action, "edit");
     }
+
+    #[test]
+    fn create_activity_body_action_upload_preserved() {
+        let b: CreateActivityBody = serde_json::from_str(r#"{"action":"upload"}"#).unwrap();
+        assert_eq!(b.action, "upload");
+    }
 }

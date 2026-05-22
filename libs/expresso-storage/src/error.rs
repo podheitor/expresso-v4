@@ -89,4 +89,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("object not found"));
         assert!(format!("{e:?}").contains("Internal"));
     }
+
+    #[test]
+    fn display_starts_with_internal_error_prefix() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 timeout"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }

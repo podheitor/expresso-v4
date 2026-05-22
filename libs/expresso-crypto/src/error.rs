@@ -92,4 +92,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("hmac mismatch"));
         assert!(format!("{e:?}").contains("Internal"));
     }
+
+    #[test]
+    fn internal_display_starts_with_prefix_long_message() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("pbkdf2 iterations below minimum"));
+        assert!(e.to_string().starts_with("internal error:"));
+    }
 }

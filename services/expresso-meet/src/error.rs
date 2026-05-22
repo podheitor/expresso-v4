@@ -145,4 +145,9 @@ mod tests {
         let e = MeetError::BadRequest("invalid room".into());
         assert!(format!("{e}").contains("invalid room"));
     }
+
+    #[test]
+    fn conflict_status_is_409() {
+        assert_eq!(status(MeetError::Conflict("dup room".into())), 409);
+    }
 }

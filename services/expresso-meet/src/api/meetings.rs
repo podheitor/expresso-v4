@@ -1438,6 +1438,11 @@ mod tests {
     fn max_room_name_bytes_is_positive() {
         assert!(MAX_ROOM_NAME_BYTES > 0);
     }
+
+    #[test]
+    fn max_room_name_bytes_is_64() {
+        assert_eq!(MAX_ROOM_NAME_BYTES, 64);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

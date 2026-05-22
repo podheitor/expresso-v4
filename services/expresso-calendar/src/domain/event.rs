@@ -1212,4 +1212,10 @@ mod tests {
         let q: EventQuery = serde_json::from_str(r#"{"limit":0}"#).unwrap();
         assert_eq!(q.limit, Some(0));
     }
+
+    #[test]
+    fn event_query_missing_limit_is_none() {
+        let q: EventQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.limit.is_none());
+    }
 }

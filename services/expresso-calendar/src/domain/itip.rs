@@ -467,4 +467,16 @@ END:VCALENDAR\r\n";
         let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         assert!(parse_comment(ics).is_none());
     }
+
+    #[test]
+    fn attendee_default_fields_are_none() {
+        let a = Attendee {
+            email:    "a@b.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert!(a.cn.is_none() && a.role.is_none() && a.partstat.is_none() && a.rsvp.is_none());
+    }
 }

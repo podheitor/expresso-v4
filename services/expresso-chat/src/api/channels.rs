@@ -352,9 +352,16 @@ mod tests {
     }
 
     #[test]
-    fn create_body_name_preserved() {
+    fn create_body_engineering_name_preserved() {
         let json = r#"{"name":"engineering"}"#;
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.name, "engineering");
+    }
+
+    #[test]
+    fn create_body_kind_none_when_absent() {
+        let json = r#"{"name":"dev"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.kind.is_none());
     }
 }

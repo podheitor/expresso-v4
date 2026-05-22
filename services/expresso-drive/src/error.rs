@@ -140,4 +140,9 @@ mod tests {
     fn quota_exceeded_status_is_507() {
         assert_eq!(status(DriveError::QuotaExceeded), StatusCode::INSUFFICIENT_STORAGE);
     }
+
+    #[test]
+    fn gone_status_is_410() {
+        assert_eq!(status(DriveError::Gone(Uuid::nil())), StatusCode::GONE);
+    }
 }

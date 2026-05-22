@@ -592,4 +592,10 @@ mod tests {
         let out = csv_escape("12345");
         assert_eq!(out, "12345");
     }
+
+    #[test]
+    fn field_with_comma_is_quoted() {
+        let out = csv_escape("a,b");
+        assert!(out.starts_with('"') && out.ends_with('"'));
+    }
 }

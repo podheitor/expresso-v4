@@ -207,4 +207,10 @@ mod tests {
         let e = AuditEntry::new("mail.sent");
         assert!(e.metadata.is_null() || e.metadata.as_object().map(|m| m.is_empty()).unwrap_or(true));
     }
+
+    #[test]
+    fn audit_entry_actor_email_none_by_default() {
+        let e = AuditEntry::new("calendar.event_created");
+        assert!(e.actor_email.is_none());
+    }
 }

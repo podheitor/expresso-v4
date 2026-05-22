@@ -304,4 +304,10 @@ mod tests {
     fn extract_organizer_email_empty_string_returns_none() {
         assert!(extract_organizer_email("").is_none());
     }
+
+    #[test]
+    fn extract_organizer_email_with_mailto_returns_email() {
+        let ics = "BEGIN:VCALENDAR\r\nORGANIZER:mailto:boss@corp.com\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_organizer_email(ics).as_deref(), Some("boss@corp.com"));
+    }
 }

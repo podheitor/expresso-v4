@@ -226,4 +226,12 @@ mod tests {
         AppState::evict_expired(&mut m);
         assert!(m.is_empty());
     }
+
+    #[test]
+    fn evict_expired_keeps_non_expired_entry() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        m.insert("live".into(), make_pending(3600));
+        AppState::evict_expired(&mut m);
+        assert!(m.contains_key("live"));
+    }
 }

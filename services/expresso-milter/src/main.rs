@@ -354,4 +354,11 @@ mod tests {
         assert_eq!(r.0, "X-Empty");
         assert_eq!(r.1, "");
     }
+
+    #[test]
+    fn parse_header_value_trimmed() {
+        let r = parse_header_line("Subject:  Hello World").unwrap();
+        assert_eq!(r.0, "Subject");
+        assert_eq!(r.1, "Hello World");
+    }
 }

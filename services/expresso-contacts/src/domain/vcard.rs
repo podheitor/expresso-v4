@@ -262,4 +262,9 @@ mod tests {
         let e = compute_etag("BEGIN:VCARD\r\nUID:x\r\nFN:X\r\nEND:VCARD\r\n");
         assert!(e.chars().all(|c| c.is_ascii_hexdigit()));
     }
+
+    #[test]
+    fn compute_etag_differs_for_distinct_inputs() {
+        assert_ne!(compute_etag("AAA"), compute_etag("BBB"));
+    }
 }

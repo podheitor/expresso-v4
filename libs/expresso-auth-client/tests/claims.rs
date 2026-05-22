@@ -144,3 +144,10 @@ fn roles_from_realm_access_included() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(ctx.roles.iter().any(|r| r == "user" || r == "admin"));
 }
+
+#[test]
+fn display_name_is_non_empty() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000004", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(!ctx.display_name.is_empty());
+}

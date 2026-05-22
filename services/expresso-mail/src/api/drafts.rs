@@ -328,4 +328,10 @@ mod tests {
         let r = req("from@example.com", Some(vec![]), None, None);
         assert!(build_raw(&r).is_ok());
     }
+
+    #[test]
+    fn build_raw_with_subject_succeeds() {
+        let r = req("from@example.com", None, Some("Test subject"), None);
+        assert!(build_raw(&r).is_ok());
+    }
 }

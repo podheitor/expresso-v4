@@ -209,4 +209,10 @@ mod tests {
         let s = pct(150, 100);
         assert!(s.contains("150"));
     }
+
+    #[test]
+    fn pct_zero_used_of_nonzero_max() {
+        let s = pct(0, 100);
+        assert!(s.contains('0'));
+    }
 }

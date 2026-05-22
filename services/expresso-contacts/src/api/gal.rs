@@ -409,4 +409,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("contact"));
     }
+
+    #[test]
+    fn gal_entry_contact_email_preserved() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          Some("gal@corp.com".into()),
+            full_name:      None,
+            organization:   None,
+        };
+        let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert_eq!(v["email"].as_str(), Some("gal@corp.com"));
+    }
 }

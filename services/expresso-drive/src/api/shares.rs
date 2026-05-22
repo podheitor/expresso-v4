@@ -262,4 +262,10 @@ mod tests {
         let b: CreateBody = serde_json::from_str(r#"{}"#).unwrap();
         assert!(b.expires_in_seconds.is_none());
     }
+
+    #[test]
+    fn create_body_expires_in_seconds_preserved() {
+        let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":3600}"#).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(3600));
+    }
 }

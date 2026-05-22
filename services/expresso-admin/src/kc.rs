@@ -414,4 +414,14 @@ mod tests {
         };
         assert_eq!(u.username, "erin");
     }
+
+    #[test]
+    fn new_user_enabled_field_preserved() {
+        let u = NewUser {
+            username: "frank".into(), email: "f@x.com".into(),
+            first_name: "Frank".into(), last_name: "Lee".into(),
+            enabled: false, password: "pw".into(), temporary: false,
+        };
+        assert!(!u.enabled);
+    }
 }

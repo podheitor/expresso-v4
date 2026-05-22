@@ -483,4 +483,10 @@ mod tests {
         let b = build_user_body("bob", "bob@corp.com");
         assert_eq!(b["email"].as_str(), Some("bob@corp.com"));
     }
+
+    #[test]
+    fn build_user_body_enabled_is_true() {
+        let b = build_user_body("alice", "alice@corp.com");
+        assert_eq!(b["enabled"].as_bool(), Some(true));
+    }
 }

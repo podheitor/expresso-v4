@@ -1543,4 +1543,10 @@ mod tests {
         let b: AddTagBody = serde_json::from_str(r#"{"tag":"important"}"#).unwrap();
         assert_eq!(b.tag, "important");
     }
+
+    #[test]
+    fn add_tag_body_archive_tag_preserved() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":"archive"}"#).unwrap();
+        assert_eq!(b.tag, "archive");
+    }
 }

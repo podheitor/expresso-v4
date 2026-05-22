@@ -107,8 +107,14 @@ mod tests {
     }
 
     #[test]
-    fn expired_display_not_empty() {
+    fn expired_display_is_token_expired() {
         let s = AuthError::Expired.to_string();
-        assert!(!s.is_empty());
+        assert_eq!(s, "token expired");
+    }
+
+    #[test]
+    fn malformed_claim_display_contains_field_name() {
+        let e = AuthError::MalformedClaim("roles", "not an array".into());
+        assert!(e.to_string().contains("roles"));
     }
 }

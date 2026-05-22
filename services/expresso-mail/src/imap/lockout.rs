@@ -206,4 +206,10 @@ mod tests {
         assert!(l.is_locked_out("a@x.com"));
         assert!(!l.is_locked_out("b@x.com"));
     }
+
+    #[test]
+    fn no_failures_not_locked_out() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        assert!(!l.is_locked_out("new@x.com"));
+    }
 }

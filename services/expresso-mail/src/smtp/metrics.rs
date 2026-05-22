@@ -156,4 +156,10 @@ mod tests {
         assert_eq!(command_label("QUIT"), "QUIT");
         assert_eq!(command_label("quit"), "QUIT");
     }
+
+    #[test]
+    fn ehlo_command_maps_correctly() {
+        assert_eq!(command_label("EHLO"), "EHLO");
+        assert_eq!(command_label("ehlo"), "EHLO");
+    }
 }

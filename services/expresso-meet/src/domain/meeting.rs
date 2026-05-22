@@ -478,4 +478,10 @@ mod tests {
         let s = serde_json::to_string(&ParticipantRole::Moderator).unwrap();
         assert_eq!(s, r#""moderator""#);
     }
+
+    #[test]
+    fn participant_role_participant_serializes_lowercase() {
+        let s = serde_json::to_string(&ParticipantRole::Participant).unwrap();
+        assert_eq!(s, r#""participant""#);
+    }
 }

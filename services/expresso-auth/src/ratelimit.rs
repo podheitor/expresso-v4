@@ -228,4 +228,12 @@ mod tests {
         assert!(!rl.check(ip1));
         assert!(rl.check(ip2));
     }
+
+    #[test]
+    fn limit_one_allows_exactly_one_request() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+        assert!(rl.check(ip));
+        assert!(!rl.check(ip));
+    }
 }

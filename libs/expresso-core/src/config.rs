@@ -263,4 +263,9 @@ mod tests {
     fn default_s3_region_is_not_empty() {
         assert!(!default_s3_region().is_empty());
     }
+
+    #[test]
+    fn default_shutdown_timeout_is_thirty_seconds() {
+        assert_eq!(default_shutdown_timeout(), 30);
+    }
 }

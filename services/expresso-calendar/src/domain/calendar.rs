@@ -491,4 +491,14 @@ mod tests {
         };
         assert!(!n.is_default);
     }
+
+    #[test]
+    fn new_calendar_is_default_true_when_set() {
+        let n = NewCalendar {
+            name: "Primary".into(),
+            description: None,
+            color: None, timezone: None, is_default: true,
+        };
+        assert!(n.is_default);
+    }
 }

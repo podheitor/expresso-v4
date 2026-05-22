@@ -109,4 +109,9 @@ mod tests {
     fn discovery_error_is_service_unavailable() {
         assert_eq!(status(RpError::Discovery("no endpoint".into())), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[test]
+    fn auth_error_is_unauthorized() {
+        assert_eq!(status(RpError::Auth("invalid token".into())), StatusCode::UNAUTHORIZED);
+    }
 }

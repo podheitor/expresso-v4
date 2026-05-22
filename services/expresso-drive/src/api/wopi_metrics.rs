@@ -170,4 +170,9 @@ mod tests {
     fn outcomes_list_has_eight_entries() {
         assert_eq!(OUTCOMES.len(), 8);
     }
+
+    #[test]
+    fn outcomes_contains_not_found() {
+        assert!(OUTCOMES.contains(&"not_found"));
+    }
 }

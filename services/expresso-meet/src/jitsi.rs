@@ -307,4 +307,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         let _ = cfg.room_prefix.as_str(); // compiles only if field is String
     }
+
+    #[test]
+    fn jitsi_config_domain_preserved() {
+        let cfg = fixture_cfg();
+        assert_eq!(cfg.domain, "meet.expresso.local");
+    }
 }

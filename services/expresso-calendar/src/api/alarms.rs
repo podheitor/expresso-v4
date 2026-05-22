@@ -505,4 +505,10 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{"description":"Meeting reminder"}"#).unwrap();
         assert_eq!(b.description.as_deref(), Some("Meeting reminder"));
     }
+
+    #[test]
+    fn patch_alarm_body_missing_fields_are_none() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.description.is_none() && b.trigger_rel.is_none());
+    }
 }

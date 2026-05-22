@@ -291,4 +291,9 @@ mod tests {
     fn size_param_non_numeric_returns_none() {
         assert_eq!(extract_size_param("<a@b> SIZE=notanumber"), None);
     }
+
+    #[test]
+    fn size_param_no_size_keyword_returns_none() {
+        assert_eq!(extract_size_param("<a@b>"), None);
+    }
 }

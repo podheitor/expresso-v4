@@ -529,4 +529,9 @@ mod tests {
     fn parse_depth_one_header_yields_one_variant() {
         assert!(matches!(parse_depth(&headers_with_depth("1")), Depth::One));
     }
+
+    #[test]
+    fn depth_zero_ne_infinity() {
+        assert_ne!(Depth::Zero, Depth::Infinity);
+    }
 }

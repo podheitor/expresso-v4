@@ -1535,4 +1535,9 @@ mod tests {
     fn folder_name_empty_rejected() {
         assert!(validate_folder_name("").is_err());
     }
+
+    #[test]
+    fn folder_name_valid_accepted() {
+        assert!(validate_folder_name("Work").is_ok());
+    }
 }

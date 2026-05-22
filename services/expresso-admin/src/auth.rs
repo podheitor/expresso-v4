@@ -337,4 +337,9 @@ mod tests {
     fn is_public_path_readyz_is_public() {
         assert!(is_public_path("/readyz"));
     }
+
+    #[test]
+    fn is_public_path_metrics_is_public() {
+        assert!(is_public_path("/metrics"));
+    }
 }

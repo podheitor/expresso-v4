@@ -379,4 +379,11 @@ mod tests {
         let p = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
         assert!(!patch_has_changes(&p));
     }
+
+    #[test]
+    fn patch_with_timezone_only_has_changes() {
+        use super::UpdateCalendar;
+        let p = UpdateCalendar { name: None, description: None, color: None, timezone: Some("America/Sao_Paulo".into()), is_default: None };
+        assert!(patch_has_changes(&p));
+    }
 }

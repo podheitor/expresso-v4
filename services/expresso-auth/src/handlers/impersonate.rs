@@ -243,4 +243,10 @@ mod tests {
         let ctx = ctx_with_roles(&["super_admin"]);
         assert!(is_super(&ctx));
     }
+
+    #[test]
+    fn is_super_false_for_regular_admin() {
+        let ctx = ctx_with_roles(&["admin"]);
+        assert!(!is_super(&ctx));
+    }
 }

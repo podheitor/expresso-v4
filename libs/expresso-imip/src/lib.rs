@@ -450,4 +450,11 @@ mod tests {
         let s = format_ical_utc(dt).unwrap();
         assert!(s.starts_with("20260315T"));
     }
+
+    #[test]
+    fn format_ical_utc_contains_time_component() {
+        let dt = datetime!(2026-06-01 14:30:00 UTC);
+        let s = format_ical_utc(dt).unwrap();
+        assert!(s.contains("T143000Z"));
+    }
 }

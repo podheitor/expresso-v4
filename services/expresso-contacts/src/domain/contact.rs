@@ -384,4 +384,10 @@ mod tests {
         let c = sample();
         assert!(!c.uid.is_empty());
     }
+
+    #[test]
+    fn contact_email_primary_alice_preserved() {
+        let c = sample();
+        assert_eq!(c.email_primary.as_deref(), Some("alice@example.com"));
+    }
 }

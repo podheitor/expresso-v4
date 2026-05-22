@@ -135,4 +135,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":null}"#).unwrap();
         assert!(q.email.is_none());
     }
+
+    #[test]
+    fn user_query_missing_email_is_none() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
+    }
 }

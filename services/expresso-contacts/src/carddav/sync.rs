@@ -252,4 +252,9 @@ mod tests {
     fn parse_token_value_non_numeric_is_none() {
         assert!(parse_token_value(&format!("{TOKEN_PREFIX}abc")).is_none());
     }
+
+    #[test]
+    fn token_prefix_is_urn_expresso_ctag() {
+        assert!(TOKEN_PREFIX.starts_with("urn:expresso:"));
+    }
 }

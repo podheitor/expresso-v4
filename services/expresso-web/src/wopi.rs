@@ -150,4 +150,10 @@ mod extra_tests {
         let url = build_iframe_url("https://collabora.example.com", "https://drive", "file1", "tok");
         assert!(url.starts_with("https://collabora.example.com"));
     }
+
+    #[test]
+    fn build_iframe_url_contains_specific_file_id() {
+        let url = build_iframe_url("https://collabora.example.com", "https://drive", "file-xyz", "tok");
+        assert!(url.contains("file-xyz"));
+    }
 }
