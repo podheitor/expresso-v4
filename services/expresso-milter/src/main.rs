@@ -316,4 +316,11 @@ mod tests {
         assert_eq!(n, "X-Empty");
         assert_eq!(v, "");
     }
+
+    #[test]
+    fn parse_header_multi_word_value() {
+        let (n, v) = parse_header_line("Subject: Hello World").unwrap();
+        assert_eq!(n, "Subject");
+        assert_eq!(v, "Hello World");
+    }
 }

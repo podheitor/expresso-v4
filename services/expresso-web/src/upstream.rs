@@ -186,4 +186,9 @@ mod tests {
     fn build_url_nested_path() {
         assert_eq!(build_url("https://api.svc/", "/v2/mail/messages/abc"), "https://api.svc/v2/mail/messages/abc");
     }
+
+    #[test]
+    fn build_url_double_trailing_slash_on_base_trimmed() {
+        assert_eq!(build_url("http://svc//", "/path"), "http://svc/path");
+    }
 }

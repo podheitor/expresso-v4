@@ -453,4 +453,19 @@ mod tests {
         let s = human_summary(&inv, Method::Request);
         assert!(s.contains("Team Sync"));
     }
+
+    #[test]
+    fn human_summary_cancel_differs_from_request() {
+        let inv = EventInvite {
+            uid: "u3".into(), sequence: 0, summary: "Friday Stand-up".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-06-06 10:00 UTC),
+            dtend:   time::macros::datetime!(2026-06-06 10:30 UTC),
+            organizer_email: "org@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let req = human_summary(&inv, Method::Request);
+        let cancel = human_summary(&inv, Method::Cancel);
+        assert_ne!(req, cancel);
+    }
 }

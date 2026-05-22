@@ -355,6 +355,13 @@ mod tests {
     fn default_quota_is_10_gb() {
         assert_eq!(DEFAULT_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
     }
+
+    #[test]
+    fn quota_used_bytes_accessible() {
+        let q = Quota { max_bytes: 2048, used_bytes: 512 };
+        assert_eq!(q.used_bytes, 512);
+        assert_eq!(q.max_bytes, 2048);
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

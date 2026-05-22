@@ -235,4 +235,16 @@ mod tests {
         let b: CreateCommentBody = serde_json::from_str(r#"{"body":"Ótimo trabalho 🎉"}"#).unwrap();
         assert!(b.body.contains("Ótimo"));
     }
+
+    #[test]
+    fn file_comment_body_field_accessible() {
+        use time::macros::datetime;
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "hello world".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(c.body, "hello world");
+    }
 }

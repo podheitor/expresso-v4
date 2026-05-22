@@ -253,4 +253,20 @@ mod extra_tests {
         assert!(!tok.token.is_empty());
         assert!(tok.join_url.contains("my-room"));
     }
+
+    #[test]
+    fn moderator_flag_affects_token() {
+        let j = Jitsi::new(fixture_cfg());
+        let mod_tok = j.mint(&IssueRequest {
+            room: "r", user_id: Uuid::nil(),
+            display_name: "X", email: "x@x",
+            moderator: true, allow_recording: false,
+        }).unwrap();
+        let viewer_tok = j.mint(&IssueRequest {
+            room: "r", user_id: Uuid::nil(),
+            display_name: "X", email: "x@x",
+            moderator: false, allow_recording: false,
+        }).unwrap();
+        assert_ne!(mod_tok.token, viewer_tok.token);
+    }
 }

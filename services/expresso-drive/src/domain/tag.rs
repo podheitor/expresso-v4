@@ -115,4 +115,10 @@ mod tests {
         let tag = "#urgent".to_string();
         assert!(tag.starts_with('#'));
     }
+
+    #[test]
+    fn tag_string_whitespace_trimming() {
+        let tag = "  project  ".trim().to_string();
+        assert_eq!(tag, "project");
+    }
 }

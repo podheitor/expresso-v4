@@ -266,4 +266,11 @@ if header :contains "Subject" "[spam]" {
         assert_eq!(r.script, "keep;");
         assert!(!r.raw_message.is_empty());
     }
+
+    #[test]
+    fn sieve_rules_disabled_script_preserved() {
+        let r = SieveRules { enabled: false, script: "fileinto \"INBOX\";".into() };
+        assert!(!r.enabled);
+        assert!(r.script.contains("fileinto"));
+    }
 }

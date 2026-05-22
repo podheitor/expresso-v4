@@ -266,4 +266,18 @@ mod tests {
         assert!(!a.is_expired());
         assert!(!b.is_expired());
     }
+
+    #[test]
+    fn wopi_lock_token_preserved() {
+        let fid = Uuid::new_v4();
+        let lock = WopiLock {
+            file_id: fid,
+            tenant_id: Uuid::nil(),
+            lock_token: "my-lock-token".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+        assert_eq!(lock.lock_token, "my-lock-token");
+    }
 }

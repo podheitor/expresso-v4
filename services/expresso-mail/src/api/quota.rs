@@ -129,4 +129,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 0, quota_bytes: None };
         assert_eq!(q.used_bytes, 0);
     }
+
+    #[test]
+    fn quota_dto_large_quota_value() {
+        let q = QuotaDto { used_bytes: 1024, quota_bytes: Some(10 * 1024 * 1024 * 1024) };
+        assert_eq!(q.quota_bytes, Some(10 * 1024 * 1024 * 1024));
+    }
 }

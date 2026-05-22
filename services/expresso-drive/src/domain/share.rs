@@ -214,4 +214,16 @@ mod tests {
         };
         assert_eq!(s.file_id, fid);
     }
+
+    #[test]
+    fn share_permission_preserved() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "write".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert_eq!(s.permission, "write");
+    }
 }

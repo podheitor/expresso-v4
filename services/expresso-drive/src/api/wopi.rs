@@ -588,4 +588,11 @@ mod tests {
         let tok = sign_token(b"k", fid1, Uuid::new_v4(), Uuid::new_v4(), 60);
         assert!(verify_token(b"k", &tok, fid2).is_none());
     }
+
+    #[test]
+    fn expired_token_is_rejected() {
+        let fid = Uuid::new_v4();
+        let tok = sign_token(b"k", fid, Uuid::new_v4(), Uuid::new_v4(), -10);
+        assert!(verify_token(b"k", &tok, fid).is_none());
+    }
 }

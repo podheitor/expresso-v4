@@ -1408,6 +1408,11 @@ mod tests {
     fn room_name_rejects_dot_single() {
         assert!(!valid_room_name("."));
     }
+
+    #[test]
+    fn room_name_with_numbers_valid() {
+        assert!(valid_room_name("room123"));
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

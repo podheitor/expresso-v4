@@ -443,4 +443,9 @@ mod tests {
         let n: NewMeeting = serde_json::from_str(json).unwrap();
         assert!(n.channel_id.is_none());
     }
+
+    #[test]
+    fn participant_role_participant_serializes() {
+        assert_eq!(serde_json::to_string(&ParticipantRole::Participant).unwrap(), r#""participant""#);
+    }
 }

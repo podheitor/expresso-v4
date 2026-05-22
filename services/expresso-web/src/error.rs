@@ -90,4 +90,11 @@ mod tests {
         let ct = resp.headers().get("content-type").unwrap().to_str().unwrap();
         assert!(ct.contains("text/html"));
     }
+
+    #[test]
+    fn internal_error_status_is_500() {
+        use axum::response::IntoResponse;
+        let resp = WebError::Internal("boom".into()).into_response();
+        assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

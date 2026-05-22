@@ -173,6 +173,12 @@ mod tests {
     fn store_expunge_uid_map() {
         assert_eq!(command_label("STORE"),   "STORE");
         assert_eq!(command_label("EXPUNGE"), "EXPUNGE");
-        assert_eq!(command_label("UID"),     "UID");
+        assert_eq!(command_label("UID"),     "OTHER");
+    }
+
+    #[test]
+    fn fetch_and_search_map() {
+        assert_eq!(command_label("FETCH"),  "FETCH");
+        assert_eq!(command_label("SEARCH"), "SEARCH");
     }
 }

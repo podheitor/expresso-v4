@@ -456,4 +456,9 @@ mod extra_tests {
     fn size_param_zero() {
         assert_eq!(extract_size_param("<a@b> SIZE=0"), Some(0));
     }
+
+    #[test]
+    fn extract_angle_missing_brackets_returns_whole() {
+        assert_eq!(extract_angle("a@b.com"), "a@b.com");
+    }
 }
