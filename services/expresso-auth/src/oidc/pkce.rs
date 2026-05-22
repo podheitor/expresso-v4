@@ -51,4 +51,40 @@ mod tests {
         let expected = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         assert_eq!(challenge_s256(v), expected);
     }
+
+    #[test]
+    fn challenge_differs_for_different_verifiers() {
+        let c1 = challenge_s256("verifier-one");
+        let c2 = challenge_s256("verifier-two");
+        assert_ne!(c1, c2);
+    }
+
+    #[test]
+    fn random_token_is_urlsafe_43_chars() {
+        let t = random_token();
+        assert_eq!(t.len(), 43);
+        assert!(t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'));
+    }
+
+    #[test]
+    fn two_random_tokens_differ() {
+        let a = random_token();
+        let b = random_token();
+        assert_ne!(a, b, "collision probability is astronomically low");
+    }
+
+    #[test]
+    fn two_verifiers_differ() {
+        let a = generate_verifier();
+        let b = generate_verifier();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn challenge_is_base64url_no_padding() {
+        let c = challenge_s256("test-input");
+        assert!(!c.contains('='), "no padding allowed in PKCE challenge");
+        assert!(!c.contains('+'), "must be URL-safe base64");
+        assert!(!c.contains('/'), "must be URL-safe base64");
+    }
 }

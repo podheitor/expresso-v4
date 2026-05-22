@@ -133,3 +133,50 @@ fn extract_cookie(headers: &HeaderMap, name: &str) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn headers_with_cookie(value: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(COOKIE, value.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn extracts_named_cookie() {
+        let h = headers_with_cookie("session=abc; expresso_rt=my-token; other=x");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), Some("my-token".into()));
+    }
+
+    #[test]
+    fn returns_none_when_cookie_absent() {
+        let h = headers_with_cookie("session=abc; other=x");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), None);
+    }
+
+    #[test]
+    fn returns_none_when_cookie_empty_value() {
+        let h = headers_with_cookie("expresso_rt=; other=x");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), None);
+    }
+
+    #[test]
+    fn returns_none_when_no_cookie_header() {
+        let h = HeaderMap::new();
+        assert_eq!(extract_cookie(&h, "expresso_rt"), None);
+    }
+
+    #[test]
+    fn handles_whitespace_around_name_and_value() {
+        let h = headers_with_cookie("  expresso_rt = tok123  ");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), Some("tok123".into()));
+    }
+
+    #[test]
+    fn does_not_match_partial_name() {
+        let h = headers_with_cookie("not_expresso_rt=bad; expresso_rt=good");
+        assert_eq!(extract_cookie(&h, "expresso_rt"), Some("good".into()));
+    }
+}

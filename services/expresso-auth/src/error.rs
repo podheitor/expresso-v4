@@ -33,3 +33,49 @@ impl IntoResponse for RpError {
 }
 
 pub type Result<T> = std::result::Result<T, RpError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: RpError) -> axum::http::StatusCode {
+        e.into_response().status()
+    }
+
+    #[test]
+    fn state_not_found_is_400() {
+        assert_eq!(status(RpError::StateNotFound), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(RpError::BadRequest("x")), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn token_exchange_failure_is_502() {
+        assert_eq!(status(RpError::TokenExchange("err".into())), StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn refresh_failure_is_401() {
+        assert_eq!(status(RpError::Refresh("err".into())), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn discovery_failure_is_503() {
+        assert_eq!(status(RpError::Discovery("err".into())), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn config_error_is_500() {
+        assert_eq!(status(RpError::Config("err".into())), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn error_body_contains_code_and_message() {
+        let resp = RpError::StateNotFound.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+}

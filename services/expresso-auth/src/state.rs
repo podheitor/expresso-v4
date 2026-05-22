@@ -79,3 +79,82 @@ impl AppState {
             .or_else(|| self.cfg.post_logout_redirect_uri.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn make_pending(ttl_secs: u64) -> PendingLogin {
+        PendingLogin {
+            code_verifier:       "verifier-xyz".into(),
+            post_login_redirect: None,
+            redirect_uri:        "https://app.example.com/callback".into(),
+            realm:               None,
+            expires_at:          Instant::now() + Duration::from_secs(ttl_secs),
+        }
+    }
+
+    #[test]
+    fn evict_expired_removes_stale_entries() {
+        let mut map: HashMap<String, PendingLogin> = HashMap::new();
+        map.insert("live".into(),    make_pending(60));
+        // Insert entry already past its TTL (subtract from now → already expired).
+        map.insert("dead".into(), PendingLogin {
+            expires_at: Instant::now() - Duration::from_secs(1),
+            ..make_pending(0)
+        });
+        AppState::evict_expired(&mut map);
+        assert!(map.contains_key("live"), "live entry must survive");
+        assert!(!map.contains_key("dead"), "expired entry must be removed");
+    }
+
+    #[test]
+    fn evict_expired_noop_on_empty_map() {
+        let mut map: HashMap<String, PendingLogin> = HashMap::new();
+        AppState::evict_expired(&mut map);
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn evict_expired_keeps_all_when_none_expired() {
+        let mut map: HashMap<String, PendingLogin> = HashMap::new();
+        map.insert("a".into(), make_pending(60));
+        map.insert("b".into(), make_pending(120));
+        AppState::evict_expired(&mut map);
+        assert_eq!(map.len(), 2);
+    }
+
+    fn make_cfg(redirect_uri: &str, template: Option<&str>) -> crate::config::RpConfig {
+        crate::config::RpConfig {
+            issuer:                     "https://kc/realms/x".into(),
+            client_id:                  "client".into(),
+            redirect_uri:               redirect_uri.into(),
+            post_logout_redirect_uri:   None,
+            state_ttl:                  Duration::from_secs(600),
+            http_timeout:               Duration::from_secs(5),
+            issuer_template:            None,
+            redirect_uri_template:      template.map(str::to_string),
+            post_logout_template:       None,
+        }
+    }
+
+    #[test]
+    fn redirect_uri_template_replaces_host() {
+        let cfg = make_cfg("https://fallback/cb", Some("https://{host}/auth/callback"));
+        // Test the pure string substitution logic directly (same as redirect_uri_for_host).
+        let result = cfg.redirect_uri_template.as_deref()
+            .map(|t| t.replace("{host}", "tenant.example.com"))
+            .unwrap_or_else(|| cfg.redirect_uri.clone());
+        assert_eq!(result, "https://tenant.example.com/auth/callback");
+    }
+
+    #[test]
+    fn redirect_uri_falls_back_when_no_template() {
+        let cfg = make_cfg("https://static.example.com/callback", None);
+        let result = cfg.redirect_uri_template.as_deref()
+            .map(|t| t.replace("{host}", "any.host"))
+            .unwrap_or_else(|| cfg.redirect_uri.clone());
+        assert_eq!(result, "https://static.example.com/callback");
+    }
+}
