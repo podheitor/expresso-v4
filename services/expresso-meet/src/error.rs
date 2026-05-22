@@ -66,3 +66,53 @@ impl IntoResponse for MeetError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: MeetError) -> u16 {
+        e.into_response().status().as_u16()
+    }
+
+    #[test]
+    fn meeting_not_found_is_404() {
+        assert_eq!(status(MeetError::MeetingNotFound(Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn not_found_is_404() {
+        assert_eq!(status(MeetError::NotFound), 404);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(MeetError::BadRequest("bad".into())), 400);
+    }
+
+    #[test]
+    fn conflict_is_409() {
+        assert_eq!(status(MeetError::Conflict("dup".into())), 409);
+    }
+
+    #[test]
+    fn not_participant_is_403() {
+        assert_eq!(status(MeetError::NotParticipant), 403);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(MeetError::Forbidden), 403);
+    }
+
+    #[test]
+    fn database_unavailable_is_503() {
+        assert_eq!(status(MeetError::DatabaseUnavailable), 503);
+    }
+
+    #[test]
+    fn jitsi_unavailable_is_503() {
+        assert_eq!(status(MeetError::JitsiUnavailable), 503);
+    }
+}

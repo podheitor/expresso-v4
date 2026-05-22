@@ -58,3 +58,48 @@ impl IntoResponse for ChatError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: ChatError) -> u16 {
+        e.into_response().status().as_u16()
+    }
+
+    #[test]
+    fn channel_not_found_is_404() {
+        assert_eq!(status(ChatError::ChannelNotFound(Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(ChatError::BadRequest("bad".into())), 400);
+    }
+
+    #[test]
+    fn not_member_is_403() {
+        assert_eq!(status(ChatError::NotMember), 403);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(ChatError::Forbidden), 403);
+    }
+
+    #[test]
+    fn database_unavailable_is_503() {
+        assert_eq!(status(ChatError::DatabaseUnavailable), 503);
+    }
+
+    #[test]
+    fn matrix_unavailable_is_503() {
+        assert_eq!(status(ChatError::MatrixUnavailable), 503);
+    }
+
+    #[test]
+    fn matrix_error_is_502() {
+        assert_eq!(status(ChatError::Matrix("upstream".into())), 502);
+    }
+}

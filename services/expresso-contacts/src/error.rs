@@ -58,3 +58,48 @@ impl IntoResponse for ContactsError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    fn status(e: ContactsError) -> u16 {
+        e.into_response().status().as_u16()
+    }
+
+    #[test]
+    fn contact_not_found_is_404() {
+        assert_eq!(status(ContactsError::ContactNotFound(Uuid::new_v4())), 404);
+    }
+
+    #[test]
+    fn addressbook_not_found_is_404() {
+        assert_eq!(status(ContactsError::AddressbookNotFound("ab1".into())), 404);
+    }
+
+    #[test]
+    fn invalid_vcard_is_400() {
+        assert_eq!(status(ContactsError::InvalidVCard("parse err".into())), 400);
+    }
+
+    #[test]
+    fn bad_request_is_400() {
+        assert_eq!(status(ContactsError::BadRequest("bad".into())), 400);
+    }
+
+    #[test]
+    fn forbidden_is_403() {
+        assert_eq!(status(ContactsError::Forbidden), 403);
+    }
+
+    #[test]
+    fn database_unavailable_is_503() {
+        assert_eq!(status(ContactsError::DatabaseUnavailable), 503);
+    }
+
+    #[test]
+    fn not_supported_is_501() {
+        assert_eq!(status(ContactsError::NotSupported("REPORT")), 501);
+    }
+}
