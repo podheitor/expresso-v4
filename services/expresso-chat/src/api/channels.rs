@@ -252,3 +252,27 @@ async fn list_members(
     }
     Ok(resp)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_body_deser_minimal() {
+        let json = r#"{"name":"general"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.name, "general");
+        assert!(b.topic.is_none());
+        assert!(b.kind.is_none());
+        assert!(b.invite.is_empty());
+    }
+
+    #[test]
+    fn add_member_body_deser_role_optional() {
+        let uid = Uuid::new_v4();
+        let json = format!(r#"{{"user_id":"{uid}"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(b.user_id, uid);
+        assert!(b.role.is_none());
+    }
+}

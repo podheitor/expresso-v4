@@ -411,3 +411,39 @@ async fn patch_alarm(
         None    => Err(CalendarError::AlarmNotFound(event_id)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_alarm_body_all_optional() {
+        let json = r#"{}"#;
+        let b: CreateAlarmBody = serde_json::from_str(json).unwrap();
+        assert!(b.uid.is_none());
+        assert!(b.action.is_none());
+        assert!(b.trigger_rel.is_none());
+        assert!(b.description.is_none());
+    }
+
+    #[test]
+    fn patch_alarm_body_partial_update() {
+        let json = r#"{"action":"DISPLAY"}"#;
+        let b: PatchAlarmBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.action.as_deref(), Some("DISPLAY"));
+        assert!(b.trigger_rel.is_none());
+    }
+
+    #[test]
+    fn count_query_delivered_filter() {
+        let json = r#"{"delivered":false}"#;
+        let q: CountQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.delivered, Some(false));
+    }
+
+    #[test]
+    fn count_query_no_filter() {
+        let q: CountQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.delivered.is_none());
+    }
+}

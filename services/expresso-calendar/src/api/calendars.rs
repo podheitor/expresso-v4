@@ -220,3 +220,33 @@ async fn stats_event_density(
         .collect();
     Ok(Json(serde_json::json!({"bucket": bucket, "rows": out})))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stats_by_tenant_query_default_limit() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.limit.is_none());
+        assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 20);
+    }
+
+    #[test]
+    fn stats_by_tenant_query_clamped_max() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":999}"#).unwrap();
+        assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 200);
+    }
+
+    #[test]
+    fn event_density_query_bucket_optional() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.bucket.is_none());
+    }
+
+    #[test]
+    fn event_density_query_bucket_set() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"month"}"#).unwrap();
+        assert_eq!(q.bucket.as_deref(), Some("month"));
+    }
+}
