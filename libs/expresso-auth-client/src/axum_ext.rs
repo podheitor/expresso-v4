@@ -245,6 +245,62 @@ mod tests {
             assert_eq!(resp.status().as_u16(), *expected_status);
         }
     }
+
+    // ─── From<AuthError> for AuthRejection ───────────────────────────────────
+
+    #[test]
+    fn auth_error_expired_maps_to_rejection_expired() {
+        let r = AuthRejection::from(AuthError::Expired);
+        assert!(matches!(r, AuthRejection::Expired));
+    }
+
+    #[test]
+    fn auth_error_missing_bearer_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::MissingBearer);
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m == "missing_bearer"));
+    }
+
+    #[test]
+    fn auth_error_invalid_token_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::InvalidToken("bad sig".into()));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m.contains("invalid_token")));
+    }
+
+    #[test]
+    fn auth_error_kid_not_found_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::KidNotFound(Some("kid-abc".into())));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m == "unknown_key"));
+    }
+
+    #[test]
+    fn auth_error_kid_not_found_none_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::KidNotFound(None));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m == "unknown_key"));
+    }
+
+    #[test]
+    fn auth_error_malformed_claim_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::MalformedClaim("sub", "not a uuid".into()));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m.contains("malformed_sub")));
+    }
+
+    #[test]
+    fn auth_error_missing_claim_maps_to_forbidden() {
+        let r = AuthRejection::from(AuthError::MissingClaim("tenant_id"));
+        assert!(matches!(r, AuthRejection::Forbidden(m) if m.contains("missing_tenant_id")));
+    }
+
+    #[test]
+    fn auth_error_config_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::Config("no jwks url".into()));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m.contains("no jwks url")));
+    }
+
+    #[test]
+    fn auth_error_jwks_fetch_maps_to_unauthorized() {
+        let r = AuthRejection::from(AuthError::JwksFetch("timeout".into()));
+        assert!(matches!(r, AuthRejection::Unauthorized(m) if m.contains("timeout")));
+    }
 }
 
 // --- Multi-realm extractor (fase 2 do realm-per-tenant) ---------------
