@@ -388,6 +388,13 @@ mod tests {
         let q = Quota { max_bytes: 100, used_bytes: 50 };
         assert!(!q.fits(51));
     }
+
+    #[test]
+    fn quota_available_returns_remaining_bytes() {
+        let q = Quota { max_bytes: 1000, used_bytes: 300 };
+        assert!(q.fits(700));
+        assert!(!q.fits(701));
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

@@ -409,7 +409,13 @@ mod tests {
 
     #[test]
     fn empty_prop_filters_matches_any_vcard() {
-        let f = ContactFilter { prop_filters: vec![] };
+        let f = Filter { op: Op::AllOf, props: vec![] };
         assert!(matches(SAMPLE, &f));
+    }
+
+    #[test]
+    fn filter_anyof_op_is_anyof() {
+        let f = Filter { op: Op::AnyOf, props: vec![] };
+        assert_eq!(f.op, Op::AnyOf);
     }
 }

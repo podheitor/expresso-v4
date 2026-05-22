@@ -227,4 +227,17 @@ mod tests {
         let actions = evaluate(b"", b"From: a@b\r\n\r\n");
         assert!(matches!(&actions[0], FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn evaluate_returns_at_least_one_action() {
+        let actions = evaluate(b"keep;", b"From: a@b\r\n\r\n");
+        assert!(!actions.is_empty());
+    }
+
+    #[test]
+    fn filter_action_keep_flags_empty_by_default() {
+        if let FilterAction::Keep { flags } = &evaluate(b"keep;", b"From: a@b\r\n\r\n")[0] {
+            assert!(flags.is_empty());
+        }
+    }
 }

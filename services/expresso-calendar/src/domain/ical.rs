@@ -371,4 +371,9 @@ END:VCALENDAR\r\n";
     fn etag_differs_for_different_inputs() {
         assert_ne!(compute_etag("one"), compute_etag("two"));
     }
+
+    #[test]
+    fn etag_same_input_same_output() {
+        assert_eq!(compute_etag("hello"), compute_etag("hello"));
+    }
 }

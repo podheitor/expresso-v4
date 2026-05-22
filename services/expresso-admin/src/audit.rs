@@ -586,4 +586,10 @@ mod tests {
         let out = csv_escape("hello");
         assert_eq!(out, "hello");
     }
+
+    #[test]
+    fn numeric_field_not_quoted() {
+        let out = csv_escape("12345");
+        assert_eq!(out, "12345");
+    }
 }

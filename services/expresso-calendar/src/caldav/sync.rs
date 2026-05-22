@@ -266,4 +266,9 @@ mod tests {
     fn parse_token_large_value_parsed() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}999999")), Some(999_999));
     }
+
+    #[test]
+    fn parse_token_negative_value_is_none() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}-1")), None);
+    }
 }

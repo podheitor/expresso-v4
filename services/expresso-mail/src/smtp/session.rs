@@ -476,4 +476,14 @@ mod extra_tests {
     fn extract_angle_no_brackets_returns_trimmed() {
         assert_eq!(extract_angle("user@domain.com"), "user@domain.com");
     }
+
+    #[test]
+    fn extract_angle_empty_brackets_returns_empty() {
+        assert_eq!(extract_angle("<>"), "");
+    }
+
+    #[test]
+    fn extract_angle_empty_string_returns_empty() {
+        assert_eq!(extract_angle(""), "");
+    }
 }

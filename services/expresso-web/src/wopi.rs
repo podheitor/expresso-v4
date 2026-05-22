@@ -144,4 +144,10 @@ mod extra_tests {
         let url = build_iframe_url("https://collabora", "https://drive", "f1", "secret-token");
         assert!(url.contains("secret-token"));
     }
+
+    #[test]
+    fn build_iframe_url_starts_with_collabora_base() {
+        let url = build_iframe_url("https://collabora.example.com", "https://drive", "file1", "tok");
+        assert!(url.starts_with("https://collabora.example.com"));
+    }
 }

@@ -396,4 +396,17 @@ mod tests {
         let s = serde_json::to_string(&e).unwrap();
         assert!(s.contains("Acme Corp"));
     }
+
+    #[test]
+    fn gal_entry_contact_all_optional_fields_none() {
+        let e = GalEntry::Contact {
+            contact_id:     Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            email:          None,
+            full_name:      None,
+            organization:   None,
+        };
+        let s = serde_json::to_string(&e).unwrap();
+        assert!(s.contains("contact"));
+    }
 }

@@ -455,4 +455,10 @@ END:VCALENDAR\r\n";
         let empty = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nCOMMENT:\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
         assert_eq!(parse_comment(empty), None);
     }
+
+    #[test]
+    fn parse_comment_simple_value_returned() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u1\r\nCOMMENT:Please confirm.\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        assert_eq!(parse_comment(ics).as_deref(), Some("Please confirm."));
+    }
 }

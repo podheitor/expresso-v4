@@ -372,4 +372,16 @@ mod tests {
         let c = sample();
         assert_eq!(c.full_name.as_deref(), Some("Alice Smith"));
     }
+
+    #[test]
+    fn contact_etag_not_empty() {
+        let c = sample();
+        assert!(!c.etag.is_empty());
+    }
+
+    #[test]
+    fn contact_uid_not_empty() {
+        let c = sample();
+        assert!(!c.uid.is_empty());
+    }
 }

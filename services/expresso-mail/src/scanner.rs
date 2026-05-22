@@ -261,4 +261,10 @@ mod tests {
         let r = ScanResult { spam_score: Some(4.99), spam_action: None, virus: None };
         assert!(r.to_headers().contains("X-Spam-Status: No"));
     }
+
+    #[test]
+    fn clean_scan_result_is_clean() {
+        let r = ScanResult { spam_score: Some(1.0), spam_action: None, virus: None };
+        assert!(r.is_clean());
+    }
 }

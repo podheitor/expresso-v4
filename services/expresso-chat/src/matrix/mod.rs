@@ -316,4 +316,9 @@ mod tests {
     fn localpart_with_special_chars_in_server() {
         assert_eq!(localpart_from_mxid("@alice:chat.example.com"), Some("alice"));
     }
+
+    #[test]
+    fn localpart_no_at_sign_returns_none() {
+        assert_eq!(localpart_from_mxid("notanmxid"), None);
+    }
 }

@@ -203,4 +203,10 @@ mod tests {
         let s = fmt_opt_ts(Some(ts));
         assert!(s.starts_with("2026-05-22"));
     }
+
+    #[test]
+    fn pct_over_hundred_percent_possible() {
+        let s = pct(150, 100);
+        assert!(s.contains("150"));
+    }
 }

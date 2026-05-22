@@ -519,4 +519,9 @@ mod tests {
     fn parse_depth_infinity_string_is_infinity() {
         assert!(matches!(parse_depth(&headers_with_depth("infinity")), Depth::Infinity));
     }
+
+    #[test]
+    fn parse_depth_zero_string_is_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("0")), Depth::Zero));
+    }
 }

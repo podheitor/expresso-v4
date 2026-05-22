@@ -509,4 +509,14 @@ mod tests {
         let s = human_summary(&inv, Method::Request);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn method_label_request_is_request() {
+        assert_eq!(method_label(Method::Request), "REQUEST");
+    }
+
+    #[test]
+    fn method_label_cancel_is_cancel() {
+        assert_eq!(method_label(Method::Cancel), "CANCEL");
+    }
 }

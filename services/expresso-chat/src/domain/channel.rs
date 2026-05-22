@@ -253,4 +253,9 @@ mod tests {
     fn member_role_guest_serializes() {
         assert_eq!(serde_json::to_string(&MemberRole::Guest).unwrap(), r#""guest""#);
     }
+
+    #[test]
+    fn member_role_owner_serializes() {
+        assert_eq!(serde_json::to_string(&MemberRole::Owner).unwrap(), r#""owner""#);
+    }
 }

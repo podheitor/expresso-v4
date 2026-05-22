@@ -1382,4 +1382,32 @@ mod tests {
         };
         assert_eq!(doc.document_id, "msg-abc");
     }
+
+    #[test]
+    fn index_doc_tenant_id_preserved() {
+        let doc = IndexDoc {
+            document_id: "d1".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert_eq!(doc.tenant_id, TENANT_A);
+    }
+
+    #[test]
+    fn index_doc_kind_none_by_default() {
+        let doc = IndexDoc {
+            document_id: "d2".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert!(doc.kind.is_none());
+    }
 }

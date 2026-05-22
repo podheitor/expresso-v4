@@ -154,4 +154,10 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
         assert_ne!(m.issuer_for("corp"), m.issuer_for("demo"));
     }
+
+    #[test]
+    fn issuer_for_contains_realm_name() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert!(m.issuer_for("mytenant").contains("mytenant"));
+    }
 }

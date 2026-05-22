@@ -150,4 +150,10 @@ mod tests {
         assert_eq!(command_label("RCPT"), "RCPT");
         assert_eq!(command_label("rcpt"), "RCPT");
     }
+
+    #[test]
+    fn quit_command_maps_correctly() {
+        assert_eq!(command_label("QUIT"), "QUIT");
+        assert_eq!(command_label("quit"), "QUIT");
+    }
 }

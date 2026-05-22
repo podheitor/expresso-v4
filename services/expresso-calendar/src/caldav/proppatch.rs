@@ -355,14 +355,21 @@ mod tests {
     #[test]
     fn patch_has_changes_true_when_name_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: Some("New Name".into()), description: None, color: None, timezone: None };
+        let p = UpdateCalendar { name: Some("New Name".into()), description: None, color: None, timezone: None, is_default: None };
         assert!(patch_has_changes(&p));
     }
 
     #[test]
     fn patch_has_changes_true_when_timezone_set() {
         use super::UpdateCalendar;
-        let p = UpdateCalendar { name: None, description: None, color: None, timezone: Some("America/Sao_Paulo".into()) };
+        let p = UpdateCalendar { name: None, description: None, color: None, timezone: Some("America/Sao_Paulo".into()), is_default: None };
+        assert!(patch_has_changes(&p));
+    }
+
+    #[test]
+    fn patch_has_changes_true_when_color_set() {
+        use super::UpdateCalendar;
+        let p = UpdateCalendar { name: None, description: None, color: Some("#ff0000".into()), timezone: None, is_default: None };
         assert!(patch_has_changes(&p));
     }
 }

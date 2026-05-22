@@ -240,4 +240,10 @@ mod tests {
         assert_eq!(cfg.rps, 5);
         assert_eq!(cfg.burst, 10);
     }
+
+    #[test]
+    fn rate_limit_config_burst_preserved() {
+        let cfg = RateLimitConfig { rps: 10, burst: 50 };
+        assert_eq!(cfg.burst, 50);
+    }
 }

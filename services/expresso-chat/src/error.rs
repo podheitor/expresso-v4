@@ -128,4 +128,9 @@ mod tests {
         let msg = format!("{}", ChatError::Forbidden);
         assert!(!msg.is_empty());
     }
+
+    #[test]
+    fn matrix_error_status_is_502() {
+        assert_eq!(status(ChatError::Matrix("upstream timeout".into())), 502);
+    }
 }

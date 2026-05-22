@@ -155,4 +155,10 @@ mod tests {
         let c = cfg("my-issuer", "my-client", "https://app/cb", None, None, None);
         assert_eq!(c.client_id, "my-client");
     }
+
+    #[test]
+    fn redirect_uri_preserved() {
+        let c = cfg("issuer", "client", "https://app.example.com/callback", None, None, None);
+        assert_eq!(c.redirect_uri, "https://app.example.com/callback");
+    }
 }

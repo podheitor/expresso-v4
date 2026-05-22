@@ -350,4 +350,17 @@ mod tests {
         };
         assert_eq!(r.created_at_fmt, "2026-09-01");
     }
+
+    #[test]
+    fn counter_row_event_summary_preserved() {
+        let r = CounterRow {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), event_id: Uuid::nil(),
+            event_summary: "Team Standup".into(), attendee_email: "b@c.com".into(),
+            proposed_dtstart: "2026-09-02T09:00:00Z".into(),
+            proposed_dtend: "2026-09-02T09:30:00Z".into(),
+            received_sequence: "0".into(), comment: None,
+            created_at_fmt: "2026-09-02".into(),
+        };
+        assert_eq!(r.event_summary, "Team Standup");
+    }
 }

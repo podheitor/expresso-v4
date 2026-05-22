@@ -86,4 +86,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("aes key too short"));
         assert!(e.to_string().contains("aes key too short"));
     }
+
+    #[test]
+    fn internal_error_debug_contains_internal_variant() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("hmac mismatch"));
+        assert!(format!("{e:?}").contains("Internal"));
+    }
 }

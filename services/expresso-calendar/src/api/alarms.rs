@@ -499,4 +499,10 @@ mod tests {
         let b: PatchAlarmBody = serde_json::from_str(r#"{"trigger_rel":"PT30M"}"#).unwrap();
         assert_eq!(b.trigger_rel.as_deref(), Some("PT30M"));
     }
+
+    #[test]
+    fn patch_alarm_body_description_preserved() {
+        let b: PatchAlarmBody = serde_json::from_str(r#"{"description":"Meeting reminder"}"#).unwrap();
+        assert_eq!(b.description.as_deref(), Some("Meeting reminder"));
+    }
 }

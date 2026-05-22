@@ -413,4 +413,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "My Calendar".into(), "u@x".into(), "u".into(), None, None, false, 0);
         assert_eq!(row.name, "My Calendar");
     }
+
+    #[test]
+    fn to_dav_row_ctag_value_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "t".into(), "e@e".into(), "n".into(), None, None, false, 42);
+        assert_eq!(row.ctag, 42);
+    }
 }

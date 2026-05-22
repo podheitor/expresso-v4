@@ -137,3 +137,10 @@ fn email_is_preserved_in_context() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.email, "alice@x");
 }
+
+#[test]
+fn roles_from_realm_access_included() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000003", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(ctx.roles.iter().any(|r| r == "user" || r == "admin"));
+}

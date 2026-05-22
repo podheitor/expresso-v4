@@ -275,4 +275,12 @@ mod tests {
         let r: ShareRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(r.grantee_id, id);
     }
+
+    #[test]
+    fn share_request_privilege_preserved() {
+        let id = uuid::Uuid::nil();
+        let json = format!(r#"{{"grantee_id":"{id}","privilege":"READ"}}"#);
+        let r: ShareRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.privilege, "READ");
+    }
 }

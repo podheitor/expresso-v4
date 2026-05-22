@@ -242,4 +242,14 @@ mod tests {
     fn parse_token_empty_string_returns_none() {
         assert!(parse_token_value("").is_none());
     }
+
+    #[test]
+    fn parse_token_value_negative_is_none() {
+        assert!(parse_token_value(&format!("{TOKEN_PREFIX}-1")).is_none());
+    }
+
+    #[test]
+    fn parse_token_value_non_numeric_is_none() {
+        assert!(parse_token_value(&format!("{TOKEN_PREFIX}abc")).is_none());
+    }
 }

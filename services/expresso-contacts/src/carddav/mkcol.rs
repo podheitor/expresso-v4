@@ -177,4 +177,10 @@ mod tests {
         let b = "<displayname>Contacts</displayname>";
         assert!(extract_prop(b, "description").is_none());
     }
+
+    #[test]
+    fn extract_prop_existing_tag_returns_value() {
+        let b = "<displayname>Work</displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("Work"));
+    }
 }

@@ -249,4 +249,17 @@ mod tests {
         let b = compute_etag("BEGIN:VCARD\r\nUID:u2\r\nFN:Bob\r\nEND:VCARD\r\n");
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn parsed_vcard_uid_extracted() {
+        let raw = "BEGIN:VCARD\r\nUID:my-uid-123\r\nFN:Test\r\nEND:VCARD\r\n";
+        let p = parse(raw).unwrap();
+        assert_eq!(p.uid, "my-uid-123");
+    }
+
+    #[test]
+    fn compute_etag_is_hex_string() {
+        let e = compute_etag("BEGIN:VCARD\r\nUID:x\r\nFN:X\r\nEND:VCARD\r\n");
+        assert!(e.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

@@ -287,4 +287,17 @@ mod tests {
         };
         assert_eq!(c.realm, "expresso");
     }
+
+    #[test]
+    fn kc_admin_config_base_url_preserved() {
+        let c = KcAdminConfig {
+            base_url:               "https://keycloak.internal:8443".into(),
+            realm:                  "corp".into(),
+            admin_user:             "admin".into(),
+            admin_pass:             "s3cr3t".into(),
+            exchange_client_id:     None,
+            exchange_client_secret: None,
+        };
+        assert_eq!(c.base_url, "https://keycloak.internal:8443");
+    }
 }

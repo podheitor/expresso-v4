@@ -203,4 +203,10 @@ mod tests {
         assert_eq!(command_label("LOGOUT"), "LOGOUT");
         assert_eq!(command_label("logout"), "LOGOUT");
     }
+
+    #[test]
+    fn fetch_command_maps_correctly() {
+        assert_eq!(command_label("FETCH"), "FETCH");
+        assert_eq!(command_label("fetch"), "FETCH");
+    }
 }

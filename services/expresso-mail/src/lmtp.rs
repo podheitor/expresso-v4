@@ -281,4 +281,14 @@ mod tests {
     fn size_param_zero_is_parsed() {
         assert_eq!(extract_size_param("<a@b> SIZE=0"), Some(0));
     }
+
+    #[test]
+    fn size_param_with_extra_params_extracted() {
+        assert_eq!(extract_size_param("<a@b> BODY=7BIT SIZE=4096"), Some(4096));
+    }
+
+    #[test]
+    fn size_param_non_numeric_returns_none() {
+        assert_eq!(extract_size_param("<a@b> SIZE=notanumber"), None);
+    }
 }

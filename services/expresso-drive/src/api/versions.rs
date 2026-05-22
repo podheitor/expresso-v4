@@ -407,8 +407,14 @@ mod tests {
     }
 
     #[test]
-    fn create_version_body_mime_type_preserved() {
-        let b: CreateVersionBody = serde_json::from_str(r#"{"mime_type":"application/pdf"}"#).unwrap();
-        assert_eq!(b.mime_type.as_deref(), Some("application/pdf"));
+    fn create_version_body_sha256_preserved() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"sha256":"abc123"}"#).unwrap();
+        assert_eq!(b.sha256.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn create_version_body_all_none_on_empty_object() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.size_bytes.is_none() && b.sha256.is_none() && b.storage_key.is_none());
     }
 }

@@ -520,4 +520,9 @@ mod slug_tests {
     fn valid_slug_rejects_spaces() {
         assert!(!valid_slug("my tenant"));
     }
+
+    #[test]
+    fn valid_slug_rejects_uppercase_letters() {
+        assert!(!valid_slug("MyTenant"));
+    }
 }

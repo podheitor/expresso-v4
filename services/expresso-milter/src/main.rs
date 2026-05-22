@@ -342,4 +342,16 @@ mod tests {
         assert_eq!(r.0, "X-Custom");
         assert_eq!(r.1, "a:b:c");
     }
+
+    #[test]
+    fn parse_header_missing_colon_returns_none() {
+        assert!(parse_header_line("HeaderWithoutColon").is_none());
+    }
+
+    #[test]
+    fn parse_header_empty_value_allowed() {
+        let r = parse_header_line("X-Empty: ").unwrap();
+        assert_eq!(r.0, "X-Empty");
+        assert_eq!(r.1, "");
+    }
 }

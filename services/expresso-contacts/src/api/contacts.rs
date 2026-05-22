@@ -508,4 +508,9 @@ mod tests {
     fn non_empty_vcard_within_limit_accepted() {
         assert!(validate_vcard("BEGIN:VCARD\r\nEND:VCARD\r\n", MAX_CONTACT_VCARD_BYTES).is_ok());
     }
+
+    #[test]
+    fn max_contact_vcard_bytes_is_64kb() {
+        assert_eq!(MAX_CONTACT_VCARD_BYTES, 64 * 1024);
+    }
 }

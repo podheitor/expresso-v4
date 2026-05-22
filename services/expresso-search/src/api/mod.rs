@@ -16916,6 +16916,18 @@ mod tests {
     fn default_limit_is_twenty() {
         assert_eq!(DEFAULT_LIMIT, 20);
     }
+
+    #[test]
+    fn search_query_q_field_preserved() {
+        let q = SearchQuery { q: "hello".into(), limit: DEFAULT_LIMIT };
+        assert_eq!(q.q, "hello");
+    }
+
+    #[test]
+    fn search_query_limit_default_matches_constant() {
+        let q = SearchQuery { q: "test".into(), limit: DEFAULT_LIMIT };
+        assert_eq!(q.limit, 20);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

@@ -321,4 +321,11 @@ mod tests {
     fn aud_claim_one_rejects_different_aud() {
         assert!(!AudClaim::One("web".into()).contains("mobile"));
     }
+
+    #[test]
+    fn aud_claim_many_contains_matching_entry() {
+        let claim = AudClaim::Many(vec!["api".into(), "web".into()]);
+        assert!(claim.contains("api"));
+        assert!(!claim.contains("mobile"));
+    }
 }

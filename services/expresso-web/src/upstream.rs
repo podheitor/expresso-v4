@@ -206,4 +206,14 @@ mod tests {
     fn build_url_trailing_slash_on_base_is_stripped() {
         assert_eq!(build_url("http://svc/", "/path"), "http://svc/path");
     }
+
+    #[test]
+    fn build_url_deep_path_preserved() {
+        assert_eq!(build_url("http://svc", "/a/b/c"), "http://svc/a/b/c");
+    }
+
+    #[test]
+    fn build_url_root_path_produces_base_with_slash() {
+        assert_eq!(build_url("http://svc", "/"), "http://svc/");
+    }
 }

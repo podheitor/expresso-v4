@@ -443,4 +443,11 @@ mod tests {
         let s = format_ical_utc(dt).unwrap();
         assert!(s.ends_with('Z'));
     }
+
+    #[test]
+    fn format_ical_utc_starts_with_date_digits() {
+        let dt = datetime!(2026-03-15 08:00:00 UTC);
+        let s = format_ical_utc(dt).unwrap();
+        assert!(s.starts_with("20260315T"));
+    }
 }

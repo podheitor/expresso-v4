@@ -332,4 +332,11 @@ mod tests {
         let u: KcUser = serde_json::from_str(json).unwrap();
         assert_eq!(u.email, "eva@corp.com");
     }
+
+    #[test]
+    fn kc_user_first_name_from_camel_case_key() {
+        let json = r#"{"id":"f1","firstName":"Frank"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert_eq!(u.first, "Frank");
+    }
 }

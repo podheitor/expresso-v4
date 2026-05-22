@@ -293,4 +293,18 @@ mod extra_tests {
         let tok = j.mint(&req).unwrap();
         assert!(!tok.token.is_empty());
     }
+
+    #[test]
+    fn issued_token_join_url_contains_base_url() {
+        let j = Jitsi::new(fixture_cfg());
+        let req = IssueRequest { room: "myroom", user_id: Uuid::nil(), display_name: "X", email: "x@x", moderator: false, allow_recording: false };
+        let tok = j.mint(&req).unwrap();
+        assert!(tok.join_url.starts_with("https://"));
+    }
+
+    #[test]
+    fn jitsi_config_room_prefix_accessible() {
+        let cfg = fixture_cfg();
+        let _ = cfg.room_prefix.as_str(); // compiles only if field is String
+    }
 }

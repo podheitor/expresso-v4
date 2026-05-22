@@ -1428,6 +1428,16 @@ mod tests {
     fn max_title_bytes_is_at_least_100() {
         assert!(MAX_TITLE_BYTES >= 100);
     }
+
+    #[test]
+    fn room_name_rejects_at_sign() {
+        assert!(!valid_room_name("user@domain"));
+    }
+
+    #[test]
+    fn max_room_name_bytes_is_positive() {
+        assert!(MAX_ROOM_NAME_BYTES > 0);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

@@ -3874,4 +3874,17 @@ Attachment\r\n\
         assert!(mime_navigate(MULTIPART_MSG, &[3]).is_none());
         assert!(mime_navigate(MULTIPART_MSG, &[1, 2]).is_none());
     }
+
+    #[test]
+    fn navigate_part1_matches_body() {
+        let nav = mime_navigate(MULTIPART_MSG, &[1]);
+        let body = mime_part_body(MULTIPART_MSG, 1);
+        assert_eq!(nav, Some(body));
+    }
+
+    #[test]
+    fn navigate_empty_path_returns_whole() {
+        // empty path → whole raw bytes per RFC 3501
+        assert!(mime_navigate(MULTIPART_MSG, &[]).is_some());
+    }
 }

@@ -617,4 +617,17 @@ mod tests {
         let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), 3600);
         assert!(verify_token(b"key", &tok, other).is_none());
     }
+
+    #[test]
+    fn sign_token_is_non_empty() {
+        let tok = sign_token(b"k", Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 60);
+        assert!(!tok.is_empty());
+    }
+
+    #[test]
+    fn expired_token_negative_ttl_is_rejected() {
+        let fid = Uuid::new_v4();
+        let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), -1);
+        assert!(verify_token(b"key", &tok, fid).is_none());
+    }
 }

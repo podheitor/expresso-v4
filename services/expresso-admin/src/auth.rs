@@ -332,4 +332,9 @@ mod tests {
     fn is_public_path_health_is_public() {
         assert!(is_public_path("/health"));
     }
+
+    #[test]
+    fn is_public_path_readyz_is_public() {
+        assert!(is_public_path("/readyz"));
+    }
 }

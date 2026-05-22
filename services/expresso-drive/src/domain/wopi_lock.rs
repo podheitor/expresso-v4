@@ -313,4 +313,22 @@ mod tests {
         };
         assert_eq!(lock.tenant_id, tid);
     }
+
+    #[test]
+    fn wopi_lock_not_expired_when_future() {
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + Duration::hours(1),
+        };
+        assert!(!lock.is_expired());
+    }
+
+    #[test]
+    fn lock_ttl_is_30_minutes() {
+        assert_eq!(LOCK_TTL, Duration::minutes(30));
+    }
 }

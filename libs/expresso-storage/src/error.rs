@@ -83,4 +83,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("x"));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn debug_format_contains_internal_variant() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("object not found"));
+        assert!(format!("{e:?}").contains("Internal"));
+    }
 }

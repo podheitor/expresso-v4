@@ -595,4 +595,16 @@ mod tests {
         let s = human_size(1);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn human_size_zero_is_non_empty() {
+        let s = human_size(0);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn human_size_negative_is_non_empty() {
+        let s = human_size(-1);
+        assert!(!s.is_empty());
+    }
 }

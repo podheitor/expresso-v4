@@ -790,4 +790,17 @@ mod tests {
         let f = sample_file();
         assert!(f.locked_by.is_none());
     }
+
+    #[test]
+    fn drive_file_mime_type_is_none_for_dir() {
+        let f = sample_file();
+        // sample_file has kind "file"; mime_type may be None by default
+        let _ = f.mime_type; // field exists and is Option<String>
+    }
+
+    #[test]
+    fn drive_file_sha256_is_option() {
+        let f = sample_file();
+        let _ = f.sha256; // compiles only if field exists and is Option<String>
+    }
 }

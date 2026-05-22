@@ -140,4 +140,15 @@ mod tests {
         let e = MailError::MessageNotFound(id);
         assert!(format!("{e}").contains(&id.to_string()));
     }
+
+    #[test]
+    fn bad_request_display_contains_message() {
+        let e = MailError::BadRequest("missing from".into());
+        assert!(format!("{e}").contains("missing from"));
+    }
+
+    #[test]
+    fn forbidden_status_is_403() {
+        assert_eq!(status(MailError::Forbidden), 403);
+    }
 }

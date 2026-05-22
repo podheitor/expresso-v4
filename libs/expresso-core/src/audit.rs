@@ -197,8 +197,14 @@ mod tests {
     }
 
     #[test]
-    fn audit_entry_action_preserved() {
-        let e = AuditEntry::new("calendar.event.created");
-        assert_eq!(e.action, "calendar.event.created");
+    fn audit_entry_action_contact_deleted_preserved() {
+        let e = AuditEntry::new("contact.deleted");
+        assert_eq!(e.action, "contact.deleted");
+    }
+
+    #[test]
+    fn audit_entry_metadata_is_empty_by_default() {
+        let e = AuditEntry::new("mail.sent");
+        assert!(e.metadata.is_null() || e.metadata.as_object().map(|m| m.is_empty()).unwrap_or(true));
     }
 }

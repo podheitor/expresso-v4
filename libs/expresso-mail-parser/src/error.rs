@@ -83,4 +83,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("x"));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn debug_format_contains_internal_variant() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("mime boundary missing"));
+        assert!(format!("{e:?}").contains("Internal"));
+    }
 }

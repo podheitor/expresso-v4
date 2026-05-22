@@ -131,4 +131,9 @@ mod tests {
         let e = CalendarError::CalendarNotFound("personal".into());
         assert!(format!("{e}").contains("personal"));
     }
+
+    #[test]
+    fn calendar_conflict_status_is_409() {
+        assert_eq!(status(CalendarError::Conflict("uid dup".into())), 409);
+    }
 }

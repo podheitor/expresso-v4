@@ -259,4 +259,9 @@ mod tests {
     fn validate_priv_invalid_value_returns_error() {
         assert!(validate_priv("owner").is_err());
     }
+
+    #[test]
+    fn validate_priv_empty_string_returns_error() {
+        assert!(validate_priv("").is_err());
+    }
 }

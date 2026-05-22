@@ -189,4 +189,21 @@ mod tests {
         let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
         assert!(!l.is_locked_out("new@user.com"));
     }
+
+    #[test]
+    fn two_failures_below_threshold_not_locked() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("u@example.com");
+        l.record_failure("u@example.com");
+        assert!(!l.is_locked_out("u@example.com"));
+    }
+
+    #[test]
+    fn different_users_are_independent() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("a@x.com");
+        l.record_failure("a@x.com");
+        assert!(l.is_locked_out("a@x.com"));
+        assert!(!l.is_locked_out("b@x.com"));
+    }
 }

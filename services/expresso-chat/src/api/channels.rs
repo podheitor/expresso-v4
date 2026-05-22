@@ -350,4 +350,11 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.topic.as_deref(), Some("Company-wide announcements"));
     }
+
+    #[test]
+    fn create_body_name_preserved() {
+        let json = r#"{"name":"engineering"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.name, "engineering");
+    }
 }

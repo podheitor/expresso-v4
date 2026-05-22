@@ -138,4 +138,10 @@ mod tests {
         let r = TenantResolver::parse("a.x:realm_a");
         assert_eq!(r.resolve("unknown.host"), None);
     }
+
+    #[test]
+    fn empty_input_resolves_nothing() {
+        let r = TenantResolver::parse("");
+        assert!(r.resolve("any.host").is_none());
+    }
 }

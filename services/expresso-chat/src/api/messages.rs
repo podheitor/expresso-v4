@@ -172,4 +172,9 @@ mod tests {
     fn max_list_limit_is_at_most_200() {
         assert!(MAX_LIST_LIMIT <= 200);
     }
+
+    #[test]
+    fn max_list_limit_exact_value_is_200() {
+        assert_eq!(MAX_LIST_LIMIT, 200);
+    }
 }

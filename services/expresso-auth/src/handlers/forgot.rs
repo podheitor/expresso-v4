@@ -157,4 +157,11 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert_eq!(r.email, "user@sub.domain.example.com");
     }
+
+    #[test]
+    fn forgot_req_email_not_empty_after_roundtrip() {
+        let json = r#"{"email":"nonempty@host.org"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(!r.email.is_empty());
+    }
 }

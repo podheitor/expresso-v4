@@ -1531,4 +1531,16 @@ mod tests {
         assert_eq!(b.tags.len(), 1);
         assert_eq!(b.tags[0], "featured");
     }
+
+    #[test]
+    fn bulk_tags_body_empty_list_preserved() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":[]}"#).unwrap();
+        assert!(b.tags.is_empty());
+    }
+
+    #[test]
+    fn add_tag_body_tag_preserved() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":"important"}"#).unwrap();
+        assert_eq!(b.tag, "important");
+    }
 }

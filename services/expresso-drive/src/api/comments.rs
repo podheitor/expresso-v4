@@ -297,4 +297,16 @@ mod tests {
         };
         assert_eq!(c.body, "Great doc!");
     }
+
+    #[test]
+    fn file_comment_body_empty_string_allowed() {
+        use time::macros::datetime;
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: String::new(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert!(c.body.is_empty());
+    }
 }

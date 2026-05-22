@@ -545,4 +545,10 @@ mod tests {
         let raw: Option<i64> = Some(500);
         assert_eq!(raw.unwrap_or(50).min(200).max(1), 200);
     }
+
+    #[test]
+    fn counter_limit_zero_clamped_to_one() {
+        let raw: Option<i64> = Some(0);
+        assert_eq!(raw.unwrap_or(50).min(200).max(1), 1);
+    }
 }

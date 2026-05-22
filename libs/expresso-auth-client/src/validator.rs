@@ -316,8 +316,14 @@ mod tests {
     }
 
     #[test]
-    fn oidc_config_audience_preserved() {
+    fn oidc_config_client_id_becomes_audience() {
         let c = OidcConfig::new("https://idp/realms/r", "my-client");
         assert_eq!(c.audience, "my-client");
+    }
+
+    #[test]
+    fn oidc_config_issuer_does_not_end_with_slash() {
+        let c = OidcConfig::new("https://idp/realms/r", "client");
+        assert!(!c.issuer.ends_with('/'));
     }
 }

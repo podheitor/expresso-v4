@@ -209,4 +209,10 @@ mod tests {
         let h = headers_with_cookie("session=abc; expresso_rt=tok999; other=x");
         assert_eq!(extract_cookie(&h, "expresso_rt").as_deref(), Some("tok999"));
     }
+
+    #[test]
+    fn extract_cookie_missing_name_returns_none() {
+        let h = headers_with_cookie("session=abc");
+        assert!(extract_cookie(&h, "expresso_rt").is_none());
+    }
 }

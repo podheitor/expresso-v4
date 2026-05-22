@@ -145,4 +145,10 @@ mod tests {
         let tag = "front-end".to_string();
         assert_eq!(tag, "front-end");
     }
+
+    #[test]
+    fn tag_string_with_numbers_unchanged() {
+        let tag = "v2".to_string();
+        assert_eq!(tag, "v2");
+    }
 }

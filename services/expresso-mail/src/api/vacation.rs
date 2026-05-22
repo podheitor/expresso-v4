@@ -403,4 +403,22 @@ mod tests {
     fn max_body_constant_is_8kib() {
         assert_eq!(MAX_VACATION_BODY_BYTES, 8 * 1024);
     }
+
+    #[test]
+    fn validate_subject_too_long_returns_error() {
+        let v = Vacation {
+            subject: "x".repeat(MAX_VACATION_SUBJECT_BYTES + 1),
+            ..ok_vacation()
+        };
+        assert!(validate(&v).is_err());
+    }
+
+    #[test]
+    fn validate_body_too_long_returns_error() {
+        let v = Vacation {
+            body: "y".repeat(MAX_VACATION_BODY_BYTES + 1),
+            ..ok_vacation()
+        };
+        assert!(validate(&v).is_err());
+    }
 }

@@ -178,4 +178,17 @@ mod tests {
     fn percent_decode_empty_string_returns_empty() {
         assert_eq!(percent_decode(""), "");
     }
+
+    #[test]
+    fn classify_random_path_is_unknown() {
+        assert!(matches!(classify("/other/path/"), Target::Unknown));
+    }
+
+    #[test]
+    fn classify_contact_without_vcf_suffix_is_unknown() {
+        let u = Uuid::new_v4();
+        let c = Uuid::new_v4();
+        let t = classify(&format!("/carddav/{u}/{c}/no-suffix"));
+        assert!(matches!(t, Target::Unknown));
+    }
 }

@@ -1524,4 +1524,15 @@ mod tests {
         let name = "a".repeat(200);
         assert!(validate_folder_name(&name).is_ok());
     }
+
+    #[test]
+    fn folder_name_201_chars_rejected() {
+        let name = "a".repeat(201);
+        assert!(validate_folder_name(&name).is_err());
+    }
+
+    #[test]
+    fn folder_name_empty_rejected() {
+        assert!(validate_folder_name("").is_err());
+    }
 }

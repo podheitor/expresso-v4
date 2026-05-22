@@ -1692,4 +1692,19 @@ mod tests {
         assert_eq!(t, "tenant-xyz");
         assert_eq!(u, "user-abc");
     }
+
+    #[test]
+    fn ctx_of_empty_ids_returns_empty_strings() {
+        let me = Me { tenant_id: "".into(), user_id: "".into() };
+        let (t, u) = ctx_of(&me);
+        assert!(t.is_empty() && u.is_empty());
+    }
+
+    #[test]
+    fn ctx_of_special_chars_preserved() {
+        let me = Me { tenant_id: "tenant-with-dashes".into(), user_id: "user_with_underscores".into() };
+        let (t, u) = ctx_of(&me);
+        assert!(t.contains('-'));
+        assert!(u.contains('_'));
+    }
 }

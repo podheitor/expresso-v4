@@ -327,4 +327,9 @@ mod tests {
     fn cache_key_different_users_differ() {
         assert_ne!(cache_key("alice", "pass"), cache_key("bob", "pass"));
     }
+
+    #[test]
+    fn cache_key_different_passwords_differ() {
+        assert_ne!(cache_key("user", "pass1"), cache_key("user", "pass2"));
+    }
 }

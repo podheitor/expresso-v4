@@ -413,4 +413,10 @@ mod tests {
         let headers = headers_with_depth("0");
         assert!(matches!(parse_depth(&headers), Depth::Zero));
     }
+
+    #[test]
+    fn depth_one_header_is_one() {
+        let headers = headers_with_depth("1");
+        assert!(matches!(parse_depth(&headers), Depth::One));
+    }
 }

@@ -223,4 +223,16 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.total_size, 1);
     }
+
+    #[test]
+    fn session_offset_bytes_zero_initially() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.offset_bytes, 0);
+    }
+
+    #[test]
+    fn session_mime_type_is_none_by_default() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(s.mime_type.is_none());
+    }
 }

@@ -113,4 +113,10 @@ mod tests {
         let v = generate_verifier();
         assert_eq!(v.len(), 43);
     }
+
+    #[test]
+    fn verifier_is_ascii_only() {
+        let v = generate_verifier();
+        assert!(v.is_ascii());
+    }
 }

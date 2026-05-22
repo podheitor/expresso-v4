@@ -111,4 +111,9 @@ mod tests {
     fn retention_days_exceeds_one_week() {
         assert!(DEFAULT_RETENTION_DAYS > 7);
     }
+
+    #[test]
+    fn interval_hours_default_is_six() {
+        assert_eq!(DEFAULT_INTERVAL_HOURS, 6);
+    }
 }

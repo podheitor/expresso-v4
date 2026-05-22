@@ -127,4 +127,16 @@ mod tests {
         let e = ContactsError::AddressbookNotFound(id.into());
         assert!(format!("{e}").contains(id));
     }
+
+    #[test]
+    fn invalid_vcard_display_contains_message() {
+        let e = ContactsError::InvalidVCard("missing UID".into());
+        assert!(format!("{e}").contains("missing UID"));
+    }
+
+    #[test]
+    fn forbidden_display_is_forbidden() {
+        let e = ContactsError::Forbidden;
+        assert_eq!(format!("{e}"), "forbidden");
+    }
 }

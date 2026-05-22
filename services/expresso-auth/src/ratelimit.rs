@@ -217,4 +217,15 @@ mod tests {
         }
         assert!(!rl.check(ip), "51st request should be blocked");
     }
+
+    #[test]
+    fn limit_two_separate_ips_independent_limits() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 2);
+        let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 10));
+        let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 11));
+        assert!(rl.check(ip1));
+        assert!(rl.check(ip1));
+        assert!(!rl.check(ip1));
+        assert!(rl.check(ip2));
+    }
 }

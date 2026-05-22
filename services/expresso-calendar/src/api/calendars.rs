@@ -297,4 +297,10 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"day"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("day"));
     }
+
+    #[test]
+    fn event_density_query_bucket_month_preserved() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"month"}"#).unwrap();
+        assert_eq!(q.bucket.as_deref(), Some("month"));
+    }
 }

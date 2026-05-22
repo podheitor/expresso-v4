@@ -210,4 +210,13 @@ mod tests {
         assert_eq!(m.len(), 1);
         assert!(m.contains_key("fresh"));
     }
+
+    #[test]
+    fn evict_expired_removes_both_when_both_expired() {
+        let mut m: HashMap<String, PendingLogin> = HashMap::new();
+        m.insert("a".into(), make_pending(0));
+        m.insert("b".into(), make_pending(0));
+        AppState::evict_expired(&mut m);
+        assert!(m.is_empty());
+    }
 }

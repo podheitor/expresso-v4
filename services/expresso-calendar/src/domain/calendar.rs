@@ -471,4 +471,14 @@ mod tests {
         };
         assert!(n.timezone.is_none());
     }
+
+    #[test]
+    fn new_calendar_name_preserved() {
+        let n = NewCalendar {
+            name: "Personal".into(),
+            description: None,
+            color: None, timezone: None, is_default: false,
+        };
+        assert_eq!(n.name, "Personal");
+    }
 }

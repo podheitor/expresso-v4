@@ -331,4 +331,13 @@ mod tests {
         let w2 = datetime!(2026-05-11 00:00 UTC);
         assert!(single_instance(s, Some(e), w1, w2).is_none());
     }
+
+    #[test]
+    fn single_instance_inside_window_no_dtend_returns_some() {
+        use time::macros::datetime;
+        let s = datetime!(2026-05-10 09:00 UTC);
+        let w1 = datetime!(2026-05-10 00:00 UTC);
+        let w2 = datetime!(2026-05-11 00:00 UTC);
+        assert!(single_instance(s, None, w1, w2).is_some());
+    }
 }

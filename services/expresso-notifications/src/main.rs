@@ -25518,4 +25518,19 @@ mod tests {
         let q = DlqStatsQuery { since: None, until: Some("2026/01/01".into()) };
         assert!(q.parse_range().is_err());
     }
+
+    #[test]
+    fn dlq_stats_query_both_none_range_succeeds() {
+        let q = DlqStatsQuery { since: None, until: None };
+        let r = q.parse_range();
+        assert!(r.is_ok());
+        let (since, until) = r.unwrap();
+        assert!(since.is_none() && until.is_none());
+    }
+
+    #[test]
+    fn dlq_stats_query_since_field_is_option_string() {
+        let q = DlqStatsQuery { since: Some("2026-01-01T00:00:00Z".into()), until: None };
+        assert!(q.since.is_some());
+    }
 }

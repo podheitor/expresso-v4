@@ -471,4 +471,16 @@ mod tests {
         let b = build_realm_body("myrealm", "My Realm");
         assert_eq!(b["realm"].as_str(), Some("myrealm"));
     }
+
+    #[test]
+    fn build_user_body_username_preserved() {
+        let b = build_user_body("alice", "alice@example.com");
+        assert_eq!(b["username"].as_str(), Some("alice"));
+    }
+
+    #[test]
+    fn build_user_body_email_preserved() {
+        let b = build_user_body("bob", "bob@corp.com");
+        assert_eq!(b["email"].as_str(), Some("bob@corp.com"));
+    }
 }

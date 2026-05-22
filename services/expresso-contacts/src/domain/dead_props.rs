@@ -241,4 +241,14 @@ mod tests {
         };
         assert!(!p.namespace.is_empty());
     }
+
+    #[test]
+    fn dead_prop_xml_value_preserved() {
+        let p = DeadProp {
+            namespace: "urn:ietf:params:xml:ns:carddav".into(),
+            local_name: "notes".into(),
+            xml_value: "internal note".into(),
+        };
+        assert_eq!(p.xml_value, "internal note");
+    }
 }

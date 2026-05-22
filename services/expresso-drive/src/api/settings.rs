@@ -169,4 +169,10 @@ mod tests {
         let s = TrashPurgeSettings { auto_purge_days: Some(90) };
         assert_eq!(s.auto_purge_days, Some(90));
     }
+
+    #[test]
+    fn trash_purge_settings_none_auto_purge() {
+        let s = TrashPurgeSettings { auto_purge_days: None };
+        assert!(s.auto_purge_days.is_none());
+    }
 }

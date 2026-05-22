@@ -249,4 +249,14 @@ mod tests {
         };
         assert!(format!("{p:?}").contains("priority"));
     }
+
+    #[test]
+    fn dead_prop_xml_value_empty_allowed() {
+        let p = DeadProp {
+            namespace: "urn:ietf:params:xml:ns:caldav".into(),
+            local_name: "calendar-description".into(),
+            xml_value: String::new(),
+        };
+        assert!(p.xml_value.is_empty());
+    }
 }

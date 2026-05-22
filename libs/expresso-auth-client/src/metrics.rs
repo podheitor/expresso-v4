@@ -112,4 +112,9 @@ mod tests {
     fn result_label_malformed_claim_maps_malformed() {
         assert_eq!(result_label(&AuthError::MalformedClaim("iat", "not-a-number".into())), "malformed");
     }
+
+    #[test]
+    fn result_label_config_maps_misconfigured() {
+        assert_eq!(result_label(&AuthError::Config("bad jwks url".into())), "misconfigured");
+    }
 }

@@ -194,4 +194,17 @@ mod tests {
         let ev = ContactsEvent::AddressbookDeleted { tenant_id: tid(), addressbook_id: aid() };
         assert_eq!(ev.kind_str(), "addressbook_deleted");
     }
+
+    #[test]
+    fn contact_deleted_kind_str_new() {
+        let ev = ContactsEvent::ContactDeleted { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() };
+        assert_eq!(ev.kind_str(), "contact_deleted");
+    }
+
+    #[test]
+    fn contacts_event_tenant_id_accessible() {
+        let t = tid();
+        let ev = ContactsEvent::AddressbookCreated { tenant_id: t, addressbook_id: aid(), name: None };
+        assert_eq!(ev.tenant_id(), t);
+    }
 }

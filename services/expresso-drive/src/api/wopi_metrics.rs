@@ -165,4 +165,9 @@ mod tests {
     fn outcomes_list_contains_forbidden() {
         assert!(OUTCOMES.contains(&"forbidden"));
     }
+
+    #[test]
+    fn outcomes_list_has_eight_entries() {
+        assert_eq!(OUTCOMES.len(), 8);
+    }
 }

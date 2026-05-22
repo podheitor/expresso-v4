@@ -315,4 +315,17 @@ mod tests {
         let r = req("any@ex.com", None, None, None);
         assert!(!build_raw(&r).unwrap().is_empty());
     }
+
+    #[test]
+    fn build_raw_subject_in_output() {
+        let r = req("s@example.com", None, Some("Meeting notes"), None);
+        let s = String::from_utf8_lossy(&build_raw(&r).unwrap());
+        assert!(s.contains("Meeting notes"));
+    }
+
+    #[test]
+    fn build_raw_empty_recipients_succeeds() {
+        let r = req("from@example.com", Some(vec![]), None, None);
+        assert!(build_raw(&r).is_ok());
+    }
 }

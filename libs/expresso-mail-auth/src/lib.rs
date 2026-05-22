@@ -457,4 +457,13 @@ mod tests {
         };
         assert!(r.should_reject());
     }
+
+    #[test]
+    fn auth_results_quarantine_policy_should_quarantine() {
+        let r = AuthResults {
+            dmarc: "fail".into(), dmarc_policy: Some("quarantine".into()),
+            ..Default::default()
+        };
+        assert!(r.should_quarantine());
+    }
 }

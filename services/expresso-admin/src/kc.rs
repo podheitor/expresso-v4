@@ -400,4 +400,18 @@ mod tests {
         };
         assert_eq!(u.last_name, "Brown");
     }
+
+    #[test]
+    fn new_user_username_preserved() {
+        let u = NewUser {
+            username:   "erin".into(),
+            email:      "e@x.com".into(),
+            first_name: "Erin".into(),
+            last_name:  "White".into(),
+            enabled:    true,
+            password:   "pw".into(),
+            temporary:  false,
+        };
+        assert_eq!(u.username, "erin");
+    }
 }

@@ -362,4 +362,22 @@ mod tests {
         let n: NewAddressbook = serde_json::from_str(r#"{"name":"Family"}"#).unwrap();
         assert_eq!(n.name, "Family");
     }
+
+    #[test]
+    fn update_addressbook_name_only() {
+        let u = UpdateAddressbook {
+            name: Some("Renamed".into()),
+            description: None,
+            is_default: None,
+        };
+        assert_eq!(u.name.as_deref(), Some("Renamed"));
+        assert!(u.description.is_none());
+        assert!(u.is_default.is_none());
+    }
+
+    #[test]
+    fn addressbook_is_default_true_preserved() {
+        let a = sample();
+        assert!(a.is_default);
+    }
 }

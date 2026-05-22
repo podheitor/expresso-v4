@@ -133,4 +133,16 @@ mod tests {
         let e = MeetError::DatabaseUnavailable;
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn forbidden_display_not_empty() {
+        let e = MeetError::Forbidden;
+        assert!(!format!("{e}").is_empty());
+    }
+
+    #[test]
+    fn bad_request_display_contains_msg() {
+        let e = MeetError::BadRequest("invalid room".into());
+        assert!(format!("{e}").contains("invalid room"));
+    }
 }

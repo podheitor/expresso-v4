@@ -479,4 +479,14 @@ mod tests {
     fn sanitize_accepts_simple_filename() {
         assert!(sanitize_name("report.pdf").is_ok());
     }
+
+    #[test]
+    fn max_chunk_bytes_is_16mb() {
+        assert_eq!(MAX_CHUNK_BYTES, 16 * 1024 * 1024);
+    }
+
+    #[test]
+    fn max_filename_bytes_is_255() {
+        assert_eq!(MAX_FILENAME_BYTES, 255);
+    }
 }

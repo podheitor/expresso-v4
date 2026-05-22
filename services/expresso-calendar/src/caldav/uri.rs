@@ -190,4 +190,9 @@ mod tests {
     fn classify_empty_string_is_unknown() {
         assert!(matches!(classify(""), Target::Unknown));
     }
+
+    #[test]
+    fn classify_random_path_is_unknown() {
+        assert!(matches!(classify("/unknown/random/path"), Target::Unknown));
+    }
 }

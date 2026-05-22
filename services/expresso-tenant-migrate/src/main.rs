@@ -421,4 +421,16 @@ mod tests {
         let u = json!({"username": "bob"});
         assert!(extract_tenant_id(&u).is_none());
     }
+
+    #[test]
+    fn extract_tenant_id_array_empty_returns_none() {
+        let u = json!({"attributes": {"tenant_id": []}});
+        assert!(extract_tenant_id(&u).is_none());
+    }
+
+    #[test]
+    fn extract_tenant_id_multiple_values_returns_first() {
+        let u = json!({"attributes": {"tenant_id": ["first", "second"]}});
+        assert_eq!(extract_tenant_id(&u).as_deref(), Some("first"));
+    }
 }

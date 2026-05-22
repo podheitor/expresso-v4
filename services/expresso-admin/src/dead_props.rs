@@ -176,4 +176,10 @@ mod tests {
         let out = preview("hello world".into());
         assert!(!out.is_empty());
     }
+
+    #[test]
+    fn preview_short_preserves_content() {
+        let out = preview("test value".into());
+        assert_eq!(out, "test value");
+    }
 }

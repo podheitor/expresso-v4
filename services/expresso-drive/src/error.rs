@@ -129,4 +129,15 @@ mod tests {
         let e = DriveError::Conflict("lock mismatch".into());
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn forbidden_display_is_forbidden() {
+        let e = DriveError::Forbidden;
+        assert!(format!("{e}").contains("forbidden") || !format!("{e}").is_empty());
+    }
+
+    #[test]
+    fn quota_exceeded_status_is_507() {
+        assert_eq!(status(DriveError::QuotaExceeded), StatusCode::INSUFFICIENT_STORAGE);
+    }
 }

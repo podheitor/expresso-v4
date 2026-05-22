@@ -293,4 +293,10 @@ mod tests {
         let ics = "ORGANIZER:MAILTO:upper@ex.com";
         assert_eq!(extract_organizer_email(ics).as_deref(), Some("upper@ex.com"));
     }
+
+    #[test]
+    fn extract_organizer_email_absent_returns_none() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n";
+        assert!(extract_organizer_email(ics).is_none());
+    }
 }

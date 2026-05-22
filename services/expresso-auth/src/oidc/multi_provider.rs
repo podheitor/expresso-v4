@@ -120,4 +120,10 @@ mod tests {
         assert_eq!(result, "https://kc/realms/acme");
         assert!(!result.contains(REALM_PLACEHOLDER));
     }
+
+    #[test]
+    fn realm_placeholder_is_braces_format() {
+        assert!(REALM_PLACEHOLDER.starts_with('{'));
+        assert!(REALM_PLACEHOLDER.ends_with('}'));
+    }
 }

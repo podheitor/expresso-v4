@@ -231,4 +231,16 @@ mod tests {
         let b = PresetBody { name: "Important".into(), flags: vec!["\\Flagged".into()] };
         assert_eq!(b.name, "Important");
     }
+
+    #[test]
+    fn preset_body_flags_count_preserved() {
+        let b = PresetBody { name: "X".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
+        assert_eq!(b.flags.len(), 2);
+    }
+
+    #[test]
+    fn validate_preset_valid_name_and_flag() {
+        let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into()] };
+        assert!(validate_preset(&b).is_ok());
+    }
 }

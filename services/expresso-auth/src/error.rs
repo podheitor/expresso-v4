@@ -99,4 +99,9 @@ mod tests {
     fn config_missing_secret_is_500() {
         assert_eq!(status(RpError::Config("missing_secret".into())), StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn token_exchange_error_is_bad_gateway() {
+        assert_eq!(status(RpError::TokenExchange("upstream failed".into())), StatusCode::BAD_GATEWAY);
+    }
 }

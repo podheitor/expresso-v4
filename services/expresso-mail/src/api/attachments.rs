@@ -571,4 +571,15 @@ mod extra_tests {
         let s = percent_encode_filename("my file.pdf");
         assert!(!s.contains(' '));
     }
+
+    #[test]
+    fn percent_encode_filename_empty_returns_empty() {
+        assert_eq!(percent_encode_filename(""), "");
+    }
+
+    #[test]
+    fn percent_encode_filename_dot_preserved() {
+        let s = percent_encode_filename("archive.tar.gz");
+        assert_eq!(s, "archive.tar.gz");
+    }
 }

@@ -115,4 +115,16 @@ mod tests {
         let e = WebError::Upstream("timeout".into());
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn upstream_error_message_contained_in_display() {
+        let e = WebError::Upstream("connection refused".into());
+        assert!(e.to_string().contains("connection refused"));
+    }
+
+    #[test]
+    fn internal_error_message_contained_in_display() {
+        let e = WebError::Internal("parse failed".into());
+        assert!(e.to_string().contains("parse failed"));
+    }
 }

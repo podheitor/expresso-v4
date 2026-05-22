@@ -258,4 +258,9 @@ mod tests {
     fn default_shutdown_timeout_is_positive() {
         assert!(default_shutdown_timeout() > 0);
     }
+
+    #[test]
+    fn default_s3_region_is_not_empty() {
+        assert!(!default_s3_region().is_empty());
+    }
 }

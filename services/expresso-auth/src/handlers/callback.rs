@@ -273,4 +273,9 @@ mod tests {
     fn rejects_empty_string() {
         assert!(!is_safe_local_redirect(""));
     }
+
+    #[test]
+    fn accepts_root_path() {
+        assert!(is_safe_local_redirect("/"));
+    }
 }

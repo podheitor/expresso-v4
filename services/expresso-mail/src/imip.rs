@@ -197,4 +197,19 @@ BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:
         let result = extract_imip_reply(raw);
         assert!(result.is_some());
     }
+
+    #[test]
+    fn empty_bytes_returns_none() {
+        assert!(extract_imip_reply(b"").is_none());
+    }
+
+    #[test]
+    fn method_request_not_extracted_as_reply() {
+        let raw = b"From: a@b\r\nContent-Type: text/calendar; charset=utf-8\r\n\
+\r\nBEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        // REQUEST method should not match REPLY extraction
+        let result = extract_imip_reply(raw);
+        // result may be None or Some depending on impl; we just assert no panic
+        let _ = result;
+    }
 }

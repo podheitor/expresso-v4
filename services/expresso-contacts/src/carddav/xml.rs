@@ -318,4 +318,14 @@ mod tests {
         let xml = r#"<D:sync-collection xmlns:D="DAV:"/>"#;
         assert_eq!(super::detect_report_kind(xml), Some("sync-collection"));
     }
+
+    #[test]
+    fn escape_plain_text_unchanged() {
+        assert_eq!(escape("hello world"), "hello world");
+    }
+
+    #[test]
+    fn xml_prolog_starts_with_xml_decl() {
+        assert!(XML_PROLOG.starts_with("<?xml"));
+    }
 }

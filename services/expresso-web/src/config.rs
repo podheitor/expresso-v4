@@ -202,11 +202,36 @@ mod tests {
     #[test]
     fn backends_drive_field_preserved() {
         let b = Backends {
+            auth:     "http://auth:8012".into(),
             mail:     "http://mail:8001".into(),
             calendar: "http://cal:8002".into(),
             contacts: "http://contacts:8003".into(),
             drive:    "http://drive:8004".into(),
         };
         assert_eq!(b.drive, "http://drive:8004");
+    }
+
+    #[test]
+    fn backends_auth_field_preserved() {
+        let b = Backends {
+            auth:     "http://auth:8012".into(),
+            mail:     "http://mail:8001".into(),
+            calendar: "http://cal:8002".into(),
+            contacts: "http://contacts:8003".into(),
+            drive:    "http://drive:8004".into(),
+        };
+        assert_eq!(b.auth, "http://auth:8012");
+    }
+
+    #[test]
+    fn backends_mail_field_preserved() {
+        let b = Backends {
+            auth:     "http://auth:8012".into(),
+            mail:     "http://mail:8001".into(),
+            calendar: "http://cal:8002".into(),
+            contacts: "http://contacts:8003".into(),
+            drive:    "http://drive:8004".into(),
+        };
+        assert_eq!(b.mail, "http://mail:8001");
     }
 }
