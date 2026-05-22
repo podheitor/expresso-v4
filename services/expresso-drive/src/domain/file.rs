@@ -772,4 +772,10 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&f).unwrap()).unwrap();
         assert!(v["parent_id"].is_null());
     }
+
+    #[test]
+    fn drive_file_name_accessible() {
+        let f = sample_file();
+        assert!(!f.name.is_empty());
+    }
 }

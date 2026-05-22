@@ -214,4 +214,11 @@ mod tests {
         let b: ReactionBody = serde_json::from_str(r#"{"emoji":"+1"}"#).unwrap();
         assert_eq!(b.emoji, "+1");
     }
+
+    #[test]
+    fn reaction_body_emoji_roundtrip_ser() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"🎉"}"#).unwrap();
+        let s = serde_json::to_string(&b).unwrap();
+        assert!(s.contains("🎉"));
+    }
 }

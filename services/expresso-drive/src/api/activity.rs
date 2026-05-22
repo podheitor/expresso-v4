@@ -240,4 +240,12 @@ mod tests {
         let d = b.detail.unwrap();
         assert!(d["fields"].is_array());
     }
+
+    #[test]
+    fn create_activity_body_no_detail_is_ok() {
+        let json = r#"{"action":"view"}"#;
+        let b: CreateActivityBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.action, "view");
+        assert!(b.detail.is_none());
+    }
 }

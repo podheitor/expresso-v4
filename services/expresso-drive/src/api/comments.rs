@@ -247,4 +247,16 @@ mod tests {
         };
         assert_eq!(c.body, "hello world");
     }
+
+    #[test]
+    fn file_comment_body_unicode_preserved() {
+        use time::macros::datetime;
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), body: "Olá 👋".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert!(c.body.contains("Olá"));
+    }
 }

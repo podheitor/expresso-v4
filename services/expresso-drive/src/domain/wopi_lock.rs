@@ -280,4 +280,18 @@ mod tests {
         };
         assert_eq!(lock.lock_token, "my-lock-token");
     }
+
+    #[test]
+    fn wopi_lock_file_id_preserved() {
+        let fid = Uuid::new_v4();
+        let lock = WopiLock {
+            file_id: fid,
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: OffsetDateTime::now_utc(),
+            expires_at: OffsetDateTime::now_utc() + Duration::minutes(30),
+        };
+        assert_eq!(lock.file_id, fid);
+    }
 }

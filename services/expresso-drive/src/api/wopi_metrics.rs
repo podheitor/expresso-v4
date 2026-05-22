@@ -145,4 +145,9 @@ mod tests {
         assert!(OUTCOMES.contains(&"forbidden"));
         assert!(OUTCOMES.contains(&"bad_request"));
     }
+
+    #[test]
+    fn outcomes_list_contains_ok() {
+        assert!(OUTCOMES.contains(&"ok"));
+    }
 }

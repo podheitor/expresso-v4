@@ -1511,4 +1511,10 @@ mod tests {
         assert_eq!(b.tags.len(), 1);
         assert_eq!(b.tags[0], "only");
     }
+
+    #[test]
+    fn bulk_tags_body_empty_list() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":[]}"#).unwrap();
+        assert!(b.tags.is_empty());
+    }
 }

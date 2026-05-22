@@ -205,4 +205,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.name, "x");
     }
+
+    #[test]
+    fn session_storage_key_not_empty() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(!s.storage_key.is_empty());
+    }
 }

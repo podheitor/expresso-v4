@@ -121,4 +121,10 @@ mod tests {
         let tag = "  project  ".trim().to_string();
         assert_eq!(tag, "project");
     }
+
+    #[test]
+    fn tag_string_lowercase_preserved() {
+        let tag = "urgent".to_string();
+        assert_eq!(tag, tag.to_lowercase());
+    }
 }

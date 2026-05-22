@@ -110,4 +110,10 @@ mod tests {
     fn database_unavailable_is_503() {
         assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[test]
+    fn not_found_is_404() {
+        use uuid::Uuid;
+        assert_eq!(status(DriveError::NotFound(Uuid::nil())), StatusCode::NOT_FOUND);
+    }
 }

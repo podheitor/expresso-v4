@@ -385,4 +385,12 @@ mod tests {
         assert_eq!(b.mime_type.as_deref(), Some("text/plain"));
         assert!(b.size_bytes.is_none());
     }
+
+    #[test]
+    fn create_version_body_all_none_when_empty() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(b.mime_type.is_none());
+        assert!(b.size_bytes.is_none());
+        assert!(b.sha256.is_none());
+    }
 }
