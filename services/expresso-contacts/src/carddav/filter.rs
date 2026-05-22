@@ -453,4 +453,14 @@ mod tests {
     fn filter_allof_op_ne_anyof() {
         assert_ne!(Op::AllOf, Op::AnyOf);
     }
+
+    #[test]
+    fn text_match_negate_true_stored() {
+        let tm = TextMatch {
+            value: "test".into(),
+            match_type: MatchType::Equals,
+            negate: true,
+        };
+        assert!(tm.negate);
+    }
 }

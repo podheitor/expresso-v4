@@ -499,4 +499,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.spf_client_ip.is_none());
     }
+
+    #[test]
+    fn auth_results_default_dkim_is_empty_str() {
+        let r = AuthResults::default();
+        assert_eq!(r.dkim, "");
+    }
 }

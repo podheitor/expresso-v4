@@ -536,4 +536,10 @@ mod tests {
         let q: CountQuery = serde_json::from_str(json).unwrap();
         assert_eq!(q.delivered, Some(true));
     }
+
+    #[test]
+    fn upcoming_query_within_hours_optional() {
+        let q: UpcomingQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.within_hours.is_none());
+    }
 }

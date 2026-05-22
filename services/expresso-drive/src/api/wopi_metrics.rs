@@ -195,4 +195,9 @@ mod tests {
     fn outcomes_list_length_is_eight() {
         assert_eq!(OUTCOMES.len(), 8);
     }
+
+    #[test]
+    fn ops_list_contains_check_file_info() {
+        assert!(OPS.contains(&"check_file_info"));
+    }
 }

@@ -159,4 +159,10 @@ mod tests {
         let resp = WebError::Internal("crash".into()).into_response();
         assert_eq!(resp.status().as_u16(), 500);
     }
+
+    #[test]
+    fn upstream_error_display_contains_message() {
+        let e = WebError::Upstream("timeout".into());
+        assert!(format!("{e}").contains("timeout"));
+    }
 }

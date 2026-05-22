@@ -449,4 +449,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "Acme Corp".into(), "a@b.com".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.tenant_name, "Acme Corp");
     }
+
+    #[test]
+    fn to_dav_row_color_none_defaults_empty() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.color, "");
+    }
 }

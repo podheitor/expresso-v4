@@ -1030,4 +1030,11 @@ mod extra_tests {
         assert!(id.is_some());
         assert!(!id.unwrap().is_empty());
     }
+
+    #[test]
+    fn parse_single_address_quoted_name_stripped() {
+        let (name, addr) = parse_single_address("\"Alice B\" <alice@ex.com>");
+        assert_eq!(name.as_deref(), Some("Alice B"));
+        assert_eq!(addr.as_deref(), Some("alice@ex.com"));
+    }
 }

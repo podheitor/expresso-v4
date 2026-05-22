@@ -410,4 +410,9 @@ mod tests {
     fn is_live_prop_caldav_calendar_timezone() {
         assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-timezone"));
     }
+
+    #[test]
+    fn is_live_prop_apple_calendar_color() {
+        assert!(is_live_prop("http://apple.com/ns/ical/", "calendar-color"));
+    }
 }

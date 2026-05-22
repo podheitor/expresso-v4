@@ -185,4 +185,10 @@ mod tests {
     fn noop_command_maps_to_other() {
         assert_eq!(command_label("NOOP"), "OTHER");
     }
+
+    #[test]
+    fn mixed_case_helo_maps_to_helo() {
+        assert_eq!(command_label("Helo"), "HELO");
+        assert_eq!(command_label("hElO"), "HELO");
+    }
 }

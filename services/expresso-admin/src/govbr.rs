@@ -377,4 +377,15 @@ mod tests {
         assert!(q.tenant_id.is_some());
         assert_eq!(q.tenant_id.unwrap(), tid);
     }
+
+    #[test]
+    fn upsert_body_assurance_prata_preserved() {
+        let body = UpsertBody {
+            user_id: Uuid::nil(),
+            cpf_hash: "abc".into(),
+            assurance: Some("prata".into()),
+            tenant_id: Uuid::nil(),
+        };
+        assert_eq!(body.assurance.as_deref(), Some("prata"));
+    }
 }

@@ -306,4 +306,15 @@ mod tests {
         let q = p.clone();
         assert_eq!(p.local_name, q.local_name);
     }
+
+    #[test]
+    fn dead_prop_clone_gives_equal_xml_value() {
+        let p = DeadProp {
+            namespace:  "DAV:".into(),
+            local_name: "displayname".into(),
+            xml_value:  "My Book".into(),
+        };
+        let q = p.clone();
+        assert_eq!(p.xml_value, q.xml_value);
+    }
 }

@@ -150,4 +150,11 @@ mod tests {
         let t = random_token();
         assert!(!t.is_empty());
     }
+
+    #[test]
+    fn challenge_contains_no_equals_padding() {
+        let v = generate_verifier();
+        let c = challenge_s256(&v);
+        assert!(!c.contains('='));
+    }
 }

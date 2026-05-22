@@ -1463,6 +1463,11 @@ mod tests {
     fn max_password_bytes_is_at_least_8() {
         assert!(MAX_PASSWORD_BYTES >= 8);
     }
+
+    #[test]
+    fn max_display_name_bytes_is_positive() {
+        assert!(MAX_DISPLAY_NAME_BYTES > 0);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

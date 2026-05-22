@@ -387,4 +387,9 @@ mod tests {
         let r = Rrule::parse("FREQ=DAILY;INTERVAL=0").unwrap();
         assert_eq!(r.interval, 1);
     }
+
+    #[test]
+    fn freq_weekly_ne_monthly() {
+        assert_ne!(Freq::Weekly, Freq::Monthly);
+    }
 }

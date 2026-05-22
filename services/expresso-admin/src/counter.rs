@@ -419,4 +419,11 @@ mod tests {
         };
         assert_eq!(r.proposed_dtstart, "2026-07-01T09:00:00Z");
     }
+
+    #[test]
+    fn fmt_opt_ts_some_is_nonempty() {
+        use time::OffsetDateTime;
+        let ts = OffsetDateTime::UNIX_EPOCH;
+        assert!(!fmt_opt_ts(Some(ts)).is_empty());
+    }
 }

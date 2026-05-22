@@ -282,4 +282,9 @@ mod tests {
     fn parse_token_value_one_is_some() {
         assert_eq!(parse_token_value("urn:expresso:ctag:1"), Some(1));
     }
+
+    #[test]
+    fn token_prefix_ends_with_colon() {
+        assert!(TOKEN_PREFIX.ends_with(':'));
+    }
 }

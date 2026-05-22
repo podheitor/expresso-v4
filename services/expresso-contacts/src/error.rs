@@ -168,4 +168,9 @@ mod tests {
         let e = ContactsError::NotSupported("LOCK".into());
         assert_eq!(status(e), 501);
     }
+
+    #[test]
+    fn database_unavailable_is_503_variant() {
+        assert_eq!(status(ContactsError::DatabaseUnavailable), 503);
+    }
 }

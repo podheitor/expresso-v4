@@ -297,4 +297,11 @@ mod tests {
         let r = ScanResult { spam_score: Some(1.2), spam_action: None, virus: None };
         assert!(r.virus.is_none());
     }
+
+    #[test]
+    fn spam_action_add_header_does_not_reject() {
+        let r = ScanResult { spam_score: Some(6.0), spam_action: Some("add header".into()), virus: None };
+        assert!(r.is_clean());
+        assert!(should_reject(&r).is_none());
+    }
 }

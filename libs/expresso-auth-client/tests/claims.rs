@@ -181,3 +181,10 @@ fn has_role_false_when_role_absent() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(!ctx.has_role("nonexistent_role"));
 }
+
+#[test]
+fn expires_at_matches_raw_exp() {
+    let r = base("a1b2c3d4-0000-0000-0000-000000000009", None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.expires_at, 9_999_999_999);
+}

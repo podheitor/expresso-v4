@@ -180,4 +180,9 @@ mod extra_tests {
         let tok_b = sign_token(b"key-b", "file1", "t1", "u1", 60);
         assert_ne!(tok_a, tok_b);
     }
+
+    #[test]
+    fn editable_mime_rtf_is_editable() {
+        assert!(is_editable_mime(Some("application/rtf")));
+    }
 }

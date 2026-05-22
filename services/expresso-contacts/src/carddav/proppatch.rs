@@ -383,4 +383,9 @@ mod tests {
     fn is_live_prop_accepts_resourcetype() {
         assert!(is_live_prop("DAV:", "resourcetype"));
     }
+
+    #[test]
+    fn is_live_prop_carddav_addressbook_description_accepted() {
+        assert!(is_live_prop("urn:ietf:params:xml:ns:carddav", "addressbook-description"));
+    }
 }

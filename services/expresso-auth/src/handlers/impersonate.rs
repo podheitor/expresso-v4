@@ -272,4 +272,10 @@ mod tests {
     fn super_role_constant_is_superadmin() {
         assert_eq!(SUPER_ROLE, "superadmin");
     }
+
+    #[test]
+    fn is_super_false_for_tenant_admin_only() {
+        let ctx = ctx_with_roles(&["tenantAdmin"]);
+        assert!(!is_super(&ctx));
+    }
 }

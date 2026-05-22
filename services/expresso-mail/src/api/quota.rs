@@ -199,4 +199,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 2048, quota_bytes: Some(1024) };
         assert!(q.used_bytes > q.quota_bytes.unwrap());
     }
+
+    #[test]
+    fn quota_dto_used_zero_fits_any_quota() {
+        let q = QuotaDto { used_bytes: 0, quota_bytes: Some(i64::MAX) };
+        assert!(q.used_bytes < q.quota_bytes.unwrap());
+    }
 }

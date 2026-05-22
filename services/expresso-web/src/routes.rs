@@ -1744,4 +1744,11 @@ mod tests {
         let (t, u) = ctx_of(&me);
         assert_ne!(t, u);
     }
+
+    #[test]
+    fn split_addrs_preserves_single_addr_unchanged() {
+        let v = split_addrs("alice@example.com");
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0], "alice@example.com");
+    }
 }

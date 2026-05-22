@@ -351,4 +351,10 @@ mod tests {
     fn max_comment_bytes_exceeds_zero() {
         assert!(MAX_COMMENT_BYTES > 0);
     }
+
+    #[test]
+    fn create_comment_body_action_delete_preserved() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":"lgtm"}"#).unwrap();
+        assert_eq!(b.body, "lgtm");
+    }
 }

@@ -451,4 +451,9 @@ mod tests {
     fn depth_one_ne_infinity() {
         assert_ne!(Depth::One, Depth::Infinity);
     }
+
+    #[test]
+    fn parse_depth_whitespace_trimmed_to_zero() {
+        assert!(matches!(parse_depth(&headers_with_depth("  0  ")), Depth::Zero));
+    }
 }

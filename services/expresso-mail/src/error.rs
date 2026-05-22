@@ -179,4 +179,10 @@ mod tests {
     fn invalid_message_is_400_status() {
         assert_eq!(status(MailError::InvalidMessage("bad mime".into())), 400);
     }
+
+    #[test]
+    fn quota_exceeded_display_not_empty() {
+        let e = MailError::QuotaExceeded;
+        assert!(!format!("{e}").is_empty());
+    }
 }

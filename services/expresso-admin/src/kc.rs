@@ -452,4 +452,18 @@ mod tests {
     fn token_max_ttl_is_300_seconds() {
         assert_eq!(TOKEN_MAX_TTL.as_secs(), 300);
     }
+
+    #[test]
+    fn new_user_first_name_preserved() {
+        let u = NewUser {
+            username:   "alice".into(),
+            email:      "alice@ex.com".into(),
+            first_name: "Alice".into(),
+            last_name:  "Smith".into(),
+            enabled:    true,
+            password:   "pw".into(),
+            temporary:  false,
+        };
+        assert_eq!(u.first_name, "Alice");
+    }
 }

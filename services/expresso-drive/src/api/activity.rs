@@ -303,4 +303,16 @@ mod tests {
     fn page_size_constant_is_positive() {
         assert!(PAGE_SIZE > 0);
     }
+
+    #[test]
+    fn activity_event_action_preserved_in_roundtrip() {
+        use time::macros::datetime;
+        let e = ActivityEvent {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(), action: "rename".into(), detail: None,
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
+        };
+        let back: ActivityEvent = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert_eq!(back.action, "rename");
+    }
 }

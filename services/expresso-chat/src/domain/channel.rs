@@ -286,4 +286,10 @@ mod tests {
         let s = serde_json::to_string(&ChannelKind::Project).unwrap();
         assert_eq!(s, r#""project""#);
     }
+
+    #[test]
+    fn member_role_owner_deser() {
+        let r: MemberRole = serde_json::from_str(r#""owner""#).unwrap();
+        assert!(matches!(r, MemberRole::Owner));
+    }
 }

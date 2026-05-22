@@ -277,4 +277,11 @@ mod tests {
         let actions = evaluate(b"keep;", MSG.as_bytes());
         assert!(!matches!(actions[0], FilterAction::Discard));
     }
+
+    #[test]
+    fn reject_action_is_not_keep() {
+        let script = br#"require "reject"; reject "spam";"#;
+        let actions = evaluate(script, MSG.as_bytes());
+        assert!(!matches!(actions[0], FilterAction::Keep { .. }));
+    }
 }

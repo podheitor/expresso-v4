@@ -16954,6 +16954,11 @@ mod tests {
         let params = p("hello", DEFAULT_LIMIT);
         assert_eq!(params.offset, 0);
     }
+
+    #[test]
+    fn max_query_bytes_constant_is_nonzero() {
+        assert!(MAX_QUERY_BYTES > 0);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

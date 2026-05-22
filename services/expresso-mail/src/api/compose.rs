@@ -1069,4 +1069,9 @@ mod tests {
     fn min_schedule_seconds_is_60() {
         assert_eq!(MIN_SCHEDULE_SECONDS, 60);
     }
+
+    #[test]
+    fn max_ics_bytes_is_256_kib() {
+        assert_eq!(MAX_ICS_BYTES, 256 * 1024);
+    }
 }

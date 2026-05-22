@@ -834,4 +834,10 @@ mod tests {
         let f = sample_file();
         let _ = f.owner_user_id;
     }
+
+    #[test]
+    fn drive_file_name_is_nonempty_in_sample() {
+        let f = sample_file();
+        assert!(!f.name.is_empty());
+    }
 }

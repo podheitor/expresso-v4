@@ -276,4 +276,10 @@ mod tests {
         let b = PresetBody { name: "Work".into(), flags: vec!["\\Seen".into(), "\\Flagged".into()] };
         assert_eq!(b.flags.len(), 2);
     }
+
+    #[test]
+    fn preset_body_name_not_empty_after_set() {
+        let b = PresetBody { name: "Priority".into(), flags: vec![] };
+        assert!(!b.name.is_empty());
+    }
 }

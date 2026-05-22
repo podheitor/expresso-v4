@@ -477,4 +477,9 @@ mod tests {
     fn escape_text_no_special_chars_unchanged() {
         assert_eq!(escape_text("hello world"), "hello world");
     }
+
+    #[test]
+    fn method_request_as_str_is_not_empty() {
+        assert!(!Method::Request.as_str().is_empty());
+    }
 }

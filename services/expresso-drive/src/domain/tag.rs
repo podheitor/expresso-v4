@@ -181,4 +181,10 @@ mod tests {
         let tag = "category.sub".to_string();
         assert!(tag.contains('.'));
     }
+
+    #[test]
+    fn tag_string_colon_is_valid_rust_string() {
+        let tag = "scope:value".to_string();
+        assert!(tag.contains(':'));
+    }
 }

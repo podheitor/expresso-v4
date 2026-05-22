@@ -400,4 +400,12 @@ mod tests {
         let b: CreateBody = serde_json::from_str(&json).unwrap();
         assert_eq!(b.team_id, Some(tid));
     }
+
+    #[test]
+    fn add_member_body_role_guest() {
+        let uid = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{uid}","role":"guest"}}"#);
+        let b: AddMemberBody = serde_json::from_str(&json).unwrap();
+        assert!(matches!(b.role, Some(MemberRole::Guest)));
+    }
 }

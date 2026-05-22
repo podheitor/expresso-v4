@@ -25591,4 +25591,16 @@ mod tests {
         };
         assert!(n.message_id.is_none());
     }
+
+    #[test]
+    fn notification_kind_field_is_nonempty_string() {
+        let n = Notification {
+            kind: "new_mail".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(!n.kind.is_empty());
+    }
 }

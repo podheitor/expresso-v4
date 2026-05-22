@@ -205,4 +205,9 @@ mod tests {
     fn strip_origin_with_port_and_path() {
         assert_eq!(strip_origin("https://host.example.com:8443/dav/"), "/dav/");
     }
+
+    #[test]
+    fn strip_origin_empty_string_unchanged() {
+        assert_eq!(strip_origin(""), "");
+    }
 }

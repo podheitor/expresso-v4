@@ -237,4 +237,9 @@ mod tests {
     fn strip_origin_http_double_slash_root() {
         assert_eq!(strip_origin("http://host//double"), "//double");
     }
+
+    #[test]
+    fn strip_origin_https_no_path_yields_empty_string() {
+        assert_eq!(strip_origin("https://host"), "");
+    }
 }

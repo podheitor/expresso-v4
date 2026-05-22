@@ -291,4 +291,15 @@ mod tests {
         };
         assert_eq!(w.drive_url, "http://drive:8004");
     }
+
+    #[test]
+    fn wopi_token_ttl_positive() {
+        let w = Wopi {
+            secret:         "s".into(),
+            collabora_url:  "https://c".into(),
+            drive_url:      "http://d".into(),
+            token_ttl_secs: 3600,
+        };
+        assert!(w.token_ttl_secs > 0);
+    }
 }

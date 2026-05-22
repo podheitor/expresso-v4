@@ -209,4 +209,9 @@ mod tests {
     fn default_limit_is_50() {
         assert_eq!(DEFAULT_LIST_LIMIT, 50);
     }
+
+    #[test]
+    fn max_message_body_bytes_is_32kb() {
+        assert_eq!(MAX_MESSAGE_BODY_BYTES, 32 * 1024);
+    }
 }

@@ -143,4 +143,10 @@ mod tests {
         let e = CoreError::QuotaExceeded { used: 1, limit: 2 };
         assert!(e.to_string().contains("bytes"));
     }
+
+    #[test]
+    fn not_found_display_is_nonempty() {
+        let e = CoreError::NotFound("drive_file".into());
+        assert!(!e.to_string().is_empty());
+    }
 }

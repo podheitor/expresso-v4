@@ -341,4 +341,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(!cfg.room_prefix.is_empty());
     }
+
+    #[test]
+    fn jitsi_config_jwt_ttl_is_positive() {
+        let cfg = fixture_cfg();
+        assert!(cfg.jwt_ttl > 0);
+    }
 }

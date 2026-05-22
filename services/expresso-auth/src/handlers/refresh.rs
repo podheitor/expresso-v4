@@ -250,4 +250,10 @@ mod tests {
     fn refresh_token_cookie_name_constant() {
         assert_eq!(REFRESH_TOKEN_COOKIE, "expresso_rt");
     }
+
+    #[test]
+    fn extract_cookie_empty_header_map_returns_none() {
+        let h = axum::http::HeaderMap::new();
+        assert!(extract_cookie(&h, "any_cookie").is_none());
+    }
 }

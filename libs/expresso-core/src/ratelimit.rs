@@ -280,4 +280,10 @@ mod tests {
         let retry = rl.check("t").unwrap_err();
         assert!(retry >= 1);
     }
+
+    #[test]
+    fn rate_limit_config_burst_one_is_valid() {
+        let c = RateLimitConfig { rps: 5, burst: 1 };
+        assert_eq!(c.burst, 1);
+    }
 }

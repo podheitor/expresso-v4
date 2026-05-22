@@ -3919,4 +3919,11 @@ Attachment\r\n\
         let body2 = mime_part_body(MULTIPART_MSG, 2);
         assert_ne!(body1, body2);
     }
+
+    #[test]
+    fn list_matches_star_matches_any_separator() {
+        assert!(list_matches("INBOX/Sub", "*"));
+        assert!(list_matches("", "*"));
+        assert!(!list_matches("INBOX", ""));
+    }
 }

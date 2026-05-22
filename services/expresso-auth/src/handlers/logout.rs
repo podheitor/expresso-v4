@@ -215,4 +215,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok%2Fval"}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("tok%2Fval"));
     }
+
+    #[test]
+    fn logout_query_hint_is_some_when_nonempty() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"nonempty"}"#).unwrap();
+        assert!(q.id_token_hint.is_some());
+    }
 }

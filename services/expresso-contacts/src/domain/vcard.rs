@@ -292,4 +292,10 @@ mod tests {
         let v = build_vcard("u3", "Carol", None, None, None, None);
         assert!(v.trim_end().ends_with("END:VCARD"));
     }
+
+    #[test]
+    fn build_vcard_email_field_included_when_provided() {
+        let v = build_vcard("u4", "Dave", None, None, Some("dave@example.com"), None);
+        assert!(v.contains("dave@example.com"));
+    }
 }

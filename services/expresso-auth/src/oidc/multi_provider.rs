@@ -152,4 +152,9 @@ mod tests {
     fn realm_placeholder_length_is_seven() {
         assert_eq!(REALM_PLACEHOLDER.len(), 7);
     }
+
+    #[test]
+    fn realm_placeholder_does_not_contain_spaces() {
+        assert!(!REALM_PLACEHOLDER.contains(' '));
+    }
 }

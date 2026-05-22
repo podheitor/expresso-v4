@@ -288,4 +288,9 @@ mod tests {
     fn default_redis_pool_size_is_positive() {
         assert!(default_redis_pool_size() > 0);
     }
+
+    #[test]
+    fn default_log_filter_value_is_info() {
+        assert_eq!(default_log_filter(), "info");
+    }
 }

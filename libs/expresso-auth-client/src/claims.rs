@@ -357,4 +357,9 @@ mod tests {
         let iss = format!("https://kc/realms/{uuid}");
         assert_eq!(super::realm_from_iss(&iss), Some(uuid));
     }
+
+    #[test]
+    fn realm_from_iss_empty_string_returns_none() {
+        assert_eq!(super::realm_from_iss(""), None);
+    }
 }

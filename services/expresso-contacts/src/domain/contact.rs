@@ -414,4 +414,10 @@ mod tests {
         let c = sample();
         assert!(c.vcard_raw.contains("END:VCARD"));
     }
+
+    #[test]
+    fn contact_id_is_uuid_nil() {
+        let c = sample();
+        assert_eq!(c.id, uuid::Uuid::nil());
+    }
 }

@@ -241,4 +241,9 @@ mod tests {
     fn build_url_https_scheme_preserved() {
         assert_eq!(build_url("https://svc", "/ping"), "https://svc/ping");
     }
+
+    #[test]
+    fn build_url_path_without_leading_slash() {
+        assert_eq!(build_url("http://svc", "health"), "http://svchealth");
+    }
 }

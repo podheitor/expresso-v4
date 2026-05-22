@@ -308,4 +308,9 @@ mod tests {
     fn accepts_path_with_hash_fragment() {
         assert!(is_safe_local_redirect("/app/page#top"));
     }
+
+    #[test]
+    fn rejects_backslash_only_path() {
+        assert!(!is_safe_local_redirect("/path\\to\\resource"));
+    }
 }

@@ -172,4 +172,9 @@ mod tests {
     fn database_unavailable_status_is_503() {
         assert_eq!(status(MeetError::DatabaseUnavailable), 503);
     }
+
+    #[test]
+    fn bad_request_status_is_400() {
+        assert_eq!(status(MeetError::BadRequest("x".into())), 400);
+    }
 }

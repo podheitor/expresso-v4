@@ -170,4 +170,9 @@ mod tests {
         let e = CalendarError::Conflict("uid already exists".into());
         assert!(format!("{e}").contains("uid already exists"));
     }
+
+    #[test]
+    fn not_supported_status_is_501() {
+        assert_eq!(status(CalendarError::NotSupported("REPORT")), 501);
+    }
 }

@@ -1579,4 +1579,10 @@ mod tests {
         let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"étiquette"}"#).unwrap();
         assert_eq!(b.new_tag, "étiquette");
     }
+
+    #[test]
+    fn add_tag_body_hyphen_tag_preserved() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":"work-in-progress"}"#).unwrap();
+        assert_eq!(b.tag, "work-in-progress");
+    }
 }

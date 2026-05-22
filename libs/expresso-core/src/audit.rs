@@ -239,4 +239,10 @@ mod tests {
         let m = enrich_metadata(&e);
         assert_eq!(m["http_method"], json!("POST"));
     }
+
+    #[test]
+    fn audit_entry_status_none_by_default() {
+        let e = AuditEntry::new("drive.upload");
+        assert!(e.status_code.is_none());
+    }
 }

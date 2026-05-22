@@ -163,4 +163,10 @@ mod tests {
         let out = UserOut { id: uuid::Uuid::nil(), email: "bob@example.com".into() };
         assert_eq!(out.email, "bob@example.com");
     }
+
+    #[test]
+    fn user_out_id_nil_preserved() {
+        let out = UserOut { id: uuid::Uuid::nil(), email: "test@example.com".into() };
+        assert_eq!(out.id, uuid::Uuid::nil());
+    }
 }

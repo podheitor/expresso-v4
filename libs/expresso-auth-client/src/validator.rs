@@ -356,4 +356,10 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/x", "aud");
         assert_eq!(c.jwks_min_refresh, std::time::Duration::from_secs(30));
     }
+
+    #[test]
+    fn oidc_config_single_audience_has_len_one() {
+        let c = OidcConfig::new("https://kc/realms/r", "only-client");
+        assert_eq!(c.audiences().len(), 1);
+    }
 }

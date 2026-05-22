@@ -225,4 +225,9 @@ mod tests {
     fn percent_decode_space_encoded() {
         assert_eq!(percent_decode("hello%20world"), "hello world");
     }
+
+    #[test]
+    fn percent_decode_no_encoding_returns_same() {
+        assert_eq!(percent_decode("plain"), "plain");
+    }
 }

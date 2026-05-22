@@ -358,4 +358,10 @@ mod tests {
         let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
         assert_eq!(t.expires_in, 0);
     }
+
+    #[test]
+    fn kc_admin_config_exchange_client_id_preserved_when_set() {
+        let c = cfg(Some("my-exchange-client"), Some("my-secret"));
+        assert_eq!(c.exchange_client_id.as_deref(), Some("my-exchange-client"));
+    }
 }

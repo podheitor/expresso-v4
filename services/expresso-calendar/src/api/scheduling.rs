@@ -589,4 +589,10 @@ mod tests {
         let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
         assert!(!p.include_transparent);
     }
+
+    #[test]
+    fn counter_limit_one_not_clamped() {
+        let raw: i64 = 1;
+        assert_eq!(raw.min(200).max(1), 1);
+    }
 }

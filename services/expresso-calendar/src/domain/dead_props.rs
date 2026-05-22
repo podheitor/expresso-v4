@@ -312,4 +312,14 @@ mod tests {
         };
         assert!(format!("{p:?}").contains("secret-42"));
     }
+
+    #[test]
+    fn dead_prop_debug_contains_local_name_value() {
+        let p = DeadProp {
+            namespace: "urn:ns".into(),
+            local_name: "my-field".into(),
+            xml_value: "v".into(),
+        };
+        assert!(format!("{p:?}").contains("my-field"));
+    }
 }

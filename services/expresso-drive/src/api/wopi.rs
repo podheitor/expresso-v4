@@ -670,4 +670,9 @@ mod tests {
         let tok = sign_token(b"key", Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), 60);
         assert_eq!(tok.split('.').count(), 5);
     }
+
+    #[test]
+    fn max_putfile_bytes_is_256_mib_value() {
+        assert_eq!(MAX_PUTFILE_BYTES, 256 * 1024 * 1024);
+    }
 }

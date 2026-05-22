@@ -555,4 +555,10 @@ mod tests {
         let m: EnvelopeMethod = serde_json::from_str("\"CANCEL\"").unwrap();
         assert!(matches!(m, EnvelopeMethod::Cancel));
     }
+
+    #[test]
+    fn envelope_method_request_deserializes() {
+        let m: EnvelopeMethod = serde_json::from_str("\"REQUEST\"").unwrap();
+        assert!(matches!(m, EnvelopeMethod::Request));
+    }
 }

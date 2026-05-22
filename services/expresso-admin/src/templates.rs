@@ -374,4 +374,11 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert!(!r.registration_allowed);
     }
+
+    #[test]
+    fn kc_realm_enabled_defaults_false() {
+        let json = r#"{"realm":"t"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert!(!r.enabled);
+    }
 }

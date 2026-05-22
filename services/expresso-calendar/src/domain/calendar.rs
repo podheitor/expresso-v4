@@ -544,4 +544,12 @@ mod tests {
         assert_eq!(n.timezone.as_deref(), Some("Europe/London"));
         assert_eq!(n.color.as_deref(), Some("#aabbcc"));
     }
+
+    #[test]
+    fn update_calendar_name_preserved_in_serde() {
+        let json = r#"{"name":"Renamed"}"#;
+        let u: UpdateCalendar = serde_json::from_str(json).unwrap();
+        assert_eq!(u.name.as_deref(), Some("Renamed"));
+        assert!(u.color.is_none());
+    }
 }

@@ -528,4 +528,16 @@ END:VCALENDAR\r\n";
         };
         assert_eq!(a.rsvp, Some(false));
     }
+
+    #[test]
+    fn attendee_partstat_none_by_default() {
+        let a = Attendee {
+            email:    "x@example.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert!(a.partstat.is_none());
+    }
 }

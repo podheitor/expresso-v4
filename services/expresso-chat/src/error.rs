@@ -165,4 +165,10 @@ mod tests {
     fn channel_not_found_status_is_404() {
         assert_eq!(status(ChatError::ChannelNotFound(Uuid::nil())), 404);
     }
+
+    #[test]
+    fn internal_display_contains_message() {
+        let e = ChatError::Internal("disk full".into());
+        assert!(format!("{e}").contains("disk full"));
+    }
 }

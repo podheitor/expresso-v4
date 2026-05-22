@@ -386,4 +386,10 @@ mod tests {
         let r = parse_header_line("X-Tab: a\tb").unwrap();
         assert_eq!(r.1, "a\tb");
     }
+
+    #[test]
+    fn parse_header_name_preserves_case() {
+        let (name, _) = parse_header_line("Content-Type: text/plain").unwrap();
+        assert_eq!(name, "Content-Type");
+    }
 }

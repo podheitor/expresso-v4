@@ -276,4 +276,9 @@ mod tests {
     fn unescape_xml_apos_entity_decoded() {
         assert_eq!(unescape_xml("it&apos;s"), "it's");
     }
+
+    #[test]
+    fn extract_prop_returns_none_for_missing_tag() {
+        assert_eq!(extract_prop("<D:displayname>My Cal</D:displayname>", "calendar-color"), None);
+    }
 }

@@ -390,4 +390,18 @@ mod tests {
     fn lock_ttl_in_seconds_is_1800() {
         assert_eq!(LOCK_TTL.whole_seconds(), 1800);
     }
+
+    #[test]
+    fn wopi_lock_token_is_nonempty_string() {
+        let now = OffsetDateTime::now_utc();
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "abc123".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: now,
+            expires_at: now + Duration::minutes(30),
+        };
+        assert!(!lock.lock_token.is_empty());
+    }
 }

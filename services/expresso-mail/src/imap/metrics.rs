@@ -237,4 +237,10 @@ mod tests {
         assert_eq!(command_label("LSUB"), "LSUB");
         assert_eq!(command_label("lsub"), "LSUB");
     }
+
+    #[test]
+    fn status_command_maps_correctly() {
+        assert_eq!(command_label("STATUS"), "STATUS");
+        assert_eq!(command_label("status"), "STATUS");
+    }
 }

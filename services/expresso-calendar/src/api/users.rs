@@ -165,4 +165,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{"email":"first.last@corp.com"}"#).unwrap();
         assert_eq!(q.email.as_deref(), Some("first.last@corp.com"));
     }
+
+    #[test]
+    fn user_query_email_is_none_on_absent_field() {
+        let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.email.is_none());
+    }
 }

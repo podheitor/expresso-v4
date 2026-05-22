@@ -217,4 +217,11 @@ mod tests {
         let s = fmt_ts(ts);
         assert!(s.contains("2026"));
     }
+
+    #[test]
+    fn preview_101_chars_is_truncated() {
+        let s = "a".repeat(121);
+        let p = preview(&s);
+        assert!(p.len() < s.len());
+    }
 }

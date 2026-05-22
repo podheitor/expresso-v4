@@ -353,4 +353,10 @@ mod tests {
     fn escape_empty_string_is_empty() {
         assert_eq!(escape(""), "");
     }
+
+    #[test]
+    fn prop_request_all_has_sync_token_set() {
+        let r = PropRequest::all();
+        assert!(r.sync_token);
+    }
 }

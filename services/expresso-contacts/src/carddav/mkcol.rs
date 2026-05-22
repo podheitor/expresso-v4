@@ -218,4 +218,10 @@ mod tests {
         let b = "<max-resource-size>102400</max-resource-size>";
         assert_eq!(extract_prop(b, "max-resource-size").as_deref(), Some("102400"));
     }
+
+    #[test]
+    fn extract_prop_apos_entity_unescaped() {
+        let b = "<displayname>it&apos;s here</displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("it's here"));
+    }
 }

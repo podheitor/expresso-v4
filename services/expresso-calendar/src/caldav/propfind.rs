@@ -556,4 +556,9 @@ mod tests {
     fn parse_depth_uppercase_infinity_is_infinity() {
         assert!(matches!(parse_depth(&headers_with_depth("INFINITY")), Depth::Infinity));
     }
+
+    #[test]
+    fn depth_default_on_missing_header_is_zero() {
+        assert!(matches!(parse_depth(&HeaderMap::new()), Depth::Zero));
+    }
 }

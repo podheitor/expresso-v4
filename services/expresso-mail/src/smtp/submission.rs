@@ -674,4 +674,9 @@ mod tests {
     fn from_matches_authed_different_users_same_domain_rejected() {
         assert!(!from_matches_authed("bob@example.com", "alice@example.com"));
     }
+
+    #[test]
+    fn extract_size_param_returns_none_for_bare_address() {
+        assert_eq!(extract_size_param("<user@example.com>"), None);
+    }
 }

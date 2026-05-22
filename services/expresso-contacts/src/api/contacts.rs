@@ -544,4 +544,9 @@ mod tests {
     fn max_contact_vcard_bytes_less_than_import_cap() {
         assert!(MAX_CONTACT_VCARD_BYTES < MAX_IMPORT_VCF_BYTES);
     }
+
+    #[test]
+    fn max_contact_vcard_bytes_equals_65536() {
+        assert_eq!(MAX_CONTACT_VCARD_BYTES, 65536);
+    }
 }

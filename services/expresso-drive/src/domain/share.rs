@@ -349,4 +349,16 @@ mod tests {
         };
         assert!(s.expires_at > s.created_at);
     }
+
+    #[test]
+    fn share_id_is_nil_uuid_when_set_to_nil() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "write".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-03-01 00:00:00 UTC),
+            expires_at: datetime!(2026-03-08 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert_eq!(s.id, Uuid::nil());
+    }
 }

@@ -634,4 +634,10 @@ mod tests {
     fn human_size_four_kibibytes_is_4_kb() {
         assert_eq!(human_size(4 * 1024), "4.0 KB");
     }
+
+    #[test]
+    fn human_size_1023_bytes_stays_below_kb() {
+        let s = human_size(1023);
+        assert!(s.ends_with('B') && !s.contains("KB"));
+    }
 }

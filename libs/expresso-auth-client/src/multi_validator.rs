@@ -190,4 +190,11 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "expresso-dav").unwrap();
         assert_eq!(m.audience(), "expresso-dav");
     }
+
+    #[test]
+    fn issuer_for_special_chars_realm_includes_realm() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        let iss = m.issuer_for("my-realm_01");
+        assert!(iss.contains("my-realm_01"));
+    }
 }

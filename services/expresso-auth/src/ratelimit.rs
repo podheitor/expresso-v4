@@ -267,4 +267,10 @@ mod tests {
         assert!(rl.check(ip));
         assert!(!rl.check(ip));
     }
+
+    #[test]
+    fn new_rate_limiter_trust_forwarded_false_by_default() {
+        let rl = RateLimiter::new(Duration::from_secs(30), 5);
+        assert!(!rl.trust_forwarded);
+    }
 }

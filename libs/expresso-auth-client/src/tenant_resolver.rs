@@ -177,4 +177,11 @@ mod tests {
         hosts.sort();
         assert_eq!(hosts, vec!["alpha.local", "beta.local"]);
     }
+
+    #[test]
+    fn single_entry_hosts_iterator_yields_one_host() {
+        let r = TenantResolver::parse("mail.example.com:my_realm");
+        let hosts: Vec<&str> = r.hosts().collect();
+        assert_eq!(hosts.len(), 1);
+    }
 }

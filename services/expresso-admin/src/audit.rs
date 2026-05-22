@@ -621,4 +621,9 @@ mod tests {
     fn plus_prefix_neutralized() {
         assert_eq!(csv_escape("+1"), "\"'+1\"");
     }
+
+    #[test]
+    fn equals_prefix_neutralized() {
+        assert_eq!(csv_escape("=SUM(A1)"), "\"'=SUM(A1)\"");
+    }
 }

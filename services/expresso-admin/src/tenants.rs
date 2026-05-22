@@ -550,4 +550,9 @@ mod slug_tests {
     fn statuses_const_contains_active() {
         assert!(STATUSES.contains(&"active"));
     }
+
+    #[test]
+    fn plans_const_length_is_three() {
+        assert_eq!(PLANS.len(), 3);
+    }
 }

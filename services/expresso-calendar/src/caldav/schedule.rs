@@ -334,4 +334,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:reply\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("REPLY"));
     }
+
+    #[test]
+    fn extract_method_publish_returns_publish() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:PUBLISH\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("PUBLISH"));
+    }
 }

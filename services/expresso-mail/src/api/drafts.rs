@@ -362,4 +362,10 @@ mod tests {
         r.bcc = Some(vec!["not-valid".into()]);
         assert!(build_raw(&r).is_err());
     }
+
+    #[test]
+    fn draft_request_from_field_preserved() {
+        let r = req("author@example.com", None, None, None);
+        assert_eq!(r.from, "author@example.com");
+    }
 }

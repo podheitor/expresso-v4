@@ -141,4 +141,11 @@ mod tests {
         let e = AuthError::KidNotFound(None);
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn invalid_token_and_expired_are_distinct_messages() {
+        let a = AuthError::InvalidToken("bad sig".into()).to_string();
+        let b = AuthError::Expired.to_string();
+        assert_ne!(a, b);
+    }
 }

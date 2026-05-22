@@ -508,4 +508,11 @@ mod tests {
     fn participant_role_variants_are_not_equal() {
         assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
     }
+
+    #[test]
+    fn participant_role_copy_clone_eq() {
+        let r = ParticipantRole::Moderator;
+        let r2 = r;
+        assert_eq!(r, r2);
+    }
 }

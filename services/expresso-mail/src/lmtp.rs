@@ -317,4 +317,9 @@ mod tests {
     fn max_msg_bytes_exceeds_one_mib() {
         assert!(super::MAX_MSG_BYTES > 1024 * 1024);
     }
+
+    #[test]
+    fn angle_plain_without_params() {
+        assert_eq!(extract_angle("<sender@domain.org>"), "sender@domain.org");
+    }
 }

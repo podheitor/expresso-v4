@@ -124,4 +124,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains(':'));
     }
+
+    #[test]
+    fn internal_error_display_starts_with_internal_prefix() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("cipher failure"));
+        assert!(e.to_string().starts_with("internal error"));
+    }
 }

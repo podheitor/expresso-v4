@@ -514,4 +514,9 @@ mod tests {
     fn max_chunk_bytes_exceeds_one_mib() {
         assert!(MAX_CHUNK_BYTES > 1024 * 1024);
     }
+
+    #[test]
+    fn sanitize_accepts_dotfile_name() {
+        assert!(sanitize_name(".gitignore").is_ok());
+    }
 }

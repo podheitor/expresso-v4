@@ -449,4 +449,10 @@ mod tests {
         let v = Vacation::default();
         assert_eq!(v.interval_days, 7);
     }
+
+    #[test]
+    fn vacation_default_is_disabled() {
+        let v = Vacation::default();
+        assert!(!v.enabled);
+    }
 }

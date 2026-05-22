@@ -427,6 +427,12 @@ mod tests {
         assert!(q.fits(1));
         assert!(!q.fits(2));
     }
+
+    #[test]
+    fn quota_max_bytes_equals_used_does_not_fit_extra() {
+        let q = Quota { max_bytes: 500, used_bytes: 500 };
+        assert!(!q.fits(1));
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

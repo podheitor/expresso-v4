@@ -168,4 +168,9 @@ mod tests {
         let e = DriveError::Io(std::io::Error::new(std::io::ErrorKind::Other, "oops"));
         assert_eq!(status(e), StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn database_unavailable_is_503_status() {
+        assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

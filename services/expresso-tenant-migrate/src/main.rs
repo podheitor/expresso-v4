@@ -465,4 +465,12 @@ mod tests {
         let u = json!({"attributes": {"tenant_id": [id]}});
         assert_eq!(extract_tenant_id(&u).as_deref(), Some(id));
     }
+
+    #[test]
+    fn roles_to_assign_all_matching_names_included() {
+        let src = vec![json!({"name": "admin"}), json!({"name": "user"})];
+        let dst = vec![json!({"id": "1", "name": "admin"}), json!({"id": "2", "name": "user"}), json!({"id": "3", "name": "viewer"})];
+        let result = roles_to_assign(&src, &dst);
+        assert_eq!(result.len(), 2);
+    }
 }

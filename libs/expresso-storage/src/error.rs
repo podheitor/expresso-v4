@@ -120,4 +120,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("test"));
         assert!(e.to_string().contains(':'));
     }
+
+    #[test]
+    fn display_is_not_empty_for_empty_cause() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!(""));
+        assert!(!e.to_string().is_empty());
+    }
 }

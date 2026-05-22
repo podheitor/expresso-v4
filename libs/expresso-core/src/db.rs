@@ -261,6 +261,13 @@ mod tests {
         };
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn rls_posture_clone_has_same_role() {
+        let p = ok();
+        let q = p.clone();
+        assert_eq!(p.role, q.role);
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

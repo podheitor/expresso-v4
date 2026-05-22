@@ -237,4 +237,10 @@ mod tests {
     fn mb_half_megabyte_returns_zero_point_five() {
         assert_eq!(mb(524_288), "0.5");
     }
+
+    #[test]
+    fn pct_fully_used_contains_100() {
+        let s = pct(1_000, 1_000);
+        assert!(s.contains("100"));
+    }
 }

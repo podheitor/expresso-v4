@@ -414,4 +414,9 @@ mod tests {
     fn escape_single_quote_is_apos() {
         assert_eq!(escape("it's"), "it&apos;s");
     }
+
+    #[test]
+    fn xml_prolog_starts_with_xml_declaration() {
+        assert!(XML_PROLOG.starts_with("<?xml"));
+    }
 }

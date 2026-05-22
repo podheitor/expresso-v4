@@ -464,4 +464,11 @@ mod tests {
         let delta = size_b - size_a;
         assert_eq!(delta, 1024);
     }
+
+    #[test]
+    fn create_version_body_size_large_value_preserved() {
+        let json = r#"{"size_bytes":9007199254740992}"#;
+        let b: CreateVersionBody = serde_json::from_str(json).unwrap();
+        assert_eq!(b.size_bytes, Some(9_007_199_254_740_992));
+    }
 }

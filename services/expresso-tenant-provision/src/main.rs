@@ -513,4 +513,9 @@ mod tests {
         let b = build_user_body("zara", "zara@example.com");
         assert_eq!(b["username"].as_str(), Some("zara"));
     }
+
+    #[test]
+    fn realm_roles_count_is_four() {
+        assert_eq!(REALM_ROLES.len(), 4);
+    }
 }

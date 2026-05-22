@@ -512,4 +512,9 @@ mod extra_tests {
     fn extract_angle_domain_only_address() {
         assert_eq!(extract_angle("<postmaster@localhost>"), "postmaster@localhost");
     }
+
+    #[test]
+    fn size_param_with_body_param_before_size() {
+        assert_eq!(extract_size_param("<a@b> BODY=8BITMIME SIZE=2048"), Some(2048));
+    }
 }

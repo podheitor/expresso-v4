@@ -327,4 +327,9 @@ mod tests {
     fn bus_capacity_is_positive() {
         assert!(BUS_CAPACITY > 0);
     }
+
+    #[test]
+    fn bus_capacity_is_power_of_two() {
+        assert_eq!(BUS_CAPACITY & (BUS_CAPACITY - 1), 0);
+    }
 }

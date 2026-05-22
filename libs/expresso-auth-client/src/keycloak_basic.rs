@@ -360,4 +360,10 @@ mod tests {
         let e = KcBasicError::InvalidCredentials;
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn cache_key_length_is_constant() {
+        let k = cache_key("user", "pass");
+        assert_eq!(k.len(), 64);
+    }
 }

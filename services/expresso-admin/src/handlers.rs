@@ -468,4 +468,9 @@ mod tests {
     fn services_const_length_is_ten() {
         assert_eq!(SERVICES.len(), 10);
     }
+
+    #[test]
+    fn services_const_first_entry_is_expresso_web() {
+        assert_eq!(SERVICES[0].name, "expresso-web");
+    }
 }

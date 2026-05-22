@@ -338,4 +338,9 @@ if header :contains "Subject" "[spam]" {
         assert!(!back.enabled);
         assert_eq!(back.script, "discard;");
     }
+
+    #[test]
+    fn max_test_message_bytes_is_1_mib() {
+        assert_eq!(MAX_TEST_MESSAGE_BYTES, 1024 * 1024);
+    }
 }

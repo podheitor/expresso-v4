@@ -240,4 +240,16 @@ mod tests {
         };
         assert_eq!(r.client_id, "my-client");
     }
+
+    #[test]
+    fn auth_code_request_code_preserved() {
+        let r = AuthCodeRequest {
+            grant_type:    "authorization_code",
+            code:          "mycode123",
+            redirect_uri:  "https://app/cb",
+            client_id:     "client",
+            code_verifier: "verifier",
+        };
+        assert_eq!(r.code, "mycode123");
+    }
 }

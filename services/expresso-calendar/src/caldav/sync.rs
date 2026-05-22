@@ -301,4 +301,9 @@ mod tests {
     fn token_prefix_value_is_urn_expresso_ctag() {
         assert_eq!(TOKEN_PREFIX, "urn:expresso:ctag:");
     }
+
+    #[test]
+    fn token_prefix_ends_with_colon() {
+        assert!(TOKEN_PREFIX.ends_with(':'));
+    }
 }

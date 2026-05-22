@@ -142,4 +142,9 @@ mod tests {
     fn result_label_kid_not_found_none_is_unknown_key() {
         assert_eq!(result_label(&AuthError::KidNotFound(None)), "unknown_key");
     }
+
+    #[test]
+    fn result_label_kid_not_found_some_is_unknown_key() {
+        assert_eq!(result_label(&AuthError::KidNotFound(Some("k1".into()))), "unknown_key");
+    }
 }

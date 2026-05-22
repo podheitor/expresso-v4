@@ -195,4 +195,11 @@ mod tests {
     fn action_lifespan_is_positive() {
         assert!(ACTION_LIFESPAN_SECS > 0);
     }
+
+    #[test]
+    fn forgot_req_email_does_not_contain_newline() {
+        let json = r#"{"email":"user@example.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(!r.email.contains('\n'));
+    }
 }

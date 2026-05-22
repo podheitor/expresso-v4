@@ -145,4 +145,9 @@ mod tests {
         let _: u64 = DEFAULT_INTERVAL_HOURS;
         assert!(DEFAULT_INTERVAL_HOURS > 0);
     }
+
+    #[test]
+    fn retention_days_exceeds_interval_hours_by_multiple() {
+        assert!(DEFAULT_RETENTION_DAYS as u64 * 24 >= DEFAULT_INTERVAL_HOURS * 2);
+    }
 }

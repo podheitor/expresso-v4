@@ -612,4 +612,10 @@ mod extra_tests {
         let s = percent_encode_filename("file+name.pdf");
         assert_eq!(s, "file+name.pdf");
     }
+
+    #[test]
+    fn percent_encode_filename_digits_unchanged() {
+        let s = percent_encode_filename("report2026.pdf");
+        assert_eq!(s, "report2026.pdf");
+    }
 }

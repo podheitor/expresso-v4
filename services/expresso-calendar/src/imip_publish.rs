@@ -326,4 +326,12 @@ mod tests {
         let hint = v["subject_hint"].as_str().unwrap();
         assert!(hint.starts_with("Cancelado:"), "got: {hint}");
     }
+
+    #[test]
+    fn envelope_invite_uid_is_nonempty() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(!v["invite"]["uid"].as_str().unwrap_or("").is_empty());
+    }
 }

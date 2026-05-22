@@ -408,4 +408,11 @@ END:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert_eq!(ev.summary.as_deref(), Some("line1\nline2"));
     }
+
+    #[test]
+    fn etag_two_different_inputs_differ() {
+        let a = compute_etag("input-one");
+        let b = compute_etag("input-two");
+        assert_ne!(a, b);
+    }
 }

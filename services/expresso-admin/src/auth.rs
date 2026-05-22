@@ -362,4 +362,9 @@ mod tests {
     fn is_public_path_forbidden_is_public() {
         assert!(is_public_path("/forbidden"));
     }
+
+    #[test]
+    fn is_public_path_ready_is_public() {
+        assert!(is_public_path("/ready"));
+    }
 }

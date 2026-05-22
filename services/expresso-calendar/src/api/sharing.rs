@@ -305,4 +305,9 @@ mod tests {
     fn validate_priv_read_uppercase_accepted() {
         assert_eq!(validate_priv("READ").unwrap(), "READ");
     }
+
+    #[test]
+    fn validate_priv_write_with_spaces_normalises() {
+        assert_eq!(validate_priv(" write ").unwrap(), "WRITE");
+    }
 }

@@ -264,4 +264,10 @@ mod tests {
         let p = make_pending(60);
         assert!(p.realm.is_none());
     }
+
+    #[test]
+    fn pending_login_code_verifier_nonempty() {
+        let p = make_pending(60);
+        assert!(!p.code_verifier.is_empty());
+    }
 }

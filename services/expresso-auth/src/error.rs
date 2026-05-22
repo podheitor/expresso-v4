@@ -135,4 +135,10 @@ mod tests {
         let e = RpError::Discovery("no endpoint available".into());
         assert!(e.to_string().contains("no endpoint available"));
     }
+
+    #[test]
+    fn token_exchange_error_message_preserved() {
+        let e = RpError::TokenExchange("upstream 502".into());
+        assert!(e.to_string().contains("upstream 502"));
+    }
 }

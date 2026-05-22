@@ -467,4 +467,12 @@ mod tests {
         let q: SearchQuery = serde_json::from_str(r#"{"q":"bob","limit":25}"#).unwrap();
         assert_eq!(q.limit, Some(25));
     }
+
+    #[test]
+    fn save_request_user_id_preserved() {
+        let id = Uuid::nil();
+        let json = format!(r#"{{"user_id":"{}"}}"#, id);
+        let r: SaveRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(r.user_id, Some(id));
+    }
 }

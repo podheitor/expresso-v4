@@ -197,4 +197,10 @@ mod tests {
         let c = cfg("i", "c", "r", None, None, None);
         assert!(c.state_ttl.as_secs() > 0);
     }
+
+    #[test]
+    fn http_timeout_is_greater_than_zero() {
+        let c = cfg("i", "c", "r", None, None, None);
+        assert!(c.http_timeout.as_secs() > 0);
+    }
 }

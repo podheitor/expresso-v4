@@ -415,4 +415,17 @@ mod tests {
         };
         assert!(r.snooze_until > r.snoozed_at);
     }
+
+    #[test]
+    fn snooze_record_id_is_nil_when_set_to_nil() {
+        use time::macros::datetime;
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2026-11-01 08:00:00 UTC),
+            snoozed_at:   datetime!(2026-10-31 08:00:00 UTC),
+            woken_at: None,
+        };
+        assert_eq!(r.id, Uuid::nil());
+    }
 }
