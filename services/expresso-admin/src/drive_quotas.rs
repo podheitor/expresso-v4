@@ -134,3 +134,73 @@ pub async fn update(
 
     Redirect::to("/drive-quotas.html?updated=1").into_response()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mb_zero_bytes() {
+        assert_eq!(mb(0), "0");
+    }
+
+    #[test]
+    fn mb_negative_bytes() {
+        assert_eq!(mb(-1), "0");
+    }
+
+    #[test]
+    fn mb_one_megabyte() {
+        assert_eq!(mb(1_048_576), "1.0");
+    }
+
+    #[test]
+    fn mb_fractional() {
+        // 1.5 MiB
+        assert_eq!(mb(1_572_864), "1.5");
+    }
+
+    #[test]
+    fn mb_large_value() {
+        // 10 GiB = 10 * 1024^3 = 10737418240 bytes → 10240.0 MiB
+        assert_eq!(mb(10 * 1024 * 1024 * 1024), "10240.0");
+    }
+
+    #[test]
+    fn pct_zero_max_returns_infinity() {
+        assert_eq!(pct(100, 0), "∞");
+    }
+
+    #[test]
+    fn pct_negative_max_returns_infinity() {
+        assert_eq!(pct(100, -1), "∞");
+    }
+
+    #[test]
+    fn pct_half_used() {
+        assert_eq!(pct(500, 1000), "50.0%");
+    }
+
+    #[test]
+    fn pct_fully_used() {
+        assert_eq!(pct(1000, 1000), "100.0%");
+    }
+
+    #[test]
+    fn pct_zero_used() {
+        assert_eq!(pct(0, 1000), "0.0%");
+    }
+
+    #[test]
+    fn fmt_opt_ts_none_returns_dash() {
+        assert_eq!(fmt_opt_ts(None), "—");
+    }
+
+    #[test]
+    fn fmt_opt_ts_some_returns_rfc3339() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-05-22 10:00:00 UTC);
+        let s = fmt_opt_ts(Some(ts));
+        assert!(s.starts_with("2026-05-22"));
+    }
+}

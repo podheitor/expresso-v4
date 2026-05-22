@@ -214,3 +214,30 @@ pub async fn reject(
 
     Redirect::to("/counter.html?rejected=1").into_response()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_opt_ts_none_returns_dash() {
+        assert_eq!(fmt_opt_ts(None), "—");
+    }
+
+    #[test]
+    fn fmt_opt_ts_some_contains_date() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-01-15 08:30:00 UTC);
+        let s = fmt_opt_ts(Some(ts));
+        assert!(s.starts_with("2026-01-15"));
+    }
+
+    #[test]
+    fn fmt_opt_ts_rfc3339_contains_time_part() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-05-22 14:00:00 UTC);
+        let s = fmt_opt_ts(Some(ts));
+        // RFC3339 has 'T' separator between date and time
+        assert!(s.contains('T'));
+    }
+}
