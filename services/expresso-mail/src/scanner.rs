@@ -218,4 +218,47 @@ mod tests {
         let r = ScanResult { spam_score: Some(7.5), spam_action: Some("add header".into()), virus: None };
         assert!(r.to_headers().contains("X-Spam-Status: Yes"));
     }
+
+    #[test]
+    fn no_spam_score_clean() {
+        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        assert!(r.is_clean());
+        assert!(should_reject(&r).is_none());
+    }
+
+    #[test]
+    fn reject_action_marks_not_clean() {
+        let r = ScanResult { spam_score: Some(3.0), spam_action: Some("reject".into()), virus: None };
+        assert!(!r.is_clean());
+    }
+
+    #[test]
+    fn to_headers_no_spam_score_omits_x_spam_lines() {
+        let r = ScanResult { spam_score: None, spam_action: None, virus: None };
+        let h = r.to_headers();
+        assert!(!h.contains("X-Spam-Score"), "no score → header absent");
+        assert!(h.contains("X-Virus-Status: Clean"));
+    }
+
+    #[test]
+    fn should_reject_respects_default_threshold_15() {
+        // Below default threshold of 15.0 — must not reject.
+        let below = ScanResult { spam_score: Some(14.99), spam_action: Some("add header".into()), virus: None };
+        assert!(should_reject(&below).is_none());
+        // At threshold — must reject.
+        let at = ScanResult { spam_score: Some(15.0), spam_action: Some("reject".into()), virus: None };
+        assert!(should_reject(&at).is_some());
+    }
+
+    #[test]
+    fn score_exactly_5_flagged_yes() {
+        let r = ScanResult { spam_score: Some(5.0), spam_action: None, virus: None };
+        assert!(r.to_headers().contains("X-Spam-Status: Yes"));
+    }
+
+    #[test]
+    fn score_just_below_5_flagged_no() {
+        let r = ScanResult { spam_score: Some(4.99), spam_action: None, virus: None };
+        assert!(r.to_headers().contains("X-Spam-Status: No"));
+    }
 }

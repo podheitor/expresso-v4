@@ -601,4 +601,48 @@ mod tests {
         assert_eq!(extract_size_param("SIZE=42"), Some(42));
         assert_eq!(extract_size_param("SIZE=abc"), None);
     }
+
+    #[test]
+    fn from_matches_authed_case_insensitive() {
+        assert!(from_matches_authed("Alice@Example.Com", "alice@example.com"));
+        assert!(from_matches_authed("alice@example.com", "ALICE@EXAMPLE.COM"));
+    }
+
+    #[test]
+    fn from_matches_authed_rejects_mismatch() {
+        assert!(!from_matches_authed("other@example.com", "alice@example.com"));
+        assert!(!from_matches_authed("alice@other.com", "alice@example.com"));
+    }
+
+    #[test]
+    fn from_matches_authed_rejects_empty_from() {
+        assert!(!from_matches_authed("", "alice@example.com"));
+        assert!(!from_matches_authed("<>", "alice@example.com"));
+    }
+
+    #[test]
+    fn from_matches_authed_rejects_bare_username_authed() {
+        // authed user without @ → never match (prevents partial-string attacks)
+        assert!(!from_matches_authed("alice@example.com", "alice"));
+    }
+
+    #[test]
+    fn from_matches_authed_rejects_empty_authed() {
+        assert!(!from_matches_authed("alice@example.com", ""));
+    }
+
+    #[test]
+    fn decode_plain_rejects_empty_pass() {
+        let cred = B64.encode(b"\0alice@example.com\0");
+        assert!(decode_plain(&cred).is_none());
+    }
+
+    #[test]
+    fn decode_plain_ignores_leading_trailing_whitespace() {
+        let cred = B64.encode(b"\0alice@example.com\0secret");
+        let padded = format!("  {}  ", cred);
+        let (u, p) = decode_plain(&padded).unwrap();
+        assert_eq!(u, "alice@example.com");
+        assert_eq!(p, "secret");
+    }
 }

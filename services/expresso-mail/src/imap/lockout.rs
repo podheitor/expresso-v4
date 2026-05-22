@@ -143,4 +143,28 @@ mod tests {
         l.record_failure("alice");
         assert!(!l.is_locked_out("alice"));
     }
+
+    #[test]
+    fn clear_failures_noop_on_unknown_user() {
+        let l = LoginLockout::default();
+        // Should not panic even if user never had failures.
+        l.clear_failures("nobody@example.com");
+        assert!(!l.is_locked_out("nobody@example.com"));
+    }
+
+    #[test]
+    fn not_locked_before_any_failures() {
+        let l = LoginLockout::default();
+        assert!(!l.is_locked_out("brand-new-user@example.com"));
+    }
+
+    #[test]
+    fn lockout_per_user_isolation() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("alice@example.com");
+        l.record_failure("alice@example.com");
+        assert!(l.is_locked_out("alice@example.com"));
+        // bob is unaffected
+        assert!(!l.is_locked_out("bob@example.com"));
+    }
 }
