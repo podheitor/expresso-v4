@@ -112,3 +112,55 @@ impl ContactsEventBus {
 impl Default for ContactsEventBus {
     fn default() -> Self { Self::noop() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tid() -> Uuid { Uuid::new_v4() }
+    fn aid() -> Uuid { Uuid::new_v4() }
+    fn cid() -> Uuid { Uuid::new_v4() }
+
+    #[test]
+    fn addressbook_created_tenant_id() {
+        let t = tid();
+        let ev = ContactsEvent::AddressbookCreated { tenant_id: t, addressbook_id: aid(), name: None };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn addressbook_deleted_tenant_id() {
+        let t = tid();
+        let ev = ContactsEvent::AddressbookDeleted { tenant_id: t, addressbook_id: aid() };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn contact_upserted_tenant_id() {
+        let t = tid();
+        let ev = ContactsEvent::ContactUpserted { tenant_id: t, addressbook_id: aid(), contact_id: cid() };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn contact_deleted_tenant_id() {
+        let t = tid();
+        let ev = ContactsEvent::ContactDeleted { tenant_id: t, addressbook_id: aid(), contact_id: cid() };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn kind_str_values() {
+        assert_eq!(ContactsEvent::AddressbookCreated { tenant_id: tid(), addressbook_id: aid(), name: None }.kind_str(), "addressbook_created");
+        assert_eq!(ContactsEvent::AddressbookDeleted { tenant_id: tid(), addressbook_id: aid() }.kind_str(), "addressbook_deleted");
+        assert_eq!(ContactsEvent::ContactUpserted    { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() }.kind_str(), "contact_upserted");
+        assert_eq!(ContactsEvent::ContactDeleted     { tenant_id: tid(), addressbook_id: aid(), contact_id: cid() }.kind_str(), "contact_deleted");
+    }
+
+    #[test]
+    fn addressbook_created_serializes_tag() {
+        let ev = ContactsEvent::AddressbookCreated { tenant_id: Uuid::nil(), addressbook_id: Uuid::nil(), name: Some("AB".into()) };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains(r#""kind":"addressbook_created""#) && s.contains("AB"));
+    }
+}

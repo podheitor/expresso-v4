@@ -175,3 +175,80 @@ impl EventBus {
 impl Default for EventBus {
     fn default() -> Self { Self::new() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tid() -> Uuid { Uuid::new_v4() }
+    fn eid() -> Uuid { Uuid::new_v4() }
+
+    #[test]
+    fn event_created_tenant_id() {
+        let t = tid(); let e = eid();
+        let ev = Event::EventCreated { tenant_id: t, event_id: e, summary: None };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn event_updated_tenant_id() {
+        let t = tid();
+        let ev = Event::EventUpdated { tenant_id: t, event_id: eid(), summary: None, sequence: 1 };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn event_cancelled_tenant_id() {
+        let t = tid();
+        let ev = Event::EventCancelled { tenant_id: t, event_id: eid() };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn counter_received_tenant_id() {
+        let t = tid();
+        let ev = Event::CounterReceived {
+            tenant_id: t, event_id: eid(), proposal_id: eid(),
+            attendee_email: "a@b.com".into(), comment: None,
+        };
+        assert_eq!(ev.tenant_id(), t);
+    }
+
+    #[test]
+    fn kind_str_values() {
+        assert_eq!(Event::EventCreated    { tenant_id: tid(), event_id: eid(), summary: None }.kind_str(), "event_created");
+        assert_eq!(Event::EventUpdated    { tenant_id: tid(), event_id: eid(), summary: None, sequence: 0 }.kind_str(), "event_updated");
+        assert_eq!(Event::EventCancelled  { tenant_id: tid(), event_id: eid() }.kind_str(), "event_cancelled");
+        assert_eq!(Event::CounterReceived {
+            tenant_id: tid(), event_id: eid(), proposal_id: eid(),
+            attendee_email: "x@y".into(), comment: None,
+        }.kind_str(), "counter_received");
+    }
+
+    #[test]
+    fn event_created_serializes_tag() {
+        let ev = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains(r#""kind":"event_created""#));
+    }
+
+    #[test]
+    fn counter_received_comment_skipped_when_none() {
+        let ev = Event::CounterReceived {
+            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(), comment: None,
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(!s.contains("comment"));
+    }
+
+    #[test]
+    fn counter_received_comment_present_when_some() {
+        let ev = Event::CounterReceived {
+            tenant_id: Uuid::nil(), event_id: Uuid::nil(), proposal_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(), comment: Some("later?".into()),
+        };
+        let s = serde_json::to_string(&ev).unwrap();
+        assert!(s.contains("comment") && s.contains("later?"));
+    }
+}
