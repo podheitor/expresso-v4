@@ -202,3 +202,43 @@ mod tests {
         assert!(tok.join_url.starts_with("https://meet.expresso.local/r1?jwt="));
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    fn fixture_cfg() -> JitsiConfig {
+        JitsiConfig {
+            app_id:      "expresso".into(),
+            app_secret:  "super-secret-0123456789".into(),
+            domain:      "meet.expresso.local".into(),
+            jwt_ttl:     3600,
+            room_prefix: "exp-".into(),
+        }
+    }
+
+    #[test]
+    fn domain_accessor() {
+        let j = Jitsi::new(fixture_cfg());
+        assert_eq!(j.domain(), "meet.expresso.local");
+    }
+
+    #[test]
+    fn generate_room_name_randomness() {
+        let j = Jitsi::new(fixture_cfg());
+        let r1 = j.generate_room_name();
+        let r2 = j.generate_room_name();
+        assert_ne!(r1, r2, "two consecutive room names should differ");
+    }
+
+    #[test]
+    fn mint_moderator_false() {
+        let j = Jitsi::new(fixture_cfg());
+        let tok = j.mint(&IssueRequest {
+            room: "r", user_id: Uuid::nil(),
+            display_name: "Bob", email: "b@x",
+            moderator: false, allow_recording: false,
+        }).unwrap();
+        assert!(tok.join_url.contains("jwt="));
+    }
+}

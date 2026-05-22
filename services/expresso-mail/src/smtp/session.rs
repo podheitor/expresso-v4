@@ -431,3 +431,29 @@ mod tests {
         assert_eq!(extract_size_param("SIZE=abc"), None);
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::{extract_angle, extract_size_param};
+
+    #[test]
+    fn angle_empty_address() {
+        assert_eq!(extract_angle("<>"), "");
+    }
+
+    #[test]
+    fn angle_trims_surrounding_whitespace() {
+        assert_eq!(extract_angle("  <a@b.com>  "), "a@b.com");
+    }
+
+    #[test]
+    fn size_param_case_insensitive() {
+        assert_eq!(extract_size_param("<a@b> size=512"), Some(512));
+        assert_eq!(extract_size_param("<a@b> Size=1024"), Some(1024));
+    }
+
+    #[test]
+    fn size_param_zero() {
+        assert_eq!(extract_size_param("<a@b> SIZE=0"), Some(0));
+    }
+}

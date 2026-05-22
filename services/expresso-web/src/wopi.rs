@@ -90,3 +90,39 @@ mod tests {
         assert!(url.contains("access_token=tok%2Eabc"));
     }
 }
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+
+    #[test]
+    fn editable_mime_text_plain() {
+        assert!(is_editable_mime(Some("text/plain")));
+    }
+
+    #[test]
+    fn editable_mime_text_csv() {
+        assert!(is_editable_mime(Some("text/csv")));
+    }
+
+    #[test]
+    fn editable_mime_msword() {
+        assert!(is_editable_mime(Some("application/msword")));
+    }
+
+    #[test]
+    fn editable_mime_pdf_not_editable() {
+        assert!(!is_editable_mime(Some("application/pdf")));
+    }
+
+    #[test]
+    fn editable_mime_empty_string_not_editable() {
+        assert!(!is_editable_mime(Some("")));
+    }
+
+    #[test]
+    fn sign_token_5_parts() {
+        let tok = sign_token(b"key", "file", "tenant", "user", 3600);
+        assert_eq!(tok.split('.').count(), 5);
+    }
+}
