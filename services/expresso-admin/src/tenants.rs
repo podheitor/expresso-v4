@@ -465,3 +465,59 @@ mod tests {
         assert!(validate_wizard(&wizard("acme-", "standard")).is_some());
     }
 }
+
+#[cfg(test)]
+mod slug_tests {
+    use super::valid_slug;
+
+    #[test]
+    fn valid_slug_accepts_lowercase_alphanumeric() {
+        assert!(valid_slug("expresso"));
+        assert!(valid_slug("tenant1"));
+        assert!(valid_slug("a"));
+    }
+
+    #[test]
+    fn valid_slug_accepts_hyphen_in_middle() {
+        assert!(valid_slug("my-tenant"));
+        assert!(valid_slug("a-b-c"));
+    }
+
+    #[test]
+    fn valid_slug_rejects_leading_hyphen() {
+        assert!(!valid_slug("-bad"));
+    }
+
+    #[test]
+    fn valid_slug_rejects_trailing_hyphen() {
+        assert!(!valid_slug("bad-"));
+    }
+
+    #[test]
+    fn valid_slug_rejects_uppercase() {
+        assert!(!valid_slug("MyTenant"));
+        assert!(!valid_slug("TENANT"));
+    }
+
+    #[test]
+    fn valid_slug_rejects_empty() {
+        assert!(!valid_slug(""));
+    }
+
+    #[test]
+    fn valid_slug_rejects_64_chars() {
+        let s: String = std::iter::repeat('a').take(64).collect();
+        assert!(!valid_slug(&s));
+    }
+
+    #[test]
+    fn valid_slug_accepts_63_chars() {
+        let s: String = std::iter::repeat('a').take(63).collect();
+        assert!(valid_slug(&s));
+    }
+
+    #[test]
+    fn valid_slug_rejects_spaces() {
+        assert!(!valid_slug("my tenant"));
+    }
+}

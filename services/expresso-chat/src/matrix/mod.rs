@@ -267,4 +267,20 @@ mod tests {
         assert_eq!(localpart_from_mxid("@alice:"),                None, "empty server");
         assert_eq!(localpart_from_mxid(""),                       None, "empty");
     }
+
+    #[test]
+    fn urlencode_plain_ascii_unchanged() {
+        assert_eq!(urlencode("hello"), "hello");
+    }
+
+    #[test]
+    fn urlencode_special_chars_encoded() {
+        let enc = urlencode("!room:server.com");
+        assert!(enc.contains('%'), "exclamation should be encoded");
+    }
+
+    #[test]
+    fn urlencode_empty_string() {
+        assert_eq!(urlencode(""), "");
+    }
 }

@@ -171,4 +171,14 @@ mod tests {
     fn is_expired_future() {
         assert!(!session_with_expiry(Duration::hours(1)).is_expired());
     }
+
+    #[test]
+    fn is_expired_large_negative_offset() {
+        assert!(session_with_expiry(Duration::hours(-24)).is_expired());
+    }
+
+    #[test]
+    fn is_expired_large_positive_offset() {
+        assert!(!session_with_expiry(Duration::days(7)).is_expired());
+    }
 }

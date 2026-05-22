@@ -282,4 +282,24 @@ mod tests {
         assert_eq!(n, "X-Foo");
         assert_eq!(v, "bar baz");
     }
+
+    #[test]
+    fn parse_header_value_with_colon() {
+        let (n, v) = parse_header_line("Date: Mon, 01 Jan 2026 00:00:00 +0000").unwrap();
+        assert_eq!(n, "Date");
+        assert_eq!(v, "Mon, 01 Jan 2026 00:00:00 +0000");
+    }
+
+    #[test]
+    fn parse_header_no_colon_returns_none() {
+        assert!(parse_header_line("no-colon-here").is_none());
+        assert!(parse_header_line("").is_none());
+    }
+
+    #[test]
+    fn parse_header_trims_name_and_value() {
+        let (n, v) = parse_header_line("  Subject : Hello World").unwrap();
+        assert_eq!(n, "Subject");
+        assert_eq!(v, "Hello World");
+    }
 }
