@@ -13,7 +13,7 @@
       <div class="alert alert-error">{{ e }}</div>
     {% when None %}{% endmatch %}
 
-    <form method="post" action="/mail/compose" class="compose-form" id="compose-form">
+    <form method="post" action="/mail/compose" class="compose-form" id="compose-form" enctype="multipart/form-data">
       <label>
         <span>De</span>
         <input type="email" name="from" value="{{ me.email }}" readonly>
@@ -38,6 +38,20 @@
         <span>Mensagem</span>
         <textarea name="body_text" rows="14" required>{{ prefill_body }}</textarea>
       </label>
+      <!-- Anexos -->
+      <div class="compose-attach-area" id="compose-drop-zone"
+           ondragover="event.preventDefault();this.classList.add('compose-drop-active')"
+           ondragleave="this.classList.remove('compose-drop-active')"
+           ondrop="handleComposeDrop(event)">
+        <span class="muted small">📎 Arraste arquivos aqui ou</span>
+        <label class="btn btn-ghost btn-sm compose-attach-btn">
+          Selecionar arquivo
+          <input type="file" name="attachments" id="compose-file-input" multiple style="display:none"
+                 onchange="addAttachFiles(this.files)">
+        </label>
+      </div>
+      <ul class="compose-attach-list" id="compose-attach-list"></ul>
+
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enviar</button>
         <a href="/mail" class="btn btn-ghost">Cancelar</a>
@@ -46,6 +60,50 @@
   </div>
 </div>
 <script>
+// ── Attachments ───────────────────────────────────────────────────────────────
+var _attachFiles = [];
+function handleComposeDrop(e) {
+  e.preventDefault();
+  document.getElementById('compose-drop-zone').classList.remove('compose-drop-active');
+  addAttachFiles(e.dataTransfer.files);
+}
+function addAttachFiles(fileList) {
+  Array.from(fileList).forEach(function(f) {
+    if (_attachFiles.find(function(x){ return x.name === f.name && x.size === f.size; })) return;
+    _attachFiles.push(f);
+  });
+  renderAttachList();
+  rebuildAttachInput();
+}
+function removeAttach(idx) {
+  _attachFiles.splice(idx, 1);
+  renderAttachList();
+  rebuildAttachInput();
+}
+function renderAttachList() {
+  var ul = document.getElementById('compose-attach-list');
+  ul.innerHTML = '';
+  _attachFiles.forEach(function(f, i) {
+    var kb = (f.size / 1024).toFixed(1);
+    ul.innerHTML += '<li class="compose-attach-item">' +
+      '<span>📎 ' + escAtt(f.name) + ' <span class="muted small">(' + kb + ' KB)</span></span>' +
+      '<button type="button" class="btn btn-ghost btn-sm" onclick="removeAttach(' + i + ')">✕</button></li>';
+  });
+}
+function rebuildAttachInput() {
+  var form = document.getElementById('compose-form');
+  form.querySelectorAll('input[type=file][name=attachments][data-dyn]').forEach(function(el){ el.remove(); });
+  var dt = new DataTransfer();
+  _attachFiles.forEach(function(f){ dt.items.add(f); });
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.name = 'attachments'; inp.multiple = true;
+  inp.setAttribute('data-dyn', '1'); inp.style.display = 'none';
+  inp.files; // access once
+  try { inp.files = dt.files; } catch(e) {}
+  form.appendChild(inp);
+}
+function escAtt(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 (function(){
   var inp = document.getElementById('to-field');
   var list = document.getElementById('to-suggestions');
