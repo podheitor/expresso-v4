@@ -184,10 +184,14 @@
                 <button type="button" class="chat-emoji-item" onclick="insertEmoji('😤')">😤</button>
               </div>
             </div>
-            <textarea class="chat-compose-input" name="body" id="chat-compose-input"
-              placeholder="Mensagem em #{{ ch.name }}…" rows="1"
-              onkeydown="chatKeydown(event, this.form)"
-              oninput="autoResize(this); chatTyping()"></textarea>
+            <div class="chat-mention-wrap" style="position:relative;flex:1">
+              <textarea class="chat-compose-input" name="body" id="chat-compose-input"
+                placeholder="Mensagem em #{{ ch.name }}… (@ para mencionar)"
+                rows="1"
+                onkeydown="chatKeydown(event, this.form); mentionKeydown(event)"
+                oninput="autoResize(this); chatTyping(); mentionDetect(this)"></textarea>
+              <ul class="mention-list" id="mention-list" style="display:none"></ul>
+            </div>
             <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
           </div>
         </form>
@@ -436,6 +440,75 @@ document.addEventListener('click', function(e) {
     var p = document.getElementById('chat-emoji-picker');
     if (p) p.style.display = 'none';
   }
+});
+
+// ── @mention autocomplete ────────────────────────────────────────────────────
+var _mentionQuery = null;
+var _mentionIdx = -1;
+function mentionDetect(ta) {
+  var val = ta.value;
+  var pos = ta.selectionStart;
+  var before = val.slice(0, pos);
+  var m = before.match(/@(\w*)$/);
+  if (!m) { hideMentionList(); _mentionQuery = null; return; }
+  _mentionQuery = m[1].toLowerCase();
+  fetch('/api/gal/search?q=' + encodeURIComponent(_mentionQuery || 'a'), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(contacts) {
+      var list = document.getElementById('mention-list');
+      if (!list) return;
+      var filtered = contacts.slice(0, 6);
+      if (!filtered.length) { list.style.display = 'none'; return; }
+      list.innerHTML = '';
+      _mentionIdx = -1;
+      filtered.forEach(function(c, i) {
+        var name = c.display_name || c.email || '';
+        var email = c.email || '';
+        var li = document.createElement('li');
+        li.className = 'mention-item';
+        li.textContent = name + (email ? ' (' + email + ')' : '');
+        li.dataset.mention = name || email;
+        li.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          insertMention(name || email);
+        });
+        list.appendChild(li);
+      });
+      list.style.display = 'block';
+    }).catch(function(){ hideMentionList(); });
+}
+function mentionKeydown(e) {
+  var list = document.getElementById('mention-list');
+  if (!list || list.style.display === 'none') return;
+  var items = list.querySelectorAll('.mention-item');
+  if (e.key === 'ArrowDown') { e.preventDefault(); _mentionIdx = Math.min(_mentionIdx+1, items.length-1); highlightMention(items); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); _mentionIdx = Math.max(_mentionIdx-1, -1); highlightMention(items); }
+  else if (e.key === 'Tab' || (e.key === 'Enter' && _mentionIdx >= 0)) {
+    e.preventDefault();
+    if (_mentionIdx >= 0 && items[_mentionIdx]) insertMention(items[_mentionIdx].dataset.mention);
+    else if (items[0]) insertMention(items[0].dataset.mention);
+  } else if (e.key === 'Escape') { hideMentionList(); }
+}
+function highlightMention(items) {
+  items.forEach(function(li, i){ li.classList.toggle('active', i === _mentionIdx); });
+}
+function insertMention(name) {
+  var ta = document.getElementById('chat-compose-input');
+  var val = ta.value; var pos = ta.selectionStart;
+  var before = val.slice(0, pos);
+  var after  = val.slice(pos);
+  var replaced = before.replace(/@(\w*)$/, '@' + name + ' ');
+  ta.value = replaced + after;
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = replaced.length;
+  hideMentionList();
+}
+function hideMentionList() {
+  var list = document.getElementById('mention-list');
+  if (list) list.style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.chat-mention-wrap')) hideMentionList();
 });
 
 // ── Pinned message ────────────────────────────────────────────────────────────
