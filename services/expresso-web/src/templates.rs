@@ -180,6 +180,29 @@ impl DriveFile {
     pub fn is_editable(&self) -> bool {
         !self.is_folder() && crate::wopi::is_editable_mime(self.mime_type.as_deref())
     }
+    pub fn is_previewable(&self) -> bool {
+        if self.is_folder() { return false; }
+        match self.mime_type.as_deref() {
+            Some(m) => m.starts_with("image/") || m == "application/pdf"
+                || m.starts_with("text/") || m == "application/json",
+            None => {
+                let ext = self.name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+                matches!(ext.as_str(), "jpg"|"jpeg"|"png"|"gif"|"webp"|"svg"|"pdf"|"txt"|"md"|"json"|"csv")
+            }
+        }
+    }
+    pub fn preview_kind(&self) -> &'static str {
+        let m = self.mime_type.as_deref().unwrap_or("");
+        if m.starts_with("image/") { return "image"; }
+        if m == "application/pdf"  { return "pdf"; }
+        if m.starts_with("text/") || m == "application/json" { return "text"; }
+        let ext = self.name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        match ext.as_str() {
+            "jpg"|"jpeg"|"png"|"gif"|"webp"|"svg" => "image",
+            "pdf" => "pdf",
+            _ => "text",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone, Copy)]
@@ -331,6 +354,14 @@ pub struct DriveEditTpl {
     pub me:         Me,
     pub file:       DriveFile,
     pub iframe_url: String,
+}
+
+#[derive(Template)]
+#[template(path = "drive_preview.html")]
+pub struct DrivePreviewTpl {
+    pub me:       Me,
+    pub file:     DriveFile,
+    pub download_url: String,
 }
 
 // ─── Home dashboard ───────────────────────────────────────────────────────────

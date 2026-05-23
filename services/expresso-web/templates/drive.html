@@ -50,6 +50,7 @@
         <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
         <td class="row-actions">
           {% if f.is_folder() == false %}
+            {% if f.is_previewable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/preview" title="Visualizar">👁 Ver</a>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">Compartilhar</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>

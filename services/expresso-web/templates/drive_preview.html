@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ file.name }} · Drive · Expresso{% endblock %}
+{% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <a class="btn btn-ghost btn-sm" href="/drive">← Drive</a>
+    <span style="font-weight:600">{{ file.name }}</span>
+    <div style="margin-left:auto;display:flex;gap:.5rem">
+      <a class="btn btn-ghost btn-sm" href="{{ download_url }}" download="{{ file.name }}">↓ Download</a>
+      {% if file.is_editable() %}
+        <a class="btn btn-ghost btn-sm" href="/drive/{{ file.id }}/edit">✏ Editar</a>
+      {% endif %}
+      <a class="btn btn-ghost btn-sm" href="/drive/{{ file.id }}/share">Compartilhar</a>
+    </div>
+  </div>
+
+  <div class="drive-preview-area">
+    {% if file.preview_kind() == "image" %}
+      <div class="drive-preview-image-wrap">
+        <img class="drive-preview-image" src="{{ download_url }}" alt="{{ file.name }}">
+      </div>
+    {% else if file.preview_kind() == "pdf" %}
+      <iframe class="drive-preview-iframe" src="{{ download_url }}" title="{{ file.name }}"></iframe>
+    {% else %}
+      <div class="drive-preview-text-wrap">
+        <pre id="drive-preview-text" class="drive-preview-text">Carregando…</pre>
+      </div>
+      <script>
+      fetch('{{ download_url }}', { credentials: 'include' })
+        .then(function(r){ return r.text(); })
+        .then(function(t){
+          var el = document.getElementById('drive-preview-text');
+          el.textContent = t;
+        })
+        .catch(function(){ document.getElementById('drive-preview-text').textContent = '(erro ao carregar)'; });
+      </script>
+    {% endif %}
+  </div>
+
+  <div class="drive-preview-meta card stack" style="margin-top:1rem">
+    <div class="muted small">
+      <span>Tamanho: <strong>{{ file.size_human() }}</strong></span>
+      {% match file.created_at %}{% when Some with (d) %}<span style="margin-left:1rem">Data: <strong>{{ d }}</strong></span>{% when None %}{% endmatch %}
+      {% match file.mime_type %}{% when Some with (m) %}<span style="margin-left:1rem">Tipo: <strong>{{ m }}</strong></span>{% when None %}{% endmatch %}
+    </div>
+  </div>
+</div>
+{% endblock %}

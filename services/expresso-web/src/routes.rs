@@ -16,7 +16,7 @@ use crate::{
     error::WebResult,
     templates::{
         AddressBook, Attachment, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl,
-        DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl,
+        DriveShareTpl, DriveVersionsTpl, DrivePreviewTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl,
         HomeEvent, HomeDriveFile,
         ShareRow, VersionRow, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl,
         DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl, Event, MonthCell,
@@ -55,6 +55,7 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/share",  get(drive_share_page).post(drive_share_create))
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
         .route("/drive/:id/versions", get(drive_versions_page))
+        .route("/drive/:id/preview",  get(drive_preview_page))
         .route("/drive/:id/edit",     get(drive_edit_page))
         .route("/calendar",                           get(calendar_page))
         .route("/calendar/:cal_id",                   get(calendar_month_page))
@@ -1113,6 +1114,30 @@ async fn drive_edit_page(
     );
 
     Ok(DriveEditTpl { me, file, iframe_url }.into_response())
+}
+
+async fn drive_preview_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let file: DriveFile = match get_json(
+        &st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/metadata"),
+        &headers, Some((&t, &u)),
+    ).await? {
+        Some(f) => f,
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+    };
+    if !file.is_previewable() {
+        return Ok((StatusCode::BAD_REQUEST, "Pré-visualização não disponível para este tipo de arquivo.").into_response());
+    }
+    let download_url = format!("{}/api/v1/drive/files/{id}",
+        st.backends.drive.trim_end_matches('/'));
+    Ok(askama_axum::IntoResponse::into_response(DrivePreviewTpl { me, file, download_url }))
 }
 
 // ─── /calendar/:cal_id — month grid ─────────────────────────────────────────
