@@ -18,18 +18,40 @@
         <span>De</span>
         <input type="email" name="from" value="{{ me.email }}" readonly>
       </label>
-      <label>
-        <span>Para</span>
-        <div class="autocomplete-wrap">
-          <input type="text" name="to" id="to-field" value="{{ prefill_to }}" required
-                 placeholder="destinatario@dominio.com" autocomplete="off">
+      <!-- To field with pill chips -->
+      <div class="compose-recipients-row">
+        <span class="compose-label">Para</span>
+        <div class="compose-pill-wrap" id="to-pill-wrap" onclick="focusRecipientInput('to-input')">
+          <div class="compose-pills" id="to-pills"></div>
+          <input type="text" id="to-input" class="compose-pill-input" placeholder="Adicionar destinatário…"
+                 autocomplete="off" oninput="recipientInput(this,'to')" onkeydown="recipientKeydown(event,'to')">
           <ul class="autocomplete-list" id="to-suggestions"></ul>
         </div>
-      </label>
-      <label>
-        <span>Cc</span>
-        <input type="text" name="cc" placeholder="opcional">
-      </label>
+        <input type="hidden" name="to" id="to-hidden" value="{{ prefill_to }}">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleCcBcc()" id="cc-toggle-btn" style="flex-shrink:0;font-size:.75rem">Cc/Bcc</button>
+      </div>
+      <div id="cc-bcc-area" style="display:none">
+        <div class="compose-recipients-row">
+          <span class="compose-label">Cc</span>
+          <div class="compose-pill-wrap" id="cc-pill-wrap" onclick="focusRecipientInput('cc-input')">
+            <div class="compose-pills" id="cc-pills"></div>
+            <input type="text" id="cc-input" class="compose-pill-input" placeholder="Cc…"
+                   autocomplete="off" oninput="recipientInput(this,'cc')" onkeydown="recipientKeydown(event,'cc')">
+            <ul class="autocomplete-list" id="cc-suggestions"></ul>
+          </div>
+          <input type="hidden" name="cc" id="cc-hidden">
+        </div>
+        <div class="compose-recipients-row">
+          <span class="compose-label">Bcc</span>
+          <div class="compose-pill-wrap" id="bcc-pill-wrap" onclick="focusRecipientInput('bcc-input')">
+            <div class="compose-pills" id="bcc-pills"></div>
+            <input type="text" id="bcc-input" class="compose-pill-input" placeholder="Cco (oculto)…"
+                   autocomplete="off" oninput="recipientInput(this,'bcc')" onkeydown="recipientKeydown(event,'bcc')">
+            <ul class="autocomplete-list" id="bcc-suggestions"></ul>
+          </div>
+          <input type="hidden" name="bcc" id="bcc-hidden">
+        </div>
+      </div>
       <label>
         <span>Assunto</span>
         <input type="text" name="subject" value="{{ prefill_subject }}" required>
@@ -105,8 +127,20 @@ function toggleRichMode(rich) {
     if (tb) tb.style.opacity = '.5';
   }
 }
-// sync before form submit
-document.getElementById('compose-form').addEventListener('submit', syncRichToText);
+// sync + validate + send-lock before form submit
+document.getElementById('compose-form').addEventListener('submit', function(e) {
+  syncRichToText();
+  if (!_recipients.to.length) {
+    e.preventDefault();
+    var wrap = document.getElementById('to-pill-wrap');
+    if (wrap) { wrap.style.outline = '2px solid var(--error)'; setTimeout(function(){ wrap.style.outline=''; }, 2000); }
+    document.getElementById('to-input').placeholder = 'Adicione pelo menos um destinatário';
+    document.getElementById('to-input').focus();
+    return;
+  }
+  var btn = this.querySelector('button[type=submit]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+});
 
 // ── Attachments ───────────────────────────────────────────────────────────────
 var _attachFiles = [];
@@ -184,5 +218,83 @@ function escAtt(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
     if(!e.target.closest('.autocomplete-wrap')){ list.innerHTML=''; }
   });
 })();
+
+// ── Recipient pill chips ──────────────────────────────────────────────────────
+var _recipients = { to: [], cc: [], bcc: [] };
+
+// Pre-fill 'to' from prefill_to
+(function() {
+  var pre = document.getElementById('to-hidden').value.trim();
+  if (pre) { pre.split(/[,;]+/).forEach(function(e){ var t = e.trim(); if (t) addRecipient('to', t); }); }
+})();
+
+function focusRecipientInput(id) { var inp = document.getElementById(id); if (inp) inp.focus(); }
+
+function addRecipient(field, email) {
+  email = email.trim();
+  if (!email || _recipients[field].indexOf(email) >= 0) return;
+  _recipients[field].push(email);
+  renderPills(field);
+  syncRecipientHidden(field);
+}
+function removeRecipient(field, email) {
+  _recipients[field] = _recipients[field].filter(function(e){ return e !== email; });
+  renderPills(field);
+  syncRecipientHidden(field);
+}
+function renderPills(field) {
+  var container = document.getElementById(field + '-pills');
+  if (!container) return;
+  container.innerHTML = _recipients[field].map(function(e) {
+    return '<span class="compose-pill">' + escHtml(e) +
+      '<button type="button" onclick="removeRecipient(\'' + field + '\',\'' + escHtml(e) + '\')" class="compose-pill-remove">✕</button></span>';
+  }).join('');
+}
+function syncRecipientHidden(field) {
+  var h = document.getElementById(field + '-hidden');
+  if (h) h.value = _recipients[field].join(', ');
+}
+function recipientKeydown(e, field) {
+  var inp = e.target;
+  if ((e.key === 'Enter' || e.key === ',' || e.key === ';' || e.key === 'Tab') && inp.value.trim()) {
+    e.preventDefault();
+    addRecipient(field, inp.value);
+    inp.value = '';
+    var sugg = document.getElementById(field + '-suggestions');
+    if (sugg) sugg.innerHTML = '';
+  } else if (e.key === 'Backspace' && !inp.value && _recipients[field].length) {
+    removeRecipient(field, _recipients[field][_recipients[field].length - 1]);
+  }
+}
+var _rcpTimers = {};
+function recipientInput(inp, field) {
+  clearTimeout(_rcpTimers[field]);
+  var q = inp.value.trim();
+  var sugg = document.getElementById(field + '-suggestions');
+  if (!sugg) return;
+  if (!q || q.length < 2) { sugg.innerHTML = ''; return; }
+  _rcpTimers[field] = setTimeout(function() {
+    fetch('/api/gal/search?q=' + encodeURIComponent(q), {credentials:'include'})
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(rows) {
+        sugg.innerHTML = (rows || []).slice(0,6).map(function(r) {
+          var email = r.email || '';
+          var name = r.display_name || email;
+          return '<li class="autocomplete-item" onclick="addRecipient(\'' + field + '\',\'' + escHtml(email) + '\');document.getElementById(\'' + field + '-input\').value=\'\';document.getElementById(\'' + field + '-suggestions\').innerHTML=\'\'">' +
+            '<strong>' + escHtml(name) + '</strong> <span class="muted small">' + escHtml(email) + '</span></li>';
+        }).join('');
+        sugg.style.display = rows.length ? '' : 'none';
+      }).catch(function(){ sugg.innerHTML = ''; });
+  }, 180);
+}
+function toggleCcBcc() {
+  var area = document.getElementById('cc-bcc-area');
+  var btn = document.getElementById('cc-toggle-btn');
+  if (!area) return;
+  var open = area.style.display !== 'none';
+  area.style.display = open ? 'none' : '';
+  if (btn) btn.textContent = open ? 'Cc/Bcc' : 'Fechar Cc';
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 </script>
 {% endblock %}

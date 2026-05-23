@@ -78,7 +78,7 @@ impl MessageListItem {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
 pub struct MessageDetail {
     pub id:          String,
     #[serde(default)] pub thread_id:   Option<String>,
@@ -915,6 +915,23 @@ pub struct AdminAuditTpl {
 pub struct AdminConfigTpl {
     pub me:     Me,
     pub config: AdminConfig,
+    pub flash:  Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize, Default)]
+pub struct AdminLoginEvent {
+    #[serde(default)] pub ts:      String,
+    #[serde(default)] pub ip:      Option<String>,
+    #[serde(default)] pub device:  Option<String>,
+    #[serde(default)] pub success: bool,
+}
+
+#[derive(Template)]
+#[template(path = "admin_user_detail.html")]
+pub struct AdminUserDetailTpl {
+    pub me:     Me,
+    pub user:   AdminUser,
+    pub logins: Vec<AdminLoginEvent>,
     pub flash:  Option<String>,
 }
 

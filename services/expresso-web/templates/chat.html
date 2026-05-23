@@ -142,7 +142,7 @@
                       </div>
                     </div>
                   {% when None %}{% endmatch %}
-                <div class="chat-msg-body" id="msgbody-{{ msg.id }}">{{ msg.body }}</div>
+                <div class="chat-msg-body chat-md" id="msgbody-{{ msg.id }}">{{ msg.body }}</div>
                 <div class="chat-msg-edit-area" id="msgedit-{{ msg.id }}" style="display:none">
                   <textarea class="chat-compose-input" id="msgedit-ta-{{ msg.id }}" rows="2" style="width:100%">{{ msg.body }}</textarea>
                   <div style="display:flex;gap:.4rem;margin-top:.25rem">
@@ -378,7 +378,7 @@ function loadNewMessages() {
               '<span class="chat-msg-sender">' + escHtml(msg.display_name || msg.user_id) + '</span>' +
               '<span class="chat-msg-time">' + escHtml(time) + '</span>' +
             '</div>' +
-            '<div class="chat-msg-body">' + escHtml(msg.body) + '</div>' +
+            '<div class="chat-msg-body chat-md" data-md-rendered="1">' + renderChatMd(msg.body || '') + '</div>' +
             '<div class="chat-msg-actions">' +
               '<button class="chat-action-btn" onclick="setReply(\'' + escHtml(msg.id) + '\')" title="Responder">↩</button>' +
             '</div>' +
@@ -761,6 +761,42 @@ function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Markdown-lite renderer ────────────────────────────────────────────────────
+function renderChatMd(text) {
+  var s = escHtml(text);
+  // code blocks ```...```
+  s = s.replace(/```([\s\S]*?)```/g, function(_, c) { return '<pre class="chat-code-block"><code>' + c.trim() + '</code></pre>'; });
+  // inline code `...`
+  s = s.replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
+  // bold **text** or __text__
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  // italic *text* or _text_
+  s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  s = s.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  // strikethrough ~~text~~
+  s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  // links [text](url)
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  // plain URLs
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
+  // blockquote > ...
+  s = s.replace(/^&gt; (.+)$/gm, '<blockquote class="chat-blockquote">$1</blockquote>');
+  // newlines
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+function applyMdToAll() {
+  document.querySelectorAll('.chat-md').forEach(function(el) {
+    if (el.dataset.mdRendered) return;
+    var raw = el.textContent;
+    el.innerHTML = renderChatMd(raw);
+    el.dataset.mdRendered = '1';
+  });
+}
+applyMdToAll();
 
 // ── Reply preview fill ────────────────────────────────────────────────────────
 (function fillReplyPreviews() {

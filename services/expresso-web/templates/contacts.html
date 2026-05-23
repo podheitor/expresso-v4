@@ -34,6 +34,7 @@
             ↑ Importar .vcf
             <input type="file" accept=".vcf,text/vcard" style="display:none" onchange="importVcf(this, '{{ bid }}')">
           </label>
+          <button class="btn btn-ghost btn-sm" onclick="detectDuplicates('{{ bid }}')" title="Detectar e mesclar contatos duplicados">⊞ Mesclar dupl.</button>
           <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
         </div>
       {% when None %}{% endmatch %}
@@ -81,6 +82,20 @@
     {% endif %}
   </main>
 </section>
+
+<!-- Merge duplicates modal -->
+<div class="modal-overlay" id="merge-modal" style="display:none" onclick="if(event.target.id==='merge-modal')closeMergeModal()">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-header">
+      <h3>Mesclar contatos duplicados</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeMergeModal()">✕</button>
+    </div>
+    <div id="merge-modal-body" class="compose-form">
+      <p class="muted small">Analisando…</p>
+    </div>
+  </div>
+</div>
+
 <script>
 function importVcf(input, bookId) {
   var file = input.files && input.files[0];
@@ -163,5 +178,63 @@ function buildContactSeparators() {
   });
   buildContactSeparators();
 })();
+
+// ── Merge duplicates ──────────────────────────────────────────────────────────
+var _mergeBookId = '';
+function detectDuplicates(bookId) {
+  _mergeBookId = bookId;
+  document.getElementById('merge-modal').style.display = 'flex';
+  var body = document.getElementById('merge-modal-body');
+  body.innerHTML = '<p class="muted small">Analisando contatos…</p>';
+  // Detect duplicates by email in DOM
+  var emailMap = {};
+  document.querySelectorAll('.data-table tbody tr[data-name]').forEach(function(row) {
+    var email = (row.querySelector('td:nth-child(2)') || {}).textContent || '';
+    email = email.trim().toLowerCase();
+    var name = (row.querySelector('td:first-child a, td:first-child span') || {}).textContent || '';
+    var href = (row.querySelector('td:first-child a') || {}).href || '';
+    var id = href ? href.split('/').slice(-2)[0] : '';
+    if (email) {
+      if (!emailMap[email]) emailMap[email] = [];
+      emailMap[email].push({ name: name.trim(), id: id, email: email });
+    }
+  });
+  var groups = Object.values(emailMap).filter(function(g){ return g.length > 1; });
+  if (!groups.length) {
+    body.innerHTML = '<p class="muted small" style="padding:.5rem 0">Nenhum duplicado encontrado. ✓</p>' +
+      '<div class="form-actions"><button class="btn btn-ghost" onclick="closeMergeModal()">Fechar</button></div>';
+    return;
+  }
+  var html = '<p class="muted small" style="margin-bottom:.75rem">' + groups.length + ' grupo(s) com e-mail duplicado:</p>';
+  groups.forEach(function(g, gi) {
+    html += '<div class="subcard" style="margin-bottom:.5rem;padding:.5rem .75rem">' +
+      '<p class="muted small" style="font-weight:600;margin-bottom:.3rem">📧 ' + escHtmlC(g[0].email) + '</p>' +
+      '<ul style="list-style:none;padding:0;margin:0 0 .5rem 0">';
+    g.forEach(function(c) {
+      html += '<li style="font-size:.85rem">' + escHtmlC(c.name) + ' (ID: ' + escHtmlC(c.id) + ')</li>';
+    });
+    html += '</ul>';
+    var keepId = g[0].id;
+    var mergeIds = g.slice(1).map(function(c){ return c.id; }).join(',');
+    html += '<button class="btn btn-primary btn-sm" onclick="doMerge(\'' + escHtmlC(bookId) + '\',\'' + escHtmlC(keepId) + '\',\'' + escHtmlC(mergeIds) + '\')">' +
+      'Manter 1º, mesclar restantes</button></div>';
+  });
+  html += '<div class="form-actions"><button class="btn btn-ghost" onclick="closeMergeModal()">Cancelar</button></div>';
+  body.innerHTML = html;
+}
+function doMerge(bookId, keepId, mergeIds) {
+  if (!confirm('Mesclar contatos? Esta ação não pode ser desfeita.')) return;
+  fetch('/contacts/' + encodeURIComponent(bookId) + '/' + encodeURIComponent(keepId) + '/merge', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'include',
+    body: 'merge_ids=' + encodeURIComponent(mergeIds),
+  }).then(function(r) {
+    if (r.ok || r.redirected) { closeMergeModal(); window.location.reload(); }
+    else { alert('Erro ao mesclar (' + r.status + ').'); }
+  }).catch(function(){ alert('Erro de rede.'); });
+}
+function closeMergeModal() { document.getElementById('merge-modal').style.display = 'none'; }
+function escHtmlC(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
 </script>
 {% endblock %}

@@ -15,6 +15,7 @@
       <a class="settings-nav-item{% if tab == "notifications" %} active{% endif %}" href="/settings?tab=notifications">Notificações</a>
       <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
       <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
+      <a class="settings-nav-item{% if tab == "shortcuts" %} active{% endif %}" href="/settings?tab=shortcuts">Atalhos de teclado</a>
     </nav>
 
     <div class="settings-content">
@@ -179,11 +180,31 @@
           <div class="subcard stack">
             <h3>Notificações do navegador</h3>
             <div id="notif-status" class="muted small" style="margin-bottom:.5rem"></div>
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
               <button type="button" class="btn btn-primary btn-sm" id="notif-enable-btn" onclick="requestDesktopNotifications()">Habilitar notificações</button>
               <button type="button" class="btn btn-ghost btn-sm" onclick="testDesktopNotification()">Testar</button>
             </div>
-            <p class="muted small" style="margin-top:.5rem">Receba alertas de novo e-mail e mensagens de chat mesmo com a aba em segundo plano.</p>
+            <div id="notif-pref-area" style="display:none">
+              <div class="subcard" style="padding:.6rem .75rem">
+                <p class="muted small" style="margin-bottom:.5rem;font-weight:600">Quais eventos notificar:</p>
+                <label class="checkbox-row" style="font-size:.85rem">
+                  <input type="checkbox" id="pref-notif-mail" onchange="saveNotifPrefs()"> Novo e-mail recebido
+                </label>
+                <label class="checkbox-row" style="font-size:.85rem">
+                  <input type="checkbox" id="pref-notif-chat" onchange="saveNotifPrefs()"> Nova mensagem de chat
+                </label>
+                <label class="checkbox-row" style="font-size:.85rem">
+                  <input type="checkbox" id="pref-notif-meet" onchange="saveNotifPrefs()"> Reunião próxima (10 min)
+                </label>
+                <label class="checkbox-row" style="font-size:.85rem">
+                  <input type="checkbox" id="pref-notif-snooze" onchange="saveNotifPrefs()"> Lembrete de e-mail (soneca)
+                </label>
+                <label class="checkbox-row" style="font-size:.85rem">
+                  <input type="checkbox" id="pref-notif-task" onchange="saveNotifPrefs()"> Tarefas vencendo hoje
+                </label>
+              </div>
+            </div>
+            <p class="muted small" style="margin-top:.5rem">Receba alertas mesmo com a aba em segundo plano.</p>
           </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit">Salvar</button>
@@ -302,12 +323,53 @@
         {% endmatch %}
       </div>
 
+      {% else if tab == "shortcuts" %}
+      <div class="card stack">
+        <h2>Atalhos de teclado</h2>
+        <div class="subcard" style="padding:.6rem .75rem;margin-bottom:.75rem">
+          <label class="checkbox-row">
+            <input type="checkbox" id="shortcuts-enabled" onchange="saveShortcutsPref(this.checked)" checked>
+            <span>Atalhos de teclado globais habilitados</span>
+          </label>
+        </div>
+        <table class="data-table shortcuts-table">
+          <thead><tr><th>Atalho</th><th>Ação</th><th>Módulo</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>G</kbd> <kbd>M</kbd></td><td>Ir para E-mail (Inbox)</td><td>Global</td></tr>
+            <tr><td><kbd>G</kbd> <kbd>C</kbd></td><td>Ir para Chat</td><td>Global</td></tr>
+            <tr><td><kbd>G</kbd> <kbd>K</kbd></td><td>Ir para Calendário</td><td>Global</td></tr>
+            <tr><td><kbd>G</kbd> <kbd>D</kbd></td><td>Ir para Drive</td><td>Global</td></tr>
+            <tr><td><kbd>G</kbd> <kbd>T</kbd></td><td>Ir para Tarefas</td><td>Global</td></tr>
+            <tr><td><kbd>C</kbd></td><td>Compor nova mensagem</td><td>E-mail</td></tr>
+            <tr><td><kbd>R</kbd></td><td>Responder mensagem aberta</td><td>E-mail</td></tr>
+            <tr><td><kbd>F</kbd></td><td>Encaminhar mensagem aberta</td><td>E-mail</td></tr>
+            <tr><td><kbd>E</kbd></td><td>Arquivar mensagem</td><td>E-mail</td></tr>
+            <tr><td><kbd>#</kbd></td><td>Excluir mensagem</td><td>E-mail</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Mostrar esta ajuda</td><td>Global</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Fechar modal / cancelar</td><td>Global</td></tr>
+          </tbody>
+        </table>
+        <p class="muted small" style="margin-top:.5rem">Os atalhos não funcionam quando o foco está em campos de texto.</p>
+      </div>
+
       {% endif %}
 
     </div>
   </div>
 </div>
 <script>
+// ── Keyboard shortcuts pref ───────────────────────────────────────────────────
+var SHORTCUTS_KEY = 'expresso_shortcuts_enabled';
+function saveShortcutsPref(enabled) {
+  localStorage.setItem(SHORTCUTS_KEY, enabled ? '1' : '0');
+}
+(function initShortcutsPref() {
+  var cb = document.getElementById('shortcuts-enabled');
+  if (!cb) return;
+  var val = localStorage.getItem(SHORTCUTS_KEY);
+  cb.checked = (val === null || val === '1');
+})();
+
 // ── Accent color ──────────────────────────────────────────────────────────────
 var ACCENT_KEY = 'expresso_accent_color';
 function applyAccentColor(color) {
@@ -329,6 +391,41 @@ function resetAccentColor() {
     var picker = document.getElementById('accent-color-picker');
     if (picker) picker.value = saved;
   }
+})();
+
+// ── Notification prefs ───────────────────────────────────────────────────────
+var NOTIF_PREFS_KEY = 'expresso_notif_prefs';
+function saveNotifPrefs() {
+  var prefs = {
+    mail: !!document.getElementById('pref-notif-mail') && document.getElementById('pref-notif-mail').checked,
+    chat: !!document.getElementById('pref-notif-chat') && document.getElementById('pref-notif-chat').checked,
+    meet: !!document.getElementById('pref-notif-meet') && document.getElementById('pref-notif-meet').checked,
+    snooze: !!document.getElementById('pref-notif-snooze') && document.getElementById('pref-notif-snooze').checked,
+    task: !!document.getElementById('pref-notif-task') && document.getElementById('pref-notif-task').checked,
+  };
+  localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(prefs));
+}
+(function initNotifPrefs() {
+  var area = document.getElementById('notif-pref-area');
+  if (!area) return;
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    area.style.display = '';
+  }
+  var saved = localStorage.getItem(NOTIF_PREFS_KEY);
+  if (!saved) {
+    ['mail','chat','meet','snooze','task'].forEach(function(k) {
+      var el = document.getElementById('pref-notif-' + k);
+      if (el) el.checked = true;
+    });
+    return;
+  }
+  try {
+    var prefs = JSON.parse(saved);
+    Object.keys(prefs).forEach(function(k) {
+      var el = document.getElementById('pref-notif-' + k);
+      if (el) el.checked = !!prefs[k];
+    });
+  } catch(e) {}
 })();
 
 function previewAvatar(input) {

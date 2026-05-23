@@ -27,6 +27,8 @@
     </div>
     <div class="page-header-actions">
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
+      <button class="btn btn-ghost btn-sm" onclick="toggleDriveView()" id="drive-view-btn" title="Alternar lista/grade">⊞ Grade</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
@@ -73,6 +75,8 @@
         <td class="mono muted">{{ f.size_human() }}</td>
         <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
         <td class="row-actions">
+          <button class="btn btn-ghost btn-sm drive-fav-btn" data-id="{{ f.id }}"
+                  onclick="toggleDriveFav('{{ f.id }}')" title="Favorito">⭐</button>
           {% if f.is_folder() == false %}
             {% if f.is_previewable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/preview" title="Visualizar">👁 Ver</a>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
@@ -80,6 +84,7 @@
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
             {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}
           {% endif %}
+          <button class="btn btn-ghost btn-sm" onclick="openMoveTo('{{ f.id }}','{{ f.name }}')" title="Mover para">Mover</button>
           <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
             <button class="btn btn-ghost btn-sm" type="submit" title="Mover p/ lixeira"
                     onclick="return confirm('Mover para lixeira?')">Lixeira</button>
@@ -98,6 +103,28 @@
   <div class="drive-drop-overlay-box">
     <div style="font-size:2.5rem">📂</div>
     <p>Solte para enviar arquivos</p>
+  </div>
+</div>
+
+<!-- Move-to-folder modal -->
+<div class="modal-overlay" id="drive-move-modal" style="display:none" onclick="if(event.target.id==='drive-move-modal')closeMoveModal()">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-header">
+      <h3>Mover para pasta</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeMoveModal()">✕</button>
+    </div>
+    <div class="compose-form">
+      <p class="muted small" id="drive-move-filename" style="margin-bottom:.75rem"></p>
+      <label>
+        <span>Selecionar pasta de destino</span>
+        <input type="text" id="drive-move-search" placeholder="Buscar pasta…" oninput="filterMoveFolders(this.value)" style="margin-bottom:.5rem">
+      </label>
+      <ul class="drive-folder-list" id="drive-move-folder-list"></ul>
+      <div class="form-actions" style="margin-top:.75rem">
+        <button type="button" class="btn btn-ghost" onclick="closeMoveModal()">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="drive-move-confirm" onclick="confirmMove()">Mover</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -266,5 +293,131 @@ document.addEventListener('drop', function(e) {
     if (r.ok || r.redirected) window.location.reload();
   }).catch(function(){});
 });
+
+// ── Drive view toggle (list/grid) ─────────────────────────────────────────────
+var DRIVE_VIEW_KEY = 'expresso_drive_view';
+var _driveGrid = (localStorage.getItem(DRIVE_VIEW_KEY) === 'grid');
+
+function toggleDriveView() {
+  _driveGrid = !_driveGrid;
+  localStorage.setItem(DRIVE_VIEW_KEY, _driveGrid ? 'grid' : 'list');
+  applyDriveView();
+}
+function applyDriveView() {
+  var table = document.getElementById('drive-table');
+  var btn = document.getElementById('drive-view-btn');
+  if (!table) return;
+  if (_driveGrid) {
+    table.classList.add('drive-grid-view');
+    if (btn) btn.textContent = '☰ Lista';
+  } else {
+    table.classList.remove('drive-grid-view');
+    if (btn) btn.textContent = '⊞ Grade';
+  }
+}
+applyDriveView();
+
+// ── Drive favorites ───────────────────────────────────────────────────────────
+var DRIVE_FAV_KEY = 'expresso_drive_favs';
+var _showFavsOnly = false;
+
+function loadDriveFavs() { try { return JSON.parse(localStorage.getItem(DRIVE_FAV_KEY) || '[]'); } catch(e) { return []; } }
+function saveDriveFavs(f) { localStorage.setItem(DRIVE_FAV_KEY, JSON.stringify(f)); }
+
+function toggleDriveFav(id) {
+  var favs = loadDriveFavs();
+  var idx = favs.indexOf(id);
+  if (idx >= 0) { favs.splice(idx, 1); } else { favs.push(id); }
+  saveDriveFavs(favs);
+  renderFavButtons();
+}
+
+function renderFavButtons() {
+  var favs = loadDriveFavs();
+  document.querySelectorAll('.drive-fav-btn[data-id]').forEach(function(btn) {
+    var isFav = favs.indexOf(btn.dataset.id) >= 0;
+    btn.style.opacity = isFav ? '1' : '.35';
+    btn.title = isFav ? 'Remover dos favoritos' : 'Adicionar aos favoritos';
+  });
+  if (_showFavsOnly) {
+    document.querySelectorAll('#drive-table tbody tr[data-file-id]').forEach(function(row) {
+      var id = row.dataset.fileId;
+      row.style.display = (favs.indexOf(id) >= 0) ? '' : 'none';
+    });
+  }
+}
+
+function toggleDriveFavs() {
+  _showFavsOnly = !_showFavsOnly;
+  var btn = document.getElementById('drive-favs-btn');
+  if (btn) btn.textContent = _showFavsOnly ? '⭐ Todos' : '⭐ Favoritos';
+  if (!_showFavsOnly) {
+    document.querySelectorAll('#drive-table tbody tr[data-file-id]').forEach(function(row){ row.style.display = ''; });
+  }
+  renderFavButtons();
+}
+
+renderFavButtons();
+
+// ── Move-to-folder ────────────────────────────────────────────────────────────
+var _moveFileId = '';
+var _moveTargetId = '';
+var _allFolders = [];
+
+(function fetchFolders() {
+  fetch('/api/v1/drive/folders', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(data) {
+      _allFolders = Array.isArray(data) ? data : [];
+    }).catch(function(){});
+})();
+
+function openMoveTo(fileId, fileName) {
+  _moveFileId = fileId;
+  _moveTargetId = '';
+  var fn = document.getElementById('drive-move-filename');
+  if (fn) fn.textContent = 'Arquivo: ' + fileName;
+  filterMoveFolders('');
+  document.getElementById('drive-move-modal').style.display = 'flex';
+  var inp = document.getElementById('drive-move-search');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+function closeMoveModal() {
+  document.getElementById('drive-move-modal').style.display = 'none';
+}
+function filterMoveFolders(q) {
+  var list = document.getElementById('drive-move-folder-list');
+  if (!list) return;
+  var filtered = _allFolders.filter(function(f) {
+    return !q || f.name.toLowerCase().includes(q.toLowerCase());
+  });
+  if (!filtered.length) {
+    list.innerHTML = '<li class="muted small" style="padding:.4rem .5rem">Nenhuma pasta encontrada</li>';
+    return;
+  }
+  list.innerHTML = filtered.map(function(f) {
+    return '<li class="drive-folder-item" data-id="' + escDrv(f.id) + '" onclick="selectMoveFolder(this,\'' + escDrv(f.id) + '\')">' +
+      '📁 ' + escDrv(f.name) + '</li>';
+  }).join('');
+}
+function selectMoveFolder(el, folderId) {
+  _moveTargetId = folderId;
+  document.querySelectorAll('#drive-move-folder-list .drive-folder-item').forEach(function(li) {
+    li.classList.toggle('drive-folder-item-selected', li === el);
+  });
+}
+function confirmMove() {
+  if (!_moveFileId || !_moveTargetId) { alert('Selecione uma pasta de destino.'); return; }
+  fetch('/drive/' + encodeURIComponent(_moveFileId) + '/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'include',
+    body: 'parent_id=' + encodeURIComponent(_moveTargetId),
+  }).then(function(r) {
+    if (r.ok || r.redirected) { closeMoveModal(); window.location.reload(); }
+    else { alert('Erro ao mover arquivo.'); }
+  }).catch(function(){ alert('Erro de rede.'); });
+}
+function escDrv(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
 </script>
 {% endblock %}

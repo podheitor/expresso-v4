@@ -38,7 +38,7 @@
       {% else %}
       <div class="thread-list">
         {% for msg in messages %}
-        <div class="thread-msg{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
+        <div class="thread-msg thread-msg-item{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
           <div class="thread-msg-header" onclick="toggleThreadMsg('{{ msg.id }}')">
             <div class="thread-msg-avatar">{{ msg.from_display().chars().next().unwrap_or('?').to_uppercase() }}</div>
             <div class="thread-msg-meta">
@@ -52,10 +52,17 @@
             </div>
           </div>
           <div class="thread-msg-body" id="body-{{ msg.id }}">
-            <a class="btn btn-ghost btn-sm" href="/mail/{{ msg.id }}" style="margin-bottom:.5rem;display:inline-block">Abrir completo</a>
-            {% if !msg.preview_display().is_empty() %}
-              <p class="muted small">{{ msg.preview_display() }}</p>
-            {% endif %}
+            <div class="thread-msg-body-actions">
+              <a class="btn btn-ghost btn-sm" href="/mail/{{ msg.id }}" style="display:inline-block">Abrir completo</a>
+              <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ msg.id }}&folder=INBOX">↩ Responder</a>
+              <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ msg.id }}&folder=INBOX">→ Encaminhar</a>
+            </div>
+            <div id="thread-body-content-{{ msg.id }}" class="thread-body-content">
+              {% if !msg.preview_display().is_empty() %}
+                <p class="muted small" id="thread-preview-{{ msg.id }}">{{ msg.preview_display() }}</p>
+              {% endif %}
+              <div id="thread-full-{{ msg.id }}" style="display:none"></div>
+            </div>
           </div>
         </div>
         {% endfor %}
@@ -65,14 +72,57 @@
   </main>
 </div>
 <script>
+var _threadBodyLoaded = {};
+
 function toggleThreadMsg(id) {
   var body = document.getElementById('body-' + id);
   var icon = document.getElementById('icon-' + id);
+  if (!body) return;
   var open = body.style.display !== 'none';
   body.style.display = open ? 'none' : '';
   if (icon) icon.textContent = open ? '▸' : '▾';
+  if (!open && !_threadBodyLoaded[id]) loadThreadBody(id);
 }
-// collapse all except last on load
+
+function loadThreadBody(id) {
+  _threadBodyLoaded[id] = true;
+  var full = document.getElementById('thread-full-' + id);
+  var preview = document.getElementById('thread-preview-' + id);
+  if (!full) return;
+  full.innerHTML = '<p class="muted small">Carregando…</p>';
+  full.style.display = '';
+  fetch('/mail/' + encodeURIComponent(id) + '?json=1', {credentials:'include'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d) { full.innerHTML = '<p class="muted small">Erro ao carregar.</p>'; return; }
+      if (preview) preview.style.display = 'none';
+      if (d.body_html) {
+        full.innerHTML = '<iframe class="body-html-frame" sandbox="allow-same-origin" referrerpolicy="no-referrer" style="width:100%;border:none;min-height:120px" srcdoc="' +
+          d.body_html.replace(/"/g,'&quot;') + '" onload="resizeThreadIframe(this)"></iframe>';
+      } else if (d.body_text) {
+        full.innerHTML = '<pre class="body-text">' + escHtml(d.body_text) + '</pre>';
+      } else {
+        full.innerHTML = '<p class="muted small">(sem corpo)</p>';
+      }
+    }).catch(function() { full.innerHTML = '<p class="muted small">Erro de conexão.</p>'; });
+}
+
+function resizeThreadIframe(frame) {
+  try {
+    var doc = frame.contentDocument;
+    if (doc && !doc.getElementById('_th_base')) {
+      var s = doc.createElement('style');
+      s.id = '_th_base';
+      s.textContent = 'body{font-family:system-ui,sans-serif;font-size:13px;line-height:1.6;color:#333;padding:6px;margin:0;word-break:break-word;}a{color:#0ea5e9;}img{max-width:100%;height:auto;}';
+      (doc.head || doc.documentElement).appendChild(s);
+    }
+    frame.style.height = Math.min(doc.body.scrollHeight + 12, 600) + 'px';
+  } catch(e) {}
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// collapse all except last on load; load last body immediately
 (function() {
   var bodies = document.querySelectorAll('.thread-msg-body');
   bodies.forEach(function(b, i) {
@@ -81,6 +131,47 @@ function toggleThreadMsg(id) {
       var id = b.id.replace('body-', '');
       var icon = document.getElementById('icon-' + id);
       if (icon) icon.textContent = '▸';
+    } else {
+      // Last message — load body right away
+      var id = b.id.replace('body-', '');
+      loadThreadBody(id);
+    }
+  });
+})();
+
+// ── Mail keyboard shortcuts ───────────────────────────────────────────────────
+(function() {
+  var SHORTCUTS_KEY = 'expresso_shortcuts_enabled';
+  document.addEventListener('keydown', function(e) {
+    if (localStorage.getItem(SHORTCUTS_KEY) === '0') return;
+    var tag = (document.activeElement || {}).tagName || '';
+    if (['INPUT','TEXTAREA','SELECT'].indexOf(tag) >= 0) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var key = e.key.toUpperCase();
+    // Find last message action links
+    var items = document.querySelectorAll('.thread-list .thread-msg-item');
+    var last = items[items.length - 1];
+    if (!last) return;
+    if (key === 'R') {
+      var rLink = last.querySelector('a[href*="reply_to"]');
+      if (rLink) window.location.href = rLink.href;
+    } else if (key === 'F') {
+      var fLink = last.querySelector('a[href*="forward"]');
+      if (fLink) window.location.href = fLink.href;
+    } else if (key === 'E') {
+      // Archive — POST to move to Archive
+      var trashForm = last.querySelector('form[action*="trash"]');
+      var msgId = trashForm ? trashForm.action.split('/').slice(-2)[0] : '';
+      if (msgId) {
+        fetch('/mail/' + encodeURIComponent(msgId) + '/move', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'destination=Archive',
+        }).then(function(){ window.location.href = '/mail'; });
+      }
+    } else if (e.key === '#') {
+      var trashF = last.querySelector('form[action*="trash"]');
+      if (trashF && confirm('Mover para lixeira?')) { trashF.submit(); }
     }
   });
 })();

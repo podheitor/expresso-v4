@@ -76,6 +76,7 @@
             <td class="small muted">{% match u.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
             <td>
               <div class="admin-row-actions">
+                <a class="btn btn-ghost btn-sm" href="/admin/users/{{ u.id }}">Ver</a>
                 <button class="btn btn-ghost btn-sm" onclick="editAdminUser('{{ u.id }}','{{ u.email }}','{{ u.role }}')">Editar</button>
                 {% if u.status != "suspended" %}
                   <form method="post" action="/admin/users/{{ u.id }}/suspend" style="display:contents">

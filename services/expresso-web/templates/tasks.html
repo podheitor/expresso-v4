@@ -64,6 +64,31 @@
     </aside>
 
     <main class="tasks-main">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:.5rem">
+        <div class="view-switch" style="gap:0">
+          <button class="btn btn-primary btn-sm" id="view-list-btn" onclick="setTasksView('list')" title="Vista lista">☰ Lista</button>
+          <button class="btn btn-ghost btn-sm" id="view-kanban-btn" onclick="setTasksView('kanban')" title="Vista Kanban">⊟ Kanban</button>
+        </div>
+      </div>
+
+      <!-- Kanban board (hidden by default) -->
+      <div id="tasks-kanban" style="display:none">
+        <div class="kanban-board">
+          <div class="kanban-col" id="kanban-todo" ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event,'todo')">
+            <div class="kanban-col-header">A fazer <span class="kanban-count" id="kanban-count-todo"></span></div>
+            <div class="kanban-cards" id="kanban-cards-todo"></div>
+          </div>
+          <div class="kanban-col" id="kanban-inprogress" ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event,'inprogress')">
+            <div class="kanban-col-header">Em progresso <span class="kanban-count" id="kanban-count-inprogress"></span></div>
+            <div class="kanban-cards" id="kanban-cards-inprogress"></div>
+          </div>
+          <div class="kanban-col" id="kanban-done" ondragover="kanbanDragOver(event)" ondrop="kanbanDrop(event,'done')">
+            <div class="kanban-col-header">Concluído <span class="kanban-count" id="kanban-count-done"></span></div>
+            <div class="kanban-cards" id="kanban-cards-done"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Add task inline -->
       <div class="tasks-add-area" id="add-task-area" style="display:none">
         <div class="tasks-add-form card">
@@ -470,7 +495,87 @@ function initDrag() {
   });
 }
 
+// ── Kanban view ───────────────────────────────────────────────────────────────
+var TASKS_VIEW_KEY = 'expresso_tasks_view';
+var _tasksView = localStorage.getItem(TASKS_VIEW_KEY) || 'list';
+
+function setTasksView(v) {
+  _tasksView = v;
+  localStorage.setItem(TASKS_VIEW_KEY, v);
+  var listBtn = document.getElementById('view-list-btn');
+  var kbBtn   = document.getElementById('view-kanban-btn');
+  var listEl  = document.getElementById('task-list');
+  var kbEl    = document.getElementById('tasks-kanban');
+  var emptyEl = document.getElementById('tasks-empty');
+  if (v === 'kanban') {
+    if (listEl) listEl.style.display = 'none';
+    if (kbEl) kbEl.style.display = '';
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (listBtn) { listBtn.className = 'btn btn-ghost btn-sm'; }
+    if (kbBtn)   { kbBtn.className   = 'btn btn-primary btn-sm'; }
+    renderKanban();
+  } else {
+    if (listEl) listEl.style.display = '';
+    if (kbEl) kbEl.style.display = 'none';
+    if (listBtn) { listBtn.className = 'btn btn-primary btn-sm'; }
+    if (kbBtn)   { kbBtn.className   = 'btn btn-ghost btn-sm'; }
+    renderAll();
+  }
+}
+
+function renderKanban() {
+  var tasks = loadTasks();
+  var cols = { todo: [], inprogress: [], done: [] };
+  tasks.forEach(function(t) {
+    var col = t.done ? 'done' : (t.kanban_col || 'todo');
+    if (!cols[col]) col = 'todo';
+    cols[col].push(t);
+  });
+  ['todo','inprogress','done'].forEach(function(col) {
+    var container = document.getElementById('kanban-cards-' + col);
+    var counter   = document.getElementById('kanban-count-' + col);
+    if (!container) return;
+    counter.textContent = cols[col].length;
+    container.innerHTML = cols[col].map(function(t) {
+      var priBadge = t.priority === 'high' ? '<span class="task-pri-badge pri-high" title="Alta">!</span>' :
+                     t.priority === 'low'  ? '<span class="task-pri-badge pri-low" title="Baixa">↓</span>' : '';
+      return '<div class="kanban-card" draggable="true" data-id="' + t.id + '" ' +
+        'ondragstart="kanbanDragStart(event,\'' + t.id + '\')">' +
+        '<div class="kanban-card-title">' + priBadge + escKb(t.title) + '</div>' +
+        (t.due ? '<div class="kanban-card-due muted small">📅 ' + escKb(t.due) + '</div>' : '') +
+        (t.list ? '<div class="kanban-card-tag small">🏷 ' + escKb(t.list) + '</div>' : '') +
+        '<div class="kanban-card-actions">' +
+        '<button class="btn btn-ghost btn-sm" onclick="editTask(\'' + t.id + '\');event.stopPropagation()">✏</button>' +
+        '<button class="btn btn-ghost btn-sm" onclick="deleteTask(\'' + t.id + '\');renderKanban();event.stopPropagation()">✕</button>' +
+        '</div></div>';
+    }).join('');
+  });
+}
+
+var _kanbanDragId = '';
+function kanbanDragStart(e, id) {
+  _kanbanDragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+}
+function kanbanDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function kanbanDrop(e, col) {
+  e.preventDefault();
+  if (!_kanbanDragId) return;
+  var tasks = loadTasks();
+  var t = tasks.find(function(x){ return x.id === _kanbanDragId; });
+  if (!t) return;
+  t.kanban_col = col;
+  t.done = (col === 'done');
+  saveTasks(tasks);
+  renderKanban();
+}
+function escKb(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 // ── Init ──────────────────────────────────────────────────────────────────────
-renderAll();
+if (_tasksView === 'kanban') {
+  setTasksView('kanban');
+} else {
+  renderAll();
+}
 </script>
 {% endblock %}

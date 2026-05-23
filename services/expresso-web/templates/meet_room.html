@@ -22,6 +22,7 @@
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
@@ -170,6 +171,27 @@
           <a class="btn btn-primary" href="/meet">Voltar</a>
         </div>
       {% endif %}
+    </div>
+
+    <!-- Whiteboard overlay -->
+    <div id="meet-whiteboard" style="display:none;position:fixed;inset:0;z-index:200;background:var(--bg-base);flex-direction:column">
+      <div style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;border-bottom:1px solid var(--border)">
+        <span style="font-weight:600">🖊 Quadro branco</span>
+        <div class="view-switch" style="gap:0">
+          <button class="btn btn-primary btn-sm" id="wb-pen-btn" onclick="setWbTool('pen')">✏ Caneta</button>
+          <button class="btn btn-ghost btn-sm" id="wb-erase-btn" onclick="setWbTool('erase')">⌫ Apagar</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearWhiteboard()">🗑 Limpar</button>
+        </div>
+        <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem">
+          Cor: <input type="color" id="wb-color" value="#14b8a6" onchange="updateWbColor(this.value)" style="width:2rem;height:1.5rem;border:none;background:none;cursor:pointer">
+        </label>
+        <label style="font-size:.82rem;display:flex;align-items:center;gap:.3rem">
+          Espessura: <input type="range" id="wb-size" min="1" max="20" value="3" oninput="updateWbSize(+this.value)" style="width:80px">
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="downloadWhiteboard()" style="margin-left:auto">↓ Salvar PNG</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()">✕ Fechar</button>
+      </div>
+      <canvas id="wb-canvas" style="flex:1;width:100%;cursor:crosshair;touch-action:none"></canvas>
     </div>
 
     <!-- Painel de participantes (colapsável) -->
@@ -462,6 +484,75 @@ document.addEventListener('keydown', function(e) {
     if (!e.target.closest('.autocomplete-wrap')) list.innerHTML = '';
   });
 })();
+
+// ── Whiteboard ────────────────────────────────────────────────────────────────
+var _wbOpen = false;
+var _wbTool = 'pen';
+var _wbColor = '#14b8a6';
+var _wbSize = 3;
+var _wbDrawing = false;
+var _wbCtx = null;
+
+function toggleWhiteboard() {
+  _wbOpen = !_wbOpen;
+  var el = document.getElementById('meet-whiteboard');
+  if (!el) return;
+  el.style.display = _wbOpen ? 'flex' : 'none';
+  if (_wbOpen) initWhiteboard();
+}
+function initWhiteboard() {
+  var canvas = document.getElementById('wb-canvas');
+  if (!canvas || _wbCtx) return;
+  canvas.width  = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+  _wbCtx = canvas.getContext('2d');
+  _wbCtx.lineCap = 'round';
+  canvas.addEventListener('pointerdown', wbStart);
+  canvas.addEventListener('pointermove', wbMove);
+  canvas.addEventListener('pointerup',   wbEnd);
+  canvas.addEventListener('pointerleave', wbEnd);
+}
+function wbStart(e) {
+  _wbDrawing = true;
+  _wbCtx.beginPath();
+  _wbCtx.moveTo(e.offsetX, e.offsetY);
+}
+function wbMove(e) {
+  if (!_wbDrawing) return;
+  if (_wbTool === 'erase') {
+    _wbCtx.clearRect(e.offsetX - _wbSize*4, e.offsetY - _wbSize*4, _wbSize*8, _wbSize*8);
+  } else {
+    _wbCtx.strokeStyle = _wbColor;
+    _wbCtx.lineWidth = _wbSize;
+    _wbCtx.lineTo(e.offsetX, e.offsetY);
+    _wbCtx.stroke();
+  }
+}
+function wbEnd() { _wbDrawing = false; }
+function setWbTool(t) {
+  _wbTool = t;
+  var canvas = document.getElementById('wb-canvas');
+  if (canvas) canvas.style.cursor = t === 'erase' ? 'cell' : 'crosshair';
+  var penBtn   = document.getElementById('wb-pen-btn');
+  var eraseBtn = document.getElementById('wb-erase-btn');
+  if (penBtn)   penBtn.className   = t === 'pen'   ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+  if (eraseBtn) eraseBtn.className = t === 'erase' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm';
+}
+function updateWbColor(c) { _wbColor = c; }
+function updateWbSize(s)  { _wbSize  = s; }
+function clearWhiteboard() {
+  if (!_wbCtx) return;
+  var c = document.getElementById('wb-canvas');
+  _wbCtx.clearRect(0, 0, c.width, c.height);
+}
+function downloadWhiteboard() {
+  var c = document.getElementById('wb-canvas');
+  if (!c) return;
+  var a = document.createElement('a');
+  a.href = c.toDataURL('image/png');
+  a.download = 'whiteboard.png';
+  a.click();
+}
 </script>
 
 <!-- Invite modal -->

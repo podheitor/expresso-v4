@@ -25,7 +25,7 @@ use crate::{
         ChatMessage, MeetTpl, MeetRoomTpl, MeetRoom, MeetScheduleTpl, MeetParticipant, TasksTpl,
         SettingsTpl, MailSearchTpl, GalContact,
         AdminUsersTpl, AdminTenantsTpl, AdminMonitoringTpl, AdminAuditTpl, AdminConfigTpl,
-        AdminUser, AdminTenant, AuditEvent, AdminConfig,
+        AdminUserDetailTpl, AdminUser, AdminTenant, AuditEvent, AdminConfig, AdminLoginEvent,
     },
     upstream::{get_json, get_bytes, post_body, post_json, patch_json, put_body, put_json, delete_at, post_empty},
 };
@@ -120,6 +120,7 @@ pub fn router(state: AppState) -> Router {
         .route("/admin",                           get(admin_redirect))
         .route("/admin/users",                     get(admin_users_page))
         .route("/admin/users/invite",              post(admin_users_invite))
+        .route("/admin/users/:id",                 get(admin_user_detail_page))
         .route("/admin/users/:id/role",            post(admin_users_set_role))
         .route("/admin/users/:id/suspend",         post(admin_users_suspend))
         .route("/admin/users/:id/activate",        post(admin_users_activate))
@@ -312,7 +313,7 @@ async fn security_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri)
 // ─── /mail ───────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-struct MailQuery { folder: Option<String>, page: Option<u32> }
+struct MailQuery { folder: Option<String>, page: Option<u32>, json: Option<u8> }
 
 async fn mail_page(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri, Query(q): Query<MailQuery>,
@@ -368,6 +369,12 @@ async fn mail_detail_page(
         &format!("/api/v1/mail/messages/{enc_id}"),
         &headers, Some((&t, &u)),
     ).await?;
+
+    // Return JSON for thread inline body loading
+    if q.json == Some(1) {
+        let json = serde_json::to_string(&detail).unwrap_or_else(|_| "null".into());
+        return Ok((StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json).into_response());
+    }
 
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me, folders, selected, messages, detail, selected_id: Some(id),
@@ -2958,6 +2965,30 @@ async fn admin_users_page(
     ).await?.unwrap_or_default();
     let flash = extract_flash(&uri);
     Ok(askama_axum::IntoResponse::into_response(AdminUsersTpl { me, users, flash }))
+}
+
+async fn admin_user_detail_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let user = get_json::<AdminUser>(
+        &st, &st.backends.auth, &format!("/api/v1/admin/users/{id}"), &headers, Some((&t, &u)),
+    ).await?.unwrap_or_else(|| AdminUser {
+        id: id.clone(), email: id.clone(), display_name: None,
+        role: String::new(), status: String::new(), tenant_id: String::new(), created_at: None,
+    });
+    let logins = get_json::<Vec<AdminLoginEvent>>(
+        &st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/logins"), &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    let flash = extract_flash(&uri);
+    Ok(askama_axum::IntoResponse::into_response(AdminUserDetailTpl { me, user, logins, flash }))
 }
 
 #[derive(Deserialize)]

@@ -169,4 +169,36 @@ window.pushNotification = function(icon, body, href) {
   var badge = document.getElementById('notif-badge');
   if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
 })();
+
+// ── Global keyboard shortcuts ────────────────────────────────────────────────
+(function() {
+  var SHORTCUTS_KEY = 'expresso_shortcuts_enabled';
+  var _gPrefix = false;
+  var _gTimer  = 0;
+  document.addEventListener('keydown', function(e) {
+    if (localStorage.getItem(SHORTCUTS_KEY) === '0') return;
+    var tag = (document.activeElement || {}).tagName || '';
+    if (['INPUT','TEXTAREA','SELECT'].indexOf(tag) >= 0) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var key = e.key.toUpperCase();
+    if (_gPrefix) {
+      _gPrefix = false;
+      clearTimeout(_gTimer);
+      var nav = { M: '/mail', C: '/chat', K: '/calendar', D: '/drive', T: '/tasks', P: '/contacts' };
+      if (nav[key]) { window.location.href = nav[key]; }
+      return;
+    }
+    if (key === 'G') {
+      _gPrefix = true;
+      _gTimer = setTimeout(function(){ _gPrefix = false; }, 1500);
+      return;
+    }
+    // Single-key shortcuts
+    if (key === 'C' && window.location.pathname.startsWith('/mail')) {
+      window.location.href = '/mail/compose';
+    } else if (key === '?') {
+      window.location.href = '/settings?tab=shortcuts';
+    }
+  });
+})();
 </script>

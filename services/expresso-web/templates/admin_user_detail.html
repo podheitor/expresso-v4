@@ -1,0 +1,75 @@
+{% extends "admin_base.html" %}
+{% block title %}{{ user.email }} · Admin · Expresso{% endblock %}
+{% block admin_nav_users %}active{% endblock %}
+{% block admin_content %}
+<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.25rem">
+  <a class="btn btn-ghost btn-sm" href="/admin/users">← Usuários</a>
+  <div class="admin-avatar" style="width:3rem;height:3rem;font-size:1.4rem">{{ user.initial() }}</div>
+  <div>
+    <h1 style="margin:0">{% match user.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ user.email }}{% endmatch %}</h1>
+    <p class="muted small" style="margin:0">{{ user.email }}</p>
+  </div>
+  <div style="margin-left:auto;display:flex;gap:.5rem">
+    <form method="post" action="/admin/users/{{ user.id }}/reset-password">
+      <button class="btn btn-ghost btn-sm" type="submit" onclick="return confirm('Enviar e-mail de redefinição de senha?')">🔑 Redefinir senha</button>
+    </form>
+    {% if user.status == "suspended" %}
+    <form method="post" action="/admin/users/{{ user.id }}/activate">
+      <button class="btn btn-primary btn-sm" type="submit">✓ Reativar</button>
+    </form>
+    {% else %}
+    <form method="post" action="/admin/users/{{ user.id }}/suspend">
+      <button class="btn btn-ghost btn-sm" type="submit" onclick="return confirm('Suspender este usuário?')">⊘ Suspender</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+{% match flash %}{% when Some with (f) %}<div class="alert alert-ok" style="margin-bottom:1rem">{{ f }}</div>{% when None %}{% endmatch %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+  <!-- Info card -->
+  <div class="card stack">
+    <h3>Informações</h3>
+    <dl class="kv">
+      <dt>ID</dt><dd class="mono small">{{ user.id }}</dd>
+      <dt>E-mail</dt><dd class="mono">{{ user.email }}</dd>
+      <dt>Papel</dt><dd><span class="admin-role-badge admin-role-{{ user.role }}">{{ user.role }}</span></dd>
+      <dt>Status</dt><dd><span class="admin-status-badge admin-status-{{ user.status }}">{{ user.status }}</span></dd>
+      <dt>Tenant</dt><dd class="mono small">{{ user.tenant_id }}</dd>
+      <dt>Criado em</dt><dd>{% match user.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</dd>
+    </dl>
+    <!-- Change role inline -->
+    <form method="post" action="/admin/users/{{ user.id }}/role" style="display:flex;gap:.5rem;align-items:center;margin-top:.5rem">
+      <select name="role" class="tasks-add-priority" style="flex:1">
+        <option value="user"{% if user.role == "user" %} selected{% endif %}>user</option>
+        <option value="admin"{% if user.role == "admin" %} selected{% endif %}>admin</option>
+        <option value="superadmin"{% if user.role == "superadmin" %} selected{% endif %}>superadmin</option>
+      </select>
+      <button class="btn btn-primary btn-sm" type="submit">Salvar papel</button>
+    </form>
+  </div>
+
+  <!-- Login history -->
+  <div class="card stack">
+    <h3>Histórico de login</h3>
+    {% if logins.is_empty() %}
+      <p class="muted small">Nenhum registro disponível.</p>
+    {% else %}
+    <table class="admin-table" style="font-size:.82rem">
+      <thead><tr><th>Data/hora</th><th>IP</th><th>Dispositivo</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for ev in logins %}
+        <tr>
+          <td class="mono">{{ ev.ts }}</td>
+          <td class="mono">{% match ev.ip %}{% when Some with (ip) %}{{ ip }}{% when None %}—{% endmatch %}</td>
+          <td>{% match ev.device %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+          <td>{% if ev.success %}<span class="ok small">✓ OK</span>{% else %}<span style="color:var(--error)" class="small">✗ Falhou</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
