@@ -337,4 +337,9 @@ mod tests {
     fn page_size_constant_is_fifty() {
         assert_eq!(PAGE_SIZE, 50);
     }
+
+    #[test]
+    fn page_size_fits_i32() {
+        assert!(PAGE_SIZE <= i32::MAX as i64);
+    }
 }

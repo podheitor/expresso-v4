@@ -421,4 +421,10 @@ mod tests {
         };
         assert!(!b.assurance.as_deref().unwrap_or("").is_empty());
     }
+
+    #[test]
+    fn list_query_tenant_id_none_means_all_tenants() {
+        let q = ListQuery { tenant_id: None };
+        assert!(q.tenant_id.is_none());
+    }
 }

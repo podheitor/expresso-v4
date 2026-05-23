@@ -283,4 +283,11 @@ mod tests {
         l.record_failure("z@x.com");
         assert!(!l.is_locked_out("z@x.com"));
     }
+
+    #[test]
+    fn user_not_locked_after_clear_failures_with_no_prior_failures() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        l.clear_failures("new@x.com");
+        assert!(!l.is_locked_out("new@x.com"));
+    }
 }

@@ -434,4 +434,9 @@ mod tests {
     fn escape_less_than_is_lt_entity() {
         assert_eq!(escape("<tag>"), "&lt;tag&gt;");
     }
+
+    #[test]
+    fn xml_prolog_ends_with_closing_angle_bracket() {
+        assert!(XML_PROLOG.ends_with('>'));
+    }
 }

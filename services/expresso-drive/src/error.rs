@@ -193,4 +193,10 @@ mod tests {
         let e = DriveError::Unauthorized;
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn conflict_display_contains_reason() {
+        let e = DriveError::Conflict("stale lock".into());
+        assert!(format!("{e}").contains("stale lock"));
+    }
 }

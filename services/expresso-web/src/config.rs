@@ -326,6 +326,17 @@ mod tests {
     }
 
     #[test]
+    fn wopi_drive_url_and_collabora_url_can_differ() {
+        let w = Wopi {
+            collabora_url: "https://collabora.example.com".into(),
+            drive_url: "https://drive.example.com".into(),
+            secret: "s3cr3t".into(),
+            token_ttl_secs: 3600,
+        };
+        assert_ne!(w.collabora_url, w.drive_url);
+    }
+
+    #[test]
     fn wopi_token_ttl_zero_is_zero() {
         let w = WopiConfig {
             collabora_url: "https://collabora.example.com".into(),

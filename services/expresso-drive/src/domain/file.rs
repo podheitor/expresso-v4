@@ -858,4 +858,10 @@ mod tests {
         let f = sample_file();
         assert_eq!(f.kind, "file");
     }
+
+    #[test]
+    fn drive_file_locked_at_none_in_sample() {
+        let f = sample_file();
+        assert!(f.locked_at.is_none());
+    }
 }

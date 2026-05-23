@@ -410,4 +410,12 @@ mod tests {
     fn parse_header_numeric_name_with_colon_returns_some() {
         assert!(parse_header_line("123: value").is_some());
     }
+
+    #[test]
+    fn parse_header_colon_at_start_empty_name_returns_some() {
+        let result = parse_header_line(": orphan-value");
+        assert!(result.is_some());
+        let (name, _) = result.unwrap();
+        assert!(name.is_empty());
+    }
 }

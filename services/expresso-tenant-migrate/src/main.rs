@@ -496,4 +496,12 @@ mod tests {
         let result = extract_tenant_id(&attrs);
         assert_eq!(result, Some("acme".to_string()));
     }
+
+    #[test]
+    fn roles_to_assign_no_name_field_matches_nothing() {
+        let src = vec![serde_json::json!({"id": "x"})];
+        let dst = vec![serde_json::json!({"id": "x"})];
+        let result = roles_to_assign(&src, &dst);
+        assert!(result.is_empty());
+    }
 }

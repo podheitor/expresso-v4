@@ -191,4 +191,9 @@ mod tests {
         let e = ContactsError::NotSupported("LOCK".into());
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn forbidden_status_is_403() {
+        assert_eq!(status(ContactsError::Forbidden), 403);
+    }
 }

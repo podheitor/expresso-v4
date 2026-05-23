@@ -572,4 +572,11 @@ mod tests {
         let u = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
         assert!(u.name.is_none() && u.description.is_none() && u.color.is_none());
     }
+
+    #[test]
+    fn update_calendar_description_preserved_in_serde() {
+        let json = r#"{"description":"My work calendar"}"#;
+        let u: UpdateCalendar = serde_json::from_str(json).unwrap();
+        assert_eq!(u.description.as_deref(), Some("My work calendar"));
+    }
 }

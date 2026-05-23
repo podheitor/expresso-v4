@@ -474,4 +474,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "Cal".into(), None, None, false, 99);
         assert_eq!(row.ctag, 99);
     }
+
+    #[test]
+    fn to_dav_row_color_set_is_not_empty() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, Some("#abc".into()), false, 0);
+        assert!(!row.color.is_empty());
+    }
 }

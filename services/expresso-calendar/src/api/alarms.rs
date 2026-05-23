@@ -561,4 +561,10 @@ mod tests {
         let q: CountQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.delivered.is_none());
     }
+
+    #[test]
+    fn upcoming_query_within_hours_is_none_when_absent() {
+        let q: UpcomingQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.within_hours.is_none());
+    }
 }

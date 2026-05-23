@@ -243,4 +243,10 @@ mod tests {
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("alpha"));
         assert_eq!(extract_prop(b, "description").as_deref(), Some("beta"));
     }
+
+    #[test]
+    fn extract_prop_tag_with_attributes_returns_value() {
+        let b = r#"<displayname lang="en">MyBook</displayname>"#;
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("MyBook"));
+    }
 }

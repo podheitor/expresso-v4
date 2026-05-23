@@ -451,6 +451,11 @@ mod tests {
         let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 100, used_bytes: 100 };
         assert!(fq.fits(0));
     }
+
+    #[test]
+    fn default_quota_bytes_constant_is_ten_gib() {
+        assert_eq!(DEFAULT_QUOTA_BYTES, 10 * 1024 * 1024 * 1024);
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

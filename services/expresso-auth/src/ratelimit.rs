@@ -297,4 +297,12 @@ mod tests {
         assert!(rl.check(v4));
         assert!(rl.check(v6));
     }
+
+    #[test]
+    fn limit_one_allows_first_then_blocks_second() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let ip: std::net::IpAddr = "10.0.0.1".parse().unwrap();
+        assert!(rl.check(ip));
+        assert!(!rl.check(ip));
+    }
 }

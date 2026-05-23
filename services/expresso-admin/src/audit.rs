@@ -643,4 +643,10 @@ mod tests {
         let out = csv_escape("\tformula");
         assert!(out.starts_with('"'));
     }
+
+    #[test]
+    fn field_with_only_double_quote_is_properly_escaped() {
+        let out = csv_escape("\"");
+        assert!(out.starts_with('"') && out.contains("\"\""));
+    }
 }

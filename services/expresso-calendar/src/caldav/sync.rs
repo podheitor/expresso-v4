@@ -324,4 +324,9 @@ mod tests {
         let tok = format!("{TOKEN_PREFIX}{}", i64::MAX);
         assert_eq!(parse_token_value(&tok), Some(i64::MAX));
     }
+
+    #[test]
+    fn token_prefix_length_is_nonzero() {
+        assert!(!TOKEN_PREFIX.is_empty());
+    }
 }

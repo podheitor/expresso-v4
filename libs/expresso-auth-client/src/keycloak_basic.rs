@@ -385,4 +385,20 @@ mod tests {
         let b = KcBasicError::Unreachable("x".into()).to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn kc_basic_config_default_cache_ttl_is_sixty_seconds() {
+        let cfg = KcBasicConfig {
+            url: "http://x".into(),
+            realm: "r".into(),
+            client_id: "c".into(),
+            client_secret: None,
+            cache_ttl: Duration::from_secs(60),
+            http_timeout: Duration::from_secs(5),
+            max_failures: 10,
+            failure_window: Duration::from_secs(60),
+            lockout_duration: Duration::from_secs(300),
+        };
+        assert_eq!(cfg.cache_ttl, Duration::from_secs(60));
+    }
 }

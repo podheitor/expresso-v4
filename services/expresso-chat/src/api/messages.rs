@@ -230,4 +230,9 @@ mod tests {
     fn default_list_limit_is_less_than_or_equal_to_max() {
         assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
     }
+
+    #[test]
+    fn max_message_body_bytes_is_nonzero() {
+        assert!(MAX_MESSAGE_BODY_BYTES > 0);
+    }
 }

@@ -290,6 +290,14 @@ mod tests {
     fn rls_posture_role_value_is_nonempty_in_ok() {
         assert!(!ok().role.is_empty());
     }
+
+    #[test]
+    fn rls_posture_not_strict_when_single_unforced_table() {
+        let mut p = ok();
+        p.tables_unforced.push("audit_log (not FORCEd)".into());
+        assert!(!p.is_strict());
+        assert_eq!(p.tables_unforced.len(), 1);
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

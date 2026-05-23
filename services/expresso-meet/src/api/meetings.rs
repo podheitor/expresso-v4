@@ -1480,6 +1480,11 @@ mod tests {
     }
 
     #[test]
+    fn max_email_bytes_exceeds_max_room_name_bytes() {
+        assert!(MAX_EMAIL_BYTES > MAX_ROOM_NAME_BYTES);
+    }
+
+    #[test]
     fn max_room_name_bytes_less_than_max_title_bytes() {
         assert!(MAX_ROOM_NAME_BYTES < MAX_TITLE_BYTES);
     }

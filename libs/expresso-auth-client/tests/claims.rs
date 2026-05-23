@@ -210,3 +210,8 @@ fn from_raw_sub_is_preserved_in_context() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.sub, sub);
 }
+
+#[test]
+fn aud_claim_one_rejects_empty_string_when_value_is_nonempty() {
+    assert!(!AudClaim::One("expresso-web".into()).contains(""));
+}

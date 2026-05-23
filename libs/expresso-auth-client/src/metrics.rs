@@ -173,4 +173,11 @@ mod tests {
         let label: &'static str = result_label(&AuthError::Expired);
         assert_eq!(label, "expired");
     }
+
+    #[test]
+    fn result_label_config_and_jwks_fetch_differ() {
+        let a = result_label(&AuthError::Config("x".into()));
+        let b = result_label(&AuthError::JwksFetch("x".into()));
+        assert_ne!(a, b);
+    }
 }

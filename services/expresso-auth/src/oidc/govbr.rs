@@ -246,4 +246,9 @@ mod tests {
     fn govbr_default_scopes_contains_email() {
         assert!(GOVBR_DEFAULT_SCOPES.contains("email"));
     }
+
+    #[test]
+    fn govbr_jwks_url_is_https() {
+        assert!(GOVBR_JWKS_URL.starts_with("https://"));
+    }
 }

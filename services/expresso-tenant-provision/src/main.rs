@@ -536,4 +536,10 @@ mod tests {
         let s = generate_secret();
         assert_eq!(s.len(), 64);
     }
+
+    #[test]
+    fn build_user_body_first_name_is_tenant() {
+        let body = build_user_body("alice", "alice@example.com");
+        assert_eq!(body["firstName"], "Tenant");
+    }
 }

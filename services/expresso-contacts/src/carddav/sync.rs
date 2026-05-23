@@ -308,4 +308,9 @@ mod tests {
         let token = format!("{}{}", TOKEN_PREFIX, v);
         assert_eq!(parse_token_value(&token), Some(v));
     }
+
+    #[test]
+    fn token_prefix_length_is_nonzero() {
+        assert!(!TOKEN_PREFIX.is_empty());
+    }
 }

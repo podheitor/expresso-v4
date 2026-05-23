@@ -1057,4 +1057,10 @@ mod extra_tests {
         let preview = make_preview("hello");
         assert_eq!(preview, Some("hello".to_string()));
     }
+
+    #[test]
+    fn parse_references_whitespace_between_ids_splits_correctly() {
+        let refs = parse_references("<a@b.com> <c@d.com>");
+        assert_eq!(refs.len(), 2);
+    }
 }

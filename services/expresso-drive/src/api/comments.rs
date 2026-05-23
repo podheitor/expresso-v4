@@ -380,4 +380,9 @@ mod tests {
     fn max_comment_bytes_is_four_kib_exact() {
         assert_eq!(MAX_COMMENT_BYTES, 4 * 1024);
     }
+
+    #[test]
+    fn max_comment_bytes_less_than_one_mib() {
+        assert!(MAX_COMMENT_BYTES < 1024 * 1024);
+    }
 }

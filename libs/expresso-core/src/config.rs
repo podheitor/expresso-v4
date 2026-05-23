@@ -308,4 +308,9 @@ mod tests {
     fn default_smtp_port_is_25() {
         assert_eq!(default_smtp_port(), 25);
     }
+
+    #[test]
+    fn default_imaps_port_is_993() {
+        assert_eq!(default_imaps_port(), 993);
+    }
 }

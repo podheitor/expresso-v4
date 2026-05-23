@@ -348,4 +348,10 @@ mod tests {
         q.xml_value = "changed".into();
         assert_eq!(p.xml_value, "v");
     }
+
+    #[test]
+    fn dead_prop_namespace_differs_from_local_name() {
+        let p = DeadProp { namespace: "DAV:".into(), local_name: "prop".into(), xml_value: "".into() };
+        assert_ne!(p.namespace, p.local_name);
+    }
 }

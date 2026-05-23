@@ -193,4 +193,9 @@ mod tests {
     fn conflict_and_not_found_have_different_statuses() {
         assert_ne!(status(MeetError::Conflict("x".into())), status(MeetError::NotFound));
     }
+
+    #[test]
+    fn forbidden_and_not_participant_have_same_status() {
+        assert_eq!(status(MeetError::Forbidden), status(MeetError::NotParticipant));
+    }
 }

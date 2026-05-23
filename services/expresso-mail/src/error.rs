@@ -202,4 +202,10 @@ mod tests {
         let e = MailError::FolderNotFound { folder: "Archive".into() };
         assert!(format!("{e}").contains("Archive"));
     }
+
+    #[test]
+    fn conflict_display_contains_reason_text() {
+        let e = MailError::Conflict("uid clash".into());
+        assert!(format!("{e}").contains("uid clash"));
+    }
 }

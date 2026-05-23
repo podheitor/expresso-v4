@@ -614,4 +614,10 @@ mod tests {
         let q: CounterListQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert_eq!(q.limit.unwrap_or(50), 50);
     }
+
+    #[test]
+    fn counter_list_limit_preserved_when_set() {
+        let q: CounterListQuery = serde_json::from_str(r#"{"limit":25}"#).unwrap();
+        assert_eq!(q.limit, Some(25));
+    }
 }

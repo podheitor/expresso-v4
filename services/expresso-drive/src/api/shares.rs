@@ -308,4 +308,9 @@ mod tests {
     fn max_ttl_is_greater_than_default_ttl() {
         assert!(MAX_TTL_SECONDS > DEFAULT_TTL_SECONDS);
     }
+
+    #[test]
+    fn default_ttl_is_positive_i64() {
+        assert!(DEFAULT_TTL_SECONDS > 0_i64);
+    }
 }

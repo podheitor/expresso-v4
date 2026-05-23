@@ -1090,4 +1090,9 @@ mod tests {
     fn max_subject_bytes_is_less_than_one_kib() {
         assert!(MAX_SUBJECT_BYTES < 1024);
     }
+
+    #[test]
+    fn max_body_bytes_is_one_mib() {
+        assert_eq!(MAX_BODY_BYTES, 1024 * 1024);
+    }
 }

@@ -1603,4 +1603,10 @@ mod tests {
         let b: AddTagBody = serde_json::from_str(r#"{"tag":"2024"}"#).unwrap();
         assert_eq!(b.tag, "2024");
     }
+
+    #[test]
+    fn rename_tag_body_new_tag_is_nonempty() {
+        let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"invoices"}"#).unwrap();
+        assert!(!b.new_tag.is_empty());
+    }
 }

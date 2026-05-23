@@ -301,4 +301,10 @@ mod tests {
         let b = PresetBody { name: "My preset".into(), flags: vec![] };
         assert_eq!(b.flags.len(), 0);
     }
+
+    #[test]
+    fn preset_body_name_preserved_after_construction() {
+        let b = PresetBody { name: "inbox-unread".into(), flags: vec!["\\Seen".into()] };
+        assert_eq!(b.name, "inbox-unread");
+    }
 }

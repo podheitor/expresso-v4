@@ -699,4 +699,9 @@ mod tests {
         let parts: Vec<&str> = tok.split('.').collect();
         assert_eq!(parts[2], uid.to_string());
     }
+
+    #[test]
+    fn max_putfile_bytes_equals_256_mib_constant() {
+        assert_eq!(MAX_PUTFILE_BYTES, 256 * 1024 * 1024);
+    }
 }

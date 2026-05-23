@@ -245,4 +245,9 @@ mod tests {
     fn percent_decode_tilde_unchanged() {
         assert_eq!(percent_decode("~user"), "~user");
     }
+
+    #[test]
+    fn percent_decode_percent_25_is_percent() {
+        assert_eq!(percent_decode("%25"), "%");
+    }
 }

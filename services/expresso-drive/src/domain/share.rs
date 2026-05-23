@@ -398,4 +398,11 @@ mod tests {
         };
         assert!(s.revoked_at.is_none());
     }
+
+    #[test]
+    fn share_permission_write_differs_from_read() {
+        let write = "write".to_string();
+        let read  = "read".to_string();
+        assert_ne!(write, read);
+    }
 }

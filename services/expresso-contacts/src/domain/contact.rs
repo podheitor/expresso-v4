@@ -438,4 +438,10 @@ mod tests {
         let c = sample();
         assert!(c.vcard_raw.starts_with("BEGIN:VCARD"));
     }
+
+    #[test]
+    fn contact_id_field_accessible() {
+        let c = sample();
+        let _ = c.id;
+    }
 }

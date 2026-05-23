@@ -231,4 +231,10 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&s).unwrap();
         assert_eq!(v["auto_purge_days"], 7);
     }
+
+    #[test]
+    fn trash_purge_settings_some_365_days_preserved() {
+        let s = TrashPurgeSettings { auto_purge_days: Some(365) };
+        assert_eq!(s.auto_purge_days, Some(365));
+    }
 }

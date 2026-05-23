@@ -289,4 +289,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(!s.name.is_empty());
     }
+
+    #[test]
+    fn session_offset_bytes_is_zero_initially_from_helper() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert_eq!(s.offset_bytes, 0);
+    }
 }

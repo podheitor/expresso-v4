@@ -299,4 +299,10 @@ mod tests {
     fn extract_prop_returns_none_for_different_tag() {
         assert_eq!(extract_prop("<displayname>My Cal</displayname>", "calendar-color"), None);
     }
+
+    #[test]
+    fn extract_tzid_colon_in_value_preserved() {
+        let ics = "BEGIN:VCALENDAR\r\nBEGIN:VTIMEZONE\r\nTZID:America/New_York\r\nEND:VTIMEZONE\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_tzid(ics).as_deref(), Some("America/New_York"));
+    }
 }

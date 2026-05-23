@@ -146,4 +146,11 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("   "));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn display_contains_prefix_and_cause_separated_by_colon() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("unexpected eof"));
+        let s = e.to_string();
+        assert!(s.starts_with("internal error:") && s.contains("unexpected eof"));
+    }
 }

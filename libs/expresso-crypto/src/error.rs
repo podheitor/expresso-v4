@@ -149,4 +149,11 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("   "));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn two_different_internal_errors_produce_different_debug_output() {
+        let a = format!("{:?}", ExpresscryptoError::Internal(anyhow::anyhow!("err_alpha")));
+        let b = format!("{:?}", ExpresscryptoError::Internal(anyhow::anyhow!("err_beta")));
+        assert_ne!(a, b);
+    }
 }

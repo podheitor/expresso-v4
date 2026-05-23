@@ -488,4 +488,10 @@ mod tests {
     fn services_const_all_entries_have_nonzero_ports() {
         assert!(SERVICES.iter().all(|s| s.port > 0));
     }
+
+    #[test]
+    fn services_const_unique_ports() {
+        let ports: std::collections::HashSet<u16> = SERVICES.iter().map(|s| s.port).collect();
+        assert_eq!(ports.len(), SERVICES.len());
+    }
 }

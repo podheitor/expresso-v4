@@ -203,4 +203,11 @@ mod tests {
         let r = TenantResolver::parse("host.example.com:tenantrealm");
         assert_eq!(r.len(), 1);
     }
+
+    #[test]
+    fn duplicate_host_entries_last_wins() {
+        let r = TenantResolver::parse("app.ex:realm_a,app.ex:realm_b");
+        assert_eq!(r.len(), 1);
+        assert!(r.resolve("app.ex").is_some());
+    }
 }

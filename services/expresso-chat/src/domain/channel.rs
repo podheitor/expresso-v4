@@ -313,4 +313,11 @@ mod tests {
         let o = serde_json::to_string(&MemberRole::Owner).unwrap();
         assert_ne!(g, o);
     }
+
+    #[test]
+    fn member_role_admin_ne_member() {
+        let a = serde_json::to_string(&MemberRole::Admin).unwrap();
+        let m = serde_json::to_string(&MemberRole::Member).unwrap();
+        assert_ne!(a, m);
+    }
 }

@@ -293,4 +293,9 @@ mod tests {
     fn super_role_constant_contains_admin() {
         assert!(SUPER_ROLE.contains("admin"));
     }
+
+    #[test]
+    fn super_role_constant_has_no_whitespace() {
+        assert!(!SUPER_ROLE.contains(' '));
+    }
 }

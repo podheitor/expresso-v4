@@ -470,4 +470,18 @@ mod tests {
         };
         assert_eq!(p.received_sequence, Some(3));
     }
+
+    #[test]
+    fn counter_proposal_attendee_email_not_empty() {
+        use time::macros::datetime;
+        let p = CounterProposal {
+            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            attendee_email: "attendee@corp.example".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: None,
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert!(!p.attendee_email.is_empty());
+    }
 }

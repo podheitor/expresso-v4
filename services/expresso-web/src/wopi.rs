@@ -203,4 +203,9 @@ mod extra_tests {
         let t2 = sign_token("file1", "secret");
         assert_eq!(t1.len(), t2.len());
     }
+
+    #[test]
+    fn editable_mime_ods_is_editable() {
+        assert!(is_editable_mime(Some("application/vnd.oasis.opendocument.spreadsheet")));
+    }
 }

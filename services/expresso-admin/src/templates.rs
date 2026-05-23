@@ -402,4 +402,11 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert_eq!(r.realm, "tenant-xyz");
     }
+
+    #[test]
+    fn kc_realm_display_name_preserved_on_deser() {
+        let json = r#"{"realm":"r","displayName":"My Realm"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.display_name, "My Realm");
+    }
 }

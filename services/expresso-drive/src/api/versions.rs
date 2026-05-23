@@ -490,4 +490,10 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str("{}").unwrap();
         assert!(b.sha256.is_none());
     }
+
+    #[test]
+    fn versions_count_struct_count_field() {
+        let vc = VersionsCount { count: 7 };
+        assert_eq!(vc.count, 7);
+    }
 }

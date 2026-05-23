@@ -220,4 +220,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/inbox"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/inbox"));
     }
+
+    #[test]
+    fn login_query_redirect_uri_is_none_when_absent() {
+        let q: LoginQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.redirect_uri.is_none());
+    }
 }

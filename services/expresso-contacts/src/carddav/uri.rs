@@ -242,4 +242,9 @@ mod tests {
     fn percent_decode_consecutive_encoded_bytes() {
         assert_eq!(percent_decode("%41%42%43"), "ABC");
     }
+
+    #[test]
+    fn percent_decode_z_uppercase_hex() {
+        assert_eq!(percent_decode("%5A"), "Z");
+    }
 }

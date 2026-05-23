@@ -219,4 +219,13 @@ mod tests {
         let iss = m.issuer_for("myrealm");
         assert!(!iss.contains("{realm}"));
     }
+
+    #[test]
+    fn issuer_for_long_realm_name_is_fully_substituted() {
+        let m = MultiRealmValidator::new("https://kc/realms/{realm}", "aud").unwrap();
+        let realm = "a-very-long-tenant-realm-name-0001";
+        let iss = m.issuer_for(realm);
+        assert!(iss.ends_with(realm));
+        assert!(!iss.contains("{realm}"));
+    }
 }

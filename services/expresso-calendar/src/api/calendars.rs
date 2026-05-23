@@ -357,4 +357,10 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"day"}"#).unwrap();
         assert_eq!(q.bucket.as_deref(), Some("day"));
     }
+
+    #[test]
+    fn event_density_query_bucket_null_json_is_none() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":null}"#).unwrap();
+        assert!(q.bucket.is_none());
+    }
 }

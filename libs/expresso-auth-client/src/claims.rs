@@ -398,4 +398,11 @@ mod tests {
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "alice_u");
     }
+
+    #[test]
+    fn aud_claim_many_single_element_contains_that_element() {
+        let aud = AudClaim::Many(vec!["only-one".into()]);
+        assert!(aud.contains("only-one"));
+        assert!(!aud.contains("other"));
+    }
 }

@@ -496,4 +496,11 @@ mod tests {
         let r = SaveResponse { contact_id: id, addressbook_id: id, uid: "u".into(), created: false };
         assert_eq!(r.contact_id, Uuid::nil());
     }
+
+    #[test]
+    fn save_response_uid_preserved() {
+        let id = Uuid::nil();
+        let r = SaveResponse { contact_id: id, addressbook_id: id, uid: "my-uid".into(), created: true };
+        assert_eq!(r.uid, "my-uid");
+    }
 }

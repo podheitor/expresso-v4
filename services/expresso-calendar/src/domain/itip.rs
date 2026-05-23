@@ -576,4 +576,16 @@ END:VCALENDAR\r\n";
         };
         assert!(!a.email.is_empty());
     }
+
+    #[test]
+    fn attendee_cn_none_by_default() {
+        let a = Attendee {
+            email:    "user@example.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert!(a.cn.is_none());
+    }
 }

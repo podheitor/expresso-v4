@@ -479,4 +479,9 @@ mod tests {
     fn combine_anyof_empty_slice_is_false() {
         assert!(!combine(Op::AnyOf, &[]));
     }
+
+    #[test]
+    fn op_anyof_ne_allof() {
+        assert_ne!(Op::AnyOf, Op::AllOf);
+    }
 }

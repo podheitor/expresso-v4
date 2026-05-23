@@ -337,4 +337,9 @@ mod tests {
     fn max_msg_bytes_exceeds_max_rcpts() {
         assert!(super::MAX_MSG_BYTES > super::MAX_RCPTS as u64);
     }
+
+    #[test]
+    fn size_param_equals_zero_parses_as_zero() {
+        assert_eq!(extract_size_param("<user@example.com> SIZE=0"), Some(0));
+    }
 }

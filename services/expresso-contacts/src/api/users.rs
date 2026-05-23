@@ -191,4 +191,10 @@ mod tests {
         let s = serde_json::to_string(&out).unwrap();
         assert!(s.contains("string@field.io"));
     }
+
+    #[test]
+    fn user_out_id_field_is_nil_uuid() {
+        let out = UserOut { id: uuid::Uuid::nil(), email: "x@example.com".into() };
+        assert_eq!(out.id, uuid::Uuid::nil());
+    }
 }

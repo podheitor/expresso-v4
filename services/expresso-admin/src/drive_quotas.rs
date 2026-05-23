@@ -261,4 +261,10 @@ mod tests {
         let v: f64 = s.parse().unwrap_or(f64::NAN);
         assert!(v < 1.0);
     }
+
+    #[test]
+    fn pct_contains_percent_sign() {
+        let s = pct(25, 100);
+        assert!(s.contains('%'));
+    }
 }

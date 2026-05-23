@@ -176,4 +176,11 @@ mod tests {
         let c = challenge_s256(&v);
         assert!(!c.is_empty());
     }
+
+    #[test]
+    fn two_verifiers_are_not_equal() {
+        let v1 = generate_verifier();
+        let v2 = generate_verifier();
+        assert_ne!(v1, v2);
+    }
 }

@@ -376,4 +376,9 @@ mod tests {
     fn xml_prolog_contains_utf8_encoding() {
         assert!(XML_PROLOG.contains("utf-8"));
     }
+
+    #[test]
+    fn xml_prolog_ends_with_question_bracket() {
+        assert!(XML_PROLOG.ends_with("?>"));
+    }
 }

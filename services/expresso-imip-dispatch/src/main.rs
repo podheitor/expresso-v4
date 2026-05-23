@@ -603,4 +603,9 @@ mod tests {
         let s = human_summary(&inv, Method::Cancel);
         assert!(s.contains("Q2 Review"));
     }
+
+    #[test]
+    fn method_label_request_is_uppercase() {
+        assert_eq!(method_label(Method::Request), "REQUEST");
+    }
 }

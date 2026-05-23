@@ -260,4 +260,12 @@ mod tests {
     fn strip_origin_ftp_scheme_passes_through() {
         assert_eq!(strip_origin("ftp://files.example.com/pub/file.txt"), "/pub/file.txt");
     }
+
+    #[test]
+    fn strip_origin_https_with_encoded_path_preserved() {
+        assert_eq!(
+            strip_origin("https://cal.example.com/caldav/u/user%40host/"),
+            "/caldav/u/user%40host/",
+        );
+    }
 }

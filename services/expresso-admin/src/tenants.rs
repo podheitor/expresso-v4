@@ -570,4 +570,9 @@ mod slug_tests {
     fn statuses_const_contains_cancelled() {
         assert!(STATUSES.contains(&"cancelled"));
     }
+
+    #[test]
+    fn plans_const_standard_is_at_index_zero() {
+        assert_eq!(PLANS[0], "standard");
+    }
 }

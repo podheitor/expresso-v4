@@ -267,4 +267,11 @@ mod tests {
         let e = AuditEntry::new("calendar.created");
         assert!(!e.action.is_empty());
     }
+
+    #[test]
+    fn enrich_metadata_omits_actor_email_when_none() {
+        let e = AuditEntry::new("test.action");
+        let m = enrich_metadata(&e);
+        assert!(m.get("actor_email").is_none());
+    }
 }

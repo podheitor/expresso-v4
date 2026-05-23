@@ -430,4 +430,9 @@ mod tests {
     fn is_live_prop_caldav_calendar_description_is_live() {
         assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-description"));
     }
+
+    #[test]
+    fn is_live_prop_dav_calendar_timezone_is_not_live() {
+        assert!(!is_live_prop("DAV:", "calendar-timezone"));
+    }
 }

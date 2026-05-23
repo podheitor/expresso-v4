@@ -384,4 +384,11 @@ mod tests {
         let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
         assert!(!t.access_token.is_empty());
     }
+
+    #[test]
+    fn impersonation_tokens_token_type_none_when_absent() {
+        let json = r#"{"access_token":"tok"}"#;
+        let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
+        assert!(t.token_type.is_none());
+    }
 }

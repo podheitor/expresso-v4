@@ -657,4 +657,9 @@ mod tests {
         let s = human_size(i64::MAX);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn human_size_two_gibibytes_is_two_gb() {
+        assert_eq!(human_size(2 * 1_073_741_824), "2.00 GB");
+    }
 }

@@ -3944,4 +3944,10 @@ Attachment\r\n\
         assert!(list_matches("INBOX.Sent", "*"));
         assert!(!list_matches("INBOX.Sent", "INBOX"));
     }
+
+    #[test]
+    fn list_matches_percent_stops_at_separator() {
+        assert!(list_matches("INBOX", "%"));
+        assert!(!list_matches("INBOX.Sent", "%"));
+    }
 }

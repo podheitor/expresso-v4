@@ -168,4 +168,11 @@ mod tests {
         let e = CoreError::QuotaExceeded { used: 100, limit: 200 };
         assert!(e.to_string().contains("200"));
     }
+
+    #[test]
+    fn tenant_not_set_and_not_found_are_distinct_messages() {
+        let a = CoreError::TenantNotSet.to_string();
+        let b = CoreError::NotFound { resource: "x" }.to_string();
+        assert_ne!(a, b);
+    }
 }

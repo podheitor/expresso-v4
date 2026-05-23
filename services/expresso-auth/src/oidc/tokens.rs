@@ -288,4 +288,11 @@ mod tests {
         };
         assert_eq!(r.code_verifier, "my-verifier");
     }
+
+    #[test]
+    fn token_response_id_token_none_when_absent() {
+        let json = r#"{"access_token":"at","token_type":"Bearer","expires_in":300}"#;
+        let t: TokenResponse = serde_json::from_str(json).unwrap();
+        assert!(t.id_token.is_none());
+    }
 }

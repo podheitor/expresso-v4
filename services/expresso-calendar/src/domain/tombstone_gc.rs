@@ -166,4 +166,9 @@ mod tests {
     fn default_interval_hours_is_nonzero() {
         assert!(DEFAULT_INTERVAL_HOURS > 0);
     }
+
+    #[test]
+    fn default_interval_hours_less_than_retention_hours() {
+        assert!(DEFAULT_INTERVAL_HOURS < DEFAULT_RETENTION_DAYS as u64 * 24);
+    }
 }

@@ -564,4 +564,9 @@ mod tests {
     fn import_cap_is_power_of_two() {
         assert_eq!(MAX_IMPORT_VCF_BYTES & (MAX_IMPORT_VCF_BYTES - 1), 0);
     }
+
+    #[test]
+    fn max_contact_vcard_bytes_less_than_max_import_vcf_by_factor_of_64() {
+        assert_eq!(MAX_IMPORT_VCF_BYTES / MAX_CONTACT_VCARD_BYTES, 64);
+    }
 }

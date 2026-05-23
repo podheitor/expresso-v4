@@ -347,4 +347,11 @@ mod tests {
         let req: ShareRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.privilege, "admin");
     }
+
+    #[test]
+    fn share_request_grantee_id_is_nil_uuid() {
+        let json = r#"{"grantee_id":"00000000-0000-0000-0000-000000000000","privilege":"read"}"#;
+        let req: ShareRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.grantee_id, Uuid::nil());
+    }
 }

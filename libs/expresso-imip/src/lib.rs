@@ -497,4 +497,9 @@ mod tests {
     fn escape_text_semicolon_is_escaped() {
         assert_eq!(escape_text("a;b"), "a\\;b");
     }
+
+    #[test]
+    fn escape_text_newline_is_escaped_to_backslash_n() {
+        assert_eq!(escape_text("line1\nline2"), "line1\\nline2");
+    }
 }

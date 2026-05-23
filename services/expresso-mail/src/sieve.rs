@@ -300,4 +300,10 @@ mod tests {
     fn redirect_action_is_not_keep() {
         assert!(!matches!(FilterAction::Redirect { address: "a@b.com".into() }, FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn keep_action_flags_vec_is_empty_by_default() {
+        let action = FilterAction::Keep { flags: vec![] };
+        assert!(matches!(action, FilterAction::Keep { flags } if flags.is_empty()));
+    }
 }

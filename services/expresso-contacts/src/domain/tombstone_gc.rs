@@ -157,4 +157,9 @@ mod tests {
     fn retention_days_multiplied_by_24_exceeds_interval_hours() {
         assert!((DEFAULT_RETENTION_DAYS as u64 * 24) > DEFAULT_INTERVAL_HOURS);
     }
+
+    #[test]
+    fn retention_days_is_nonzero() {
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

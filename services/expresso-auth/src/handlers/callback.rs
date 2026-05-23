@@ -328,4 +328,9 @@ mod tests {
     fn accepts_path_with_deep_nesting() {
         assert!(is_safe_local_redirect("/a/b/c/d/e/f"));
     }
+
+    #[test]
+    fn rejects_javascript_scheme_with_caps() {
+        assert!(!is_safe_local_redirect("JavaScript:void(0)"));
+    }
 }

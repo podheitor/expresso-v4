@@ -262,4 +262,10 @@ mod tests {
         let url = build_url("https://api.example.com", "/v1/status");
         assert!(url.starts_with("https://"));
     }
+
+    #[test]
+    fn build_url_path_and_base_concatenate_without_double_slash() {
+        let url = build_url("https://api.example.com/", "/v2/resource");
+        assert!(!url.contains("//v2"));
+    }
 }

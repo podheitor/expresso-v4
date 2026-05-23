@@ -636,4 +636,10 @@ mod extra_tests {
         let s = percent_encode_filename("user@host.txt");
         assert!(!s.contains('@'));
     }
+
+    #[test]
+    fn percent_encode_filename_space_becomes_percent20() {
+        let s = percent_encode_filename("my file.txt");
+        assert!(s.contains("%20"));
+    }
 }

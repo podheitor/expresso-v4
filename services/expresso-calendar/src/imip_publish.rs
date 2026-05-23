@@ -359,4 +359,14 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["invite"]["uid"].as_str().unwrap(), uid);
     }
+
+    #[test]
+    fn envelope_no_times_returns_none() {
+        use time::macros::datetime;
+        let mut ev = sample_event(ICAL_WITH_ATTENDEES);
+        ev.dtstart = None;
+        ev.dtend   = None;
+        let result = build_envelope_bytes(&ev, "REQUEST").unwrap();
+        assert!(result.is_none());
+    }
 }

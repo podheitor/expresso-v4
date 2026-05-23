@@ -444,4 +444,15 @@ mod tests {
         };
         assert_eq!(l.locked_by, uid);
     }
+
+    #[test]
+    fn wopi_lock_file_id_matches_when_set_to_nil() {
+        let l = WopiLock {
+            file_id: Uuid::nil(), tenant_id: Uuid::new_v4(),
+            lock_token: "abc".into(), locked_by: Uuid::new_v4(),
+            acquired_at: time::OffsetDateTime::now_utc(),
+            expires_at:  time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
+        };
+        assert_eq!(l.file_id, Uuid::nil());
+    }
 }

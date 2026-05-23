@@ -295,4 +295,14 @@ mod tests {
         };
         assert_eq!(ev.kind_str(), "addressbook.created");
     }
+
+    #[test]
+    fn contact_deleted_tenant_id_is_nil() {
+        let ev = ContactsEvent::ContactDeleted {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            contact_id:     Uuid::nil(),
+        };
+        assert_eq!(ev.tenant_id(), Uuid::nil());
+    }
 }

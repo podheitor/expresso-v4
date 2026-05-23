@@ -168,4 +168,11 @@ mod tests {
         let e = AuthError::MissingClaim("sub");
         assert!(e.to_string().contains("sub"));
     }
+
+    #[test]
+    fn malformed_claim_and_missing_claim_are_distinct_variants() {
+        let a = AuthError::MalformedClaim("sub", "bad".into()).to_string();
+        let b = AuthError::MissingClaim("sub").to_string();
+        assert_ne!(a, b);
+    }
 }

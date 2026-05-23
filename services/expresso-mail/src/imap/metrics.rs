@@ -261,4 +261,10 @@ mod tests {
         assert_eq!(command_label("CAPABILITY"), "CAPABILITY");
         assert_eq!(command_label("capability"), "CAPABILITY");
     }
+
+    #[test]
+    fn numeric_tag_and_unknown_both_map_to_other() {
+        assert_eq!(command_label("A001"), "OTHER");
+        assert_eq!(command_label("B999"), "OTHER");
+    }
 }

@@ -247,4 +247,12 @@ mod tests {
         let out = preview(s);
         assert!(out.ends_with('…'));
     }
+
+    #[test]
+    fn fmt_ts_specific_date_contains_month() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-07-04 12:00:00 UTC);
+        let s = fmt_ts(ts);
+        assert!(s.contains("07") || s.contains("2026-07"));
+    }
 }

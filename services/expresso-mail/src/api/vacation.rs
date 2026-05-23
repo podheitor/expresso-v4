@@ -472,4 +472,10 @@ mod tests {
         let v = Vacation::default();
         assert!(v.starts_at.is_none());
     }
+
+    #[test]
+    fn vacation_default_ends_at_is_none() {
+        let v = Vacation::default();
+        assert!(v.ends_at.is_none());
+    }
 }

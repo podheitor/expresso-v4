@@ -439,4 +439,10 @@ mod tests {
         let n: NewAddressbook = serde_json::from_str(r#"{"name":"books"}"#).unwrap();
         assert!(!n.is_default);
     }
+
+    #[test]
+    fn addressbook_id_is_accessible() {
+        let a = sample();
+        let _ = a.id;
+    }
 }

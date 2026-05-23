@@ -271,4 +271,9 @@ mod tests {
     fn refresh_token_cookie_name_ends_with_rt() {
         assert!(REFRESH_TOKEN_COOKIE.ends_with("rt"));
     }
+
+    #[test]
+    fn refresh_token_cookie_name_contains_underscore() {
+        assert!(REFRESH_TOKEN_COOKIE.contains('_'));
+    }
 }

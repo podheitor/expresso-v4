@@ -188,4 +188,9 @@ mod tests {
         let e = ChatError::Forbidden;
         assert!(format!("{e}").contains("forbidden"));
     }
+
+    #[test]
+    fn matrix_unavailable_status_is_503() {
+        assert_eq!(status(ChatError::MatrixUnavailable), 503);
+    }
 }

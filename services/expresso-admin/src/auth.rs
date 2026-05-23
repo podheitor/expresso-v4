@@ -382,4 +382,9 @@ mod tests {
     fn is_super_admin_false_for_single_admin_role() {
         assert!(!is_super_admin(&["admin".into()]));
     }
+
+    #[test]
+    fn is_public_path_static_css_is_public() {
+        assert!(is_public_path("/static/app.css"));
+    }
 }

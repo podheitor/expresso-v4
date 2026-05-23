@@ -429,4 +429,11 @@ mod tests {
         let b: AddMemberBody = serde_json::from_str(json).unwrap();
         assert!(matches!(b.role, Some(MemberRole::Owner)));
     }
+
+    #[test]
+    fn add_member_body_role_admin_deser() {
+        let json = r#"{"user_id":"00000000-0000-0000-0000-000000000000","role":"admin"}"#;
+        let b: AddMemberBody = serde_json::from_str(json).unwrap();
+        assert!(matches!(b.role, Some(MemberRole::Admin)));
+    }
 }

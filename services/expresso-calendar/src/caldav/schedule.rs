@@ -357,4 +357,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:COUNTER\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("COUNTER"));
     }
+
+    #[test]
+    fn extract_method_decline_counter_returns_decline_counter() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:DECLINECOUNTER\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("DECLINECOUNTER"));
+    }
 }

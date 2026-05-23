@@ -433,4 +433,11 @@ END:VCALENDAR\r\n";
     fn compute_etag_short_input_has_fixed_length() {
         assert_eq!(compute_etag("x").len(), compute_etag("hello world").len());
     }
+
+    #[test]
+    fn parse_vevent_sequence_zero_on_missing() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:seq@x\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.sequence, 0);
+    }
 }

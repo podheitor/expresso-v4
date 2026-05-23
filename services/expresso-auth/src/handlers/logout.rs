@@ -239,4 +239,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"550e8400-e29b-41d4-a716-446655440000"}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("550e8400-e29b-41d4-a716-446655440000"));
     }
+
+    #[test]
+    fn logout_query_hint_is_none_when_absent() {
+        let q: LogoutQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.id_token_hint.is_none());
+    }
 }

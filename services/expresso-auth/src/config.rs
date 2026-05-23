@@ -221,4 +221,10 @@ mod tests {
         let c = cfg("https://kc/r", "cid", "https://app/cb", None, None, None);
         assert_eq!(c.state_ttl.as_secs(), 600);
     }
+
+    #[test]
+    fn issuer_preserved_after_construction() {
+        let c = cfg("https://kc/realms/main", "cid", "https://app/cb", None, None, None);
+        assert_eq!(c.issuer, "https://kc/realms/main");
+    }
 }

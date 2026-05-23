@@ -471,4 +471,9 @@ mod tests {
     fn depth_infinity_eq_infinity() {
         assert_eq!(Depth::Infinity, Depth::Infinity);
     }
+
+    #[test]
+    fn depth_zero_eq_self() {
+        assert_eq!(Depth::Zero, Depth::Zero);
+    }
 }

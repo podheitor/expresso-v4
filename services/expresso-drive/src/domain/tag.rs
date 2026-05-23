@@ -205,4 +205,10 @@ mod tests {
         let tag = "x".to_string();
         assert_eq!(tag.len(), 1);
     }
+
+    #[test]
+    fn tag_string_empty_has_zero_len() {
+        let tag = "".to_string();
+        assert_eq!(tag.len(), 0);
+    }
 }

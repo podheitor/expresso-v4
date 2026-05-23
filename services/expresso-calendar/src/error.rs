@@ -194,4 +194,10 @@ mod tests {
         let e = CalendarError::InvalidICal("missing UID".into());
         assert!(format!("{e}").contains("invalid"));
     }
+
+    #[test]
+    fn conflict_display_contains_conflict() {
+        let e = CalendarError::Conflict("etag mismatch".into());
+        assert!(format!("{e}").contains("conflict"));
+    }
 }

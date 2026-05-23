@@ -534,4 +534,9 @@ mod tests {
     fn tus_supported_constant_matches_version() {
         assert_eq!(TUS_SUPPORTED, TUS_VERSION);
     }
+
+    #[test]
+    fn max_filename_bytes_equals_max_mime_bytes() {
+        assert_eq!(MAX_FILENAME_BYTES, MAX_MIME_BYTES);
+    }
 }

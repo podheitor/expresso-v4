@@ -350,4 +350,16 @@ mod tests {
         let e = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
         assert_ne!(e.kind_str(), "event_updated");
     }
+
+    #[test]
+    fn counter_received_kind_str_ne_event_cancelled() {
+        let e = Event::CounterReceived {
+            tenant_id: Uuid::nil(),
+            event_id: Uuid::nil(),
+            proposal_id: Uuid::nil(),
+            attendee_email: "a@b.com".into(),
+            comment: None,
+        };
+        assert_ne!(e.kind_str(), "event_cancelled");
+    }
 }

@@ -308,4 +308,13 @@ mod tests {
         let cfg = RateLimitConfig { rps: 5, burst: 10 };
         assert!(cfg.burst >= cfg.rps);
     }
+
+    #[test]
+    fn rate_limit_config_high_burst_allows_many_requests() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 10 });
+        for _ in 0..10 {
+            assert!(rl.check("hi-burst").is_ok());
+        }
+        assert!(rl.check("hi-burst").is_err());
+    }
 }

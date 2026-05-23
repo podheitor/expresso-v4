@@ -223,4 +223,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 0, quota_bytes: Some(5_000_000) };
         assert_eq!(q.quota_bytes, Some(5_000_000));
     }
+
+    #[test]
+    fn quota_dto_quota_bytes_none_when_not_set() {
+        let q = QuotaDto { used_bytes: 512, quota_bytes: None };
+        assert!(q.quota_bytes.is_none());
+    }
 }

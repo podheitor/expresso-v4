@@ -389,4 +389,10 @@ mod tests {
         r.bcc = Some(vec!["bcc@example.com".into()]);
         assert!(build_raw(&r).is_ok());
     }
+
+    #[test]
+    fn draft_request_cc_none_by_default() {
+        let r = req("from@example.com", None, None, None);
+        assert!(r.cc.is_none());
+    }
 }

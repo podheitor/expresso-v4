@@ -206,4 +206,9 @@ mod tests {
     fn help_command_maps_to_other() {
         assert_eq!(command_label("HELP"), "OTHER");
     }
+
+    #[test]
+    fn rset_command_maps_to_rset() {
+        assert_eq!(command_label("RSET"), "RSET");
+    }
 }

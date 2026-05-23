@@ -365,4 +365,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(!cfg.secret.is_empty());
     }
+
+    #[test]
+    fn jitsi_config_app_id_differs_from_secret() {
+        let cfg = fixture_cfg();
+        assert_ne!(cfg.app_id, cfg.secret);
+    }
 }

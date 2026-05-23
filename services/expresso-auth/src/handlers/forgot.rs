@@ -221,4 +221,9 @@ mod tests {
     fn action_lifespan_secs_is_3600_value() {
         assert_eq!(ACTION_LIFESPAN_SECS, 3600u32);
     }
+
+    #[test]
+    fn action_lifespan_secs_is_one_hour() {
+        assert_eq!(ACTION_LIFESPAN_SECS, 60 * 60);
+    }
 }

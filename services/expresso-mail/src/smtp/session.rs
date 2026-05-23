@@ -532,4 +532,9 @@ mod extra_tests {
     fn extract_angle_empty_input_returns_empty_string() {
         assert_eq!(extract_angle(""), "");
     }
+
+    #[test]
+    fn size_param_with_body_eq_7bit_returns_none() {
+        assert_eq!(extract_size_param("<u@h> BODY=7BIT"), None);
+    }
 }

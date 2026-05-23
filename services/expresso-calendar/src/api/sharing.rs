@@ -325,4 +325,9 @@ mod tests {
     fn validate_priv_admin_uppercase_accepted() {
         assert_eq!(validate_priv("ADMIN").unwrap(), "ADMIN");
     }
+
+    #[test]
+    fn validate_priv_single_space_returns_error() {
+        assert!(validate_priv(" ").is_err());
+    }
 }

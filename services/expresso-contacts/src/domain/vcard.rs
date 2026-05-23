@@ -316,4 +316,10 @@ mod tests {
         let v = build_vcard("u7", "Grace", None, None, None, None);
         assert!(v.contains("VERSION:"));
     }
+
+    #[test]
+    fn build_vcard_uid_present_in_output() {
+        let v = build_vcard("test-uid-42", "Alice", None, None, None, None);
+        assert!(v.contains("test-uid-42"));
+    }
 }

@@ -160,4 +160,11 @@ mod tests {
         let resp = e.into_response();
         assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[test]
+    fn state_not_found_status_is_400() {
+        let e = RpError::StateNotFound;
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
 }

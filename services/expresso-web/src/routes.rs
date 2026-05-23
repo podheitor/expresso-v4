@@ -1769,4 +1769,10 @@ mod tests {
         let v = split_addrs("   ");
         assert!(v.is_empty());
     }
+
+    #[test]
+    fn split_addrs_tab_separated_returns_empty_after_filter() {
+        let v = split_addrs("\t");
+        assert!(v.is_empty());
+    }
 }

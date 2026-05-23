@@ -1528,4 +1528,10 @@ mod tests {
         let ts = 1_700_000_000_i64;
         assert_ne!(bucket_day(ts), bucket_month(ts));
     }
+
+    #[test]
+    fn bucket_week_and_bucket_day_differ_for_known_ts() {
+        let ts: u64 = 1748304000;
+        assert_ne!(unix_secs_to_bucket(ts, "week"), unix_secs_to_bucket(ts, "day"));
+    }
 }

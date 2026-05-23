@@ -172,4 +172,9 @@ mod tests {
     fn realm_placeholder_contains_realm_word() {
         assert!(REALM_PLACEHOLDER.contains("realm"));
     }
+
+    #[test]
+    fn realm_placeholder_is_ascii_only() {
+        assert!(REALM_PLACEHOLDER.is_ascii());
+    }
 }

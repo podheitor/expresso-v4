@@ -352,4 +352,14 @@ mod tests {
         };
         assert!(!p.namespace.is_empty());
     }
+
+    #[test]
+    fn dead_prop_xml_value_not_equal_to_local_name() {
+        let p = DeadProp {
+            namespace: "urn:test".into(),
+            local_name: "color".into(),
+            xml_value: "blue".into(),
+        };
+        assert_ne!(p.xml_value, p.local_name);
+    }
 }

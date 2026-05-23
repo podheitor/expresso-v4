@@ -145,4 +145,11 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("   "));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn display_contains_prefix_and_cause_for_storage_error() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("presign expired"));
+        let s = e.to_string();
+        assert!(s.starts_with("internal error:") && s.contains("presign expired"));
+    }
 }

@@ -289,4 +289,10 @@ mod tests {
         let p = make_pending(60);
         assert!(p.redirect_uri.starts_with("https://"));
     }
+
+    #[test]
+    fn pending_login_code_verifier_does_not_contain_spaces() {
+        let p = make_pending(60);
+        assert!(!p.code_verifier.contains(' '));
+    }
 }

@@ -225,4 +225,9 @@ mod tests {
     fn strip_origin_http_path_with_multiple_segments() {
         assert_eq!(strip_origin("http://host/a/b/c"), "/a/b/c");
     }
+
+    #[test]
+    fn strip_origin_https_path_with_query_string() {
+        assert_eq!(strip_origin("https://host/cards/a.vcf?v=1"), "/cards/a.vcf?v=1");
+    }
 }

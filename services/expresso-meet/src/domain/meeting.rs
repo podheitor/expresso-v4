@@ -531,4 +531,9 @@ mod tests {
     fn participant_role_debug_is_nonempty() {
         assert!(!format!("{:?}", ParticipantRole::Moderator).is_empty());
     }
+
+    #[test]
+    fn participant_role_participant_debug_is_nonempty() {
+        assert!(!format!("{:?}", ParticipantRole::Participant).is_empty());
+    }
 }

@@ -25639,4 +25639,16 @@ mod tests {
         };
         assert!(n.folder.is_none());
     }
+
+    #[test]
+    fn notification_message_id_is_none_when_not_set() {
+        let n = Notification {
+            kind: "mail.flags".into(),
+            user_id: uuid::Uuid::nil(),
+            tenant_id: uuid::Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(n.message_id.is_none());
+    }
 }

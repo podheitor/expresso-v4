@@ -1270,4 +1270,10 @@ mod tests {
         let q: EventQuery = serde_json::from_str(json).unwrap();
         assert!(q.to.is_some());
     }
+
+    #[test]
+    fn event_query_limit_two_preserved() {
+        let q: EventQuery = serde_json::from_str(r#"{"limit":2}"#).unwrap();
+        assert_eq!(q.limit, Some(2));
+    }
 }

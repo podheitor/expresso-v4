@@ -523,4 +523,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.dkim.is_empty() && r.spf.is_empty());
     }
+
+    #[test]
+    fn auth_results_to_header_ends_with_crlf() {
+        let r = AuthResults { spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(), dmarc_policy: None, ..Default::default() };
+        assert!(r.to_header("mx.example.com").ends_with("\r\n"));
+    }
 }

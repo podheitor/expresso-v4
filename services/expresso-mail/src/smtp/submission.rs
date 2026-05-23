@@ -696,4 +696,9 @@ mod tests {
         let result = decode_plain("");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn max_msg_bytes_is_a_multiple_of_mib() {
+        assert_eq!(MAX_MSG_BYTES % (1024 * 1024), 0);
+    }
 }

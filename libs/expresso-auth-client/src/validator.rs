@@ -380,4 +380,12 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/r", "aud");
         assert!(c.jwks_min_refresh.as_secs() > 0);
     }
+
+    #[test]
+    fn oidc_config_audiences_whitespace_only_entry_excluded() {
+        let c = OidcConfig::new("https://kc/realms/r", "client-a,  ,client-b");
+        let auds = c.audiences();
+        assert!(!auds.contains(&""));
+        assert_eq!(auds.len(), 2);
+    }
 }
