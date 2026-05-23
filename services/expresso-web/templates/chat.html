@@ -91,6 +91,13 @@
         </div>
       </header>
 
+      <!-- Mensagem fixada -->
+      <div class="chat-pinned" id="chat-pinned" style="display:none">
+        <span class="chat-pinned-icon">📌</span>
+        <span class="chat-pinned-body" id="chat-pinned-body"></span>
+        <button class="chat-action-btn" onclick="unpinMessage()" title="Desafixar">✕</button>
+      </div>
+
       <div class="chat-messages" id="chat-messages">
         {% if messages.is_empty() %}
           <div class="chat-empty">
@@ -118,6 +125,7 @@
                 <div class="chat-msg-actions">
                   <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
+                  <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
@@ -429,6 +437,33 @@ document.addEventListener('click', function(e) {
     if (p) p.style.display = 'none';
   }
 });
+
+// ── Pinned message ────────────────────────────────────────────────────────────
+var _pinKey = 'expresso_pin_{% match active_channel %}{% when Some with (ch) %}{{ ch.id }}{% when None %}global{% endmatch %}';
+function pinMessage(msgId, btn) {
+  var msgEl = btn.closest('[data-msg-id]');
+  var body  = msgEl ? (msgEl.querySelector('.chat-msg-body') || {}).textContent || '' : msgId;
+  var pinned = { id: msgId, body: body.trim().substring(0, 120) };
+  localStorage.setItem(_pinKey, JSON.stringify(pinned));
+  showPinned(pinned);
+}
+function unpinMessage() {
+  localStorage.removeItem(_pinKey);
+  document.getElementById('chat-pinned').style.display = 'none';
+}
+function showPinned(pinned) {
+  var el = document.getElementById('chat-pinned');
+  var body = document.getElementById('chat-pinned-body');
+  if (!el || !body || !pinned) return;
+  body.textContent = pinned.body;
+  el.style.display = 'flex';
+}
+(function() {
+  try {
+    var p = JSON.parse(localStorage.getItem(_pinKey) || 'null');
+    if (p) showPinned(p);
+  } catch(e) {}
+})();
 
 // ── Chat file upload ──────────────────────────────────────────────────────────
 var _chatFiles = [];
