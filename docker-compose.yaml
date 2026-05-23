@@ -1,0 +1,603 @@
+# Expresso V4 — Full Stack (infra + services)
+# Usage: docker compose up -d
+# Env:   copy .env.example to .env and fill secrets before running
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-bookworm
+    container_name: expresso-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: expresso
+      POSTGRES_USER: ${POSTGRES_USER:-expresso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expresso}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-bookworm
+    container_name: expresso-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: expresso-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-expresso}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY required}
+      MINIO_BROWSER_REDIRECT_URL: http://localhost:9001
+    volumes:
+      - miniodata:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: expresso-nats
+    restart: unless-stopped
+    command: --jetstream --store-dir /data --http-port 8222 --max-memory-store 512MB
+    volumes:
+      - natsdata:/data
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    container_name: expresso-keycloak
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: ${POSTGRES_USER:-expresso}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:-localhost}
+      KC_HOSTNAME_PORT: "8080"
+      KC_HTTP_ENABLED: "true"
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD required}
+    ports:
+      - "${KEYCLOAK_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: expresso-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+    profiles:
+      - dev
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: expresso-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: expresso-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./deploy/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+  # ── Application services ─────────────────────────────────────────────────────
+
+  expresso-auth:
+    image: expresso-auth:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.auth
+    container_name: expresso-auth
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8100"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-expresso-backend}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET required}
+    ports:
+      - "${AUTH_PORT:-8100}:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-mail:
+    image: expresso-mail:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.mail
+    container_name: expresso-mail
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8001"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-expresso}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-expresso}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-mail.expresso.local}
+    ports:
+      - "${MAIL_HTTP_PORT:-8001}:8001"
+      - "993:993"
+      - "143:143"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-calendar:
+    image: expresso-calendar:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.calendar
+    container_name: expresso-calendar
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8002"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${CALENDAR_PORT:-8002}:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-contacts:
+    image: expresso-contacts:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.contacts
+    container_name: expresso-contacts
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8003"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${CONTACTS_PORT:-8003}:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-drive:
+    image: expresso-drive:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.drive
+    container_name: expresso-drive
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8004"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-expresso}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-expresso}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${DRIVE_PORT:-8004}:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-search:
+    image: expresso-search:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.search
+    container_name: expresso-search
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8007"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8007:8007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-notifications:
+    image: expresso-notifications:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.notifications
+    container_name: expresso-notifications
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8006"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8006:8006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-wopi:
+    image: expresso-wopi:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.wopi
+    container_name: expresso-wopi
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8008"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-expresso}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-expresso}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${WOPI_PORT:-8008}:8008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-compliance:
+    image: expresso-compliance:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.compliance
+    container_name: expresso-compliance
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8009"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8009:8009"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8009/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-chat:
+    image: expresso-chat:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.chat
+    container_name: expresso-chat
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      SERVER__HOST: 0.0.0.0
+      SERVER__PORT: "8010"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8010:8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-meet:
+    image: expresso-meet:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.meet
+    container_name: expresso-meet
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8011"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8011:8011"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-flows:
+    image: expresso-flows:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.flows
+    container_name: expresso-flows
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8005"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      NATS_URL: nats://nats:4222
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-admin:
+    image: expresso-admin:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: expresso-admin
+    restart: unless-stopped
+    environment:
+      RUST_LOG: ${RUST_LOG:-info,expresso=debug}
+      HOST: 0.0.0.0
+      PORT: "8101"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@postgres:5432/expresso
+      REDIS_URL: redis://redis:6379
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+    ports:
+      - "${ADMIN_PORT:-8101}:8101"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8101/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  expresso-milter:
+    image: expresso-milter:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.milter
+    container_name: expresso-milter
+    restart: unless-stopped
+    environment:
+      MILTER_ADDR: "0.0.0.0:8891"
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-mail.expresso.local}
+      DKIM_SELECTOR: ${DKIM_SELECTOR:-}
+      DKIM_KEY_PATH: ${DKIM_KEY_PATH:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - /etc/expresso/dkim:/etc/expresso/dkim:ro
+    expose:
+      - "8891"
+    profiles:
+      - mta
+
+  expresso-web:
+    image: expresso-web:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: expresso-web
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      expresso-auth:
+        condition: service_healthy
+      expresso-mail:
+        condition: service_healthy
+      expresso-calendar:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  natsdata:
+  promdata:
+  grafanadata:
