@@ -1052,6 +1052,57 @@ textarea[name="script"] {
 .chat-compose-input:focus { outline: none; border-color: var(--accent); }
 .chat-send-btn { flex-shrink: 0; align-self: flex-end; }
 
+/* channel section labels */
+.chat-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .6rem 1rem .2rem;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+.chat-dm-new-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: .85rem;
+  cursor: pointer;
+  padding: 0 .2rem;
+  line-height: 1;
+}
+.chat-dm-new-btn:hover { color: var(--text-primary); }
+
+/* emoji picker */
+.chat-emoji-wrap { position: relative; align-self: flex-end; }
+.chat-emoji-btn { font-size: 1rem; }
+.chat-emoji-picker {
+  position: absolute;
+  bottom: calc(100% + .4rem);
+  left: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: .4rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: .2rem;
+  z-index: 300;
+  width: 180px;
+}
+.chat-emoji-item {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: .2rem;
+  text-align: center;
+}
+.chat-emoji-item:hover { background: var(--bg-hover); }
+
 /* ── Meet ───────────────────────────────────────────────────────────────────── */
 .meet-grid {
   display: grid;

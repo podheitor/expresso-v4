@@ -15,7 +15,9 @@
       {% if channels.is_empty() %}
         <p class="muted small" style="padding:.75rem 1rem;">Nenhum canal ainda.<br>Crie o primeiro!</p>
       {% else %}
-        {% for ch in channels %}
+        <!-- Canais de equipe -->
+        <div class="chat-section-label">Canais</div>
+        {% for ch in channels %}{% if !ch.is_direct() %}
           {% let is_active %}
           {% match active_channel %}
             {% when Some with (ac) %}{% if ac.id == ch.id %}{% let is_active = "active" %}{% else %}{% let is_active = "" %}{% endif %}
@@ -30,7 +32,33 @@
               <span class="chat-unread-badge">{{ ch.unread_count }}</span>
             {% endif %}
           </a>
-        {% endfor %}
+        {% endif %}{% endfor %}
+
+        <!-- Mensagens diretas -->
+        <div class="chat-section-label" style="margin-top:.5rem">
+          Mensagens diretas
+          <button class="chat-dm-new-btn" onclick="showModal('chat-dm-modal')" title="Nova mensagem direta">+</button>
+        </div>
+        {% let no_dms = !channels.iter().any(|c| c.is_direct()) %}
+        {% if no_dms %}
+          <p class="muted small" style="padding:.25rem 1rem .5rem;">Nenhuma DM ainda.</p>
+        {% endif %}
+        {% for ch in channels %}{% if ch.is_direct() %}
+          {% let is_active %}
+          {% match active_channel %}
+            {% when Some with (ac) %}{% if ac.id == ch.id %}{% let is_active = "active" %}{% else %}{% let is_active = "" %}{% endif %}
+            {% when None %}{% let is_active = "" %}
+          {% endmatch %}
+          <a class="folder-item {% if is_active == "active" %}active{% endif %}"
+             href="/chat/channels/{{ ch.id }}"
+             aria-current="{% if is_active == "active" %}page{% endif %}">
+            <span class="folder-icon chat-ch-icon">{{ ch.icon() }}</span>
+            <span class="folder-name">{{ ch.name }}</span>
+            {% if ch.unread_count > 0 %}
+              <span class="chat-unread-badge">{{ ch.unread_count }}</span>
+            {% endif %}
+          </a>
+        {% endif %}{% endfor %}
       {% endif %}
     </nav>
 
@@ -94,6 +122,31 @@
         <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)">
           <input type="hidden" name="parent_id" id="chat-parent-id" value="">
           <div class="chat-compose-row">
+            <div class="chat-emoji-wrap">
+              <button type="button" class="chat-action-btn chat-emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
+              <div class="chat-emoji-picker" id="chat-emoji-picker" style="display:none">
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😊')">😊</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😂')">😂</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('❤')">❤</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👍')">👍</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🎉')">🎉</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🔥')">🔥</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('✅')">✅</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('⚡')">⚡</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🤔')">🤔</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👀')">👀</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🙌')">🙌</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('💪')">💪</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😎')">😎</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🚀')">🚀</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('💡')">💡</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👋')">👋</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🙏')">🙏</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😅')">😅</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😭')">😭</button>
+                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😤')">😤</button>
+              </div>
+            </div>
             <textarea class="chat-compose-input" name="body" id="chat-compose-input"
               placeholder="Mensagem em #{{ ch.name }}…" rows="1"
               onkeydown="chatKeydown(event, this.form)"
@@ -112,6 +165,28 @@
       </div>
     {% endmatch %}
   </main>
+</div>
+
+<!-- Modal: Nova mensagem direta -->
+<div class="modal-overlay" id="chat-dm-modal" style="display:none" onclick="closeModalOnOverlay(event,'chat-dm-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Nova mensagem direta</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('chat-dm-modal')">✕</button>
+    </div>
+    <form class="compose-form" method="post" action="/chat/channels">
+      <input type="hidden" name="kind" value="direct">
+      <label>
+        <span>Nome do usuário ou email</span>
+        <input type="text" name="name" placeholder="ex: joao.silva" required autocomplete="off">
+      </label>
+      <p class="muted small">O nome do canal será o identificador do destinatário.</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideModal('chat-dm-modal')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Iniciar conversa</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Modal: Criar canal -->
@@ -236,6 +311,25 @@ function clearReply() {
   document.getElementById('chat-parent-id').value = '';
   document.getElementById('chat-reply-banner').style.display = 'none';
 }
+
+// ── Emoji picker ─────────────────────────────────────────────────────────────
+function toggleEmojiPicker() {
+  var p = document.getElementById('chat-emoji-picker');
+  p.style.display = p.style.display === 'none' ? 'grid' : 'none';
+}
+function insertEmoji(e) {
+  var inp = document.getElementById('chat-compose-input');
+  inp.value += e;
+  inp.focus();
+  document.getElementById('chat-emoji-picker').style.display = 'none';
+  autoResize(inp);
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.chat-emoji-wrap')) {
+    var p = document.getElementById('chat-emoji-picker');
+    if (p) p.style.display = 'none';
+  }
+});
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
 function showModal(id) { document.getElementById(id).style.display = 'flex'; }
