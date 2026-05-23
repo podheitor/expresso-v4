@@ -3,27 +3,248 @@
 {% block nav %}{% let current = "chat" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="chat-shell">
-  <aside class="sidebar">
+
+  <!-- Sidebar: lista de canais -->
+  <aside class="sidebar chat-sidebar">
     <header class="sidebar-header">
       <span class="app-name">Chat</span>
-      <button class="btn btn-primary btn-sm" disabled>+ Novo canal</button>
+      <button class="btn btn-primary btn-sm" onclick="showModal('chat-new-channel-modal')" title="Novo canal">+</button>
     </header>
-    <nav class="folder-list" aria-label="Canais">
-      <div class="folder-item active">
-        <span class="folder-icon">#</span>
-        <span class="folder-name">geral</span>
-      </div>
+
+    <nav class="folder-list chat-channel-list" aria-label="Canais">
+      {% if channels.is_empty() %}
+        <p class="muted small" style="padding:.75rem 1rem;">Nenhum canal ainda.<br>Crie o primeiro!</p>
+      {% else %}
+        {% for ch in channels %}
+          {% let is_active %}
+          {% match active_channel %}
+            {% when Some with (ac) %}{% if ac.id == ch.id %}{% let is_active = "active" %}{% else %}{% let is_active = "" %}{% endif %}
+            {% when None %}{% let is_active = "" %}
+          {% endmatch %}
+          <a class="folder-item {% if is_active == "active" %}active{% endif %}"
+             href="/chat/channels/{{ ch.id }}"
+             aria-current="{% if is_active == "active" %}page{% endif %}">
+            <span class="folder-icon chat-ch-icon">{{ ch.icon() }}</span>
+            <span class="folder-name">{{ ch.name }}</span>
+            {% if ch.unread_count > 0 %}
+              <span class="chat-unread-badge">{{ ch.unread_count }}</span>
+            {% endif %}
+          </a>
+        {% endfor %}
+      {% endif %}
     </nav>
+
+    <footer class="sidebar-footer">
+      <a href="/settings" class="sidebar-settings-link">⚙ Configurações</a>
+    </footer>
   </aside>
-  <main class="chat-main">
-    <div class="chat-frame-wrap">
-      <iframe
-        src="http://{{ me.tenant_id }}.expresso.local:8108"
-        class="chat-frame"
-        allow="camera; microphone; fullscreen"
-        referrerpolicy="no-referrer">
-      </iframe>
-    </div>
+
+  <!-- Área principal de mensagens -->
+  <main class="chat-main" id="chat-main">
+    {% match active_channel %}
+    {% when Some with (ch) %}
+      <header class="chat-channel-header">
+        <span class="chat-ch-icon-lg">{{ ch.icon() }}</span>
+        <div class="chat-channel-title-group">
+          <span class="chat-channel-title">{{ ch.name }}</span>
+          {% match ch.description %}
+            {% when Some with (d) %}<span class="muted small">{{ d }}</span>
+            {% when None %}{% endmatch %}
+        </div>
+      </header>
+
+      <div class="chat-messages" id="chat-messages">
+        {% if messages.is_empty() %}
+          <div class="chat-empty">
+            <span class="chat-empty-icon">💬</span>
+            <p>Nenhuma mensagem ainda.<br>Seja o primeiro a enviar!</p>
+          </div>
+        {% else %}
+          {% for msg in messages %}
+            <div class="chat-msg {% if msg.is_own(&me.user_id) %}chat-msg-own{% endif %}" data-msg-id="{{ msg.id }}">
+              <div class="chat-msg-avatar" title="{{ msg.sender() }}">
+                {{ msg.sender().chars().next().unwrap_or('?').to_uppercase() }}
+              </div>
+              <div class="chat-msg-bubble">
+                <div class="chat-msg-meta">
+                  <span class="chat-msg-sender">{{ msg.sender() }}</span>
+                  <span class="chat-msg-time">{{ msg.time_label() }}</span>
+                  {% if msg.edited %}<span class="muted small">(editado)</span>{% endif %}
+                </div>
+                {% match msg.parent_id %}
+                  {% when Some with (pid) %}
+                    <div class="chat-reply-indicator muted small">↩ Respondendo</div>
+                  {% when None %}{% endmatch %}
+                <div class="chat-msg-body">{{ msg.body }}</div>
+                <div class="chat-msg-actions">
+                  <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <!-- Área de composição -->
+      <div class="chat-compose-area">
+        <div id="chat-reply-banner" class="chat-reply-banner" style="display:none">
+          <span id="chat-reply-text"></span>
+          <button class="btn btn-ghost btn-sm" onclick="clearReply()">✕</button>
+        </div>
+        <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)">
+          <input type="hidden" name="parent_id" id="chat-parent-id" value="">
+          <div class="chat-compose-row">
+            <textarea class="chat-compose-input" name="body" id="chat-compose-input"
+              placeholder="Mensagem em #{{ ch.name }}…" rows="1"
+              onkeydown="chatKeydown(event, this.form)"
+              oninput="autoResize(this)"></textarea>
+            <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
+          </div>
+        </form>
+      </div>
+
+    {% when None %}
+      <div class="chat-empty chat-empty-full">
+        <span class="chat-empty-icon">💬</span>
+        <h2>Bem-vindo ao Chat</h2>
+        <p class="muted">Selecione um canal à esquerda ou crie um novo.</p>
+        <button class="btn btn-primary" onclick="showModal('chat-new-channel-modal')">+ Criar canal</button>
+      </div>
+    {% endmatch %}
   </main>
 </div>
+
+<!-- Modal: Criar canal -->
+<div class="modal-overlay" id="chat-new-channel-modal" style="display:none" onclick="closeModalOnOverlay(event,'chat-new-channel-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Novo canal</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('chat-new-channel-modal')">✕</button>
+    </div>
+    <form class="compose-form" method="post" action="/chat/channels">
+      <label>
+        <span>Nome do canal</span>
+        <input type="text" name="name" placeholder="ex: projeto-alpha" required autocomplete="off"
+               pattern="[a-z0-9\-_]{1,50}" title="Letras minúsculas, números, hífens e underscores">
+      </label>
+      <label>
+        <span>Tipo</span>
+        <select name="kind">
+          <option value="public">Público</option>
+          <option value="private">Privado</option>
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideModal('chat-new-channel-modal')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── Auto-resize textarea ──────────────────────────────────────────────────────
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+}
+
+// ── Enter to send, Shift+Enter for newline ────────────────────────────────────
+function chatKeydown(e, form) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const body = form.querySelector('[name=body]');
+    if (body.value.trim()) form.requestSubmit();
+  }
+}
+
+// ── Submit via fetch (no full reload) ────────────────────────────────────────
+function handleChatSend(e, form) {
+  e.preventDefault();
+  const body = form.querySelector('[name=body]');
+  if (!body.value.trim()) return;
+  const data = new FormData(form);
+  fetch(form.action, { method: 'POST', body: data })
+    .then(() => {
+      body.value = '';
+      body.style.height = 'auto';
+      clearReply();
+      loadNewMessages();
+    });
+}
+
+// ── Long-poll for new messages ────────────────────────────────────────────────
+var lastMsgId = (function() {
+  var msgs = document.querySelectorAll('[data-msg-id]');
+  return msgs.length ? msgs[msgs.length - 1].dataset.msgId : '';
+})();
+
+function loadNewMessages() {
+  {% match active_channel %}
+  {% when Some with (ch) %}
+  var url = '/chat/channels/{{ ch.id }}/poll' + (lastMsgId ? '?after=' + encodeURIComponent(lastMsgId) : '');
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.messages || !data.messages.length) return;
+      var container = document.getElementById('chat-messages');
+      var empty = container.querySelector('.chat-empty');
+      if (empty) empty.remove();
+      data.messages.forEach(function(msg) {
+        lastMsgId = msg.id;
+        var div = document.createElement('div');
+        div.className = 'chat-msg';
+        div.dataset.msgId = msg.id;
+        var initial = (msg.display_name || msg.user_id || '?')[0].toUpperCase();
+        var time = msg.created_at ? msg.created_at.substring(11, 16) : '';
+        div.innerHTML =
+          '<div class="chat-msg-avatar">' + escHtml(initial) + '</div>' +
+          '<div class="chat-msg-bubble">' +
+            '<div class="chat-msg-meta">' +
+              '<span class="chat-msg-sender">' + escHtml(msg.display_name || msg.user_id) + '</span>' +
+              '<span class="chat-msg-time">' + escHtml(time) + '</span>' +
+            '</div>' +
+            '<div class="chat-msg-body">' + escHtml(msg.body) + '</div>' +
+            '<div class="chat-msg-actions">' +
+              '<button class="chat-action-btn" onclick="setReply(\'' + escHtml(msg.id) + '\')" title="Responder">↩</button>' +
+            '</div>' +
+          '</div>';
+        container.appendChild(div);
+      });
+      scrollToBottom();
+    });
+  {% when None %}{% endmatch %}
+}
+
+// scroll to bottom on load and after new messages
+function scrollToBottom() {
+  var c = document.getElementById('chat-messages');
+  if (c) c.scrollTop = c.scrollHeight;
+}
+scrollToBottom();
+setInterval(loadNewMessages, 3000);
+
+// ── Reply ─────────────────────────────────────────────────────────────────────
+function setReply(msgId) {
+  document.getElementById('chat-parent-id').value = msgId;
+  var banner = document.getElementById('chat-reply-banner');
+  document.getElementById('chat-reply-text').textContent = 'Respondendo à mensagem ' + msgId.substring(0, 8) + '…';
+  banner.style.display = 'flex';
+  document.getElementById('chat-compose-input').focus();
+}
+function clearReply() {
+  document.getElementById('chat-parent-id').value = '';
+  document.getElementById('chat-reply-banner').style.display = 'none';
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function hideModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
+
+// ── HTML escape ───────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
 {% endblock %}

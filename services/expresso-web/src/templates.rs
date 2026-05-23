@@ -554,26 +554,103 @@ impl GalContact {
 #[derive(Debug, Deserialize, Clone)]
 pub struct MeetRoom {
     pub id:   String,
-    #[serde(default)] pub name:       Option<String>,
-    #[serde(default)] pub created_at: Option<String>,
-    #[serde(default)] pub status:     Option<String>,
+    #[serde(default)] pub name:           Option<String>,
+    #[serde(default)] pub created_at:     Option<String>,
+    #[serde(default)] pub status:         Option<String>,
+    #[serde(default)] pub scheduled_at:   Option<String>,
+    #[serde(default)] pub scheduled_end:  Option<String>,
+    #[serde(default)] pub description:    Option<String>,
+    #[serde(default)] pub recording_url:  Option<String>,
+    #[serde(default)] pub participant_count: i64,
 }
 impl MeetRoom {
     pub fn title(&self) -> &str { self.name.as_deref().unwrap_or("Reunião") }
     pub fn room_id_short(&self) -> &str { &self.id[..self.id.len().min(8)] }
+    pub fn is_scheduled(&self) -> bool { self.scheduled_at.is_some() }
+    pub fn is_ended(&self) -> bool { self.status.as_deref() == Some("ended") }
+    pub fn scheduled_time(&self) -> String {
+        let Some(s) = &self.scheduled_at else { return String::new() };
+        // "2026-05-23T14:00:00+00:00" → "23/05 14:00"
+        if s.len() >= 16 {
+            format!("{}/{} {}:{}", &s[8..10], &s[5..7], &s[11..13], &s[14..16])
+        } else {
+            s.clone()
+        }
+    }
+}
+
+// ─── Chat ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct ChatChannel {
+    pub id:   String,
+    pub name: String,
+    #[serde(default)] pub kind:         Option<String>,
+    #[serde(default)] pub description:  Option<String>,
+    #[serde(default)] pub unread_count: i64,
+}
+
+impl ChatChannel {
+    pub fn icon(&self) -> &'static str {
+        match self.kind.as_deref() {
+            Some("direct") => "@",
+            _ => "#",
+        }
+    }
+    pub fn is_direct(&self) -> bool { self.kind.as_deref() == Some("direct") }
+}
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct ChatMessage {
+    pub id:         String,
+    pub channel_id: String,
+    pub user_id:    String,
+    pub body:       String,
+    #[serde(default)] pub display_name: Option<String>,
+    #[serde(default)] pub created_at:   Option<String>,
+    #[serde(default)] pub edited:       bool,
+    #[serde(default)] pub parent_id:    Option<String>,
+}
+
+impl ChatMessage {
+    pub fn sender(&self) -> &str {
+        self.display_name.as_deref().unwrap_or(&self.user_id)
+    }
+    pub fn time_label(&self) -> String {
+        let Some(s) = &self.created_at else { return String::new() };
+        if s.len() >= 16 { s[11..16].to_string() } else { String::new() }
+    }
+    pub fn is_own(&self, me_id: &str) -> bool { self.user_id == me_id }
 }
 
 #[derive(Template)]
 #[template(path = "chat.html")]
 pub struct ChatTpl {
-    pub me: Me,
+    pub me:             Me,
+    pub channels:       Vec<ChatChannel>,
+    pub active_channel: Option<ChatChannel>,
+    pub messages:       Vec<ChatMessage>,
 }
 
 #[derive(Template)]
 #[template(path = "meet.html")]
 pub struct MeetTpl {
-    pub me:      Me,
+    pub me:       Me,
     pub meetings: Vec<MeetRoom>,
+    pub upcoming: Vec<MeetRoom>,
+    pub past:     Vec<MeetRoom>,
+    pub flash:    Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct MeetParticipant {
+    pub user_id:    String,
+    #[serde(default)] pub display_name: Option<String>,
+    #[serde(default)] pub role:         Option<String>,
+}
+impl MeetParticipant {
+    pub fn name(&self) -> &str { self.display_name.as_deref().unwrap_or(&self.user_id) }
+    pub fn initial(&self) -> char { self.name().chars().next().unwrap_or('?') }
 }
 
 #[derive(Template)]
@@ -582,10 +659,20 @@ pub struct MeetRoomTpl {
     pub me:            Me,
     pub room_id:       String,
     pub room_name:     String,
+    pub meeting:       Option<MeetRoom>,
+    pub participants:  Vec<MeetParticipant>,
     pub jitsi_domain:  String,
     pub jitsi_jwt:     String,
     pub jitsi_enabled: bool,
     pub join_only:     bool,
+    pub is_moderator:  bool,
+}
+
+#[derive(Template)]
+#[template(path = "meet_schedule.html")]
+pub struct MeetScheduleTpl {
+    pub me:    Me,
+    pub error: Option<String>,
 }
 
 #[derive(Template)]

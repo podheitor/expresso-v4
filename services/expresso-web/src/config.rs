@@ -14,6 +14,7 @@ pub struct Backends {
     pub contacts: String,
     pub drive:    String,
     pub meet:     String,
+    pub chat:     String,
 }
 
 impl Backends {
@@ -25,6 +26,7 @@ impl Backends {
             contacts: envs("BACKEND__CONTACTS").unwrap_or_else(|| "http://localhost:8003".into()),
             drive:    envs("BACKEND__DRIVE").unwrap_or_else(|| "http://localhost:8004".into()),
             meet:     envs("BACKEND__MEET").unwrap_or_else(|| "http://localhost:8011".into()),
+            chat:     envs("BACKEND__CHAT").unwrap_or_else(|| "http://localhost:8010".into()),
         }
     }
 }
@@ -143,13 +145,14 @@ mod tests {
 
     #[test]
     fn backends_defaults_compile() {
-        // Verify all default URL strings are valid string literals (pure compile-time smoke)
         let _b = Backends {
             auth:     "http://localhost:8012".into(),
             mail:     "http://localhost:8001".into(),
             calendar: "http://localhost:8002".into(),
             contacts: "http://localhost:8003".into(),
             drive:    "http://localhost:8004".into(),
+            meet:     "http://localhost:8011".into(),
+            chat:     "http://localhost:8010".into(),
         };
         assert_eq!(_b.auth, "http://localhost:8012");
     }
@@ -187,100 +190,66 @@ mod tests {
         assert_eq!(w.token_ttl_secs, 7200);
     }
 
+    fn make_backends() -> Backends {
+        Backends {
+            auth:     "http://auth:8012".into(),
+            mail:     "http://mail:8001".into(),
+            calendar: "http://cal:8002".into(),
+            contacts: "http://contacts:8003".into(),
+            drive:    "http://drive:8004".into(),
+            meet:     "http://meet:8011".into(),
+            chat:     "http://chat:8010".into(),
+        }
+    }
+
     #[test]
     fn backends_drive_url_accessible() {
-        let b = Backends {
-            auth:     "http://localhost:8012".into(),
-            mail:     "http://localhost:8001".into(),
-            calendar: "http://localhost:8002".into(),
-            contacts: "http://localhost:8003".into(),
-            drive:    "http://localhost:8004".into(),
-        };
-        assert_eq!(b.drive, "http://localhost:8004");
+        assert_eq!(make_backends().drive, "http://drive:8004");
     }
 
     #[test]
     fn backends_auth_url_accessible() {
-        let b = Backends {
-            auth:     "http://localhost:8012".into(),
-            mail:     "http://localhost:8001".into(),
-            calendar: "http://localhost:8002".into(),
-            contacts: "http://localhost:8003".into(),
-            drive:    "http://localhost:8004".into(),
-        };
-        assert_eq!(b.auth, "http://localhost:8012");
+        assert_eq!(make_backends().auth, "http://auth:8012");
     }
 
     #[test]
     fn backends_contacts_url_accessible() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.contacts, "http://contacts:8003");
+        assert_eq!(make_backends().contacts, "http://contacts:8003");
     }
 
     #[test]
     fn backends_drive_field_preserved() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.drive, "http://drive:8004");
+        assert_eq!(make_backends().drive, "http://drive:8004");
     }
 
     #[test]
     fn backends_auth_field_preserved() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.auth, "http://auth:8012");
+        assert_eq!(make_backends().auth, "http://auth:8012");
     }
 
     #[test]
     fn backends_mail_field_preserved() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.mail, "http://mail:8001");
+        assert_eq!(make_backends().mail, "http://mail:8001");
     }
 
     #[test]
     fn backends_drive_url_is_correct() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.drive, "http://drive:8004");
+        assert_eq!(make_backends().drive, "http://drive:8004");
     }
 
     #[test]
     fn backends_calendar_field_preserved() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert_eq!(b.calendar, "http://cal:8002");
+        assert_eq!(make_backends().calendar, "http://cal:8002");
+    }
+
+    #[test]
+    fn backends_chat_field_accessible() {
+        assert_eq!(make_backends().chat, "http://chat:8010");
+    }
+
+    #[test]
+    fn backends_meet_field_accessible() {
+        assert_eq!(make_backends().meet, "http://meet:8011");
     }
 
     #[test]
@@ -362,7 +331,7 @@ mod tests {
 
     #[test]
     fn wopi_token_ttl_zero_is_zero() {
-        let w = WopiConfig {
+        let w = Wopi {
             collabora_url: "https://collabora.example.com".into(),
             drive_url: "https://drive.example.com".into(),
             secret: "s3cr3t".into(),
@@ -373,14 +342,7 @@ mod tests {
 
     #[test]
     fn backends_calendar_url_accessible() {
-        let b = Backends {
-            auth:     "http://auth:8012".into(),
-            mail:     "http://mail:8001".into(),
-            calendar: "http://cal:8002".into(),
-            contacts: "http://contacts:8003".into(),
-            drive:    "http://drive:8004".into(),
-        };
-        assert!(!b.calendar.is_empty());
+        assert!(!make_backends().calendar.is_empty());
     }
 
     #[test]
@@ -395,17 +357,10 @@ mod tests {
     }
 
     #[test]
-    fn backends_five_distinct_fields() {
-        let b = Backends {
-            auth:     "http://a:1".into(),
-            mail:     "http://b:2".into(),
-            calendar: "http://c:3".into(),
-            contacts: "http://d:4".into(),
-            drive:    "http://e:5".into(),
-        };
-        let all = [&b.auth, &b.mail, &b.calendar, &b.contacts, &b.drive];
-        let mut unique = all.to_vec();
-        unique.dedup();
-        assert_eq!(unique.len(), 5);
+    fn backends_seven_distinct_fields() {
+        let b = make_backends();
+        let all = [&b.auth, &b.mail, &b.calendar, &b.contacts, &b.drive, &b.meet, &b.chat];
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(unique.len(), 7);
     }
 }

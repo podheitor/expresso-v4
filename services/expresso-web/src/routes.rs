@@ -20,8 +20,9 @@ use crate::{
         ShareRow, VersionRow, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl,
         DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl, Event, MonthCell,
         CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl,
-        ContactFormTpl, AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl,
-        MeetRoomTpl, MeetRoom, SettingsTpl, MailSearchTpl, GalContact,
+        ContactFormTpl, AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, ChatChannel,
+        ChatMessage, MeetTpl, MeetRoomTpl, MeetRoom, MeetScheduleTpl, MeetParticipant,
+        SettingsTpl, MailSearchTpl, GalContact,
     },
     upstream::{get_json, get_bytes, post_body, post_json, patch_json, put_body, put_json, delete_at, post_empty},
 };
@@ -83,11 +84,17 @@ pub fn router(state: AppState) -> Router {
         // contacts extras
         .route("/contacts/gal",                     get(contacts_gal_page))
         // chat / meet
-        .route("/chat",  get(chat_page))
-        .route("/meet",  get(meet_page))
-        .route("/meet/new",  get(meet_new_page).post(meet_create_action))
-        .route("/meet/join", get(meet_join_page))
-        .route("/meet/:id",  get(meet_room_page))
+        .route("/chat",                      get(chat_page))
+        .route("/chat/channels",             post(chat_create_channel))
+        .route("/chat/channels/:cid",        get(chat_channel_page))
+        .route("/chat/channels/:cid/send",   post(chat_send_message))
+        .route("/chat/channels/:cid/poll",   get(chat_poll_messages))
+        .route("/meet",           get(meet_page))
+        .route("/meet/new",       get(meet_new_page).post(meet_create_action))
+        .route("/meet/schedule",  get(meet_schedule_page).post(meet_schedule_action))
+        .route("/meet/join",      get(meet_join_page))
+        .route("/meet/:id",       get(meet_room_page))
+        .route("/meet/:id/end",   post(meet_end_action))
         // settings
         .route("/settings",                  get(settings_page))
         .route("/settings/profile",          post(settings_profile_save))
@@ -1933,23 +1940,181 @@ async fn addrbook_share_revoke(
 
 // ─── /chat ───────────────────────────────────────────────────────────────────
 
+async fn chat_fetch_channels(st: &AppState, headers: &HeaderMap, t: &str, u: &str) -> Vec<ChatChannel> {
+    let url = format!("{}/api/v1/channels", st.backends.chat.trim_end_matches('/'));
+    let mut req = st.http.get(&url);
+    req = crate::upstream::fwd_cookie(req, headers);
+    req = crate::upstream::inject_ctx(req, t, u);
+    match req.send().await {
+        Ok(r) if r.status().is_success() => r.json::<Vec<ChatChannel>>().await.unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
+async fn chat_fetch_messages(st: &AppState, headers: &HeaderMap, t: &str, u: &str, cid: &str, after: Option<&str>) -> Vec<ChatMessage> {
+    let qs = after.map(|a| format!("?after={a}")).unwrap_or_default();
+    let url = format!("{}/api/v1/channels/{cid}/messages{qs}", st.backends.chat.trim_end_matches('/'));
+    let mut req = st.http.get(&url);
+    req = crate::upstream::fwd_cookie(req, headers);
+    req = crate::upstream::inject_ctx(req, t, u);
+    match req.send().await {
+        Ok(r) if r.status().is_success() => r.json::<Vec<ChatMessage>>().await.unwrap_or_default(),
+        _ => Vec::new(),
+    }
+}
+
 async fn chat_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(askama_axum::IntoResponse::into_response(ChatTpl { me }))
+    let (t, u) = ctx_of(&me);
+    let channels = chat_fetch_channels(&st, &headers, &t, &u).await;
+    let active_channel = channels.first().cloned();
+    let messages = if let Some(ref ch) = active_channel {
+        chat_fetch_messages(&st, &headers, &t, &u, &ch.id, None).await
+    } else {
+        Vec::new()
+    };
+    Ok(askama_axum::IntoResponse::into_response(ChatTpl { me, channels, active_channel, messages }))
+}
+
+async fn chat_channel_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let channels = chat_fetch_channels(&st, &headers, &t, &u).await;
+    let active_channel = channels.iter().find(|c| c.id == cid).cloned();
+    let messages = chat_fetch_messages(&st, &headers, &t, &u, &cid, None).await;
+    Ok(askama_axum::IntoResponse::into_response(ChatTpl { me, channels, active_channel, messages }))
+}
+
+#[derive(Deserialize)]
+struct ChatCreateChannelForm { name: String, kind: Option<String> }
+
+async fn chat_create_channel(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<ChatCreateChannelForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({
+        "name": f.name.trim(),
+        "kind": f.kind.as_deref().unwrap_or("public"),
+    });
+    let url = format!("{}/api/v1/channels", st.backends.chat.trim_end_matches('/'));
+    let mut req = st.http.post(&url).json(&payload);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let created: Option<ChatChannel> = match req.send().await {
+        Ok(r) if r.status().is_success() => r.json().await.ok(),
+        _ => None,
+    };
+    if let Some(ch) = created {
+        Ok(Redirect::to(&format!("/chat/channels/{}", ch.id)).into_response())
+    } else {
+        Ok(Redirect::to("/chat").into_response())
+    }
+}
+
+#[derive(Deserialize)]
+struct ChatSendForm { body: String, #[serde(default)] parent_id: Option<String> }
+
+async fn chat_send_message(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+    Form(f): Form<ChatSendForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let mut payload = serde_json::json!({ "body": f.body.trim() });
+    if let Some(pid) = &f.parent_id { payload["parent_id"] = serde_json::json!(pid); }
+    let url = format!("{}/api/v1/channels/{cid}/messages", st.backends.chat.trim_end_matches('/'));
+    let mut req = st.http.post(&url).json(&payload);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let _ = req.send().await;
+    Ok(Redirect::to(&format!("/chat/channels/{cid}")).into_response())
+}
+
+#[derive(serde::Serialize)]
+struct ChatPollResp { messages: Vec<ChatMessage> }
+
+async fn chat_poll_messages(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+    Query(q): Query<std::collections::HashMap<String, String>>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let after = q.get("after").map(String::as_str);
+    let messages = chat_fetch_messages(&st, &headers, &t, &u, &cid, after).await;
+    Ok(axum::Json(ChatPollResp { messages }).into_response())
 }
 
 // ─── /meet ───────────────────────────────────────────────────────────────────
 
-async fn meet_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+#[derive(Deserialize)]
+struct MeetPageQuery { flash: Option<String> }
+
+async fn meet_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<MeetPageQuery>,
+) -> WebResult<Response> {
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
     let meetings: Vec<MeetRoom> = get_json(&st, &st.backends.meet, "/api/v1/meetings",
         &headers, Some((&me.tenant_id, &me.user_id)),
     ).await?.unwrap_or_default();
-    Ok(askama_axum::IntoResponse::into_response(MeetTpl { me, meetings }))
+    let now_iso = chrono_now_iso();
+    let mut upcoming: Vec<MeetRoom> = meetings.iter()
+        .filter(|m| !m.is_ended() && m.scheduled_at.as_deref().map(|s| s >= now_iso.as_str()).unwrap_or(true))
+        .cloned().collect();
+    let mut past: Vec<MeetRoom> = meetings.iter()
+        .filter(|m| m.is_ended() || m.scheduled_at.as_deref().map(|s| s < now_iso.as_str()).unwrap_or(false))
+        .cloned().collect();
+    upcoming.sort_by(|a, b| a.scheduled_at.cmp(&b.scheduled_at));
+    past.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(askama_axum::IntoResponse::into_response(MeetTpl { me, meetings, upcoming, past, flash: q.flash }))
+}
+
+fn chrono_now_iso() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let (y, mo, d, h, mi) = secs_to_ymdhm(secs);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:00+00:00")
+}
+
+fn secs_to_ymdhm(mut s: u64) -> (u32, u32, u32, u32, u32) {
+    let mi = (s % 60) as u32; s /= 60;
+    let h  = (s % 24) as u32; s /= 24;
+    // Simplified date from epoch (good until 2100)
+    let mut y = 1970u32;
+    loop {
+        let days_in_year = if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { 366 } else { 365 };
+        if s < days_in_year { break; }
+        s -= days_in_year;
+        y += 1;
+    }
+    let leap = y % 4 == 0 && (y % 100 != 0 || y % 400 == 0);
+    let months = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut mo = 1u32;
+    for &dm in &months {
+        if s < dm { break; }
+        s -= dm;
+        mo += 1;
+    }
+    (y, mo, s as u32 + 1, h, mi)
 }
 
 async fn meet_new_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
@@ -1958,12 +2123,15 @@ async fn meet_new_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri)
     };
     Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
         me,
-        room_id:   String::new(),
-        room_name: String::new(),
+        room_id:      String::new(),
+        room_name:    String::new(),
+        meeting:      None,
+        participants: Vec::new(),
         jitsi_domain: st.jitsi.domain.clone(),
-        jitsi_jwt: String::new(),
+        jitsi_jwt:    String::new(),
         jitsi_enabled: st.jitsi.is_enabled(),
-        join_only: false,
+        join_only:    false,
+        is_moderator: true,
     }))
 }
 
@@ -1987,7 +2155,6 @@ async fn meet_create_action(
     let name = f.name.filter(|n| !n.trim().is_empty())
         .unwrap_or_else(|| format!("Reunião de {}", me.display_name.as_deref().unwrap_or(&me.email)));
     let payload = serde_json::json!({ "name": name });
-    // Create meeting
     let meeting: Option<MeetCreated> = {
         let url = format!("{}/api/v1/meetings", st.backends.meet.trim_end_matches('/'));
         let mut req = st.http.post(&url).json(&payload);
@@ -1996,30 +2163,61 @@ async fn meet_create_action(
         let resp = req.send().await?;
         if resp.status().is_success() { resp.json().await.ok() } else { None }
     };
-    let meeting = match meeting {
-        Some(m) => m,
-        None => return Ok(Redirect::to("/meet").into_response()),
+    match meeting {
+        Some(m) => Ok(Redirect::to(&format!("/meet/{}", m.id)).into_response()),
+        None => Ok(Redirect::to("/meet").into_response()),
+    }
+}
+
+async fn meet_schedule_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
     };
-    // Get JWT token
-    let token_resp: Option<MeetTokenResp> = {
-        let url = format!("{}/api/v1/meetings/{}/tokens", st.backends.meet.trim_end_matches('/'), meeting.id);
-        let mut req = st.http.post(&url).json(&serde_json::json!({"role":"moderator"}));
-        req = crate::upstream::fwd_cookie(req, &headers);
-        req = crate::upstream::inject_ctx(req, &t, &u);
-        let resp = req.send().await?;
-        if resp.status().is_success() { resp.json().await.ok() } else { None }
+    Ok(askama_axum::IntoResponse::into_response(MeetScheduleTpl { me, error: None }))
+}
+
+#[derive(Deserialize)]
+struct MeetScheduleForm {
+    name:         String,
+    scheduled_at: String,   // datetime-local "YYYY-MM-DDTHH:MM"
+    #[serde(default)] scheduled_end: Option<String>,
+    #[serde(default)] description:   Option<String>,
+}
+
+async fn meet_schedule_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<MeetScheduleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
     };
-    let jwt = token_resp.map(|r| r.token).unwrap_or_default();
-    let room_name = format!("{}{}", st.jitsi.room_prefix, meeting.id);
-    Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
-        me,
-        room_id:   meeting.id,
-        room_name,
-        jitsi_domain: st.jitsi.domain.clone(),
-        jitsi_jwt: jwt,
-        jitsi_enabled: st.jitsi.is_enabled(),
-        join_only: false,
-    }))
+    if f.name.trim().is_empty() || f.scheduled_at.trim().is_empty() {
+        return Ok(askama_axum::IntoResponse::into_response(MeetScheduleTpl {
+            me,
+            error: Some("Nome e horário são obrigatórios.".into()),
+        }));
+    }
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({
+        "name": f.name.trim(),
+        "scheduled_at": format!("{}:00+00:00", f.scheduled_at.trim()),
+        "scheduled_end": f.scheduled_end.filter(|s| !s.trim().is_empty())
+            .map(|s| format!("{}:00+00:00", s.trim())),
+        "description": f.description.filter(|s| !s.trim().is_empty()),
+    });
+    let url = format!("{}/api/v1/meetings", st.backends.meet.trim_end_matches('/'));
+    let mut req = st.http.post(&url).json(&payload);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let ok = req.send().await.map(|r| r.status().is_success()).unwrap_or(false);
+    if ok {
+        Ok(Redirect::to("/meet?flash=Reunião+agendada+com+sucesso").into_response())
+    } else {
+        Ok(askama_axum::IntoResponse::into_response(MeetScheduleTpl {
+            me,
+            error: Some("Falha ao agendar. Tente novamente.".into()),
+        }))
+    }
 }
 
 #[derive(Deserialize)]
@@ -2035,12 +2233,15 @@ async fn meet_join_page(
     let room_name = q.room.unwrap_or_else(|| format!("{}{}", st.jitsi.room_prefix, uuid_v4()));
     Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
         me,
-        room_id:   room_name.clone(),
-        room_name,
+        room_id:      room_name.clone(),
+        room_name:    room_name,
+        meeting:      None,
+        participants: Vec::new(),
         jitsi_domain: st.jitsi.domain.clone(),
-        jitsi_jwt: String::new(),
+        jitsi_jwt:    String::new(),
         jitsi_enabled: st.jitsi.is_enabled(),
-        join_only: true,
+        join_only:    true,
+        is_moderator: false,
     }))
 }
 
@@ -2052,7 +2253,26 @@ async fn meet_room_page(
         return Ok(login_redirect(&uri).into_response());
     };
     let (t, u) = ctx_of(&me);
-    // Get JWT as participant
+    let meeting: Option<MeetRoom> = {
+        let url = format!("{}/api/v1/meetings/{}", st.backends.meet.trim_end_matches('/'), id);
+        let mut req = st.http.get(&url);
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        match req.send().await {
+            Ok(r) if r.status().is_success() => r.json::<MeetRoom>().await.ok(),
+            _ => None,
+        }
+    };
+    let participants: Vec<MeetParticipant> = {
+        let url = format!("{}/api/v1/meetings/{}/participants", st.backends.meet.trim_end_matches('/'), id);
+        let mut req = st.http.get(&url);
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        match req.send().await {
+            Ok(r) if r.status().is_success() => r.json::<Vec<MeetParticipant>>().await.unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    };
     let token_resp: Option<MeetTokenResp> = {
         let url = format!("{}/api/v1/meetings/{}/tokens", st.backends.meet.trim_end_matches('/'), id);
         let mut req = st.http.post(&url).json(&serde_json::json!({"role":"participant"}));
@@ -2067,12 +2287,32 @@ async fn meet_room_page(
         me,
         room_id:   id,
         room_name,
+        meeting,
+        participants,
         jitsi_domain: st.jitsi.domain.clone(),
         jitsi_jwt: jwt,
         jitsi_enabled: st.jitsi.is_enabled(),
         join_only: false,
+        is_moderator: false,
     }))
 }
+
+async fn meet_end_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let url = format!("{}/api/v1/meetings/{}/end", st.backends.meet.trim_end_matches('/'), id);
+    let mut req = st.http.post(&url).json(&serde_json::json!({}));
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let _ = req.send().await;
+    Ok(Redirect::to("/meet").into_response())
+}
+
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};

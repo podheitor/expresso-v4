@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Agendar reunião · Meet · Expresso{% endblock %}
+{% block nav %}{% let current = "meet" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page" style="max-width:600px">
+  <div class="page-header">
+    <a class="btn btn-ghost btn-sm" href="/meet">← Meet</a>
+    <h1>Agendar reunião</h1>
+  </div>
+
+  {% match error %}
+    {% when Some with (e) %}<div class="alert alert-error" style="margin-bottom:1rem">{{ e }}</div>{% when None %}{% endmatch %}
+
+  <div class="card stack">
+    <form class="compose-form" method="post" action="/meet/schedule">
+      <label>
+        <span>Nome da reunião <span class="text-danger">*</span></span>
+        <input type="text" name="name" placeholder="Ex: Revisão semanal de sprint" required autofocus>
+      </label>
+
+      <div class="form-row">
+        <label>
+          <span>Início <span class="text-danger">*</span></span>
+          <input type="datetime-local" name="scheduled_at" required>
+        </label>
+        <label>
+          <span>Término (opcional)</span>
+          <input type="datetime-local" name="scheduled_end">
+        </label>
+      </div>
+
+      <label>
+        <span>Descrição / pauta</span>
+        <textarea name="description" rows="4" placeholder="Tópicos a tratar, links relevantes…"></textarea>
+      </label>
+
+      <div class="form-actions">
+        <a class="btn btn-ghost" href="/meet">Cancelar</a>
+        <button class="btn btn-primary" type="submit">Agendar reunião</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

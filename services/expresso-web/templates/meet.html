@@ -5,16 +5,25 @@
 <div class="page">
   <div class="page-header">
     <h1>Meet</h1>
+    <div class="meet-header-actions">
+      <a class="btn btn-ghost btn-sm" href="/meet/schedule">📅 Agendar</a>
+    </div>
   </div>
 
+  {% match flash %}
+    {% when Some with (msg) %}
+      <div class="alert alert-success" style="margin-bottom:1rem">{{ msg }}</div>
+    {% when None %}{% endmatch %}
+
+  <!-- Ações rápidas -->
   <div class="meet-grid">
     <div class="card stack meet-card">
       <div class="meet-card-icon">🎥</div>
       <h2>Nova reunião</h2>
-      <p class="muted small">Crie uma sala instantânea e convide participantes.</p>
+      <p class="muted small">Inicie uma sala instantânea.</p>
       <form class="compose-form" method="post" action="/meet/new">
         <label>
-          <span>Nome da reunião (opcional)</span>
+          <span>Nome (opcional)</span>
           <input type="text" name="name" placeholder="Ex: Stand-up diário">
         </label>
         <div class="form-actions">
@@ -25,34 +34,77 @@
 
     <div class="card stack meet-card">
       <div class="meet-card-icon">🔗</div>
-      <h2>Entrar por link</h2>
-      <p class="muted small">Insira o código ou nome da sala para entrar.</p>
+      <h2>Entrar por código</h2>
+      <p class="muted small">Insira o código da sala ou link completo.</p>
       <form class="compose-form" method="get" action="/meet/join">
         <label>
           <span>Código ou nome da sala</span>
-          <input type="text" name="room" placeholder="exp-abc123..." required>
+          <input type="text" name="room" placeholder="exp-abc123…" required>
         </label>
         <div class="form-actions">
           <button class="btn btn-primary" type="submit">Entrar</button>
         </div>
       </form>
     </div>
+
+    <div class="card stack meet-card">
+      <div class="meet-card-icon">📅</div>
+      <h2>Agendar reunião</h2>
+      <p class="muted small">Escolha data, hora e convide participantes.</p>
+      <a class="btn btn-primary" href="/meet/schedule">Agendar</a>
+    </div>
   </div>
 
-  {% if !meetings.is_empty() %}
+  <!-- Próximas reuniões -->
+  {% if !upcoming.is_empty() %}
   <div class="card stack" style="margin-top:1.5rem">
-    <h2>Reuniões recentes</h2>
+    <h2>Próximas reuniões</h2>
     <ul class="meet-list">
-      {% for m in meetings %}
+      {% for m in upcoming %}
       <li class="meet-list-item">
         <div class="meet-list-info">
           <span class="meet-list-name">{{ m.title() }}</span>
-          {% match m.created_at %}{% when Some with (d) %}<span class="muted small">{{ d }}</span>{% when None %}{% endmatch %}
+          {% if m.is_scheduled() %}
+            <span class="meet-schedule-badge meet-scheduled">📅 {{ m.scheduled_time() }}</span>
+          {% endif %}
+          {% match m.created_at %}{% when Some with (d) %}<span class="muted small">Criada em {{ d }}</span>{% when None %}{% endmatch %}
         </div>
-        <a class="btn btn-ghost btn-sm" href="/meet/{{ m.id }}">Entrar</a>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <a class="btn btn-primary btn-sm" href="/meet/{{ m.id }}">Entrar</a>
+        </div>
       </li>
       {% endfor %}
     </ul>
+  </div>
+  {% endif %}
+
+  <!-- Histórico -->
+  {% if !past.is_empty() %}
+  <div class="card stack" style="margin-top:1.5rem">
+    <h2>Histórico de reuniões</h2>
+    <ul class="meet-list">
+      {% for m in past %}
+      <li class="meet-list-item">
+        <div class="meet-list-info">
+          <span class="meet-list-name">{{ m.title() }}</span>
+          <span class="meet-schedule-badge meet-ended">Encerrada</span>
+          {% match m.created_at %}{% when Some with (d) %}<span class="muted small">{{ d }}</span>{% when None %}{% endmatch %}
+        </div>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          {% match m.recording_url %}
+            {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank">▶ Replay</a>{% when None %}{% endmatch %}
+          <a class="btn btn-ghost btn-sm" href="/meet/{{ m.id }}">Ver sala</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if meetings.is_empty() %}
+  <div class="chat-empty" style="margin-top:3rem">
+    <span class="chat-empty-icon">🎥</span>
+    <p class="muted">Nenhuma reunião ainda.<br>Crie uma ou agende para o futuro.</p>
   </div>
   {% endif %}
 </div>
