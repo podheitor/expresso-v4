@@ -130,8 +130,11 @@ pub struct MailListTpl {
 #[derive(Template)]
 #[template(path = "mail_compose.html")]
 pub struct MailComposeTpl {
-    pub me:    Me,
-    pub error: Option<String>,
+    pub me:             Me,
+    pub error:          Option<String>,
+    pub prefill_to:     String,
+    pub prefill_subject: String,
+    pub prefill_body:   String,
 }
 
 #[derive(Template)]
@@ -517,6 +520,49 @@ pub struct AddrbookShareTpl {
     pub error:       Option<String>,
 }
 
+/// Mail attachment metadata (from backend /attachments list).
+#[derive(Debug, Deserialize, Clone)]
+pub struct Attachment {
+    pub index:    u32,
+    #[serde(default)] pub filename:  Option<String>,
+    #[serde(default)] pub mime_type: Option<String>,
+    #[serde(default)] pub size:      i64,
+}
+impl Attachment {
+    pub fn name(&self) -> &str { self.filename.as_deref().unwrap_or("anexo") }
+    pub fn size_human(&self) -> String {
+        let b = self.size as f64;
+        if b < 1024.0 { format!("{} B", self.size) }
+        else if b < 1_048_576.0 { format!("{:.1} KB", b/1024.0) }
+        else { format!("{:.1} MB", b/1_048_576.0) }
+    }
+}
+
+/// GAL contact (from /api/v1/gal/search).
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct GalContact {
+    #[serde(default)] pub email:        Option<String>,
+    #[serde(default)] pub display_name: Option<String>,
+    #[serde(default)] pub department:   Option<String>,
+}
+impl GalContact {
+    pub fn display(&self) -> &str { self.display_name.as_deref().unwrap_or("") }
+    pub fn email_str(&self) -> &str { self.email.as_deref().unwrap_or("") }
+}
+
+/// Meeting room (list item from /api/v1/meetings).
+#[derive(Debug, Deserialize, Clone)]
+pub struct MeetRoom {
+    pub id:   String,
+    #[serde(default)] pub name:       Option<String>,
+    #[serde(default)] pub created_at: Option<String>,
+    #[serde(default)] pub status:     Option<String>,
+}
+impl MeetRoom {
+    pub fn title(&self) -> &str { self.name.as_deref().unwrap_or("Reunião") }
+    pub fn room_id_short(&self) -> &str { &self.id[..self.id.len().min(8)] }
+}
+
 #[derive(Template)]
 #[template(path = "chat.html")]
 pub struct ChatTpl {
@@ -526,7 +572,37 @@ pub struct ChatTpl {
 #[derive(Template)]
 #[template(path = "meet.html")]
 pub struct MeetTpl {
-    pub me: Me,
+    pub me:      Me,
+    pub meetings: Vec<MeetRoom>,
+}
+
+#[derive(Template)]
+#[template(path = "meet_room.html")]
+pub struct MeetRoomTpl {
+    pub me:            Me,
+    pub room_id:       String,
+    pub room_name:     String,
+    pub jitsi_domain:  String,
+    pub jitsi_jwt:     String,
+    pub jitsi_enabled: bool,
+    pub join_only:     bool,
+}
+
+#[derive(Template)]
+#[template(path = "mail_search.html")]
+pub struct MailSearchTpl {
+    pub me:       Me,
+    pub folders:  Vec<Folder>,
+    pub messages: Vec<MessageListItem>,
+    pub query:    String,
+}
+
+#[derive(Template)]
+#[template(path = "gal_search.html")]
+pub struct GalSearchTpl {
+    pub me:       Me,
+    pub contacts: Vec<GalContact>,
+    pub query:    String,
 }
 
 #[derive(Template)]

@@ -13,6 +13,7 @@ pub struct Backends {
     pub calendar: String,
     pub contacts: String,
     pub drive:    String,
+    pub meet:     String,
 }
 
 impl Backends {
@@ -23,8 +24,31 @@ impl Backends {
             calendar: envs("BACKEND__CALENDAR").unwrap_or_else(|| "http://localhost:8002".into()),
             contacts: envs("BACKEND__CONTACTS").unwrap_or_else(|| "http://localhost:8003".into()),
             drive:    envs("BACKEND__DRIVE").unwrap_or_else(|| "http://localhost:8004".into()),
+            meet:     envs("BACKEND__MEET").unwrap_or_else(|| "http://localhost:8011".into()),
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct JitsiConfig {
+    pub domain:      String,
+    pub app_id:      String,
+    pub app_secret:  String,
+    pub room_prefix: String,
+    pub jwt_ttl:     u64,
+}
+
+impl JitsiConfig {
+    pub fn from_env() -> Self {
+        Self {
+            domain:      envs("JITSI__DOMAIN").unwrap_or_else(|| "meet.expresso.local".into()),
+            app_id:      envs("JITSI__APP_ID").unwrap_or_else(|| "expresso".into()),
+            app_secret:  envs("JITSI__APP_SECRET").unwrap_or_default(),
+            room_prefix: envs("JITSI__ROOM_PREFIX").unwrap_or_else(|| "exp-".into()),
+            jwt_ttl:     envs("JITSI__JWT_TTL_SECS").and_then(|v| v.parse().ok()).unwrap_or(3600),
+        }
+    }
+    pub fn is_enabled(&self) -> bool { !self.app_secret.trim().is_empty() }
 }
 
 #[derive(Debug, Clone)]

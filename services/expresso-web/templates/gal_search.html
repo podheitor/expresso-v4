@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Diretório Global · Expresso{% endblock %}
+{% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Diretório Global (GAL)</h1>
+    <a class="btn btn-ghost btn-sm" href="/contacts">Meus contactos</a>
+  </div>
+
+  <div class="card stack">
+    <form method="get" action="/contacts/gal" class="search-form-inline">
+      <input class="search-input-lg" type="search" name="q" value="{{ query }}" placeholder="Pesquisar por nome ou e-mail..." autofocus>
+      <button class="btn btn-primary" type="submit">Pesquisar</button>
+    </form>
+
+    {% if query.is_empty() %}
+      <p class="muted">Digite um nome ou e-mail para pesquisar no diretório da organização.</p>
+    {% else if contacts.is_empty() %}
+      <p class="muted">Nenhum resultado para "{{ query }}".</p>
+    {% else %}
+      <div class="contact-grid">
+        {% for c in contacts %}
+        <div class="contact-card">
+          <div class="contact-avatar">{{ c.display()[..1] }}</div>
+          <div class="contact-info">
+            <div class="contact-name">{{ c.display() }}</div>
+            <div class="contact-email muted small">{{ c.email_str() }}</div>
+            {% match c.department %}{% when Some with (d) %}<div class="contact-dept muted small">{{ d }}</div>{% when None %}{% endmatch %}
+          </div>
+          <div class="contact-actions">
+            <a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ c.email_str() }}">Enviar e-mail</a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

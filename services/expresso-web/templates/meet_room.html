@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ room_name }} · Meet · Expresso{% endblock %}
+{% block nav %}{% let current = "meet" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="meet-room-shell">
+  <div class="meet-room-header">
+    <a class="btn btn-ghost btn-sm" href="/meet">← Reuniões</a>
+    <span class="meet-room-title">{{ room_name }}</span>
+    {% if !room_id.is_empty() %}
+      <span class="muted small">ID: {{ room_id }}</span>
+    {% endif %}
+  </div>
+
+  {% if jitsi_enabled %}
+    <div class="meet-iframe-wrap">
+      <div id="jitsi-container" style="width:100%;height:100%;"></div>
+    </div>
+    <script src="https://{{ jitsi_domain }}/external_api.js"></script>
+    <script>
+    (function(){
+      var domain = {{ jitsi_domain|json }};
+      var room   = {{ room_name|json }};
+      var jwt    = {{ jitsi_jwt|json }};
+      var opts = {
+        roomName: room,
+        parentNode: document.getElementById('jitsi-container'),
+        width: '100%',
+        height: '100%',
+        configOverwrite: {
+          startWithAudioMuted: false,
+          startWithVideoMuted: false,
+          disableDeepLinking: true,
+        },
+        interfaceConfigOverwrite: {
+          TOOLBAR_BUTTONS: ['microphone','camera','desktop','chat','raisehand','participants-pane','tileview','hangup'],
+        },
+      };
+      if (jwt && jwt.length > 0) { opts.jwt = jwt; }
+      var api = new JitsiMeetExternalAPI(domain, opts);
+      api.addEventListener('readyToClose', function(){ window.location.href = '/meet'; });
+    })();
+    </script>
+  {% else %}
+    <div class="page" style="padding:3rem;text-align:center;">
+      <p class="muted">Integração Jitsi não configurada neste ambiente.</p>
+      <p class="small muted">Configure <code>JITSI__DOMAIN</code>, <code>JITSI__APP_ID</code> e <code>JITSI__APP_SECRET</code>.</p>
+      <a class="btn btn-primary" href="/meet">Voltar</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

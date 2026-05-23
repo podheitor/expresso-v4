@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Pesquisa · Expresso Mail{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="mail-shell">
+  <aside class="sidebar">
+    <header class="sidebar-header">
+      <span class="app-name">Mail</span>
+      <a class="btn btn-primary btn-sm" href="/mail/compose">+ Nova mensagem</a>
+    </header>
+    <nav class="folder-list" aria-label="Pastas">
+      {% for f in folders %}
+      <a class="folder-item" href="/mail?folder={{ f.name }}">
+        <span class="folder-icon">{{ f.icon() }}</span>
+        <span class="folder-name">{{ f.name }}</span>
+        {% if f.unseen_count > 0 %}<span class="badge">{{ f.unseen_count }}</span>{% endif %}
+      </a>
+      {% endfor %}
+    </nav>
+    <div class="sidebar-footer">
+      <a class="link-sm sidebar-settings-link" href="/settings?tab=filters">Filtros</a>
+      <a class="link-sm sidebar-settings-link" href="/settings">Configurações</a>
+    </div>
+  </aside>
+
+  <main class="mail-main">
+    <div class="search-bar-full">
+      <form method="get" action="/mail/search" class="search-form-inline">
+        <input class="search-input-lg" type="search" name="q" value="{{ query }}" placeholder="Pesquisar mensagens..." autofocus>
+        <button class="btn btn-primary" type="submit">Pesquisar</button>
+        {% if !query.is_empty() %}
+          <a class="btn btn-ghost btn-sm" href="/mail/search">Limpar</a>
+        {% endif %}
+      </form>
+    </div>
+
+    <section class="msg-list">
+      {% if query.is_empty() %}
+        <div class="empty-state">Digite algo para pesquisar</div>
+      {% else if messages.is_empty() %}
+        <div class="empty-state">Nenhum resultado para "{{ query }}"</div>
+      {% else %}
+        <div class="list-toolbar">
+          <span class="muted small">{{ messages.len() }} resultado{% if messages.len() != 1 %}s{% endif %} para "{{ query }}"</span>
+        </div>
+        <ul class="msg-rows">
+          {% for msg in messages %}
+          <li>
+            <a class="msg-row{% if msg.is_unread() %} unread{% endif %}" href="/mail/{{ msg.id }}">
+              <div class="msg-meta">
+                <span class="msg-from">{{ msg.from_display() }}</span>
+                <span class="msg-date">{{ msg.date_display() }}</span>
+              </div>
+              <div class="msg-subject">{{ msg.subject_display() }}</div>
+              {% if !msg.preview_display().is_empty() %}
+                <div class="msg-preview">{{ msg.preview_display() }}</div>
+              {% endif %}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+  </main>
+</div>
+{% endblock %}

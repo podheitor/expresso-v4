@@ -4,26 +4,56 @@
 {% block body %}
 <div class="page">
   <div class="page-header">
-    <h1>Videoconferência</h1>
+    <h1>Meet</h1>
   </div>
+
   <div class="meet-grid">
-    <div class="card meet-card">
-      <div class="meet-card-icon">&#x1F4F9;</div>
+    <div class="card stack meet-card">
+      <div class="meet-card-icon">🎥</div>
       <h2>Nova reunião</h2>
-      <p class="muted">Inicie uma videochamada agora e compartilhe o link com os participantes.</p>
-      <a class="btn btn-primary btn-lg" href="/meet/new">Iniciar reunião</a>
-    </div>
-    <div class="card meet-card">
-      <div class="meet-card-icon">&#x1F517;</div>
-      <h2>Entrar por link</h2>
-      <p class="muted">Insira o código ou URL da reunião que você recebeu.</p>
-      <form class="compose-form" method="get" action="/meet/join">
-        <input type="text" name="room" placeholder="Código da reunião" required>
+      <p class="muted small">Crie uma sala instantânea e convide participantes.</p>
+      <form class="compose-form" method="post" action="/meet/new">
+        <label>
+          <span>Nome da reunião (opcional)</span>
+          <input type="text" name="name" placeholder="Ex: Stand-up diário">
+        </label>
         <div class="form-actions">
-          <button class="btn btn-amber" type="submit">Entrar</button>
+          <button class="btn btn-primary" type="submit">Iniciar agora</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card stack meet-card">
+      <div class="meet-card-icon">🔗</div>
+      <h2>Entrar por link</h2>
+      <p class="muted small">Insira o código ou nome da sala para entrar.</p>
+      <form class="compose-form" method="get" action="/meet/join">
+        <label>
+          <span>Código ou nome da sala</span>
+          <input type="text" name="room" placeholder="exp-abc123..." required>
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Entrar</button>
         </div>
       </form>
     </div>
   </div>
+
+  {% if !meetings.is_empty() %}
+  <div class="card stack" style="margin-top:1.5rem">
+    <h2>Reuniões recentes</h2>
+    <ul class="meet-list">
+      {% for m in meetings %}
+      <li class="meet-list-item">
+        <div class="meet-list-info">
+          <span class="meet-list-name">{{ m.title() }}</span>
+          {% match m.created_at %}{% when Some with (d) %}<span class="muted small">{{ d }}</span>{% when None %}{% endmatch %}
+        </div>
+        <a class="btn btn-ghost btn-sm" href="/meet/{{ m.id }}">Entrar</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

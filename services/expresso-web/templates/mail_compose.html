@@ -3,7 +3,7 @@
 {% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page">
-  <div class="card" style="max-width:760px">
+  <div class="card stack" style="max-width:760px">
     <div class="page-header">
       <h1>Nova mensagem</h1>
       <a class="btn btn-ghost" href="/mail">← Caixa de entrada</a>
@@ -13,14 +13,18 @@
       <div class="alert alert-error">{{ e }}</div>
     {% when None %}{% endmatch %}
 
-    <form method="post" action="/mail/compose" class="compose-form">
+    <form method="post" action="/mail/compose" class="compose-form" id="compose-form">
       <label>
         <span>De</span>
         <input type="email" name="from" value="{{ me.email }}" readonly>
       </label>
       <label>
         <span>Para</span>
-        <input type="text" name="to" required placeholder="destinatario@dominio.gov.br">
+        <div class="autocomplete-wrap">
+          <input type="text" name="to" id="to-field" value="{{ prefill_to }}" required
+                 placeholder="destinatario@dominio.com" autocomplete="off">
+          <ul class="autocomplete-list" id="to-suggestions"></ul>
+        </div>
       </label>
       <label>
         <span>Cc</span>
@@ -28,11 +32,11 @@
       </label>
       <label>
         <span>Assunto</span>
-        <input type="text" name="subject" required>
+        <input type="text" name="subject" value="{{ prefill_subject }}" required>
       </label>
       <label>
         <span>Mensagem</span>
-        <textarea name="body_text" rows="14" required></textarea>
+        <textarea name="body_text" rows="14" required>{{ prefill_body }}</textarea>
       </label>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enviar</button>
@@ -41,4 +45,38 @@
     </form>
   </div>
 </div>
+<script>
+(function(){
+  var inp = document.getElementById('to-field');
+  var list = document.getElementById('to-suggestions');
+  var timer;
+  if(!inp) return;
+  inp.addEventListener('input', function(){
+    clearTimeout(timer);
+    var q = inp.value.trim();
+    if(q.length < 2){ list.innerHTML=''; return; }
+    timer = setTimeout(function(){
+      fetch('/api/gal/search?q=' + encodeURIComponent(q), {credentials:'include'})
+        .then(function(r){ return r.json(); })
+        .then(function(contacts){
+          list.innerHTML = '';
+          contacts.slice(0,8).forEach(function(c){
+            var li = document.createElement('li');
+            li.className = 'autocomplete-item';
+            li.textContent = (c.display_name || '') + ' <' + (c.email || '') + '>';
+            li.addEventListener('mousedown', function(e){
+              e.preventDefault();
+              inp.value = c.email || '';
+              list.innerHTML = '';
+            });
+            list.appendChild(li);
+          });
+        }).catch(function(){});
+    }, 200);
+  });
+  document.addEventListener('click', function(e){
+    if(!e.target.closest('.autocomplete-wrap')){ list.innerHTML=''; }
+  });
+})();
+</script>
 {% endblock %}

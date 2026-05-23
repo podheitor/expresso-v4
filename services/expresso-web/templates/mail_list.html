@@ -23,9 +23,9 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a class="link-sm sidebar-settings-link" href="/mail/rules">Regras de filtro</a>
-      <a class="link-sm sidebar-settings-link" href="/me/security">Segurança</a>
-      <a class="link-sm sidebar-settings-link" href="/me">{{ me.email }}</a>
+      <a class="link-sm sidebar-settings-link" href="/mail/search">🔍 Pesquisar</a>
+      <a class="link-sm sidebar-settings-link" href="/settings?tab=filters">Filtros</a>
+      <a class="link-sm sidebar-settings-link" href="/settings">Configurações</a>
     </div>
   </aside>
 
@@ -33,6 +33,9 @@
     <section class="msg-list" aria-label="Mensagens">
       <div class="list-toolbar">
         <h1 class="folder-title">{{ selected }}</h1>
+        <form method="get" action="/mail/search" class="toolbar-search">
+          <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
+        </form>
       </div>
 
       {% if messages.is_empty() %}
@@ -47,7 +50,10 @@
               <span class="msg-from">{{ msg.from_display() }}</span>
               <span class="msg-date">{{ msg.date_display() }}</span>
             </div>
-            <div class="msg-subject">{{ msg.subject_display() }}</div>
+            <div class="msg-subject">
+              {{ msg.subject_display() }}
+              {% if msg.has_attachments %}<span class="attach-badge" title="Tem anexos">📎</span>{% endif %}
+            </div>
             {% if !msg.preview_display().is_empty() %}
               <div class="msg-preview">{{ msg.preview_display() }}</div>
             {% endif %}
@@ -63,22 +69,74 @@
       {% when Some with (d) %}
         <header class="detail-header">
           <h2>{% match d.subject %}{% when Some with (s) %}{{ s }}{% when None %}(sem assunto){% endmatch %}</h2>
-          {% match d.thread_id %}
-            {% when Some with (tid) %}<a class="link-sm" href="/mail/thread/{{ tid }}">Ver thread</a>
-            {% when None %}
-          {% endmatch %}
+          <div class="detail-actions">
+            {% match d.thread_id %}
+              {% when Some with (tid) %}<a class="btn btn-ghost btn-sm" href="/mail/thread/{{ tid }}">Ver thread</a>{% when None %}
+            {% endmatch %}
+            <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ d.id }}&folder={{ selected }}">↩ Responder</a>
+            <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ d.id }}&folder={{ selected }}">→ Encaminhar</a>
+            <div class="detail-dropdown">
+              <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯</button>
+              <div class="dropdown-menu">
+                <form method="post" action="/mail/{{ d.id }}/flag">
+                  <input type="hidden" name="flag" value="\Seen">
+                  <input type="hidden" name="value" value="0">
+                  <input type="hidden" name="folder" value="{{ selected }}">
+                  <button class="dropdown-item" type="submit">Marcar como não lido</button>
+                </form>
+                <div class="dropdown-label">Mover para</div>
+                {% for f in folders %}
+                <form method="post" action="/mail/{{ d.id }}/move">
+                  <input type="hidden" name="target_folder" value="{{ f.name }}">
+                  <input type="hidden" name="from_folder" value="{{ selected }}">
+                  <button class="dropdown-item" type="submit">{{ f.icon() }} {{ f.name }}</button>
+                </form>
+                {% endfor %}
+                <hr class="dropdown-sep">
+                <form method="post" action="/mail/{{ d.id }}/delete" onsubmit="return confirm('Apagar mensagem?')">
+                  <input type="hidden" name="folder" value="{{ selected }}">
+                  <button class="dropdown-item danger" type="submit">🗑 Apagar</button>
+                </form>
+              </div>
+            </div>
+          </div>
           <div class="detail-from">
             <strong>{% match d.from_name %}{% when Some with (n) %}{{ n }}{% when None %}{% match d.from_addr %}{% when Some with (a) %}{{ a }}{% when None %}—{% endmatch %}{% endmatch %}</strong>
             {% match d.from_addr %}{% when Some with (a) %}<span class="mono muted"> &lt;{{ a }}&gt;</span>{% when None %}{% endmatch %}
           </div>
-          <div class="detail-date muted">{% match d.date %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}</div>
+          <div class="detail-date muted small">{% match d.date %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}</div>
+          {% if d.has_attachments %}
+          <div class="detail-attachments">
+            <span class="small muted">Anexos:</span>
+            <div id="attach-list-{{ d.id }}" class="attach-list">
+              <span class="muted small" id="attach-loading">Carregando...</span>
+            </div>
+            <script>
+            fetch('/api/mail/{{ d.id }}/attachments', {credentials:'include'})
+              .then(r=>r.json()).then(function(list){
+                var el = document.getElementById('attach-list-{{ d.id }}');
+                el.innerHTML = '';
+                list.forEach(function(a){
+                  var link = document.createElement('a');
+                  link.href = '/mail/{{ d.id }}/attachments/' + a.index;
+                  link.className = 'attach-item';
+                  link.textContent = (a.filename || 'anexo') + ' (' + (a.size_human || '') + ')';
+                  link.target = '_blank';
+                  el.appendChild(link);
+                });
+                if(list.length===0){ el.innerHTML='<span class="muted small">—</span>'; }
+              }).catch(function(){ document.getElementById('attach-loading').textContent='—'; });
+            </script>
+          </div>
+          {% endif %}
         </header>
         <article class="detail-body">
-          {% match d.body_text %}
-            {% when Some with (t) %}<pre class="body-text">{{ t }}</pre>
+          {% match d.body_html %}
+            {% when Some with (h) %}
+              <iframe class="body-html-frame" srcdoc="{{ h }}" sandbox="allow-same-origin" onload="this.style.height=this.contentDocument.body.scrollHeight+'px'"></iframe>
             {% when None %}
-              {% match d.body_html %}
-                {% when Some with (_h) %}<p class="muted">(conteúdo HTML — visualização em breve)</p>
+              {% match d.body_text %}
+                {% when Some with (t) %}<pre class="body-text">{{ t }}</pre>
                 {% when None %}<p class="muted">(sem corpo)</p>
               {% endmatch %}
           {% endmatch %}
@@ -89,4 +147,11 @@
     </section>
   </main>
 </div>
+<script>
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.detail-dropdown')) {
+    document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
+  }
+});
+</script>
 {% endblock %}

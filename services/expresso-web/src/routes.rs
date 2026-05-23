@@ -15,12 +15,15 @@ use crate::{
     AppState,
     error::WebResult,
     templates::{
-        AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
-        MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
-        Event, MonthCell, CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl, ContactFormTpl,
-        AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl, SettingsTpl,
+        AddressBook, Attachment, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl,
+        DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl,
+        ShareRow, VersionRow, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl,
+        DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl, Event, MonthCell,
+        CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl,
+        ContactFormTpl, AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl,
+        MeetRoomTpl, MeetRoom, SettingsTpl, MailSearchTpl, GalContact,
     },
-    upstream::{get_json, post_body, put_body, put_json, delete_at},
+    upstream::{get_json, get_bytes, post_body, post_json, patch_json, put_body, put_json, delete_at, post_empty},
 };
 
 fn dedup_folders(mut folders: Vec<crate::templates::Folder>) -> Vec<crate::templates::Folder> {
@@ -66,16 +69,36 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/:id/delete",             post(contact_delete_action))
         .route("/contacts/:book_id/share", get(addrbook_share_page).post(addrbook_share_create))
         .route("/contacts/:book_id/share/:grantee_id/revoke", post(addrbook_share_revoke))
+        // mail extras
+        .route("/mail/search",                      get(mail_search_page))
+        .route("/mail/:id/attachments/:idx",        get(mail_attachment_proxy))
+        .route("/mail/:id/flag",                    post(mail_flag_action))
+        .route("/mail/:id/move",                    post(mail_move_action))
+        .route("/mail/:id/delete",                  post(mail_delete_action))
+        // drive extras
+        .route("/drive/search",                     get(drive_search_page))
+        .route("/drive/new-folder",                 post(drive_mkdir_action))
+        .route("/drive/:id/rename",                 post(drive_rename_action))
+        .route("/drive/:id/move",                   post(drive_move_action))
+        // contacts extras
+        .route("/contacts/gal",                     get(contacts_gal_page))
+        // chat / meet
         .route("/chat",  get(chat_page))
         .route("/meet",  get(meet_page))
-        .route("/meet/new",  get(meet_new_page))
+        .route("/meet/new",  get(meet_new_page).post(meet_create_action))
         .route("/meet/join", get(meet_join_page))
+        .route("/meet/:id",  get(meet_room_page))
+        // settings
         .route("/settings",                  get(settings_page))
         .route("/settings/profile",          post(settings_profile_save))
         .route("/settings/signature",        post(settings_signature_save))
         .route("/settings/autoreply",        post(settings_autoreply_save))
         .route("/settings/notifications",    post(settings_notifications_save))
         .route("/settings/filters",          post(settings_filters_save))
+        // GAL autocomplete JSON API
+        .route("/api/gal/search",            get(gal_search_api))
+        // Mail attachment list (JSON for JS)
+        .route("/api/mail/:id/attachments",  get(mail_attachments_api))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -213,6 +236,33 @@ async fn mail_detail_page(
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
         me, folders, selected, messages, detail, selected_id: Some(id),
     }))
+}
+
+// ─── /api/mail/:id/attachments ───────────────────────────────────────────────
+
+async fn mail_attachments_api(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok((StatusCode::UNAUTHORIZED, "[]").into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let list = get_json::<Vec<serde_json::Value>>(
+        &st, &st.backends.mail, &format!("/api/v1/mail/messages/{id}/attachments"),
+        &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    // Inject size_human for JS convenience
+    let enriched: Vec<serde_json::Value> = list.into_iter().map(|mut a| {
+        let size = a.get("size").and_then(|s| s.as_i64()).unwrap_or(0);
+        let sh = if size < 1024 { format!("{size} B") }
+            else if size < 1_048_576 { format!("{:.1} KB", size as f64/1024.0) }
+            else { format!("{:.1} MB", size as f64/1_048_576.0) };
+        if let Some(obj) = a.as_object_mut() { obj.insert("size_human".into(), sh.into()); }
+        a
+    }).collect();
+    let json = serde_json::to_string(&enriched).unwrap_or_else(|_| "[]".into());
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json).into_response())
 }
 
 // ─── /mail/rules (legacy redirect) ───────────────────────────────────────────
@@ -425,13 +475,47 @@ async fn contacts_page(
 
 // ─── /mail/compose ───────────────────────────────────────────────────────────
 
+#[derive(Deserialize)]
+struct ComposeQuery {
+    to:       Option<String>,
+    reply_to: Option<String>,
+    forward:  Option<String>,
+    #[allow(dead_code)] folder: Option<String>,
+}
+
 async fn mail_compose_page(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<ComposeQuery>,
 ) -> WebResult<Response> {
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(MailComposeTpl { me, error: None }.into_response())
+    let (t, u) = ctx_of(&me);
+
+    // Pre-fill fields from reply/forward
+    let (prefill_to, prefill_subject, prefill_body) = if let Some(ref orig_id) = q.reply_to.as_ref().or(q.forward.as_ref()) {
+        match get_json::<MessageDetail>(&st, &st.backends.mail, &format!("/api/v1/mail/messages/{orig_id}"), &headers, Some((&t, &u))).await? {
+            Some(orig) => {
+                let is_fwd = q.forward.is_some();
+                let to = if is_fwd { String::new() } else {
+                    orig.from_addr.as_deref().unwrap_or("").to_string()
+                };
+                let subj_prefix = if is_fwd { "Fwd: " } else { "Re: " };
+                let subj = format!("{}{}", subj_prefix, orig.subject.as_deref().unwrap_or(""));
+                let body_prefix = format!("\n\n--- Mensagem original ---\nDe: {}\nData: {}\n\n{}",
+                    orig.from_addr.as_deref().unwrap_or(""),
+                    orig.date.as_deref().unwrap_or(""),
+                    orig.body_text.as_deref().unwrap_or(""),
+                );
+                (to, subj, body_prefix)
+            }
+            None => (q.to.unwrap_or_default(), String::new(), String::new()),
+        }
+    } else {
+        (q.to.unwrap_or_default(), String::new(), String::new())
+    };
+
+    Ok(MailComposeTpl { me, error: None, prefill_to, prefill_subject, prefill_body }.into_response())
 }
 
 #[derive(Deserialize)]
@@ -470,7 +554,7 @@ async fn mail_compose_action(
     let (t, u) = ctx_of(&me);
     let to = split_addrs(&f.to);
     if to.is_empty() {
-        return Ok(MailComposeTpl { me, error: Some("Informe ao menos um destinatário.".into()) }
+        return Ok(MailComposeTpl { me, error: Some("Informe ao menos um destinatário.".into()), prefill_to: f.to.clone(), prefill_subject: f.subject.clone(), prefill_body: f.body_text.clone() }
             .into_response());
     }
     let payload = SendPayload {
@@ -487,10 +571,270 @@ async fn mail_compose_action(
         Ok(MailComposeTpl {
             me,
             error: Some(format!("Falha ao enviar (HTTP {status}).")),
+            prefill_to: String::new(), prefill_subject: String::new(), prefill_body: String::new(),
         }.into_response())
     }
 }
 
+
+// ─── /mail/search ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct MailSearchQuery { q: Option<String>, folder: Option<String> }
+
+async fn mail_search_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<MailSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let folders = dedup_folders(get_json::<Vec<Folder>>(
+        &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default());
+
+    let (messages, query) = if let Some(ref qstr) = q.q {
+        if !qstr.trim().is_empty() {
+            let enc = utf8_percent_encode(qstr, NON_ALPHANUMERIC).to_string();
+            let path = match &q.folder {
+                Some(f) if !f.is_empty() => {
+                    let fe = utf8_percent_encode(f, NON_ALPHANUMERIC).to_string();
+                    format!("/api/v1/mail/search?q={enc}&folder={fe}")
+                }
+                _ => format!("/api/v1/mail/search?q={enc}"),
+            };
+            let msgs = get_json::<Vec<MessageListItem>>(
+                &st, &st.backends.mail, &path, &headers, Some((&t, &u)),
+            ).await?.unwrap_or_default();
+            (msgs, qstr.clone())
+        } else {
+            (vec![], String::new())
+        }
+    } else {
+        (vec![], String::new())
+    };
+
+    Ok(askama_axum::IntoResponse::into_response(MailSearchTpl {
+        me, folders, messages, query,
+    }))
+}
+
+// ─── /mail/:id/attachments/:idx ──────────────────────────────────────────────
+
+async fn mail_attachment_proxy(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((id, idx)): Path<(String, u32)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let path = format!("/api/v1/mail/messages/{id}/attachments/{idx}");
+    let (status, ct, cd, body) = get_bytes(&st, &st.backends.mail, &path, &headers, Some((&t, &u))).await?;
+    if !(200..300).contains(&(status as i32)) {
+        return Ok((StatusCode::BAD_GATEWAY, "Anexo não encontrado").into_response());
+    }
+    let mut resp = axum::response::Response::new(axum::body::Body::from(body));
+    if let Some(v) = ct { resp.headers_mut().insert(header::CONTENT_TYPE, v.parse().unwrap_or(header::HeaderValue::from_static("application/octet-stream"))); }
+    if let Some(v) = cd { if let Ok(hv) = v.parse() { resp.headers_mut().insert(header::CONTENT_DISPOSITION, hv); } }
+    Ok(resp)
+}
+
+// ─── /mail/:id/flag ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct FlagForm { flag: String, value: String, folder: Option<String> }
+
+async fn mail_flag_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<FlagForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let set = f.value == "1" || f.value == "true";
+    let payload = serde_json::json!({ "flag": f.flag, "set": set });
+    let _ = patch_json(&st, &st.backends.mail, &format!("/api/v1/mail/messages/{id}/flags"), &headers, Some((&t, &u)), &payload).await;
+    let folder = f.folder.unwrap_or_else(|| "INBOX".into());
+    Ok(Redirect::to(&format!("/mail/{}?folder={}", id, utf8_percent_encode(&folder, NON_ALPHANUMERIC))).into_response())
+}
+
+// ─── /mail/:id/move ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct MoveForm { target_folder: String, from_folder: Option<String> }
+
+async fn mail_move_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<MoveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "destination": f.target_folder });
+    let _ = patch_json(&st, &st.backends.mail, &format!("/api/v1/mail/messages/{id}/move"), &headers, Some((&t, &u)), &payload).await;
+    let back = f.from_folder.unwrap_or_else(|| "INBOX".into());
+    Ok(Redirect::to(&format!("/mail?folder={}", utf8_percent_encode(&back, NON_ALPHANUMERIC))).into_response())
+}
+
+// ─── /mail/:id/delete ────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct DeleteForm { folder: Option<String> }
+
+async fn mail_delete_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<DeleteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let _ = delete_at(&st, &st.backends.mail, &format!("/api/v1/mail/messages/{id}"), &headers, Some((&t, &u))).await;
+    let back = f.folder.unwrap_or_else(|| "INBOX".into());
+    Ok(Redirect::to(&format!("/mail?folder={}", utf8_percent_encode(&back, NON_ALPHANUMERIC))).into_response())
+}
+
+// ─── /drive extras ───────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct DriveSearchQuery { q: Option<String> }
+
+async fn drive_search_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<DriveSearchQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let (files, query) = if let Some(ref qstr) = q.q {
+        if !qstr.trim().is_empty() {
+            let payload = serde_json::json!({ "query": qstr });
+            let results = match post_json(&st, &st.backends.drive, "/api/v1/drive/files/search", &headers, Some((&t, &u)), &payload).await {
+                Ok(_) => {
+                    get_json::<Vec<DriveFile>>(&st, &st.backends.drive,
+                        &format!("/api/v1/drive/files/search?q={}", utf8_percent_encode(qstr, NON_ALPHANUMERIC)),
+                        &headers, Some((&t, &u))).await?.unwrap_or_default()
+                }
+                Err(_) => vec![],
+            };
+            (results, qstr.clone())
+        } else { (vec![], String::new()) }
+    } else { (vec![], String::new()) };
+    let quota = get_json::<DriveQuota>(&st, &st.backends.drive, "/api/v1/drive/quota", &headers, Some((&t, &u))).await?;
+    Ok(askama_axum::IntoResponse::into_response(DriveTpl { me, parent_id: None, files, quota }))
+}
+
+#[derive(Deserialize)]
+struct MkdirForm { name: String, parent_id: Option<String> }
+
+async fn drive_mkdir_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<MkdirForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "name": f.name, "parent_id": f.parent_id });
+    let _ = post_json(&st, &st.backends.drive, "/api/v1/drive/files/mkdir", &headers, Some((&t, &u)), &payload).await;
+    let back = match &f.parent_id {
+        Some(p) if !p.is_empty() => format!("/drive?parent_id={}", utf8_percent_encode(p, NON_ALPHANUMERIC)),
+        _ => "/drive".into(),
+    };
+    Ok(Redirect::to(&back).into_response())
+}
+
+#[derive(Deserialize)]
+struct RenameForm { name: String, parent_id: Option<String> }
+
+async fn drive_rename_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<RenameForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "name": f.name });
+    let _ = patch_json(&st, &st.backends.drive, &format!("/api/v1/drive/files/{id}"), &headers, Some((&t, &u)), &payload).await;
+    let back = match &f.parent_id {
+        Some(p) if !p.is_empty() => format!("/drive?parent_id={}", utf8_percent_encode(p, NON_ALPHANUMERIC)),
+        _ => "/drive".into(),
+    };
+    Ok(Redirect::to(&back).into_response())
+}
+
+#[derive(Deserialize)]
+struct DriveMoveForm { target_parent_id: Option<String>, from_parent_id: Option<String> }
+
+async fn drive_move_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<DriveMoveForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "parent_id": f.target_parent_id });
+    let _ = patch_json(&st, &st.backends.drive, &format!("/api/v1/drive/files/{id}/move"), &headers, Some((&t, &u)), &payload).await;
+    let back = match &f.from_parent_id {
+        Some(p) if !p.is_empty() => format!("/drive?parent_id={}", utf8_percent_encode(p, NON_ALPHANUMERIC)),
+        _ => "/drive".into(),
+    };
+    Ok(Redirect::to(&back).into_response())
+}
+
+// ─── /contacts/gal ───────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct GalQuery { q: Option<String> }
+
+async fn contacts_gal_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<GalQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let contacts = if let Some(ref qstr) = q.q {
+        if !qstr.trim().is_empty() {
+            let enc = utf8_percent_encode(qstr, NON_ALPHANUMERIC).to_string();
+            get_json::<Vec<GalContact>>(&st, &st.backends.contacts,
+                &format!("/api/v1/gal/search?q={enc}"), &headers, Some((&t, &u)),
+            ).await?.unwrap_or_default()
+        } else { vec![] }
+    } else { vec![] };
+    let query = q.q.unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(crate::templates::GalSearchTpl { me, contacts, query }))
+}
+
+// ─── /api/gal/search (JSON autocomplete) ─────────────────────────────────────
+
+async fn gal_search_api(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<GalQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok((StatusCode::UNAUTHORIZED, "[]").into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let results = if let Some(ref qstr) = q.q {
+        if !qstr.trim().is_empty() {
+            let enc = utf8_percent_encode(qstr, NON_ALPHANUMERIC).to_string();
+            get_json::<Vec<GalContact>>(&st, &st.backends.contacts,
+                &format!("/api/v1/gal/search?q={enc}"), &headers, Some((&t, &u)),
+            ).await?.unwrap_or_default()
+        } else { vec![] }
+    } else { vec![] };
+    let json = serde_json::to_string(&results).unwrap_or_else(|_| "[]".into());
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json).into_response())
+}
 
 // ─── /drive/:id/share ────────────────────────────────────────────────────────
 
@@ -1602,21 +1946,138 @@ async fn meet_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> 
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(askama_axum::IntoResponse::into_response(MeetTpl { me }))
+    let meetings: Vec<MeetRoom> = get_json(&st, &st.backends.meet, "/api/v1/meetings",
+        &headers, Some((&me.tenant_id, &me.user_id)),
+    ).await?.unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(MeetTpl { me, meetings }))
 }
 
 async fn meet_new_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
-    let Some(_me) = require_me(&st, &headers).await? else {
+    let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(Redirect::to("/meet").into_response())
+    Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
+        me,
+        room_id:   String::new(),
+        room_name: String::new(),
+        jitsi_domain: st.jitsi.domain.clone(),
+        jitsi_jwt: String::new(),
+        jitsi_enabled: st.jitsi.is_enabled(),
+        join_only: false,
+    }))
 }
 
-async fn meet_join_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
-    let Some(_me) = require_me(&st, &headers).await? else {
+#[derive(Deserialize)]
+struct MeetCreateForm { name: Option<String> }
+
+#[derive(serde::Deserialize)]
+struct MeetCreated { id: String, #[serde(default)] name: Option<String> }
+
+#[derive(serde::Deserialize)]
+struct MeetTokenResp { token: String }
+
+async fn meet_create_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<MeetCreateForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(Redirect::to("/meet").into_response())
+    let (t, u) = ctx_of(&me);
+    let name = f.name.filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| format!("Reunião de {}", me.display_name.as_deref().unwrap_or(&me.email)));
+    let payload = serde_json::json!({ "name": name });
+    // Create meeting
+    let meeting: Option<MeetCreated> = {
+        let url = format!("{}/api/v1/meetings", st.backends.meet.trim_end_matches('/'));
+        let mut req = st.http.post(&url).json(&payload);
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        let resp = req.send().await?;
+        if resp.status().is_success() { resp.json().await.ok() } else { None }
+    };
+    let meeting = match meeting {
+        Some(m) => m,
+        None => return Ok(Redirect::to("/meet").into_response()),
+    };
+    // Get JWT token
+    let token_resp: Option<MeetTokenResp> = {
+        let url = format!("{}/api/v1/meetings/{}/tokens", st.backends.meet.trim_end_matches('/'), meeting.id);
+        let mut req = st.http.post(&url).json(&serde_json::json!({"role":"moderator"}));
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        let resp = req.send().await?;
+        if resp.status().is_success() { resp.json().await.ok() } else { None }
+    };
+    let jwt = token_resp.map(|r| r.token).unwrap_or_default();
+    let room_name = format!("{}{}", st.jitsi.room_prefix, meeting.id);
+    Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
+        me,
+        room_id:   meeting.id,
+        room_name,
+        jitsi_domain: st.jitsi.domain.clone(),
+        jitsi_jwt: jwt,
+        jitsi_enabled: st.jitsi.is_enabled(),
+        join_only: false,
+    }))
+}
+
+#[derive(Deserialize)]
+struct MeetJoinQuery { room: Option<String> }
+
+async fn meet_join_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<MeetJoinQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let room_name = q.room.unwrap_or_else(|| format!("{}{}", st.jitsi.room_prefix, uuid_v4()));
+    Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
+        me,
+        room_id:   room_name.clone(),
+        room_name,
+        jitsi_domain: st.jitsi.domain.clone(),
+        jitsi_jwt: String::new(),
+        jitsi_enabled: st.jitsi.is_enabled(),
+        join_only: true,
+    }))
+}
+
+async fn meet_room_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    // Get JWT as participant
+    let token_resp: Option<MeetTokenResp> = {
+        let url = format!("{}/api/v1/meetings/{}/tokens", st.backends.meet.trim_end_matches('/'), id);
+        let mut req = st.http.post(&url).json(&serde_json::json!({"role":"participant"}));
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        let resp = req.send().await?;
+        if resp.status().is_success() { resp.json().await.ok() } else { None }
+    };
+    let jwt = token_resp.map(|r| r.token).unwrap_or_default();
+    let room_name = format!("{}{}", st.jitsi.room_prefix, id);
+    Ok(askama_axum::IntoResponse::into_response(MeetRoomTpl {
+        me,
+        room_id:   id,
+        room_name,
+        jitsi_domain: st.jitsi.domain.clone(),
+        jitsi_jwt: jwt,
+        jitsi_enabled: st.jitsi.is_enabled(),
+        join_only: false,
+    }))
+}
+
+fn uuid_v4() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    format!("{:032x}", t)
 }
 
 // ─── /settings ───────────────────────────────────────────────────────────────
@@ -1660,6 +2121,7 @@ async fn settings_page(
     let (t, u) = ctx_of(&me);
     let tab = q.tab.unwrap_or_else(|| "profile".into());
 
+    // Load sieve script only when on filters tab
     let (sieve_script, sieve_error) = if tab == "filters" {
         match get_json::<serde_json::Value>(
             &st, &st.backends.mail, "/api/v1/mail/sieve", &headers, Some((&t, &u)),
@@ -1668,25 +2130,33 @@ async fn settings_page(
             Ok(None)    => (None, None),
             Err(e)      => (None, Some(format!("{e}"))),
         }
-    } else {
-        (None, None)
-    };
+    } else { (None, None) };
+
+    // Load vacation (autoreply) settings
+    let vacation = if tab == "autoreply" {
+        get_json::<serde_json::Value>(&st, &st.backends.mail, "/api/v1/mail/vacation", &headers, Some((&t, &u))).await.ok().flatten()
+    } else { None };
+
+    let autoreply_enabled = vacation.as_ref().and_then(|v| v.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false);
+    let autoreply_subject = vacation.as_ref().and_then(|v| v.get("subject")).and_then(|v| v.as_str()).map(String::from);
+    let autoreply_body    = vacation.as_ref().and_then(|v| v.get("body")).and_then(|v| v.as_str()).map(String::from);
+    let autoreply_start   = vacation.as_ref().and_then(|v| v.get("start_date")).and_then(|v| v.as_str()).map(String::from);
+    let autoreply_end     = vacation.as_ref().and_then(|v| v.get("end_date")).and_then(|v| v.as_str()).map(String::from);
+
+    // Load signature settings from mail service
+    let sig_data = if tab == "signature" {
+        get_json::<serde_json::Value>(&st, &st.backends.mail, "/api/v1/mail/signature", &headers, Some((&t, &u))).await.ok().flatten()
+    } else { None };
+    let signature_enabled = sig_data.as_ref().and_then(|v| v.get("enabled")).and_then(|v| v.as_bool()).unwrap_or(false);
+    let signature_body    = sig_data.as_ref().and_then(|v| v.get("body")).and_then(|v| v.as_str()).map(String::from);
 
     Ok(askama_axum::IntoResponse::into_response(SettingsTpl {
-        tab,
-        flash:             q.flash,
-        logout_url:        st.public.auth_logout_path.clone(),
-        kc_account:        st.public.kc_account.clone(),
-        signature_enabled: false,
-        signature_body:    None,
-        autoreply_enabled: false,
-        autoreply_subject: None,
-        autoreply_body:    None,
-        autoreply_start:   None,
-        autoreply_end:     None,
-        sieve_script,
-        sieve_error,
-        me,
+        tab, flash: q.flash,
+        logout_url: st.public.auth_logout_path.clone(),
+        kc_account: st.public.kc_account.clone(),
+        signature_enabled, signature_body,
+        autoreply_enabled, autoreply_subject, autoreply_body, autoreply_start, autoreply_end,
+        sieve_script, sieve_error, me,
     }))
 }
 
@@ -1719,11 +2189,21 @@ async fn settings_signature_save(
 
 async fn settings_autoreply_save(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
-    Form(_f): Form<AutoreplyForm>,
+    Form(f): Form<AutoreplyForm>,
 ) -> WebResult<Response> {
-    let Some(_me) = require_me(&st, &headers).await? else {
+    let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
+    let (t, u) = ctx_of(&me);
+    let enabled = f.enabled.as_deref() == Some("1");
+    let payload = serde_json::json!({
+        "enabled":    enabled,
+        "subject":    f.subject.unwrap_or_default(),
+        "body":       f.body.unwrap_or_default(),
+        "start_date": f.start_date,
+        "end_date":   f.end_date,
+    });
+    let _ = put_json(&st, &st.backends.mail, "/api/v1/mail/vacation", &headers, Some((&t, &u)), &payload).await;
     Ok(Redirect::to("/settings?tab=autoreply&flash=Resposta+automática+salva").into_response())
 }
 
@@ -1734,7 +2214,8 @@ async fn settings_notifications_save(
     let Some(_me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(Redirect::to("/settings?tab=notifications&flash=Notificações+salvas").into_response())
+    // Notification preferences are stored client-side (no dedicated backend endpoint)
+    Ok(Redirect::to("/settings?tab=notifications&flash=Preferências+salvas").into_response())
 }
 
 async fn settings_filters_save(
