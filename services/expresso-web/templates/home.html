@@ -2,45 +2,138 @@
 {% block nav %}{% let current = "home" %}{% include "_appnav.html" %}{% endblock %}
 {% block title %}Início · Expresso{% endblock %}
 {% block body %}
-<section class="home-hero">
-  <h1>Bem-vindo, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}</h1>
-  <p class="muted">Plataforma colaborativa Expresso — selecione um módulo abaixo.</p>
-</section>
-<section class="home-grid">
-  <a class="home-tile" href="/mail">
-    <div class="home-tile-icon">✉</div>
-    <div class="home-tile-title">Mail</div>
-    <div class="home-tile-desc">Caixa postal, envio e regras Sieve.</div>
-  </a>
-  <a class="home-tile" href="/calendar">
-    <div class="home-tile-icon">📅</div>
-    <div class="home-tile-title">Agenda</div>
-    <div class="home-tile-desc">Eventos, convites iTIP e calendários compartilhados.</div>
-  </a>
-  <a class="home-tile" href="/contacts">
-    <div class="home-tile-icon">👥</div>
-    <div class="home-tile-title">Contatos</div>
-    <div class="home-tile-desc">Cadernos vCard com sincronização CardDAV.</div>
-  </a>
-  <a class="home-tile" href="/drive">
-    <div class="home-tile-icon">💾</div>
-    <div class="home-tile-title">Drive</div>
-    <div class="home-tile-desc">Arquivos, versões e compartilhamento com expiração.</div>
-  </a>
-  <a class="home-tile" href="/chat">
-    <div class="home-tile-icon">💬</div>
-    <div class="home-tile-title">Chat</div>
-    <div class="home-tile-desc">Mensagens instantâneas e canais de equipe.</div>
-  </a>
-  <a class="home-tile" href="/meet">
-    <div class="home-tile-icon">🎥</div>
-    <div class="home-tile-title">Meet</div>
-    <div class="home-tile-desc">Videoconferências com Jitsi integrado.</div>
-  </a>
-  <a class="home-tile" href="/me">
-    <div class="home-tile-icon">👤</div>
-    <div class="home-tile-title">Minha sessão</div>
-    <div class="home-tile-desc">Perfil, MFA e segurança da conta.</div>
-  </a>
-</section>
+<div class="home-page">
+
+  <!-- Saudação -->
+  <header class="home-greeting">
+    <h1>Olá, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
+    <span class="muted small">Plataforma Expresso — visão geral do dia</span>
+  </header>
+
+  <!-- Dashboard grid: widgets principais -->
+  <div class="home-dashboard">
+
+    <!-- Mail -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">✉</span>
+        <a class="home-widget-title" href="{% if !inbox_id.is_empty() %}/mail?folder={{ inbox_id }}{% else %}/mail{% endif %}">Mail</a>
+        {% if mail_unread > 0 %}
+          <span class="home-badge home-badge-accent">{{ mail_unread }} não lidas</span>
+        {% endif %}
+        <a class="btn btn-ghost btn-sm" href="/mail/compose">Escrever</a>
+      </div>
+      {% if mail_unread == 0 %}
+        <p class="muted small home-widget-empty">Caixa de entrada em dia. ✓</p>
+      {% else %}
+        <p class="small" style="padding:.5rem 0">
+          Você tem <strong>{{ mail_unread }}</strong> mensagem{% if mail_unread != 1 %}s{% endif %} não lida{% if mail_unread != 1 %}s{% endif %}.
+        </p>
+        <a class="btn btn-primary btn-sm" href="{% if !inbox_id.is_empty() %}/mail?folder={{ inbox_id }}{% else %}/mail{% endif %}">Abrir caixa de entrada</a>
+      {% endif %}
+    </div>
+
+    <!-- Calendário / próximos eventos -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">📅</span>
+        <a class="home-widget-title" href="/calendar">Agenda</a>
+        <a class="btn btn-ghost btn-sm" href="/calendar">Ver tudo</a>
+      </div>
+      {% if events.is_empty() %}
+        <p class="muted small home-widget-empty">Nenhum evento próximo.</p>
+      {% else %}
+        <ul class="home-event-list">
+          {% for ev in events %}
+          <li class="home-event-item">
+            <span class="home-event-time">{{ ev.starts }}</span>
+            <span class="home-event-name">{{ ev.summary }}</span>
+            {% if ev.is_meet %}
+              {% match ev.meet_room_id %}
+                {% when Some with (rid) %}
+                  <a class="btn btn-primary btn-sm" href="/meet/{{ rid }}" style="margin-left:auto">Entrar</a>
+                {% when None %}
+                  <span class="home-badge home-badge-meet" style="margin-left:auto">Meet</span>
+              {% endmatch %}
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <!-- Drive — arquivos recentes -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">💾</span>
+        <a class="home-widget-title" href="/drive">Drive</a>
+        <a class="btn btn-ghost btn-sm" href="/drive">Abrir</a>
+      </div>
+      {% if drive_files.is_empty() %}
+        <p class="muted small home-widget-empty">Nenhum arquivo recente.</p>
+      {% else %}
+        <ul class="home-file-list">
+          {% for f in drive_files %}
+          <li class="home-file-item">
+            <span>{{ f.icon() }}</span>
+            <a class="home-file-name" href="/drive/{{ f.id }}">{{ f.name }}</a>
+          </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <!-- Chat -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">💬</span>
+        <a class="home-widget-title" href="/chat">Chat</a>
+        {% if chat_unread > 0 %}
+          <span class="home-badge home-badge-accent">{{ chat_unread }} não lidas</span>
+        {% endif %}
+        <a class="btn btn-ghost btn-sm" href="/chat">Abrir</a>
+      </div>
+      {% if chat_unread == 0 %}
+        <p class="muted small home-widget-empty">Sem mensagens novas.</p>
+      {% else %}
+        <p class="small" style="padding:.5rem 0">
+          <strong>{{ chat_unread }}</strong> mensagem{% if chat_unread != 1 %}s{% endif %} não lida{% if chat_unread != 1 %}s{% endif %} nos canais.
+        </p>
+        <a class="btn btn-primary btn-sm" href="/chat">Ver mensagens</a>
+      {% endif %}
+    </div>
+
+    <!-- Meet -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">🎥</span>
+        <a class="home-widget-title" href="/meet">Meet</a>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;padding:.5rem 0">
+        <form method="post" action="/meet/new" style="display:contents">
+          <button class="btn btn-primary btn-sm" type="submit">Iniciar agora</button>
+        </form>
+        <a class="btn btn-ghost btn-sm" href="/meet/schedule">📅 Agendar</a>
+        <a class="btn btn-ghost btn-sm" href="/meet">Histórico</a>
+      </div>
+    </div>
+
+    <!-- Links rápidos -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">⚡</span>
+        <span class="home-widget-title">Acesso rápido</span>
+      </div>
+      <div class="home-quick-links">
+        <a class="home-quick-item" href="/contacts">👥 Contatos</a>
+        <a class="home-quick-item" href="/mail/compose">✉ Novo email</a>
+        <a class="home-quick-item" href="/calendar">📅 Calendário</a>
+        <a class="home-quick-item" href="/settings">⚙ Configurações</a>
+        <a class="home-quick-item" href="/me">👤 Minha conta</a>
+        <a class="home-quick-item" href="/drive">💾 Drive</a>
+      </div>
+    </div>
+
+  </div>
+</div>
 {% endblock %}

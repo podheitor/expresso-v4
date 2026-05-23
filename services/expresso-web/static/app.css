@@ -692,6 +692,95 @@ body:has(.auth-card) {
 .home-tile-title { font-weight: 700; font-size: 1rem; }
 .home-tile-desc { font-size: .82rem; color: var(--text-secondary); }
 
+/* ── Home dashboard (M365-style) ─────────────────────────────────────────────── */
+.home-page { max-width: 1200px; margin: 0 auto; padding: 0 1rem 3rem; }
+.home-greeting { padding: 2rem 0 1.5rem; }
+.home-greeting h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+
+.home-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.home-widget {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+.home-widget-header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding-bottom: .5rem;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.home-widget-icon { font-size: 1.1rem; line-height: 1; }
+.home-widget-title {
+  font-weight: 600;
+  font-size: .95rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  flex: 1;
+}
+.home-widget-title:hover { color: var(--accent); }
+.home-widget-empty { padding: .5rem 0; }
+
+.home-badge {
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .1rem .5rem;
+  border-radius: 1rem;
+}
+.home-badge-accent { background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }
+.home-badge-meet   { background: color-mix(in srgb, #8b5cf6 20%, transparent); color: #8b5cf6; }
+
+/* event list inside widget */
+.home-event-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .35rem; }
+.home-event-item {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .85rem;
+  padding: .25rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.home-event-item:last-child { border-bottom: none; }
+.home-event-time { font-weight: 600; min-width: 3.5rem; color: var(--accent); font-size: .8rem; }
+.home-event-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* drive files */
+.home-file-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .25rem; }
+.home-file-item { display: flex; align-items: center; gap: .4rem; font-size: .85rem; }
+.home-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); text-decoration: none; }
+.home-file-name:hover { color: var(--accent); }
+
+/* quick links grid */
+.home-quick-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .4rem;
+}
+.home-quick-item {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .4rem .6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  color: var(--text-primary);
+  font-size: .82rem;
+  text-decoration: none;
+  transition: background .12s;
+}
+.home-quick-item:hover { background: var(--bg-hover); color: var(--accent); text-decoration: none; }
+
 /* ── Sieve code ─────────────────────────────────────────────────────────────── */
 pre {
   background: var(--bg-raised);

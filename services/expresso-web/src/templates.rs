@@ -333,10 +333,45 @@ pub struct DriveEditTpl {
     pub iframe_url: String,
 }
 
+// ─── Home dashboard ───────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct HomeMailSummary {
+    pub unread_count: i64,
+    pub inbox_id:     String,
+}
+
+#[derive(Debug, Clone)]
+pub struct HomeEvent {
+    pub id:           String,
+    pub calendar_id:  String,
+    pub summary:      String,
+    pub starts:       String,    // HH:MM or "Hoje HH:MM"
+    pub is_meet:      bool,
+    pub meet_room_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HomeDriveFile {
+    pub id:   String,
+    pub name: String,
+    pub kind: String,
+}
+impl HomeDriveFile {
+    pub fn icon(&self) -> &'static str {
+        if self.kind == "folder" { "📁" } else { "📄" }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "home.html")]
 pub struct HomeTpl {
-    pub me: Me,
+    pub me:          Me,
+    pub mail_unread: i64,
+    pub inbox_id:    String,
+    pub events:      Vec<HomeEvent>,
+    pub drive_files: Vec<HomeDriveFile>,
+    pub chat_unread: i64,
 }
 
 // ─── Calendar events ─────────────────────────────────────────────────────────

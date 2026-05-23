@@ -17,6 +17,7 @@ use crate::{
     templates::{
         AddressBook, Attachment, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl,
         DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl,
+        HomeEvent, HomeDriveFile,
         ShareRow, VersionRow, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl,
         DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl, Event, MonthCell,
         CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl,
@@ -120,7 +121,113 @@ async fn index(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebR
     let Some(me) = require_me(&st, &headers).await? else {
         return Ok(login_redirect(&uri).into_response());
     };
-    Ok(askama_axum::IntoResponse::into_response(HomeTpl { me }))
+    let (t, u) = ctx_of(&me);
+
+    // Mail: fetch INBOX unread count
+    let (mail_unread, inbox_id) = {
+        let folders: Vec<Folder> = {
+            let mut req = st.http.get(format!("{}/api/v1/folders", st.backends.mail.trim_end_matches('/')));
+            req = crate::upstream::fwd_cookie(req, &headers);
+            req = crate::upstream::inject_ctx(req, &t, &u);
+            match req.send().await {
+                Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        };
+        let inbox = folders.iter().find(|f| f.special_use.as_deref() == Some("\\Inbox"))
+            .or_else(|| folders.iter().find(|f| f.name.eq_ignore_ascii_case("INBOX")));
+        (
+            inbox.map(|f| f.unseen_count).unwrap_or(0),
+            inbox.map(|f| f.id.clone()).unwrap_or_default(),
+        )
+    };
+
+    // Calendar: next 5 events today + tomorrow
+    let events: Vec<HomeEvent> = {
+        let now = chrono_now_iso();
+        let date_prefix = &now[..10];
+        let calendars: Vec<Calendar> = {
+            let mut req = st.http.get(format!("{}/api/v1/calendars", st.backends.calendar.trim_end_matches('/')));
+            req = crate::upstream::fwd_cookie(req, &headers);
+            req = crate::upstream::inject_ctx(req, &t, &u);
+            match req.send().await {
+                Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        };
+        let default_cal = calendars.iter().find(|c| c.is_default).or_else(|| calendars.first());
+        if let Some(cal) = default_cal {
+            let url = format!("{}/api/v1/calendars/{}/events?start={}&limit=5",
+                st.backends.calendar.trim_end_matches('/'), cal.id, date_prefix);
+            let mut req = st.http.get(&url);
+            req = crate::upstream::fwd_cookie(req, &headers);
+            req = crate::upstream::inject_ctx(req, &t, &u);
+            match req.send().await {
+                Ok(r) if r.status().is_success() => {
+                    let raw: Vec<Event> = r.json().await.unwrap_or_default();
+                    raw.into_iter().filter_map(|e| {
+                        let starts = e.dtstart.as_ref().map(|s| {
+                            if s.len() >= 16 { format!("{}", &s[11..16]) } else { s.clone() }
+                        }).unwrap_or_default();
+                        let is_meet = e.location.as_deref()
+                            .map(|l| l.contains("/meet/") || l.contains("jitsi") || l.contains("expresso.local"))
+                            .unwrap_or(false);
+                        let meet_room_id = if is_meet {
+                            e.location.as_deref().and_then(|l| l.split("/meet/").nth(1))
+                                .map(|s| s.split('/').next().unwrap_or("").to_string())
+                                .filter(|s| !s.is_empty())
+                        } else { None };
+                        Some(HomeEvent {
+                            id:          e.id,
+                            calendar_id: e.calendar_id,
+                            summary:     e.summary.unwrap_or_else(|| "(sem título)".into()),
+                            starts,
+                            is_meet,
+                            meet_room_id,
+                        })
+                    }).take(5).collect()
+                }
+                _ => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        }
+    };
+
+    // Drive: recent 5 files
+    let drive_files: Vec<HomeDriveFile> = {
+        let url = format!("{}/api/v1/files?limit=5&sort=updated_at&order=desc",
+            st.backends.drive.trim_end_matches('/'));
+        let mut req = st.http.get(&url);
+        req = crate::upstream::fwd_cookie(req, &headers);
+        req = crate::upstream::inject_ctx(req, &t, &u);
+        match req.send().await {
+            Ok(r) if r.status().is_success() => {
+                let raw: Vec<DriveFile> = r.json().await.unwrap_or_default();
+                raw.into_iter().map(|f| HomeDriveFile { id: f.id, name: f.name, kind: f.kind }).collect()
+            }
+            _ => Vec::new(),
+        }
+    };
+
+    // Chat: total unread across channels
+    let chat_unread: i64 = {
+        let channels: Vec<ChatChannel> = {
+            let url = format!("{}/api/v1/channels", st.backends.chat.trim_end_matches('/'));
+            let mut req = st.http.get(&url);
+            req = crate::upstream::fwd_cookie(req, &headers);
+            req = crate::upstream::inject_ctx(req, &t, &u);
+            match req.send().await {
+                Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
+                _ => Vec::new(),
+            }
+        };
+        channels.iter().map(|c| c.unread_count).sum()
+    };
+
+    Ok(askama_axum::IntoResponse::into_response(HomeTpl {
+        me, mail_unread, inbox_id, events, drive_files, chat_unread,
+    }))
 }
 
 fn login_redirect(uri: &Uri) -> Redirect {
