@@ -33,9 +33,12 @@
     <section class="msg-list" aria-label="Mensagens">
       <div class="list-toolbar">
         <h1 class="folder-title">{{ selected }}</h1>
-        <form method="get" action="/mail/search" class="toolbar-search">
-          <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
-        </form>
+        <div class="toolbar-actions">
+          <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
+          <form method="get" action="/mail/search" class="toolbar-search">
+            <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
+          </form>
+        </div>
       </div>
 
       {% if messages.is_empty() %}
@@ -153,5 +156,58 @@ document.addEventListener('click', function(e){
     document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
   }
 });
+
+// ── Mark all as read ──────────────────────────────────────────────────────────
+function markAllRead() {
+  var rows = document.querySelectorAll('.msg-row.unread');
+  if (!rows.length) return;
+  var folder = new URLSearchParams(window.location.search).get('folder') || 'INBOX';
+  var pending = [];
+  rows.forEach(function(row) {
+    var href = row.getAttribute('href') || '';
+    var m = href.match(/\/mail\/([^?/]+)/);
+    if (!m) return;
+    pending.push(fetch('/mail/' + m[1] + '/flag', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      credentials: 'include',
+      body: 'flag=%5CSeen&value=1&folder=' + encodeURIComponent(folder),
+    }));
+    row.classList.remove('unread');
+  });
+  Promise.all(pending).then(function() {
+    document.querySelectorAll('.badge').forEach(function(b){ b.textContent = ''; b.style.display='none'; });
+  });
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+(function() {
+  var rows = Array.from(document.querySelectorAll('.msg-row'));
+  var cur = rows.findIndex(function(r){ return r.classList.contains('selected'); });
+
+  function navigate(delta) {
+    var next = Math.max(0, Math.min(rows.length - 1, cur + delta));
+    if (next !== cur && rows[next]) { cur = next; rows[next].click(); }
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    switch (e.key) {
+      case 'j': navigate(1); break;
+      case 'k': navigate(-1); break;
+      case 'c': window.location.href = '/mail/compose'; break;
+      case 'r': {
+        var reply = document.querySelector('.detail-actions a[href*="reply_to"]');
+        if (reply) window.location.href = reply.getAttribute('href');
+        break;
+      }
+      case '/': e.preventDefault(); {
+        var sq = document.querySelector('.search-input-sm');
+        if (sq) { sq.focus(); }
+        break;
+      }
+    }
+  });
+})();
 </script>
 {% endblock %}
