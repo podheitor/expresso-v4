@@ -143,10 +143,15 @@
           <span id="chat-reply-text"></span>
           <button class="btn btn-ghost btn-sm" onclick="clearReply()">✕</button>
         </div>
-        <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)">
+        <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)" enctype="multipart/form-data">
           <input type="hidden" name="parent_id" id="chat-parent-id" value="">
+          <ul class="chat-attach-preview" id="chat-attach-preview" style="display:none"></ul>
           <div class="chat-compose-row">
-            <div class="chat-emoji-wrap">
+            <label class="chat-action-btn chat-attach-btn" title="Anexar arquivo">
+              📎
+              <input type="file" id="chat-file-input" style="display:none" multiple onchange="handleChatFileSelect(this.files)">
+            </label>
+          <div class="chat-emoji-wrap">
               <button type="button" class="chat-action-btn chat-emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
               <div class="chat-emoji-picker" id="chat-emoji-picker" style="display:none">
                 <button type="button" class="chat-emoji-item" onclick="insertEmoji('😊')">😊</button>
@@ -424,6 +429,49 @@ document.addEventListener('click', function(e) {
     if (p) p.style.display = 'none';
   }
 });
+
+// ── Chat file upload ──────────────────────────────────────────────────────────
+var _chatFiles = [];
+function handleChatFileSelect(fileList) {
+  Array.from(fileList).forEach(function(f) {
+    if (!_chatFiles.find(function(x){ return x.name===f.name && x.size===f.size; }))
+      _chatFiles.push(f);
+  });
+  renderChatAttachPreview();
+}
+function removeChatFile(idx) {
+  _chatFiles.splice(idx, 1);
+  renderChatAttachPreview();
+}
+function renderChatAttachPreview() {
+  var ul = document.getElementById('chat-attach-preview');
+  if (!ul) return;
+  if (!_chatFiles.length) { ul.style.display = 'none'; ul.innerHTML = ''; return; }
+  ul.style.display = 'flex';
+  ul.innerHTML = '';
+  _chatFiles.forEach(function(f, i) {
+    var kb = (f.size/1024).toFixed(1);
+    ul.innerHTML += '<li class="chat-attach-item">📎 ' + escHtml(f.name) +
+      ' <span class="muted small">(' + kb + ' KB)</span>' +
+      '<button type="button" class="chat-action-btn" onclick="removeChatFile(' + i + ')">✕</button></li>';
+  });
+}
+
+// Patch handleChatSend to include files
+var _origHandleChatSend = handleChatSend;
+handleChatSend = function(e, form) {
+  e.preventDefault();
+  var body = form.querySelector('[name=body]');
+  if (!body.value.trim() && !_chatFiles.length) return;
+  var data = new FormData(form);
+  _chatFiles.forEach(function(f) { data.append('attachments', f); });
+  fetch(form.action, { method: 'POST', body: data })
+    .then(function() {
+      body.value = ''; body.style.height = 'auto';
+      _chatFiles = []; renderChatAttachPreview();
+      clearReply(); loadNewMessages();
+    });
+};
 
 // ── Typing indicator (client-side only, simulates peer typing on poll) ───────
 var _typingTimer = null;

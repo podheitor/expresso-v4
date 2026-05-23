@@ -1501,3 +1501,13 @@ textarea[name="script"] {
 
 /* ── Calendar quick event (sprint #19996) ──────────────────────────────────── */
 /* (uses existing modal-overlay/modal-box + compose-form styles) */
+
+/* ── Chat file attach preview (sprint #19999) ──────────────────────────────── */
+.chat-attach-btn { cursor:pointer; }
+.chat-attach-preview { list-style:none; padding:.2rem .5rem; margin:0 0 .25rem; display:flex; flex-wrap:wrap; gap:.3rem; }
+.chat-attach-item { display:flex; align-items:center; gap:.3rem; font-size:.8rem; background:var(--bg-raised); border-radius:var(--radius); padding:.15rem .4rem; }
+
+/* ── Drive inline rename (sprint #20003) ─────────────────────────────────────── */
+.drive-rename-input { font-size:.875rem; padding:.1rem .4rem; border:1px solid var(--accent); border-radius:var(--radius); background:var(--bg-input,var(--bg-raised)); color:var(--text); width:14rem; }
+.drive-name { cursor:default; }
+.drive-name:hover { text-decoration:underline dotted; }
