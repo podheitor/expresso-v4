@@ -82,5 +82,74 @@
       <button type="submit" class="btn btn-primary">Salvar configurações</button>
     </div>
   </form>
+
+  <!-- Domain quota overrides -->
+  <div class="card stack" style="max-width:600px;margin-top:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <h2 style="margin:0">Quotas por domínio</h2>
+      <button class="btn btn-ghost btn-sm" onclick="addDomainQuotaRow()">+ Domínio</button>
+    </div>
+    <p class="muted small">Substitui as quotas globais para usuários em domínios específicos.</p>
+    <table class="admin-table" id="domain-quota-table">
+      <thead>
+        <tr><th>Domínio</th><th>Mail (MB)</th><th>Drive (GB)</th><th></th></tr>
+      </thead>
+      <tbody id="domain-quota-body">
+        <tr class="muted small" id="domain-quota-empty"><td colspan="4" style="text-align:center;padding:.75rem">Nenhuma regra por domínio. Usa quotas globais.</td></tr>
+      </tbody>
+    </table>
+    <div class="form-actions" style="margin-top:.5rem">
+      <button class="btn btn-primary btn-sm" onclick="saveDomainQuotas()">Salvar quotas</button>
+    </div>
+  </div>
 </div>
+<script>
+var _domainQuotas = [];
+(function loadDomainQuotas() {
+  fetch('/admin/api/domain-quotas', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(list) {
+      _domainQuotas = list || [];
+      renderDomainQuotas();
+    }).catch(function(){});
+})();
+function renderDomainQuotas() {
+  var tbody = document.getElementById('domain-quota-body');
+  var empty = document.getElementById('domain-quota-empty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!_domainQuotas.length) { tbody.appendChild(empty); return; }
+  _domainQuotas.forEach(function(q, i) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><input class="tasks-add-input" value="' + escCfg(q.domain) + '" data-field="domain" data-idx="' + i + '" style="width:11rem" onchange="updateDomainQuota('+i+',this)"></td>' +
+      '<td><input type="number" class="tasks-add-input" value="' + (q.mail_mb||'') + '" data-field="mail_mb" data-idx="'+i+'" style="width:5rem" min="0" onchange="updateDomainQuota('+i+',this)"></td>' +
+      '<td><input type="number" class="tasks-add-input" value="' + (q.drive_gb||'') + '" data-field="drive_gb" data-idx="'+i+'" style="width:5rem" min="0" onchange="updateDomainQuota('+i+',this)"></td>' +
+      '<td><button class="btn btn-ghost btn-sm" onclick="removeDomainQuota('+i+')">✕</button></td>';
+    tbody.appendChild(tr);
+  });
+}
+function addDomainQuotaRow() {
+  _domainQuotas.push({ domain: '', mail_mb: 1000, drive_gb: 10 });
+  renderDomainQuotas();
+}
+function updateDomainQuota(i, el) {
+  if (_domainQuotas[i]) _domainQuotas[i][el.dataset.field] = el.type === 'number' ? parseInt(el.value)||0 : el.value;
+}
+function removeDomainQuota(i) {
+  _domainQuotas.splice(i, 1);
+  renderDomainQuotas();
+}
+function saveDomainQuotas() {
+  fetch('/admin/api/domain-quotas', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(_domainQuotas),
+  }).then(function(r) {
+    if (r.ok) { var btn = document.querySelector('[onclick="saveDomainQuotas()"]'); if (btn) { var prev = btn.textContent; btn.textContent = '✓ Salvo'; setTimeout(function(){ btn.textContent = prev; }, 1500); } }
+    else alert('Erro ao salvar quotas.');
+  }).catch(function(){ alert('Erro de rede.'); });
+}
+function escCfg(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
 {% endblock %}

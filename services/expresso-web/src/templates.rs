@@ -794,10 +794,15 @@ pub struct MeetScheduleTpl {
 #[derive(Template)]
 #[template(path = "mail_search.html")]
 pub struct MailSearchTpl {
-    pub me:       Me,
-    pub folders:  Vec<Folder>,
-    pub messages: Vec<MessageListItem>,
-    pub query:    String,
+    pub me:                  Me,
+    pub folders:             Vec<Folder>,
+    pub messages:            Vec<MessageListItem>,
+    pub query:               String,
+    pub search_from:         String,
+    pub search_folder:       String,
+    pub search_date_from:    String,
+    pub search_date_to:      String,
+    pub search_has_attachment: bool,
 }
 
 #[derive(Template)]

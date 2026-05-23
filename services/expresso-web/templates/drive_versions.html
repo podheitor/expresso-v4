@@ -14,26 +14,46 @@
   {% if versions.is_empty() %}
     <div class="empty-state">Nenhuma versão arquivada. Uploads subsequentes do mesmo nome geram versões.</div>
   {% else %}
-  <table class="data-table">
-    <thead>
-      <tr><th>Versão</th><th>Tamanho</th><th>Tipo</th><th>Criada</th><th>Ações</th></tr>
-    </thead>
-    <tbody>
-      {% for v in versions %}
-      <tr>
-        <td class="mono">v{{ v.version_no }}</td>
-        <td class="mono muted">{{ v.size_human() }}</td>
-        <td class="mono muted">{% match v.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}—{% endmatch %}</td>
-        <td class="mono muted">{% match v.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
-        <td class="row-actions">
+  <div class="versions-timeline">
+    {% for v in versions %}
+    <div class="version-item{% if loop.first %} version-current{% endif %}">
+      <div class="version-dot"></div>
+      <div class="version-line"></div>
+      <div class="version-card card">
+        <div class="version-card-header">
+          <span class="version-badge{% if loop.first %} version-badge-current{% endif %}">v{{ v.version_no }}</span>
+          {% if loop.first %}<span class="badge" style="font-size:.7rem">Atual</span>{% endif %}
+          <span class="version-size muted small">{{ v.size_human() }}</span>
+          <span class="version-date muted small">{% match v.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</span>
+        </div>
+        <div class="version-mime muted small">{% match v.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}</div>
+        <div class="version-actions">
           <a class="btn btn-ghost btn-sm"
              href="/api/v1/drive/files/{{ file.id }}/versions/{{ v.version_no }}"
-             title="Baixar versão">↓ Baixar</a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+             title="Baixar esta versão">↓ Baixar</a>
+          {% if !loop.first %}
+          <form method="post" action="/drive/{{ file.id }}/versions/{{ v.version_no }}/restore"
+                onsubmit="return confirm('Restaurar v{{ v.version_no }} como versão atual?')">
+            <button class="btn btn-ghost btn-sm" type="submit" title="Restaurar esta versão">↩ Restaurar</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
   {% endif %}
 </div>
+<script>
+// Animate timeline items on load
+document.querySelectorAll('.version-item').forEach(function(el, i) {
+  el.style.opacity = '0';
+  el.style.transform = 'translateX(-10px)';
+  setTimeout(function() {
+    el.style.transition = 'opacity .25s ease, transform .25s ease';
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+  }, i * 60);
+});
+</script>
 {% endblock %}

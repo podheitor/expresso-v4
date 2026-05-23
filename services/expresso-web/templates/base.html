@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" id="expresso-root">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
+  <script>
+  // Apply theme immediately (before render) to avoid flash
+  (function() {
+    var t = localStorage.getItem('expresso_theme') ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+  </script>
 </head>
 <body>
   {% block nav %}{% endblock %}
@@ -35,6 +43,18 @@
     var c = localStorage.getItem('expresso_accent_color');
     if (c) document.documentElement.style.setProperty('--accent', c);
   })();
+  // Theme toggle API (callable from any page)
+  window.toggleTheme = function() {
+    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('expresso_theme', next);
+    document.querySelectorAll('[data-theme-label]').forEach(function(el){ el.textContent = next === 'dark' ? '☀ Claro' : '🌙 Escuro'; });
+  };
+  window.applyTheme = function(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('expresso_theme', t);
+  };
   (function() {
     var _g = false;
     document.addEventListener('keydown', function(e) {

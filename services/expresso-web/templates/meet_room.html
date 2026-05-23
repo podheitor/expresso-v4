@@ -29,6 +29,7 @@
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
       {% if is_moderator %}
         <button class="btn btn-ghost btn-sm" id="rec-btn" onclick="toggleRecording()" title="Iniciar/parar gravação">⏺ Gravar</button>
+        <button class="btn btn-ghost btn-sm" onclick="showRecordingsPanel()" title="Gravações desta sala">📼 Gravações</button>
         <form method="post" action="/meet/{{ room_id }}/end" style="display:inline" onsubmit="return confirm('Encerrar esta reunião para todos?')">
           <button class="btn btn-danger btn-sm" type="submit">⏹ Encerrar</button>
         </form>
@@ -553,6 +554,54 @@ function downloadWhiteboard() {
   a.download = 'whiteboard.png';
   a.click();
 }
+</script>
+
+<!-- Recordings panel modal -->
+<div class="modal-overlay" id="meet-recordings-modal" style="display:none" onclick="if(event.target.id==='meet-recordings-modal')hideRecordingsPanel()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <h3>Gravações</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideRecordingsPanel()">✕</button>
+    </div>
+    <div style="padding:.25rem 0">
+      <ul id="meet-recordings-list" style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.4rem">
+        <li class="muted small" id="meet-recordings-loading">Carregando…</li>
+      </ul>
+    </div>
+  </div>
+</div>
+<script>
+function showRecordingsPanel() {
+  var modal = document.getElementById('meet-recordings-modal');
+  if (modal) modal.style.display = 'flex';
+  fetch('/meet/{{ room_id }}/recordings', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(recs) {
+      var list = document.getElementById('meet-recordings-list');
+      var loading = document.getElementById('meet-recordings-loading');
+      if (loading) loading.remove();
+      if (!list) return;
+      if (!recs || !recs.length) { list.innerHTML = '<li class="muted small" style="padding:.5rem 0">Nenhuma gravação encontrada.</li>'; return; }
+      list.innerHTML = recs.map(function(r) {
+        var date = r.created_at ? new Date(r.created_at).toLocaleDateString('pt-BR') : '—';
+        var dur  = r.duration_seconds ? Math.round(r.duration_seconds/60) + 'min' : '';
+        return '<li style="display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-bottom:1px solid var(--border);font-size:.875rem">' +
+          '<span>📼</span>' +
+          '<div style="flex:1"><div>' + escRec(r.title || 'Gravação ' + date) + '</div>' +
+          '<div class="muted small">' + date + (dur ? ' · ' + dur : '') + '</div></div>' +
+          (r.url ? '<a class="btn btn-ghost btn-sm" href="' + escRec(r.url) + '" target="_blank" download>↓ Baixar</a>' : '') +
+          '</li>';
+      }).join('');
+    }).catch(function() {
+      var list = document.getElementById('meet-recordings-list');
+      if (list) list.innerHTML = '<li class="muted small" style="color:#ef4444">Erro ao carregar gravações.</li>';
+    });
+}
+function hideRecordingsPanel() {
+  var modal = document.getElementById('meet-recordings-modal');
+  if (modal) modal.style.display = 'none';
+}
+function escRec(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 </script>
 
 <!-- Invite modal -->

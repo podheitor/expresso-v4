@@ -56,7 +56,8 @@ pub fn router(state: AppState) -> Router {
         .route("/drive/:id/purge",  post(drive_purge_action))
         .route("/drive/:id/share",  get(drive_share_page).post(drive_share_create))
         .route("/drive/:id/share/:sid/revoke", post(drive_share_revoke))
-        .route("/drive/:id/versions", get(drive_versions_page))
+        .route("/drive/:id/versions",                       get(drive_versions_page))
+        .route("/drive/:id/versions/:vno/restore",          post(drive_version_restore))
         .route("/drive/:id/preview",  get(drive_preview_page))
         .route("/drive/:id/edit",     get(drive_edit_page))
         .route("/calendar",                           get(calendar_page))
@@ -103,8 +104,9 @@ pub fn router(state: AppState) -> Router {
         .route("/meet/new",       get(meet_new_page).post(meet_create_action))
         .route("/meet/schedule",  get(meet_schedule_page).post(meet_schedule_action))
         .route("/meet/join",      get(meet_join_page))
-        .route("/meet/:id",       get(meet_room_page))
-        .route("/meet/:id/end",   post(meet_end_action))
+        .route("/meet/:id",            get(meet_room_page))
+        .route("/meet/:id/end",        post(meet_end_action))
+        .route("/meet/:id/recordings", get(meet_recordings_api))
         // tasks
         .route("/tasks", get(tasks_page))
         // settings
@@ -134,6 +136,9 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/monitoring",                get(admin_monitoring_page))
         .route("/admin/audit",                     get(admin_audit_page))
         .route("/admin/config",                    get(admin_config_page).post(admin_config_save))
+        .route("/admin/api/stats",                 get(admin_api_stats))
+        .route("/admin/api/audit",                 get(admin_api_audit))
+        .route("/admin/api/domain-quotas",         get(admin_api_domain_quotas).put(admin_api_domain_quotas_save))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -759,7 +764,14 @@ async fn mail_compose_action(
 // ─── /mail/search ────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-struct MailSearchQuery { q: Option<String>, folder: Option<String> }
+struct MailSearchQuery {
+    q:              Option<String>,
+    folder:         Option<String>,
+    from:           Option<String>,
+    date_from:      Option<String>,
+    date_to:        Option<String>,
+    has_attachment: Option<String>,
+}
 
 async fn mail_search_page(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri,
@@ -773,16 +785,31 @@ async fn mail_search_page(
         &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
     ).await?.unwrap_or_default());
 
+    let search_from        = q.from.clone().unwrap_or_default();
+    let search_folder      = q.folder.clone().unwrap_or_default();
+    let search_date_from   = q.date_from.clone().unwrap_or_default();
+    let search_date_to     = q.date_to.clone().unwrap_or_default();
+    let search_has_attach  = q.has_attachment.as_deref() == Some("1");
+
     let (messages, query) = if let Some(ref qstr) = q.q {
         if !qstr.trim().is_empty() {
             let enc = utf8_percent_encode(qstr, NON_ALPHANUMERIC).to_string();
-            let path = match &q.folder {
-                Some(f) if !f.is_empty() => {
-                    let fe = utf8_percent_encode(f, NON_ALPHANUMERIC).to_string();
-                    format!("/api/v1/mail/search?q={enc}&folder={fe}")
-                }
-                _ => format!("/api/v1/mail/search?q={enc}"),
-            };
+            let mut path = format!("/api/v1/mail/search?q={enc}");
+            if !search_folder.is_empty() {
+                path.push_str(&format!("&folder={}", utf8_percent_encode(&search_folder, NON_ALPHANUMERIC)));
+            }
+            if !search_from.is_empty() {
+                path.push_str(&format!("&from={}", utf8_percent_encode(&search_from, NON_ALPHANUMERIC)));
+            }
+            if !search_date_from.is_empty() {
+                path.push_str(&format!("&date_from={}", utf8_percent_encode(&search_date_from, NON_ALPHANUMERIC)));
+            }
+            if !search_date_to.is_empty() {
+                path.push_str(&format!("&date_to={}", utf8_percent_encode(&search_date_to, NON_ALPHANUMERIC)));
+            }
+            if search_has_attach {
+                path.push_str("&has_attachment=1");
+            }
             let msgs = get_json::<Vec<MessageListItem>>(
                 &st, &st.backends.mail, &path, &headers, Some((&t, &u)),
             ).await?.unwrap_or_default();
@@ -796,6 +823,11 @@ async fn mail_search_page(
 
     Ok(askama_axum::IntoResponse::into_response(MailSearchTpl {
         me, folders, messages, query,
+        search_from,
+        search_folder,
+        search_date_from,
+        search_date_to,
+        search_has_attachment: search_has_attach,
     }))
 }
 
@@ -1158,6 +1190,21 @@ async fn drive_versions_page(
         &headers, Some((&t, &u)),
     ).await?.unwrap_or_default();
     Ok(DriveVersionsTpl { me, file, versions }.into_response())
+}
+
+async fn drive_version_restore(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((id, vno)): Path<(String, u32)>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "version_no": vno });
+    let _ = post_json(&st, &st.backends.drive,
+        &format!("/api/v1/drive/files/{id}/versions/{vno}/restore"),
+        &headers, Some((&t, &u)), &payload).await;
+    Ok(Redirect::to(&format!("/drive/{id}/versions")).into_response())
 }
 
 // ─── /drive/:id/edit — WOPI/Collabora iframe ─────────────────────────────────
@@ -2648,6 +2695,17 @@ async fn meet_end_action(
     Ok(Redirect::to("/meet").into_response())
 }
 
+async fn meet_recordings_api(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let recs = get_json::<serde_json::Value>(
+        &st, &st.backends.meet, &format!("/api/v1/meetings/{id}/recordings"), &headers, Some((&t, &u)),
+    ).await?.unwrap_or(serde_json::json!([]));
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], serde_json::to_string(&recs).unwrap_or_default()).into_response())
+}
 
 fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -3284,4 +3342,58 @@ async fn admin_config_save(
     });
     let _ = put_json(&st, &st.backends.auth, "/api/v1/admin/config", &headers, Some((&t, &u)), &body).await;
     Ok(Redirect::to("/admin/config?flash=Configurações+salvas").into_response())
+}
+
+async fn admin_api_stats(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "{}").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let stats = get_json::<serde_json::Value>(&st, &st.backends.auth, "/api/v1/admin/stats", &headers, Some((&t, &u)))
+        .await?.unwrap_or(serde_json::json!({}));
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], serde_json::to_string(&stats).unwrap_or_default()).into_response())
+}
+
+#[derive(Deserialize)]
+struct AdminAuditQuery { since: Option<String> }
+
+async fn admin_api_audit(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<AdminAuditQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "[]").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let path = if let Some(ref since) = q.since {
+        format!("/api/v1/admin/audit?since={}", utf8_percent_encode(since, NON_ALPHANUMERIC))
+    } else {
+        "/api/v1/admin/audit".into()
+    };
+    let events = get_json::<serde_json::Value>(&st, &st.backends.auth, &path, &headers, Some((&t, &u)))
+        .await?.unwrap_or(serde_json::json!([]));
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], serde_json::to_string(&events).unwrap_or_default()).into_response())
+}
+
+async fn admin_api_domain_quotas(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "[]").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let quotas = get_json::<serde_json::Value>(&st, &st.backends.auth, "/api/v1/admin/domain-quotas", &headers, Some((&t, &u)))
+        .await?.unwrap_or(serde_json::json!([]));
+    Ok(([(axum::http::header::CONTENT_TYPE, "application/json")], serde_json::to_string(&quotas).unwrap_or_default()).into_response())
+}
+
+async fn admin_api_domain_quotas_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    body: axum::body::Bytes,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::json!([]));
+    let _ = put_json(&st, &st.backends.auth, "/api/v1/admin/domain-quotas", &headers, Some((&t, &u)), &payload).await;
+    Ok((StatusCode::OK, "").into_response())
 }

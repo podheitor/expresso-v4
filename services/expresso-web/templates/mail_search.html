@@ -25,13 +25,50 @@
 
   <main class="mail-main">
     <div class="search-bar-full">
-      <form method="get" action="/mail/search" class="search-form-inline">
+      <form method="get" action="/mail/search" class="search-form-inline" id="mail-search-form">
         <input class="search-input-lg" type="search" name="q" value="{{ query }}" placeholder="Pesquisar mensagens..." autofocus>
         <button class="btn btn-primary" type="submit">Pesquisar</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="toggleSearchFilters()">⚙ Filtros</button>
         {% if !query.is_empty() %}
           <a class="btn btn-ghost btn-sm" href="/mail/search">Limpar</a>
         {% endif %}
       </form>
+      <!-- Advanced search filters -->
+      <div id="search-adv-panel" style="display:none;padding:.5rem .75rem 0;display:none">
+        <form method="get" action="/mail/search" style="display:flex;flex-wrap:wrap;gap:.5rem;align-items:flex-end">
+          <input type="hidden" name="q" id="search-adv-q">
+          <label class="mail-filter-group">
+            <span class="muted small">Remetente</span>
+            <input type="text" name="from" class="input-sm" placeholder="email ou nome" value="{{ search_from }}">
+          </label>
+          <label class="mail-filter-group">
+            <span class="muted small">Pasta</span>
+            <select name="folder" class="input-sm">
+              <option value="">Todas</option>
+              {% for f in folders %}
+              <option value="{{ f.name }}" {% if search_folder == f.name %}selected{% endif %}>{{ f.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="mail-filter-group">
+            <span class="muted small">A partir de</span>
+            <input type="date" name="date_from" class="input-sm" value="{{ search_date_from }}">
+          </label>
+          <label class="mail-filter-group">
+            <span class="muted small">Até</span>
+            <input type="date" name="date_to" class="input-sm" value="{{ search_date_to }}">
+          </label>
+          <label class="mail-filter-group">
+            <span class="muted small">Tem anexo</span>
+            <select name="has_attachment" class="input-sm">
+              <option value="">Qualquer</option>
+              <option value="1" {% if search_has_attachment %}selected{% endif %}>Sim</option>
+              <option value="0" {% if !search_has_attachment %}selected{% endif %}>Não</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-primary btn-sm">Aplicar</button>
+        </form>
+      </div>
     </div>
 
     <section class="msg-list">
@@ -63,4 +100,26 @@
     </section>
   </main>
 </div>
+<script>
+function toggleSearchFilters() {
+  var p = document.getElementById('search-adv-panel');
+  if (!p) return;
+  p.style.display = (p.style.display === 'none' || !p.style.display) ? 'block' : 'none';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var advQ = document.getElementById('search-adv-q');
+  var mainQ = document.querySelector('#mail-search-form input[name="q"]');
+  var panel = document.getElementById('search-adv-panel');
+  if (panel && '{{ search_from }}{{ search_date_from }}{{ search_date_to }}'.trim()) {
+    panel.style.display = 'block';
+  }
+  if (panel) {
+    panel.querySelectorAll('form').forEach(function(f) {
+      f.addEventListener('submit', function() {
+        if (advQ && mainQ) advQ.value = mainQ.value;
+      });
+    });
+  }
+});
+</script>
 {% endblock %}

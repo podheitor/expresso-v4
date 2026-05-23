@@ -43,16 +43,18 @@
 (function(){
   var btn = document.getElementById('themeToggle');
   var root = document.documentElement;
-  var stored = localStorage.getItem('theme') || 'dark';
+  // Unify with expresso_theme key (base.html already applied it before paint)
+  var stored = localStorage.getItem('expresso_theme') || localStorage.getItem('theme') ||
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   function apply(t){
     root.setAttribute('data-theme', t);
+    localStorage.setItem('expresso_theme', t);
     localStorage.setItem('theme', t);
-    btn.textContent = t === 'dark' ? '☀' : '☾';
+    if (btn) btn.textContent = t === 'dark' ? '☀' : '☾';
+    document.querySelectorAll('[data-theme-label]').forEach(function(el){ el.textContent = t === 'dark' ? '☀ Claro' : '🌙 Escuro'; });
   }
   apply(stored);
-  btn.addEventListener('click', function(){
-    apply(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-  });
+  if (btn) btn.addEventListener('click', function(){ apply(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'); });
 })();
 
 // ── Top-nav global search ─────────────────────────────────────────────────────

@@ -187,6 +187,7 @@
             {% match d.from_addr %}{% when Some with (a) %}<span class="mono muted"> &lt;{{ a }}&gt;</span>{% when None %}{% endmatch %}
           </div>
           <div class="detail-date muted small">{% match d.date %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}</div>
+          <div id="mail-detail-labels" data-mid="{{ d.id }}" style="display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.3rem"></div>
           {% if d.has_attachments %}
           <div class="detail-attachments">
             <span class="small muted">Anexos:</span>
@@ -561,12 +562,31 @@ function toggleMailLabel(msgId, name, icon) {
   saveLabels(map);
   renderAllLabels();
 }
+var LABEL_COLORS = {
+  'importante': '#ef4444',
+  'trabalho':   '#3b82f6',
+  'pessoal':    '#22c55e',
+  'aguardando': '#f59e0b',
+};
 function renderAllLabels() {
   var map = loadLabels();
   document.querySelectorAll('.msg-labels[data-mid]').forEach(function(el) {
     var tags = map[el.dataset.mid] || [];
-    el.innerHTML = tags.map(function(t){ return '<span class="mail-label-tag" title="' + t.name + '">' + t.icon + '</span>'; }).join('');
+    el.innerHTML = tags.map(function(t) {
+      var color = LABEL_COLORS[t.name] || '#6b7280';
+      return '<span class="mail-label-tag" title="' + t.name + '" style="background:' + color + ';color:#fff">' + t.icon + ' ' + t.name + '</span>';
+    }).join('');
   });
+  // Also render in detail header if open
+  var detailLabels = document.getElementById('mail-detail-labels');
+  if (detailLabels) {
+    var mid = detailLabels.dataset.mid;
+    var tags = mid ? (map[mid] || []) : [];
+    detailLabels.innerHTML = tags.map(function(t) {
+      var color = LABEL_COLORS[t.name] || '#6b7280';
+      return '<span class="mail-label-tag mail-label-detail" style="background:' + color + ';color:#fff">' + t.icon + ' ' + t.name + '</span>';
+    }).join('');
+  }
 }
 renderAllLabels();
 

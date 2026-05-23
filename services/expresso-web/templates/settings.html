@@ -111,32 +111,123 @@
 
       {% else if tab == "signature" %}
       <div class="card stack">
-        <h2>Assinatura de e-mail</h2>
-        <p class="muted small">Adicionada automaticamente ao final de todas as mensagens enviadas.</p>
+        <h2>Assinaturas de e-mail</h2>
+        <p class="muted small">Crie e alterne entre múltiplas assinaturas. A marcada como padrão é inserida automaticamente.</p>
         {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
-        <form class="compose-form" method="post" action="/settings/signature">
-          <label>
-            <span>Ativar assinatura</span>
-            <input type="checkbox" name="enabled" value="1"{% if signature_enabled %} checked{% endif %}>
+
+        <!-- Signature list -->
+        <div id="sig-list" style="display:flex;flex-direction:column;gap:.4rem;margin-bottom:.75rem"></div>
+        <button class="btn btn-ghost btn-sm" onclick="addSignature()">+ Nova assinatura</button>
+
+        <!-- Editor -->
+        <div id="sig-editor" style="display:none;margin-top:1rem">
+          <hr style="margin-bottom:.75rem">
+          <label><span>Nome da assinatura</span>
+            <input type="text" id="sig-editor-name" placeholder="ex: Trabalho, Pessoal…">
           </label>
-          <label>
-            <span>Assinatura (texto simples)</span>
-            <textarea name="body" rows="8" placeholder="-- &#10;Seu Nome&#10;Cargo · Empresa&#10;+55 11 9xxxx-xxxx">{% match signature_body %}{% when Some with (b) %}{{ b }}{% when None %}{% endmatch %}</textarea>
+          <label><span>Conteúdo</span>
+            <textarea id="sig-editor-body" rows="7" placeholder="-- &#10;Seu Nome&#10;Cargo · Empresa"
+                      oninput="document.getElementById('sig-preview').textContent=this.value||'(vazio)'"></textarea>
           </label>
           <div class="settings-preview">
             <span class="small muted">Pré-visualização:</span>
-            <pre class="signature-preview" id="sig-preview">{% match signature_body %}{% when Some with (b) %}{{ b }}{% when None %}-- &#10;(sem assinatura){% endmatch %}</pre>
+            <pre class="signature-preview" id="sig-preview">(vazio)</pre>
           </div>
           <div class="form-actions">
-            <button class="btn btn-primary" type="submit">Salvar assinatura</button>
+            <button class="btn btn-ghost" onclick="cancelSigEdit()">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveSigEdit()">Salvar</button>
           </div>
+        </div>
+
+        <!-- Server sync (primary signature) -->
+        <form class="compose-form" method="post" action="/settings/signature" id="sig-server-form" style="display:none">
+          <input type="hidden" name="enabled" value="1">
+          <input type="hidden" name="body" id="sig-server-body">
         </form>
       </div>
       <script>
-        var ta = document.querySelector('[name="body"]');
-        var pre = document.getElementById('sig-preview');
-        if(ta && pre){ ta.addEventListener('input', function(){ pre.textContent = ta.value || '(sem assinatura)'; }); }
+      var SIG_KEY = 'expresso_signatures_{{ me.user_id }}';
+      var _sigs = [];
+      var _editIdx = -1;
+      function loadSigs() { try { return JSON.parse(localStorage.getItem(SIG_KEY) || '[]'); } catch(e) { return []; } }
+      function saveSigs(s) { localStorage.setItem(SIG_KEY, JSON.stringify(s)); }
+      function renderSigList() {
+        var container = document.getElementById('sig-list');
+        if (!container) return;
+        _sigs = loadSigs();
+        if (!_sigs.length) { container.innerHTML = '<p class="muted small">Nenhuma assinatura. Crie uma acima.</p>'; return; }
+        container.innerHTML = _sigs.map(function(s, i) {
+          return '<div class="sig-list-item">' +
+            '<span class="sig-list-name">' + escSig(s.name || 'Sem nome') + '</span>' +
+            (s.default ? '<span class="badge">Padrão</span>' : '') +
+            '<div style="margin-left:auto;display:flex;gap:.3rem">' +
+            (s.default ? '' : '<button class="btn btn-ghost btn-sm" onclick="setDefaultSig('+i+')">Definir padrão</button>') +
+            '<button class="btn btn-ghost btn-sm" onclick="editSig('+i+')">✏ Editar</button>' +
+            '<button class="btn btn-ghost btn-sm" onclick="deleteSig('+i+')">✕</button>' +
+            '</div></div>';
+        }).join('');
+      }
+      function addSignature() {
+        _editIdx = -1;
+        document.getElementById('sig-editor-name').value = '';
+        document.getElementById('sig-editor-body').value = '';
+        document.getElementById('sig-preview').textContent = '(vazio)';
+        document.getElementById('sig-editor').style.display = '';
+        document.getElementById('sig-editor-name').focus();
+      }
+      function editSig(i) {
+        _editIdx = i;
+        var s = _sigs[i];
+        document.getElementById('sig-editor-name').value = s.name || '';
+        document.getElementById('sig-editor-body').value = s.body || '';
+        document.getElementById('sig-preview').textContent = s.body || '(vazio)';
+        document.getElementById('sig-editor').style.display = '';
+      }
+      function cancelSigEdit() { document.getElementById('sig-editor').style.display = 'none'; _editIdx = -1; }
+      function saveSigEdit() {
+        var name = document.getElementById('sig-editor-name').value.trim() || 'Assinatura';
+        var body = document.getElementById('sig-editor-body').value;
+        _sigs = loadSigs();
+        if (_editIdx >= 0) { _sigs[_editIdx].name = name; _sigs[_editIdx].body = body; }
+        else { _sigs.push({ name: name, body: body, default: !_sigs.length }); }
+        saveSigs(_sigs);
+        // Sync primary signature to server
+        var def = _sigs.find(function(s){ return s.default; }) || _sigs[0];
+        if (def) { document.getElementById('sig-server-body').value = def.body || ''; document.getElementById('sig-server-form').submit(); }
+        else { renderSigList(); cancelSigEdit(); }
+      }
+      function deleteSig(i) {
+        if (!confirm('Apagar assinatura?')) return;
+        _sigs = loadSigs();
+        var wasDef = _sigs[i] && _sigs[i].default;
+        _sigs.splice(i, 1);
+        if (wasDef && _sigs.length) _sigs[0].default = true;
+        saveSigs(_sigs);
+        renderSigList();
+      }
+      function setDefaultSig(i) {
+        _sigs = loadSigs();
+        _sigs.forEach(function(s){ s.default = false; });
+        if (_sigs[i]) _sigs[i].default = true;
+        saveSigs(_sigs);
+        var def = _sigs[i];
+        if (def) { document.getElementById('sig-server-body').value = def.body || ''; document.getElementById('sig-server-form').submit(); }
+        else renderSigList();
+      }
+      function escSig(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      // Init
+      (function() {
+        var saved = loadSigs();
+        if (!saved.length) {
+          var serverBody = '{% match signature_body %}{% when Some with (b) %}{{ b }}{% when None %}{% endmatch %}';
+          if (serverBody.trim()) { saved = [{ name: 'Padrão', body: serverBody, default: true }]; saveSigs(saved); }
+        }
+        renderSigList();
+      })();
       </script>
+
+      <!-- CSS for sig-list-item -->
+      <style>.sig-list-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border:1px solid var(--border);border-radius:var(--radius);font-size:.875rem}.sig-list-name{font-weight:500}</style>
 
       {% else if tab == "autoreply" %}
       <div class="card stack">

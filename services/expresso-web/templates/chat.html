@@ -95,6 +95,7 @@
             {% when None %}{% endmatch %}
         </div>
         <div class="chat-header-actions">
+          <div id="chat-members-online" class="chat-members-online" title="Membros online"></div>
           <div class="chat-search-wrap" id="chat-search-wrap">
             <button class="chat-action-btn" onclick="toggleChatSearch()" title="Buscar mensagens">🔍</button>
             <input type="search" class="chat-search-input" id="chat-search-input"
@@ -939,6 +940,30 @@ function updatePresenceUI(status) {
       updatePresenceUI('online');
     }
   }, 30000);
+
+  // Poll channel member presence
+  function pollMemberPresence() {
+    {% match active_channel %}{% when Some with (ch) %}
+    var chId = '{{ ch.id }}';
+    fetch('/api/v1/presence/channel/' + encodeURIComponent(chId), { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(members) {
+        var el = document.getElementById('chat-members-online');
+        if (!el) return;
+        var online = (members || []).filter(function(m){ return m.status === 'online'; });
+        el.innerHTML = online.slice(0,8).map(function(m) {
+          var init = ((m.display_name || m.user_id || '?')[0]).toUpperCase();
+          var color = PRESENCE_COLORS[m.status] || '#94a3b8';
+          return '<span class="chat-member-avatar" title="' + escHtml(m.display_name || m.user_id) + ' · Online">' +
+            '<span class="chat-member-avatar-letter">' + escHtml(init) + '</span>' +
+            '<span class="presence-dot" style="background:' + color + ';width:.55rem;height:.55rem;position:absolute;bottom:0;right:0"></span>' +
+            '</span>';
+        }).join('') + (online.length > 8 ? '<span class="muted small">+' + (online.length-8) + '</span>' : '');
+      }).catch(function(){});
+    {% when None %}{% endmatch %}
+  }
+  pollMemberPresence();
+  setInterval(pollMemberPresence, 30000);
 })();
 
 // ── Edit message ─────────────────────────────────────────────────────────────
