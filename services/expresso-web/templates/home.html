@@ -14,7 +14,13 @@
       <div class="home-clock-time" id="home-clock">--:--</div>
       <div class="home-clock-date muted small" id="home-date"></div>
     </div>
+    <div style="display:flex;gap:.5rem;align-items:center">
+      <button class="btn btn-ghost btn-sm" onclick="toggleFocusMode()" id="focus-mode-btn" title="Modo foco (esconde notificações e chat)">🎯 Foco</button>
+    </div>
   </header>
+  <div id="focus-mode-banner" style="display:none;padding:.5rem 1rem;background:#0ea5e9;color:#fff;text-align:center;border-radius:var(--radius);margin-bottom:1rem">
+    🎯 <strong>Modo foco ativo</strong> — notificações silenciadas. <button onclick="toggleFocusMode()" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:4px;padding:.1rem .5rem;cursor:pointer;margin-left:.5rem">Desativar</button>
+  </div>
 
   <!-- Dashboard grid: widgets principais -->
   <div class="home-dashboard">
@@ -92,6 +98,15 @@
         <div class="muted small" style="font-weight:600;margin-bottom:.2rem">Abertos recentemente</div>
         <ul class="home-file-list" id="home-drive-recents-list"></ul>
       </div>
+    </div>
+
+    <!-- Aniversários -->
+    <div class="home-widget" id="home-bday-widget" style="display:none">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">🎂</span>
+        <a class="home-widget-title" href="/contacts">Aniversários</a>
+      </div>
+      <ul id="home-bday-list" style="list-style:none;padding:0;margin:0"></ul>
     </div>
 
     <!-- Chat -->
@@ -496,6 +511,63 @@ window.postHomeNotif = function(n) {
   }
   pollNotifs();
   setInterval(pollNotifs, 60000);
+})();
+
+// ── Focus mode ─────────────────────────────────────────────────────────────
+var FOCUS_KEY = 'expresso_focus_mode';
+function applyFocusMode(on) {
+  document.getElementById('focus-mode-banner').style.display = on ? '' : 'none';
+  var btn = document.getElementById('focus-mode-btn');
+  if (btn) btn.textContent = on ? '✕ Sair do foco' : '🎯 Foco';
+  // Hide chat/notification widgets
+  document.querySelectorAll('.home-widget').forEach(function(w) {
+    var hdr = w.querySelector('.home-widget-title');
+    var name = hdr ? hdr.textContent.trim() : '';
+    if (on && (name === 'Chat' || name === 'Notificações')) w.style.opacity = '.3';
+    else w.style.opacity = '';
+  });
+  // Disable browser notifications globally for this session
+  if (on) { try { window._origNotify = window.Notification; window.Notification = function(){}; } catch(e){} }
+  else { try { if (window._origNotify) window.Notification = window._origNotify; } catch(e){} }
+}
+function toggleFocusMode() {
+  var on = localStorage.getItem(FOCUS_KEY) !== '1';
+  try { localStorage.setItem(FOCUS_KEY, on ? '1' : '0'); } catch(e){}
+  applyFocusMode(on);
+}
+(function() { if (localStorage.getItem(FOCUS_KEY) === '1') applyFocusMode(true); })();
+
+// ── Birthdays widget ───────────────────────────────────────────────────────
+(function() {
+  var raw;
+  try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e) { return; }
+  var ids = Object.keys(raw);
+  if (!ids.length) return;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var year = today.getFullYear();
+  var upcoming = ids.map(function(id) {
+    var entry = raw[id];
+    if (!entry || !entry.date) return null;
+    var parts = entry.date.split('-');
+    if (parts.length < 3) return null;
+    var bd = new Date(year, parseInt(parts[1],10) - 1, parseInt(parts[2],10));
+    if (bd < today) bd.setFullYear(year + 1);
+    var diff = Math.floor((bd - today) / 86400000);
+    if (diff > 30) return null;
+    return { name: entry.name || id, date: bd, days: diff };
+  }).filter(Boolean).sort(function(a,b){ return a.days - b.days; }).slice(0, 5);
+  if (!upcoming.length) return;
+  var w = document.getElementById('home-bday-widget');
+  var ul = document.getElementById('home-bday-list');
+  if (!w || !ul) return;
+  w.style.display = '';
+  ul.innerHTML = upcoming.map(function(b) {
+    var dStr = b.days === 0 ? 'Hoje!' : b.days === 1 ? 'Amanhã' : 'Em ' + b.days + ' dias';
+    var dateStr = b.date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    return '<li style="padding:.35rem 0;border-bottom:1px solid var(--border-subtle)">' +
+      '<strong>' + b.name.replace(/</g,'&lt;') + '</strong> · ' +
+      '<span class="muted small">' + dateStr + ' (' + dStr + ')</span></li>';
+  }).join('');
 })();
 </script>
 {% endblock %}

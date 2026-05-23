@@ -11,6 +11,9 @@
   <div class="admin-page-header">
     <h1>Usuários</h1>
     <div class="admin-header-actions">
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bulk-csv-input').click()" title="Importar lista de usuários (CSV)">📥 Importar CSV</button>
+      <input type="file" id="bulk-csv-input" accept=".csv,text/csv" style="display:none" onchange="bulkImportCsv(this.files[0])">
+      <button class="btn btn-ghost btn-sm" onclick="exportUsersCsv()" title="Exportar usuários para CSV">📤 Exportar CSV</button>
       <button class="btn btn-primary btn-sm" onclick="showModal('admin-user-modal')">+ Convidar usuário</button>
     </div>
   </div>
@@ -189,5 +192,56 @@ function editAdminUser(id, email, role) {
 function showModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'flex'; }
 function hideModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'none'; }
 function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) hideModal(id); }
+
+// ── Bulk import/export ──────────────────────────────────────────────────────
+function exportUsersCsv() {
+  var rows = document.querySelectorAll('.admin-user-row');
+  if (!rows.length) { alert('Nenhum usuário para exportar.'); return; }
+  var lines = ['email,name,role,status'];
+  rows.forEach(function(r) {
+    var email = (r.dataset.email || '').replace(/"/g,'""');
+    var name = (r.dataset.name || '').replace(/"/g,'""');
+    var role = r.dataset.role || 'user';
+    var status = r.dataset.status || 'active';
+    lines.push('"' + email + '","' + name + '","' + role + '","' + status + '"');
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'expresso-users-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function bulkImportCsv(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var lines = String(e.target.result || '').split(/\r?\n/).filter(Boolean);
+    if (!lines.length) return;
+    var hasHeader = /email/i.test(lines[0]) && /name|role/i.test(lines[0]);
+    var rows = hasHeader ? lines.slice(1) : lines;
+    var parsed = rows.map(function(l) {
+      var cols = l.match(/("([^"]|"")*"|[^,]*)(,|$)/g) || [];
+      return cols.map(function(c){ return c.replace(/,$/,'').replace(/^"|"$/g,'').replace(/""/g,'"').trim(); });
+    }).filter(function(c){ return c[0] && c[0].includes('@'); });
+    if (!parsed.length) { alert('Nenhuma linha válida no CSV.'); return; }
+    if (!confirm('Importar ' + parsed.length + ' usuário(s)? Cada um receberá convite por e-mail.')) return;
+    var ok = 0, fail = 0;
+    var promises = parsed.map(function(cols) {
+      var fd = new FormData();
+      fd.append('email', cols[0]);
+      fd.append('display_name', cols[1] || '');
+      fd.append('role', cols[2] || 'user');
+      return fetch('/admin/users/invite', { method: 'POST', body: fd, credentials: 'include' })
+        .then(function(r){ if (r.ok) ok++; else fail++; })
+        .catch(function(){ fail++; });
+    });
+    Promise.all(promises).then(function() {
+      alert('Importação concluída: ' + ok + ' OK, ' + fail + ' falha(s).');
+      window.location.reload();
+    });
+  };
+  reader.readAsText(file);
+}
 </script>
 {% endblock %}

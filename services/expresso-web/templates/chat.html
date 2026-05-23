@@ -240,7 +240,14 @@
                 oninput="autoResize(this); chatTyping(); mentionDetect(this)"></textarea>
               <ul class="mention-list" id="mention-list" style="display:none"></ul>
             </div>
+            <button type="button" class="btn btn-ghost chat-send-btn" id="chat-mic-btn" onclick="toggleVoiceRecord()" title="Gravar áudio">🎤</button>
             <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
+          </div>
+          <div id="chat-voice-status" style="display:none;align-items:center;gap:.5rem;padding:.4rem .6rem;background:var(--bg-raised);border-radius:var(--radius);margin-top:.3rem">
+            <span style="color:#ef4444">●</span>
+            <span class="muted small" id="chat-voice-timer">0:00</span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="stopVoiceRecord(true)">✕ Cancelar</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="stopVoiceRecord(false)">✓ Enviar</button>
           </div>
         </form>
       </div>
@@ -1207,6 +1214,59 @@ function threadKeydown(e) {
     e.preventDefault();
     sendThreadReply();
   }
+}
+
+// ── Voice messages ──────────────────────────────────────────────────────────
+var _vrec = null, _vchunks = [], _vstart = 0, _vtimer = 0;
+function toggleVoiceRecord() {
+  if (_vrec && _vrec.state === 'recording') { stopVoiceRecord(false); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    alert('Gravação de áudio não suportada neste navegador.'); return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    _vchunks = [];
+    var mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    _vrec = new MediaRecorder(stream, { mimeType: mime });
+    _vrec.ondataavailable = function(ev) { if (ev.data && ev.data.size) _vchunks.push(ev.data); };
+    _vrec.onstop = function() { stream.getTracks().forEach(function(t){ t.stop(); }); };
+    _vrec.start();
+    _vstart = Date.now();
+    document.getElementById('chat-voice-status').style.display = 'flex';
+    var btn = document.getElementById('chat-mic-btn'); if (btn) btn.style.background = '#ef4444';
+    _vtimer = setInterval(function() {
+      var s = Math.floor((Date.now() - _vstart) / 1000);
+      var el = document.getElementById('chat-voice-timer');
+      if (el) el.textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+      if (s >= 300) stopVoiceRecord(false); // hard cap 5min
+    }, 250);
+  }).catch(function() { alert('Permissão de microfone negada.'); });
+}
+function stopVoiceRecord(cancel) {
+  clearInterval(_vtimer); _vtimer = 0;
+  document.getElementById('chat-voice-status').style.display = 'none';
+  var btn = document.getElementById('chat-mic-btn'); if (btn) btn.style.background = '';
+  if (!_vrec) return;
+  var rec = _vrec; _vrec = null;
+  rec.addEventListener('stop', function() {
+    if (cancel || !_vchunks.length) return;
+    var blob = new Blob(_vchunks, { type: rec.mimeType || 'audio/webm' });
+    sendVoiceBlob(blob);
+  });
+  try { rec.stop(); } catch(e) {}
+}
+function sendVoiceBlob(blob) {
+  var cid = (window._currentChannelId || '');
+  if (!cid) {
+    var ch = document.querySelector('.chat-composer-form');
+    if (ch) cid = ch.getAttribute('data-channel-id') || '';
+  }
+  var fd = new FormData();
+  fd.append('file', blob, 'voice-' + Date.now() + '.webm');
+  fd.append('kind', 'voice');
+  var url = '/chat/channels/' + encodeURIComponent(cid) + '/upload';
+  fetch(url, { method: 'POST', body: fd, credentials: 'include' })
+    .then(function(r){ if (r.ok) window.location.reload(); else alert('Erro ao enviar áudio.'); })
+    .catch(function(){ alert('Erro de rede.'); });
 }
 </script>
 {% endblock %}

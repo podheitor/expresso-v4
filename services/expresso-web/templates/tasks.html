@@ -143,6 +143,16 @@
         </label>
       </div>
       <label><span>Lista</span><input type="text" id="edit-task-list" placeholder="ex: Pessoal"></label>
+      <label><span>Repetir</span>
+        <select id="edit-task-recur">
+          <option value="">Não repete</option>
+          <option value="daily">Diariamente</option>
+          <option value="weekly">Semanalmente</option>
+          <option value="biweekly">Quinzenalmente</option>
+          <option value="monthly">Mensalmente</option>
+          <option value="yearly">Anualmente</option>
+        </select>
+      </label>
       <div>
         <span class="small" style="font-weight:600">Tags</span>
         <div id="edit-task-tags-list" style="display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem 0"></div>
@@ -350,10 +360,34 @@ function addTask() {
   renderAll();
 }
 
-// ── Toggle done ───────────────────────────────────────────────────────────────
+// ── Toggle done (auto-rolls recurring tasks) ─────────────────────────────────
+function rolloverRecurringDue(due, recur) {
+  if (!due || !recur) return null;
+  var d = new Date(due + 'T00:00:00');
+  if (isNaN(d)) return null;
+  switch (recur) {
+    case 'daily':    d.setDate(d.getDate() + 1); break;
+    case 'weekly':   d.setDate(d.getDate() + 7); break;
+    case 'biweekly': d.setDate(d.getDate() + 14); break;
+    case 'monthly':  d.setMonth(d.getMonth() + 1); break;
+    case 'yearly':   d.setFullYear(d.getFullYear() + 1); break;
+    default: return null;
+  }
+  return d.toISOString().slice(0, 10);
+}
 function toggleTask(id) {
   var tasks = loadTasks();
-  tasks = tasks.map(function(t){ return t.id === id ? Object.assign({}, t, {done: !t.done}) : t; });
+  tasks = tasks.map(function(t) {
+    if (t.id !== id) return t;
+    var willComplete = !t.done;
+    if (willComplete && t.recur) {
+      var nextDue = rolloverRecurringDue(t.due, t.recur);
+      if (nextDue) {
+        return Object.assign({}, t, { due: nextDue });
+      }
+    }
+    return Object.assign({}, t, { done: willComplete });
+  });
   saveTasks(tasks);
   renderAll();
 }
@@ -368,6 +402,8 @@ function openEdit(id) {
   document.getElementById('edit-task-priority').value = task.priority || 'normal';
   document.getElementById('edit-task-list').value  = task.list || '';
   document.getElementById('edit-task-notes').value = task.notes || '';
+  var recSel = document.getElementById('edit-task-recur');
+  if (recSel) recSel.value = task.recur || '';
   renderSubtaskEditor(task.subtasks || []);
   renderDepEditor(task.deps || [], id);
   _editTags = (task.tags || []).map(function(t){ return Object.assign({}, t); });
@@ -512,6 +548,7 @@ function saveEditTask() {
       subtasks: _editSubtasks,
       deps:     _editDeps.slice(),
       tags:     _editTags.slice(),
+      recur:    (document.getElementById('edit-task-recur') || {}).value || '',
     });
   });
   saveTasks(tasks);

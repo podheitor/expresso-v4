@@ -75,6 +75,16 @@
         <input type="hidden" name="label_name" id="compose-label-name">
         <input type="hidden" name="label_icon" id="compose-label-icon">
       </label>
+      <!-- Modelos -->
+      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+        <span class="muted small">📋 Modelo:</span>
+        <select id="compose-template-select" class="input-sm" onchange="applyTemplate(this.value)" style="flex:1;max-width:240px">
+          <option value="">— selecionar —</option>
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="saveCurrentAsTemplate()" title="Salvar mensagem atual como modelo">💾 Salvar</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="manageTemplates()" title="Gerenciar modelos">⚙</button>
+      </div>
+
       <div>
         <span>Mensagem</span>
         <div class="compose-rich-toolbar">
@@ -112,7 +122,18 @@
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enviar</button>
-        <a href="/mail" class="btn btn-ghost">Cancelar</a>
+        <div style="position:relative;display:inline-block">
+          <button type="button" class="btn btn-ghost" onclick="toggleSendLaterMenu()" title="Agendar envio">⏱ Enviar depois ▾</button>
+          <div id="send-later-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem;min-width:200px;z-index:50;box-shadow:var(--shadow-md)">
+            <button type="button" class="dropdown-item" onclick="schedSend('tonight')">Hoje à noite (20h)</button>
+            <button type="button" class="dropdown-item" onclick="schedSend('tomorrow8')">Amanhã 8h</button>
+            <button type="button" class="dropdown-item" onclick="schedSend('monday8')">Próxima segunda 8h</button>
+            <button type="button" class="dropdown-item" onclick="schedSend('custom')">Escolher data/hora…</button>
+          </div>
+        </div>
+        <input type="hidden" name="send_at" id="compose-send-at">
+        <span id="compose-send-at-label" class="muted small" style="margin-left:.5rem"></span>
+        <a href="/mail" class="btn btn-ghost" style="margin-left:auto">Cancelar</a>
       </div>
     </form>
   </div>
@@ -179,6 +200,38 @@ document.getElementById('compose-form').addEventListener('submit', function(e) {
     var btn2 = this.querySelector('button[type=submit]');
     if (btn2) { btn2.disabled = true; btn2.textContent = 'Enviando…'; }
     this.submit();
+    return;
+  }
+  // Undo-send: hold submission for N seconds in a toast
+  var undoSecs = parseInt(localStorage.getItem('expresso_undo_send_secs') || '5', 10);
+  if (undoSecs > 0 && !document.getElementById('compose-send-at').value) {
+    e.preventDefault();
+    var form = this;
+    var btn = form.querySelector('button[type=submit]');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enviando em ' + undoSecs + 's…'; }
+    var toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:.7rem 1rem;border-radius:.5rem;display:flex;gap:.75rem;align-items:center;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+    toast.innerHTML = '<span>📤 Mensagem será enviada em <strong id="undo-count">' + undoSecs + '</strong>s</span>' +
+      '<button type="button" id="undo-send-btn" style="background:#ef4444;color:#fff;border:none;padding:.3rem .8rem;border-radius:.3rem;cursor:pointer">↶ Desfazer</button>';
+    document.body.appendChild(toast);
+    var remaining = undoSecs;
+    var iv = setInterval(function() {
+      remaining--;
+      var c = document.getElementById('undo-count'); if (c) c.textContent = remaining;
+      if (btn) btn.textContent = 'Enviando em ' + remaining + 's…';
+      if (remaining <= 0) { clearInterval(iv); to(); }
+    }, 1000);
+    function to() {
+      clearInterval(iv);
+      if (toast.parentNode) toast.remove();
+      if (btn) { btn.textContent = 'Enviando…'; }
+      form.submit();
+    }
+    document.getElementById('undo-send-btn').onclick = function() {
+      clearInterval(iv);
+      if (toast.parentNode) toast.remove();
+      if (btn) { btn.disabled = false; btn.textContent = 'Enviar'; }
+    };
     return;
   }
   var btn = this.querySelector('button[type=submit]');
@@ -362,5 +415,88 @@ document.addEventListener('click', function(e) {
     p.style.display = 'none';
   }
 });
+
+// ── Mail templates ──────────────────────────────────────────────────────────
+var TPL_KEY = 'expresso_mail_templates';
+function loadTemplates() {
+  try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveTemplates(arr) { try { localStorage.setItem(TPL_KEY, JSON.stringify(arr)); } catch(e){} }
+function refreshTemplateSelect() {
+  var sel = document.getElementById('compose-template-select');
+  if (!sel) return;
+  var arr = loadTemplates();
+  sel.innerHTML = '<option value="">— selecionar —</option>' +
+    arr.map(function(t, i){ return '<option value="' + i + '">' + (t.name || 'Sem nome').replace(/</g,'&lt;') + '</option>'; }).join('');
+}
+function applyTemplate(idx) {
+  if (idx === '') return;
+  var arr = loadTemplates();
+  var t = arr[parseInt(idx, 10)];
+  if (!t) return;
+  if (t.subject !== undefined) {
+    var s = document.getElementById('compose-subject');
+    if (s && (!s.value || confirm('Substituir assunto atual?'))) s.value = t.subject;
+  }
+  if (t.body !== undefined) {
+    var rich = document.getElementById('compose-rich-editor');
+    var ta = document.getElementById('compose-body-text');
+    if (rich) rich.innerHTML = t.body;
+    if (ta) ta.value = t.body.replace(/<[^>]+>/g, '');
+  }
+}
+function saveCurrentAsTemplate() {
+  var name = prompt('Nome do modelo:');
+  if (!name) return;
+  var subject = (document.getElementById('compose-subject') || {}).value || '';
+  var rich = document.getElementById('compose-rich-editor');
+  var body = rich ? rich.innerHTML : (document.getElementById('compose-body-text') || {}).value || '';
+  var arr = loadTemplates();
+  arr.push({ name: name, subject: subject, body: body, created: Date.now() });
+  saveTemplates(arr);
+  refreshTemplateSelect();
+  alert('Modelo "' + name + '" salvo.');
+}
+function manageTemplates() {
+  var arr = loadTemplates();
+  if (!arr.length) { alert('Nenhum modelo salvo ainda.'); return; }
+  var lines = arr.map(function(t, i){ return (i+1) + '. ' + t.name; }).join('\n');
+  var ans = prompt('Modelos:\n' + lines + '\n\nDigite o número para apagar, ou cancele:');
+  if (!ans) return;
+  var n = parseInt(ans, 10) - 1;
+  if (isNaN(n) || n < 0 || n >= arr.length) return;
+  if (!confirm('Apagar "' + arr[n].name + '"?')) return;
+  arr.splice(n, 1); saveTemplates(arr); refreshTemplateSelect();
+}
+refreshTemplateSelect();
+
+// ── Scheduled send ─────────────────────────────────────────────────────────
+function toggleSendLaterMenu() {
+  var m = document.getElementById('send-later-menu');
+  if (m) m.style.display = m.style.display === 'none' ? '' : 'none';
+}
+function schedSend(preset) {
+  var d = new Date();
+  if (preset === 'tonight') { d.setHours(20, 0, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1); }
+  else if (preset === 'tomorrow8') { d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); }
+  else if (preset === 'monday8') {
+    var dow = d.getDay();
+    var addDays = (1 - dow + 7) % 7 || 7;
+    d.setDate(d.getDate() + addDays); d.setHours(8, 0, 0, 0);
+  } else if (preset === 'custom') {
+    var iso = prompt('Data/hora ISO (YYYY-MM-DDTHH:MM):', new Date(Date.now() + 3600000).toISOString().slice(0, 16));
+    if (!iso) return;
+    d = new Date(iso);
+    if (isNaN(d) || d <= new Date()) { alert('Data inválida ou no passado.'); return; }
+  }
+  var inp = document.getElementById('compose-send-at');
+  var lbl = document.getElementById('compose-send-at-label');
+  if (inp) inp.value = d.toISOString();
+  if (lbl) lbl.textContent = '⏱ Agendado: ' + d.toLocaleString('pt-BR');
+  document.getElementById('send-later-menu').style.display = 'none';
+  // Change primary button text
+  var btn = document.querySelector('.form-actions button[type="submit"]');
+  if (btn) btn.textContent = 'Agendar envio';
+}
 </script>
 {% endblock %}

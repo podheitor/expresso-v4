@@ -33,6 +33,10 @@
       <label>Organização
         <input name="organization" value="{{ organization }}">
       </label>
+      <label>🎂 Aniversário
+        <input id="contact-bday" type="date" placeholder="YYYY-MM-DD">
+        <span class="muted small">Salvo localmente para lembretes (sincronização CardDAV opcional)</span>
+      </label>
 
       <div class="form-actions" style="justify-content:flex-end">
         {% match contact_id %}{% when Some with (_id) %}
@@ -47,4 +51,26 @@
   <form id="delete-form" method="post" action="/contacts/{{ book.id }}/{{ id }}/delete" style="display:none"></form>
   {% when None %}{% endmatch %}
 </div>
+
+<script>
+(function() {
+  var key = 'expresso_birthdays';
+  var contactKey = '{% match contact_id %}{% when Some with (id) %}{{ id }}{% when None %}{% endmatch %}';
+  function loadBdays() { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) { return {}; } }
+  function saveBdays(o) { try { localStorage.setItem(key, JSON.stringify(o)); } catch(e){} }
+  var inp = document.getElementById('contact-bday');
+  if (inp && contactKey) {
+    var all = loadBdays();
+    if (all[contactKey]) inp.value = all[contactKey];
+  }
+  var form = document.querySelector('form.form');
+  if (form && inp) form.addEventListener('submit', function() {
+    var all = loadBdays();
+    var name = (document.querySelector('input[name="full_name"]') || {}).value || '';
+    if (inp.value) all[contactKey || ('new-' + Date.now())] = { date: inp.value, name: name };
+    else if (contactKey && all[contactKey]) delete all[contactKey];
+    saveBdays(all);
+  });
+})();
+</script>
 {% endblock %}

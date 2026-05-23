@@ -109,4 +109,54 @@
     </form>
   </div>
 </div>
+
+<!-- Capabilities (granular per-user feature toggles, client-side) -->
+<div class="card stack" style="margin-top:1rem">
+  <h3>Capacidades por módulo</h3>
+  <p class="muted small">Habilite/desabilite módulos específicos para este usuário (cache local; aplicado via UI).</p>
+  <div id="user-caps" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem"></div>
+  <div style="display:flex;gap:.5rem;margin-top:.5rem">
+    <button class="btn btn-primary btn-sm" type="button" onclick="saveCaps()">Salvar capacidades</button>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="resetCaps()">Restaurar padrão</button>
+  </div>
+</div>
+
+<script>
+var CAPS = [
+  { k: 'mail',     l: '📧 Mail' },
+  { k: 'calendar', l: '📅 Calendar' },
+  { k: 'contacts', l: '👥 Contacts' },
+  { k: 'drive',    l: '📁 Drive' },
+  { k: 'chat',     l: '💬 Chat' },
+  { k: 'meet',     l: '🎥 Meet' },
+  { k: 'tasks',    l: '✓ Tasks' },
+  { k: 'admin',    l: '⚙ Admin' },
+];
+var CAPS_KEY = 'expresso_caps_{{ user.id }}';
+function loadCaps() {
+  try { return JSON.parse(localStorage.getItem(CAPS_KEY) || '{}'); } catch(e) { return {}; }
+}
+function renderCaps() {
+  var box = document.getElementById('user-caps');
+  if (!box) return;
+  var c = loadCaps();
+  box.innerHTML = CAPS.map(function(it) {
+    var on = c[it.k] !== false;
+    return '<label class="cap-row" style="display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem;border:1px solid var(--border);border-radius:var(--radius)">' +
+      '<input type="checkbox" data-cap="' + it.k + '"' + (on ? ' checked' : '') + '>' + it.l + '</label>';
+  }).join('');
+}
+function saveCaps() {
+  var c = {};
+  document.querySelectorAll('[data-cap]').forEach(function(i){ c[i.getAttribute('data-cap')] = !!i.checked; });
+  try { localStorage.setItem(CAPS_KEY, JSON.stringify(c)); } catch(e){}
+  alert('Capacidades salvas.');
+}
+function resetCaps() {
+  if (!confirm('Restaurar todas as capacidades para o padrão (todas habilitadas)?')) return;
+  try { localStorage.removeItem(CAPS_KEY); } catch(e){}
+  renderCaps();
+}
+renderCaps();
+</script>
 {% endblock %}

@@ -223,6 +223,16 @@ function buildAgenda() {
   // Filter by range and sort
   events = events.filter(function(e) { return e.iso >= todayIso && e.iso <= cutoffIso; });
   events.sort(function(a,b){ return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  // Cache for reminder scheduler in base.html
+  try {
+    var cacheEvents = events.slice(0, 100).map(function(e) {
+      var t = (e.time || '').match(/(\d{1,2}):(\d{2})/);
+      var start = e.iso + 'T' + (t ? (t[1].padStart(2,'0') + ':' + t[2] + ':00') : '00:00:00');
+      var idM = (e.href || '').match(/\/events\/([^/?#]+)/);
+      return { id: idM ? idM[1] : '', summary: e.title, start: start };
+    }).filter(function(e){ return e.id; });
+    localStorage.setItem('expresso_agenda_cache', JSON.stringify({ ts: Date.now(), events: cacheEvents }));
+  } catch(e) {}
   if (!events.length) {
     ul.innerHTML = '<li class="muted small">Nenhum evento nos próximos ' + rangeDays + ' dias.</li>';
     return;

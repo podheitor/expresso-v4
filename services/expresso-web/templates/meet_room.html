@@ -30,7 +30,8 @@
       {% if is_moderator %}
         <button class="btn btn-ghost btn-sm" id="rec-btn" onclick="toggleRecording()" title="Iniciar/parar gravação">⏺ Gravar</button>
         <button class="btn btn-ghost btn-sm" onclick="showRecordingsPanel()" title="Gravações desta sala">📼 Gravações</button>
-        <button class="btn btn-ghost btn-sm" onclick="showRoomSettings()" title="Configurações da sala">⚙ Sala</button>
+        <button class="btn btn-ghost btn-sm" onclick="showPollModal()" title="Iniciar enquete">📊 Enquete</button>
+      <button class="btn btn-ghost btn-sm" onclick="showRoomSettings()" title="Configurações da sala">⚙ Sala</button>
         <form method="post" action="/meet/{{ room_id }}/end" style="display:inline" onsubmit="return confirm('Encerrar esta reunião para todos?')">
           <button class="btn btn-danger btn-sm" type="submit">⏹ Encerrar</button>
         </form>
@@ -669,6 +670,91 @@ document.addEventListener('keydown', function(e) {
     </div>
   </div>
 </div>
+
+<!-- Polls modal -->
+<div class="modal-overlay" id="meet-poll-modal" style="display:none" onclick="if(event.target.id==='meet-poll-modal')hidePollModal()">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-header">
+      <h3>📊 Enquete</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hidePollModal()">✕</button>
+    </div>
+    <div id="poll-create-view">
+      <div class="compose-form" style="gap:.6rem;display:flex;flex-direction:column">
+        <label><span>Pergunta</span>
+          <input type="text" id="poll-question" placeholder="Qual a melhor data?" maxlength="200"></label>
+        <div>
+          <span class="muted small">Opções</span>
+          <div id="poll-options-list"></div>
+          <button class="btn btn-ghost btn-sm" type="button" onclick="addPollOpt()">+ Adicionar opção</button>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="hidePollModal()">Cancelar</button>
+          <button class="btn btn-primary" onclick="startPoll()">Iniciar enquete</button>
+        </div>
+      </div>
+    </div>
+    <div id="poll-active-view" style="display:none">
+      <h4 id="poll-active-q" style="margin-top:0"></h4>
+      <div id="poll-active-opts"></div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="endPoll()">Encerrar enquete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var _pollOpts = ['', ''];
+function showPollModal() {
+  _pollOpts = ['', ''];
+  document.getElementById('poll-create-view').style.display = '';
+  document.getElementById('poll-active-view').style.display = 'none';
+  renderPollOpts();
+  document.getElementById('meet-poll-modal').style.display = '';
+}
+function hidePollModal() { document.getElementById('meet-poll-modal').style.display = 'none'; }
+function addPollOpt() { _pollOpts.push(''); renderPollOpts(); }
+function renderPollOpts() {
+  var box = document.getElementById('poll-options-list');
+  if (!box) return;
+  box.innerHTML = _pollOpts.map(function(v, i) {
+    return '<div style="display:flex;gap:.3rem;margin:.2rem 0">' +
+      '<input type="text" data-poll-idx="' + i + '" value="' + String(v).replace(/"/g,'&quot;') + '" placeholder="Opção ' + (i+1) + '" style="flex:1">' +
+      '<button type="button" class="btn btn-ghost btn-sm" onclick="rmPollOpt(' + i + ')">✕</button></div>';
+  }).join('');
+  box.querySelectorAll('[data-poll-idx]').forEach(function(inp) {
+    inp.oninput = function() { _pollOpts[parseInt(inp.getAttribute('data-poll-idx'),10)] = inp.value; };
+  });
+}
+function rmPollOpt(i) { if (_pollOpts.length > 2) { _pollOpts.splice(i,1); renderPollOpts(); } }
+function startPoll() {
+  var q = (document.getElementById('poll-question') || {}).value || '';
+  var opts = _pollOpts.filter(function(s){ return s.trim(); });
+  if (!q.trim() || opts.length < 2) { alert('Pergunta + ao menos 2 opções.'); return; }
+  var poll = { q: q, opts: opts, votes: opts.map(function(){ return 0; }), started: Date.now() };
+  try { localStorage.setItem('expresso_active_poll_{{ room_name }}', JSON.stringify(poll)); } catch(e){}
+  document.getElementById('poll-create-view').style.display = 'none';
+  document.getElementById('poll-active-view').style.display = '';
+  document.getElementById('poll-active-q').textContent = q;
+  document.getElementById('poll-active-opts').innerHTML = opts.map(function(o, i) {
+    return '<button class="btn btn-ghost btn-sm" style="display:block;width:100%;text-align:left;margin:.2rem 0" onclick="votePoll(' + i + ')">' + o.replace(/</g,'&lt;') + ' <span class="muted small" id="poll-count-' + i + '">(0)</span></button>';
+  }).join('');
+}
+function votePoll(i) {
+  try {
+    var p = JSON.parse(localStorage.getItem('expresso_active_poll_{{ room_name }}') || 'null');
+    if (!p) return;
+    p.votes[i] = (p.votes[i] || 0) + 1;
+    localStorage.setItem('expresso_active_poll_{{ room_name }}', JSON.stringify(p));
+    var c = document.getElementById('poll-count-' + i);
+    if (c) c.textContent = '(' + p.votes[i] + ')';
+  } catch(e) {}
+}
+function endPoll() {
+  try { localStorage.removeItem('expresso_active_poll_{{ room_name }}'); } catch(e){}
+  hidePollModal();
+}
+</script>
 
 <!-- Invite modal -->
 <div class="modal-overlay" id="meet-invite-modal" style="display:none" onclick="if(event.target.id==='meet-invite-modal')hideInviteModal()">

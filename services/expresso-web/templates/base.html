@@ -70,6 +70,54 @@
       banner.style.display = '';
     } catch(e) {}
   })();
+  // Event reminders — poll every 30s, fire desktop notifications
+  (function() {
+    var SEEN_KEY = 'expresso_reminders_fired';
+    function getFired() { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '{}'); } catch(e) { return {}; } }
+    function markFired(k) { var f = getFired(); f[k] = Date.now(); try { localStorage.setItem(SEEN_KEY, JSON.stringify(f)); } catch(e){} }
+    function checkReminders() {
+      // Iterate over expresso_reminders_<eid> keys
+      var now = Date.now();
+      var fired = getFired();
+      // Prune entries older than 24h
+      Object.keys(fired).forEach(function(k){ if (now - fired[k] > 86400000) delete fired[k]; });
+      try { localStorage.setItem(SEEN_KEY, JSON.stringify(fired)); } catch(e){}
+      // Fetch upcoming events (next 24h) — use agenda cache if present
+      var cache = null;
+      try { cache = JSON.parse(localStorage.getItem('expresso_agenda_cache') || 'null'); } catch(e){}
+      if (!cache || !Array.isArray(cache.events)) return;
+      cache.events.forEach(function(ev) {
+        if (!ev.id || !ev.start) return;
+        var key = 'expresso_reminders_' + ev.id;
+        var raw = localStorage.getItem(key);
+        if (!raw) return;
+        var mins; try { mins = JSON.parse(raw) || []; } catch(e) { return; }
+        var startMs = new Date(ev.start).getTime();
+        if (isNaN(startMs)) return;
+        mins.forEach(function(m) {
+          var fireAt = startMs - m * 60000;
+          var fkey = ev.id + '_' + m;
+          if (fired[fkey]) return;
+          if (now >= fireAt && now < startMs + 60000) {
+            markFired(fkey);
+            notify(ev.summary || 'Evento', m === 0 ? 'Começando agora' : 'Em ' + m + ' min');
+          }
+        });
+      });
+    }
+    function notify(title, body) {
+      if (!('Notification' in window)) return;
+      if (Notification.permission === 'granted') {
+        try { new Notification(title, { body: body, icon: '/static/icon.png' }); } catch(e){}
+      }
+    }
+    if ('Notification' in window && Notification.permission === 'default') {
+      // Lazy-request once
+      setTimeout(function() { Notification.requestPermission().catch(function(){}); }, 3000);
+    }
+    setInterval(checkReminders, 30000);
+    setTimeout(checkReminders, 5000);
+  })();
   // Theme toggle API (callable from any page)
   window.toggleTheme = function() {
     var cur = document.documentElement.getAttribute('data-theme') || 'light';

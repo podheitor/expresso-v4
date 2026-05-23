@@ -24,6 +24,26 @@
           <input name="dtend" type="datetime-local" required value="{{ dtend }}">
         </label>
       </div>
+      <div class="row" style="gap:.5rem;align-items:end">
+        <label style="flex:1">
+          <span class="small muted">Fuso horário</span>
+          <select id="event-tz" onchange="onTzChange()">
+            <option value="America/Sao_Paulo">Brasília (UTC-3)</option>
+            <option value="America/Manaus">Manaus (UTC-4)</option>
+            <option value="America/Rio_Branco">Rio Branco (UTC-5)</option>
+            <option value="America/Noronha">Noronha (UTC-2)</option>
+            <option value="UTC">UTC</option>
+            <option value="America/New_York">Nova York</option>
+            <option value="Europe/London">Londres</option>
+            <option value="Europe/Lisbon">Lisboa</option>
+            <option value="Europe/Paris">Paris</option>
+            <option value="Asia/Tokyo">Tóquio</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:.3rem;font-size:.875rem">
+          <input type="checkbox" id="event-all-day" onchange="toggleAllDay(this.checked)"> Dia todo
+        </label>
+      </div>
       <label>Local
         <input name="location" value="{{ location }}">
       </label>
@@ -82,6 +102,16 @@
       </div>
       <div id="rrule-summary" class="muted small" style="margin-bottom:.5rem"></div>
       <input type="hidden" name="rrule" id="rrule-value">
+
+      <!-- Lembretes -->
+      <div style="margin-bottom:.75rem">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem">
+          <span style="font-size:.875rem">🔔 Lembretes</span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addReminder()">+ Adicionar</button>
+        </div>
+        <div id="reminders-list" style="display:flex;flex-direction:column;gap:.3rem"></div>
+        <input type="hidden" name="reminders" id="reminders-value">
+      </div>
 
       <label>Convidados <span class="muted">(um email por linha ou separados por vírgula)</span>
         <textarea name="attendees" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local">{{ attendees }}</textarea>
@@ -172,6 +202,96 @@ function updateRrule() {
   document.getElementById('rrule-value').value = rule;
   updateRruleSummary(rule);
 }
+// ── Timezone & all-day ──────────────────────────────────────────────────────
+(function() {
+  var sel = document.getElementById('event-tz');
+  if (!sel) return;
+  var stored = localStorage.getItem('expresso_event_tz') || 'America/Sao_Paulo';
+  try {
+    if (![].slice.call(sel.options).some(function(o){ return o.value === stored; })) {
+      var opt = document.createElement('option'); opt.value = stored; opt.textContent = stored;
+      sel.appendChild(opt);
+    }
+    sel.value = stored;
+  } catch(e) {}
+})();
+function onTzChange() {
+  var sel = document.getElementById('event-tz');
+  if (sel) localStorage.setItem('expresso_event_tz', sel.value);
+}
+function toggleAllDay(on) {
+  var s = document.querySelector('input[name="dtstart"]');
+  var e = document.querySelector('input[name="dtend"]');
+  if (!s || !e) return;
+  if (on) {
+    s.type = 'date'; e.type = 'date';
+    if (s.value && s.value.length > 10) s.value = s.value.slice(0, 10);
+    if (e.value && e.value.length > 10) e.value = e.value.slice(0, 10);
+  } else {
+    s.type = 'datetime-local'; e.type = 'datetime-local';
+    if (s.value && s.value.length === 10) s.value = s.value + 'T09:00';
+    if (e.value && e.value.length === 10) e.value = e.value + 'T10:00';
+  }
+}
+
+// ── Lembretes ────────────────────────────────────────────────────────────────
+var _reminders = [];
+var REMINDER_PRESETS = [
+  { v: 0,    l: 'No horário' },
+  { v: 5,    l: '5 min antes' },
+  { v: 10,   l: '10 min antes' },
+  { v: 15,   l: '15 min antes' },
+  { v: 30,   l: '30 min antes' },
+  { v: 60,   l: '1 hora antes' },
+  { v: 120,  l: '2 horas antes' },
+  { v: 1440, l: '1 dia antes' },
+  { v: 2880, l: '2 dias antes' },
+  { v: 10080,l: '1 semana antes' },
+];
+function renderReminders() {
+  var list = document.getElementById('reminders-list');
+  if (!list) return;
+  list.innerHTML = '';
+  _reminders.forEach(function(min, idx) {
+    var row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:.3rem;align-items:center';
+    var sel = document.createElement('select');
+    sel.style.flex = '1';
+    REMINDER_PRESETS.forEach(function(p) {
+      var o = document.createElement('option');
+      o.value = p.v; o.textContent = p.l;
+      if (p.v === min) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = function() { _reminders[idx] = parseInt(sel.value, 10); syncRemindersValue(); };
+    var rm = document.createElement('button');
+    rm.type = 'button'; rm.className = 'btn btn-ghost btn-sm'; rm.textContent = '✕';
+    rm.onclick = function() { _reminders.splice(idx, 1); renderReminders(); };
+    row.appendChild(sel); row.appendChild(rm);
+    list.appendChild(row);
+  });
+  syncRemindersValue();
+}
+function addReminder() { _reminders.push(15); renderReminders(); }
+function syncRemindersValue() {
+  var inp = document.getElementById('reminders-value');
+  if (inp) inp.value = _reminders.join(',');
+}
+(function() {
+  // Persist reminders client-side per event (or "new") in localStorage
+  var evKey = 'expresso_reminders_{% match event_id %}{% when Some with (eid) %}{{ eid }}{% when None %}new{% endmatch %}';
+  try {
+    var raw = localStorage.getItem(evKey);
+    if (raw) _reminders = JSON.parse(raw) || [];
+  } catch(e) {}
+  renderReminders();
+  // Save on form submit
+  var form = document.querySelector('form.form');
+  if (form) form.addEventListener('submit', function() {
+    try { localStorage.setItem(evKey, JSON.stringify(_reminders)); } catch(e) {}
+  });
+})();
+
 function updateRruleSummary(rule) {
   var el = document.getElementById('rrule-summary');
   if (!el) return;
