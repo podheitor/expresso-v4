@@ -4,10 +4,16 @@
 {% block body %}
 <div class="home-page">
 
-  <!-- Saudação -->
+  <!-- Saudação + relógio -->
   <header class="home-greeting">
-    <h1>Olá, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
-    <span class="muted small">Plataforma Expresso — visão geral do dia</span>
+    <div>
+      <h1>Olá, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
+      <span class="muted small" id="home-date-label">Plataforma Expresso — visão geral do dia</span>
+    </div>
+    <div class="home-clock-widget">
+      <div class="home-clock-time" id="home-clock">--:--</div>
+      <div class="home-clock-date muted small" id="home-date"></div>
+    </div>
   </header>
 
   <!-- Dashboard grid: widgets principais -->
@@ -162,6 +168,24 @@
   </div>
 </div>
 <script>
+// ── Clock widget ──────────────────────────────────────────────────────────────
+(function initClock() {
+  var DAYS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  var MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function tick() {
+    var now = new Date();
+    var h = String(now.getHours()).padStart(2,'0');
+    var m = String(now.getMinutes()).padStart(2,'0');
+    var s = String(now.getSeconds()).padStart(2,'0');
+    var clockEl = document.getElementById('home-clock');
+    var dateEl  = document.getElementById('home-date');
+    if (clockEl) clockEl.textContent = h + ':' + m + ':' + s;
+    if (dateEl) dateEl.textContent = DAYS[now.getDay()] + ', ' + now.getDate() + ' de ' + MONTHS[now.getMonth()];
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
 (function() {
   var key = 'expresso_tasks_{{ me.user_id }}';
   var tasks = [];

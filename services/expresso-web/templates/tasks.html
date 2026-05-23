@@ -26,6 +26,17 @@
         <button class="folder-item" id="filter-done" onclick="setFilter('done')">
           <span class="folder-icon">✅</span><span class="folder-name">Concluídas</span>
         </button>
+        <div style="height:.5rem;border-top:1px solid var(--border);margin:.4rem 0"></div>
+        <div class="chat-section-label" style="padding:.2rem 1rem;font-size:.72rem">Prioridade</div>
+        <button class="folder-item" id="filter-pri-high" onclick="setFilter('pri-high')">
+          <span class="folder-icon">🔴</span><span class="folder-name">Alta</span>
+        </button>
+        <button class="folder-item" id="filter-pri-normal" onclick="setFilter('pri-normal')">
+          <span class="folder-icon">🔵</span><span class="folder-name">Normal</span>
+        </button>
+        <button class="folder-item" id="filter-pri-low" onclick="setFilter('pri-low')">
+          <span class="folder-icon">⚪</span><span class="folder-name">Baixa</span>
+        </button>
       </nav>
 
       <div style="padding:.75rem 1rem;border-top:1px solid var(--border);margin-top:.5rem">
@@ -134,9 +145,12 @@ function todayIso() {
 
 function filterTasks(tasks) {
   var today = todayIso();
-  if (currentFilter === 'today')    return tasks.filter(function(t){ return !t.done && t.due === today; });
-  if (currentFilter === 'upcoming') return tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
-  if (currentFilter === 'done')     return tasks.filter(function(t){ return t.done; });
+  if (currentFilter === 'today')      return tasks.filter(function(t){ return !t.done && t.due === today; });
+  if (currentFilter === 'upcoming')   return tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
+  if (currentFilter === 'done')       return tasks.filter(function(t){ return t.done; });
+  if (currentFilter === 'pri-high')   return tasks.filter(function(t){ return !t.done && t.priority === 'high'; });
+  if (currentFilter === 'pri-normal') return tasks.filter(function(t){ return !t.done && (!t.priority || t.priority === 'normal'); });
+  if (currentFilter === 'pri-low')    return tasks.filter(function(t){ return !t.done && t.priority === 'low'; });
   return tasks.filter(function(t){ return !t.done; }); // 'all'
 }
 
@@ -315,7 +329,7 @@ function deleteTaskById(id) {
 // ── Filter ────────────────────────────────────────────────────────────────────
 function setFilter(f) {
   currentFilter = f;
-  ['all','today','upcoming','done'].forEach(function(name) {
+  ['all','today','upcoming','done','pri-high','pri-normal','pri-low'].forEach(function(name) {
     var el = document.getElementById('filter-' + name);
     if (el) el.classList.toggle('active', name === f);
   });

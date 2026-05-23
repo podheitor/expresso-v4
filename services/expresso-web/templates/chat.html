@@ -133,7 +133,14 @@
                 </div>
                 {% match msg.parent_id %}
                   {% when Some with (pid) %}
-                    <div class="chat-reply-indicator muted small">↩ Respondendo</div>
+                    <div class="chat-reply-indicator" data-parent="{{ pid }}"
+                         onclick="scrollToMsg('{{ pid }}')" title="Ver mensagem original">
+                      <span class="chat-reply-bar"></span>
+                      <div class="chat-reply-content">
+                        <span class="chat-reply-label muted small">↩ em resposta a</span>
+                        <span class="chat-reply-preview muted small" id="reply-preview-{{ msg.id }}">…</span>
+                      </div>
+                    </div>
                   {% when None %}{% endmatch %}
                 <div class="chat-msg-body" id="msgbody-{{ msg.id }}">{{ msg.body }}</div>
                 <div class="chat-msg-edit-area" id="msgedit-{{ msg.id }}" style="display:none">
@@ -152,11 +159,21 @@
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👎')">👎</button>
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','❤')">❤</button>
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','😂')">😂</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','😮')">😮</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','😢')">😢</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','😡')">😡</button>
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🎉')">🎉</button>
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🔥')">🔥</button>
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','✅')">✅</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🚀')">🚀</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👀')">👀</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🤔')">🤔</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','💯')">💯</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','⭐')">⭐</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🙏')">🙏</button>
                 </div>
               </div>
             </div>
@@ -692,6 +709,19 @@ function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Reply preview fill ────────────────────────────────────────────────────────
+(function fillReplyPreviews() {
+  document.querySelectorAll('.chat-reply-indicator[data-parent]').forEach(function(el) {
+    var pid = el.dataset.parent;
+    var bodyEl = document.getElementById('msgbody-' + pid);
+    var previewEl = el.querySelector('.chat-reply-preview');
+    if (bodyEl && previewEl) {
+      var txt = bodyEl.textContent.trim().slice(0, 60);
+      previewEl.textContent = txt || '…';
+    }
+  });
+})();
 
 // ── Presence ─────────────────────────────────────────────────────────────────
 var PRESENCE_KEY = 'expresso_presence_{{ me.user_id }}';

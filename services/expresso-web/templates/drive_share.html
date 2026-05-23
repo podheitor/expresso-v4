@@ -22,11 +22,25 @@
   {% when None %}{% endmatch %}
 
   <div class="card" style="margin-bottom:1.5rem">
-    <h2 style="margin-bottom:1rem">Novo link</h2>
+    <h2 style="margin-bottom:1rem">Novo link de compartilhamento</h2>
     <form method="post" action="/drive/{{ file.id }}/share" class="compose-form">
+      <div class="row" style="gap:.75rem">
+        <label style="flex:1">
+          <span>Expira (horas)</span>
+          <input type="number" name="ttl_hours" value="168" min="1" max="720" required placeholder="máx 720 = 30 dias">
+        </label>
+        <label style="flex:1">
+          <span>Permissão</span>
+          <select name="permission">
+            <option value="view">Somente leitura</option>
+            <option value="edit">Pode editar</option>
+            <option value="download">Pode baixar</option>
+          </select>
+        </label>
+      </div>
       <label>
-        <span>Expira (horas)</span>
-        <input type="number" name="ttl_hours" value="168" min="1" max="720" required placeholder="máx 720 = 30 dias">
+        <span>Nota (opcional)</span>
+        <input type="text" name="note" placeholder="ex: Acesso para o cliente X">
       </label>
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Gerar link</button>
@@ -57,6 +71,7 @@
           </td>
           <td class="row-actions">
             {% if s.is_active() %}
+            <button class="btn btn-ghost btn-sm" onclick="copyShareLink('{{ s.id }}')" title="Copiar link">🔗 Copiar</button>
             <form method="post" action="/drive/{{ file.id }}/share/{{ s.id }}/revoke" style="display:inline"
                   onsubmit="return confirm('Revogar este link?')">
               <button class="btn btn-danger btn-sm" type="submit">Revogar</button>
@@ -70,4 +85,21 @@
     {% endif %}
   </div>
 </div>
+<script>
+function copyShareLink(shareId) {
+  var url = window.location.origin + '/api/v1/drive/share/' + encodeURIComponent(shareId);
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = event.target;
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    setTimeout(function(){ btn.textContent = orig; }, 2000);
+  }).catch(function() {
+    prompt('Copie o link:', url);
+  });
+}
+{% match new_url %}{% when Some with (u) %}
+// Auto-copy new link
+navigator.clipboard.writeText('{{ u }}').catch(function(){});
+{% when None %}{% endmatch %}
+</script>
 {% endblock %}

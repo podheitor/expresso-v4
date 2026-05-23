@@ -23,6 +23,22 @@
       <div class="card stack">
         <h2>Perfil</h2>
         {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+
+        <!-- Avatar upload -->
+        <div class="settings-avatar-row">
+          <div class="settings-avatar" id="settings-avatar-preview">
+            {% match me.display_name %}{% when Some with (n) %}{{ n.chars().next().unwrap_or('?').to_uppercase() }}{% when None %}{{ me.email.chars().next().unwrap_or('?').to_uppercase() }}{% endmatch %}
+          </div>
+          <div>
+            <p class="muted small" style="margin-bottom:.4rem">Foto do perfil</p>
+            <label class="btn btn-ghost btn-sm settings-avatar-btn">
+              Alterar foto
+              <input type="file" accept="image/*" style="display:none" onchange="previewAvatar(this)">
+            </label>
+            <p class="muted small" style="margin-top:.25rem">JPG, PNG ou WebP. Máx 2 MB.</p>
+          </div>
+        </div>
+
         <form class="compose-form" method="post" action="/settings/profile">
           <label>
             <span>Nome de exibição</span>
@@ -272,4 +288,17 @@
     </div>
   </div>
 </div>
+<script>
+function previewAvatar(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var preview = document.getElementById('settings-avatar-preview');
+  if (!preview) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    preview.innerHTML = '<img src="' + e.target.result + '" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+  };
+  reader.readAsDataURL(file);
+}
+</script>
 {% endblock %}

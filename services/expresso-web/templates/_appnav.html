@@ -9,6 +9,12 @@
     <a class="appnav-item{% if current == "meet"     %} active{% endif %}" href="/meet">Meet</a>
     <a class="appnav-item{% if current == "tasks"    %} active{% endif %}" href="/tasks">Tarefas</a>
   </nav>
+  <div class="topbar-search-wrap">
+    <input type="search" id="topbar-search" class="topbar-search-input" placeholder="🔍 Buscar…"
+           autocomplete="off" onkeydown="if(event.key==='Enter')topbarSearch(this.value)"
+           oninput="topbarSearchInput(this.value)">
+    <ul class="topbar-search-results" id="topbar-search-results" style="display:none"></ul>
+  </div>
   <div class="useract">
     <button class="theme-toggle" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">☀</button>
     <a class="appnav-item{% if current == "settings" %} active{% endif %}" href="/settings" title="Configurações" aria-label="Configurações">⚙</a>
@@ -30,4 +36,54 @@
     apply(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
   });
 })();
+
+// ── Top-nav global search ─────────────────────────────────────────────────────
+var _tbTimer;
+function topbarSearchInput(q) {
+  clearTimeout(_tbTimer);
+  var res = document.getElementById('topbar-search-results');
+  if (!q || q.length < 2) { res.style.display = 'none'; return; }
+  _tbTimer = setTimeout(function() {
+    // Federate across endpoints
+    var searches = [
+      { label: 'Mail', url: '/api/v1/mail/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '✉', path: function(r){ return '/mail/' + r.id; }, text: function(r){ return r.subject || r.preview_text || r.from_addr; } },
+      { label: 'Chat', url: '/api/v1/messages/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '💬', path: function(r){ return '/chat/channels/' + r.channel_id; }, text: function(r){ return r.body; } },
+      { label: 'Drive', url: '/api/v1/drive/search?q=' + encodeURIComponent(q) + '&limit=3', icon: '📄', path: function(r){ return '/drive'; }, text: function(r){ return r.name; } },
+    ];
+    var items = [];
+    var done = 0;
+    function render() {
+      if (!items.length) { res.style.display = 'none'; return; }
+      res.innerHTML = items.slice(0, 9).map(function(i) {
+        return '<li><a class="topbar-search-item" href="' + i.href + '">' +
+          '<span class="topbar-search-icon">' + i.icon + '</span>' +
+          '<span class="topbar-search-text">' + escHtml(i.text) + '</span>' +
+          '<span class="topbar-search-cat muted small">' + i.cat + '</span>' +
+          '</a></li>';
+      }).join('');
+      res.style.display = '';
+    }
+    searches.forEach(function(s) {
+      fetch(s.url, {credentials:'include'})
+        .then(function(r){ return r.ok ? r.json() : []; })
+        .then(function(rows) {
+          (rows || []).forEach(function(r) {
+            items.push({ icon: s.icon, cat: s.label, text: (s.text(r) || '').slice(0,60), href: s.path(r) });
+          });
+        }).catch(function(){})
+        .then(function() { done++; if (done === searches.length) render(); });
+    });
+  }, 250);
+}
+function topbarSearch(q) {
+  if (!q.trim()) return;
+  window.location.href = '/mail/search?q=' + encodeURIComponent(q.trim());
+}
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.topbar-search-wrap')) {
+    var r = document.getElementById('topbar-search-results');
+    if (r) r.style.display = 'none';
+  }
+});
 </script>

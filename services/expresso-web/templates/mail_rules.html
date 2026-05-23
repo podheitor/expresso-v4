@@ -35,6 +35,42 @@
         <div class="alert alert-ok" role="status">Regras salvas com sucesso.</div>
       {% endif %}
 
+      <!-- Visual rule builder -->
+      <div class="card" style="margin-bottom:1rem">
+        <h3 style="margin-bottom:.75rem">Construtor visual de regra</h3>
+        <div class="rule-builder">
+          <div class="rule-builder-row">
+            <span class="muted small" style="width:3rem">Se</span>
+            <select id="rb-field" style="flex:1">
+              <option value="Subject">Assunto</option>
+              <option value="From">Remetente</option>
+              <option value="To">Destinatário</option>
+              <option value="List-Unsubscribe">É newsletter</option>
+            </select>
+            <select id="rb-op" style="flex:1">
+              <option value=":contains">contém</option>
+              <option value=":is">é exatamente</option>
+              <option value=":matches">padrão (glob)</option>
+            </select>
+            <input type="text" id="rb-value" placeholder="texto a buscar" style="flex:2" class="tasks-add-input">
+          </div>
+          <div class="rule-builder-row" style="margin-top:.5rem">
+            <span class="muted small" style="width:3rem">Então</span>
+            <select id="rb-action" onchange="updateRbAction()" style="flex:1">
+              <option value="fileinto">Mover para pasta</option>
+              <option value="discard">Descartar</option>
+              <option value="reject">Rejeitar</option>
+              <option value="redirect">Redirecionar para</option>
+            </select>
+            <input type="text" id="rb-action-val" placeholder="nome da pasta" style="flex:2" class="tasks-add-input">
+          </div>
+          <div style="display:flex;gap:.5rem;margin-top:.75rem">
+            <button type="button" class="btn btn-primary btn-sm" onclick="appendRule()">+ Adicionar ao script</button>
+            <span class="muted small" style="align-self:center">A regra será inserida no script abaixo</span>
+          </div>
+        </div>
+      </div>
+
       <div class="card" style="margin-bottom:1.5rem">
         <form method="POST" action="/mail/rules" class="form">
           <label style="flex-direction:row;align-items:center;gap:.6rem">
@@ -78,4 +114,36 @@ if header :contains "Subject" "[SPAM]" {
     </div>
   </main>
 </div>
+<script>
+function updateRbAction() {
+  var action = document.getElementById('rb-action').value;
+  var valInp = document.getElementById('rb-action-val');
+  if (action === 'fileinto') { valInp.placeholder = 'nome da pasta (ex: Newsletters)'; valInp.style.display = ''; }
+  else if (action === 'redirect') { valInp.placeholder = 'email de redirecionamento'; valInp.style.display = ''; }
+  else { valInp.style.display = 'none'; }
+}
+function appendRule() {
+  var field  = document.getElementById('rb-field').value;
+  var op     = document.getElementById('rb-op').value;
+  var val    = document.getElementById('rb-value').value.trim();
+  var action = document.getElementById('rb-action').value;
+  var aval   = document.getElementById('rb-action-val').value.trim();
+  if (!val && action !== 'discard' && action !== 'reject') { alert('Informe o texto a buscar.'); return; }
+  var needs = action === 'fileinto' ? '["fileinto"]' : action === 'redirect' ? '["copy"]' : '[]';
+  var cond = 'header ' + op + ' "' + field + '" "' + val + '"';
+  if (field === 'List-Unsubscribe') { cond = 'exists "List-Unsubscribe"'; }
+  var actionLine = action === 'fileinto' ? 'fileinto "' + aval + '";'
+    : action === 'redirect' ? 'redirect "' + aval + '";'
+    : action + ';';
+  var rule = '\nif ' + cond + ' {\n    ' + actionLine + '\n    stop;\n}';
+  var ta = document.querySelector('textarea[name="script"]');
+  if (!ta) return;
+  if (!ta.value.includes('require') && needs !== '[]') {
+    ta.value = 'require ' + needs + ';\n' + ta.value;
+  }
+  ta.value += rule;
+  ta.scrollTop = ta.scrollHeight;
+}
+updateRbAction();
+</script>
 {% endblock %}

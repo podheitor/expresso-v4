@@ -27,6 +27,8 @@
       <h1>Contatos</h1>
       {% match selected_book %}{% when Some with (bid) %}
         <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+          <input type="search" id="contacts-search" class="tasks-add-input" placeholder="🔍 Filtrar contatos…"
+                 oninput="filterContacts(this.value)" style="width:220px;font-size:.85rem">
           <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/export.vcf" title="Exportar todos como vCard">↓ Exportar .vcf</a>
           <label class="btn btn-ghost btn-sm" title="Importar arquivo .vcf">
             ↑ Importar .vcf
@@ -96,6 +98,15 @@ function importVcf(input, bookId) {
     }).catch(function() { alert('Erro de conexão.'); });
   };
   reader.readAsText(file);
+}
+
+function filterContacts(q) {
+  var rows = document.querySelectorAll('.data-table tbody tr');
+  var lq = q.toLowerCase().trim();
+  rows.forEach(function(row) {
+    var text = row.textContent.toLowerCase();
+    row.style.display = (!lq || text.includes(lq)) ? '' : 'none';
+  });
 }
 </script>
 {% endblock %}

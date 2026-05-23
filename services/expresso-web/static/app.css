@@ -106,9 +106,18 @@ h3 { font-size: .95rem; font-weight: 600; }
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center;
   padding: 0 1.25rem;
-  gap: 1.5rem;
+  gap: 1rem;
   box-shadow: var(--shadow-sm);
 }
+.topbar-search-wrap { position:relative; flex:0 1 260px; }
+.topbar-search-input { width:100%; padding:.35rem .65rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg); color:var(--text-primary); font-size:.84rem; }
+.topbar-search-input:focus { outline:none; border-color:var(--accent); }
+.topbar-search-results { position:absolute; top:calc(100% + .25rem); left:0; right:0; background:var(--bg-card,var(--bg)); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-md); z-index:200; list-style:none; padding:.25rem 0; margin:0; max-height:320px; overflow-y:auto; }
+.topbar-search-item { display:flex; align-items:center; gap:.5rem; padding:.45rem .75rem; text-decoration:none; color:var(--text-primary); font-size:.84rem; }
+.topbar-search-item:hover { background:var(--bg-raised); }
+.topbar-search-icon { flex-shrink:0; }
+.topbar-search-text { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.topbar-search-cat { font-size:.7rem; flex-shrink:0; }
 .brand {
   font-size: 1.1rem; font-weight: 700; letter-spacing: -.03em;
   color: var(--text-primary);
@@ -717,8 +726,11 @@ body:has(.auth-card) {
 
 /* ── Home dashboard (M365-style) ─────────────────────────────────────────────── */
 .home-page { max-width: 1200px; margin: 0 auto; padding: 0 1rem 3rem; }
-.home-greeting { padding: 2rem 0 1.5rem; }
+.home-greeting { padding: 2rem 0 1.5rem; display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; }
 .home-greeting h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+.home-clock-widget { text-align:right; }
+.home-clock-time { font-size:2rem; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.02em; color:var(--accent); }
+.home-clock-date { font-size:.8rem; margin-top:.1rem; }
 
 .home-dashboard {
   display: grid;
@@ -1026,11 +1038,15 @@ textarea[name="script"] {
 
 /* reply indicator */
 .chat-reply-indicator {
-  font-size: .72rem;
-  padding: .1rem .4rem;
-  border-left: 2px solid var(--accent);
-  margin-bottom: .15rem;
+  display: flex; align-items: stretch; gap: .35rem;
+  cursor: pointer; margin-bottom: .25rem;
+  border-radius: var(--radius-sm); overflow: hidden;
 }
+.chat-reply-indicator:hover { background: var(--bg-raised); }
+.chat-reply-bar { width: 3px; background: var(--accent); border-radius: 2px; flex-shrink: 0; }
+.chat-reply-content { display: flex; flex-direction: column; gap: .05rem; padding: .1rem 0; }
+.chat-reply-label { font-size: .7rem; }
+.chat-reply-preview { font-size: .75rem; max-width: 280px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
 /* compose */
 .chat-compose-area {
@@ -1294,6 +1310,13 @@ textarea[name="script"] {
 .dropdown-sep { border:none; border-top:1px solid var(--border); margin:.25rem 0; }
 
 .attach-badge { font-size:.75em; margin-left:.2rem; }
+.msg-labels { display:inline-flex; gap:.15rem; margin-left:.25rem; vertical-align:middle; }
+.mail-label-tag { font-size:.8em; line-height:1; }
+.rule-builder { display:flex; flex-direction:column; gap:.25rem; }
+.rule-builder-row { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+.settings-avatar-row { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; }
+.settings-avatar { width:4rem; height:4rem; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:700; overflow:hidden; flex-shrink:0; }
+.settings-avatar-btn { cursor:pointer; }
 .detail-attachments { margin:.5rem 0; display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
 .attach-list { display:flex; flex-wrap:wrap; gap:.4rem; }
 .attach-item { display:inline-flex; align-items:center; gap:.25rem; padding:.2rem .55rem; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius-sm); font-size:.78rem; color:var(--accent); text-decoration:none; }

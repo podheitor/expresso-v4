@@ -57,6 +57,7 @@
             <div class="msg-subject">
               {{ msg.subject_display() }}
               {% if msg.has_attachments %}<span class="attach-badge" title="Tem anexos">📎</span>{% endif %}
+              <span class="msg-labels" data-mid="{{ msg.id }}"></span>
             </div>
             {% if !msg.preview_display().is_empty() %}
               <div class="msg-preview">{{ msg.preview_display() }}</div>
@@ -100,6 +101,12 @@
                   <button class="dropdown-item" type="submit">{{ f.icon() }} {{ f.name }}</button>
                 </form>
                 {% endfor %}
+                <hr class="dropdown-sep">
+                <div class="dropdown-label">Etiquetas</div>
+                <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','importante','🔴')">🔴 Importante</button>
+                <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','trabalho','🔵')">🔵 Trabalho</button>
+                <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','pessoal','🟢')">🟢 Pessoal</button>
+                <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','aguardando','🟡')">🟡 Aguardando</button>
                 <hr class="dropdown-sep">
                 <form method="post" action="/mail/{{ d.id }}/delete" onsubmit="return confirm('Apagar mensagem?')">
                   <input type="hidden" name="folder" value="{{ selected }}">
@@ -278,5 +285,27 @@ function nextWeekAt(h, m) { var d = new Date(); d.setDate(d.getDate()+7-d.getDay
   });
   saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
 })();
+
+// ── Mail labels ───────────────────────────────────────────────────────────────
+var LABELS_KEY = 'expresso_mail_labels_{{ me.user_id }}';
+function loadLabels() { try { return JSON.parse(localStorage.getItem(LABELS_KEY) || '{}'); } catch(e) { return {}; } }
+function saveLabels(m) { localStorage.setItem(LABELS_KEY, JSON.stringify(m)); }
+function toggleMailLabel(msgId, name, icon) {
+  var map = loadLabels();
+  var tags = map[msgId] || [];
+  var idx = tags.findIndex(function(t){ return t.name === name; });
+  if (idx >= 0) { tags.splice(idx, 1); } else { tags.push({name: name, icon: icon}); }
+  map[msgId] = tags;
+  saveLabels(map);
+  renderAllLabels();
+}
+function renderAllLabels() {
+  var map = loadLabels();
+  document.querySelectorAll('.msg-labels[data-mid]').forEach(function(el) {
+    var tags = map[el.dataset.mid] || [];
+    el.innerHTML = tags.map(function(t){ return '<span class="mail-label-tag" title="' + t.name + '">' + t.icon + '</span>'; }).join('');
+  });
+}
+renderAllLabels();
 </script>
 {% endblock %}

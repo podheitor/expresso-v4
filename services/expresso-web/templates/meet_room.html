@@ -140,8 +140,14 @@
           api.addEventListener('readyToClose', function(){
             window.location.href = '/meet';
           });
-          api.addEventListener('participantJoined', function(e) { updateParticipantCount(1); });
-          api.addEventListener('participantLeft',   function(e) { updateParticipantCount(-1); });
+          api.addEventListener('participantJoined', function(e) {
+            updateParticipantCount(1);
+            if (e && e.displayName) addLiveParticipant(e.displayName);
+          });
+          api.addEventListener('participantLeft', function(e) {
+            updateParticipantCount(-1);
+            if (e && e.displayName) removeLiveParticipant(e.displayName);
+          });
           api.addEventListener('recordingStatusChanged', function(e) {
             var btn = document.getElementById('rec-btn');
             if (!btn) return;
@@ -184,18 +190,28 @@
               <div class="muted small" style="padding:.5rem 1rem;border-bottom:1px solid var(--border)">{{ d }}</div>
             {% when None %}{% endmatch %}
         {% when None %}{% endmatch %}
-      <ul class="participant-list" style="padding:.5rem 1rem" id="participant-list">
+      <div style="padding:.4rem 1rem;font-size:.75rem;color:var(--text-muted)">
+        <span id="live-part-count">{{ participants.len() }}</span> participante(s)
+      </div>
+      <ul class="participant-list" style="padding:.25rem .5rem" id="participant-list">
         {% if participants.is_empty() %}
-          <li class="muted small">Nenhum participante ainda.</li>
+          <li class="muted small" style="padding:.5rem">Nenhum participante ainda.</li>
         {% else %}
           {% for p in participants %}
-            <li class="participant-item">
-              <div class="participant-avatar">{{ p.initial() }}</div>
-              <div>
-                <div>{{ p.name() }}</div>
+            <li class="participant-item" id="part-item-__{{ p.name() }}__">
+              <div class="participant-avatar" title="{{ p.name() }}">{{ p.initial() }}</div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.88rem;font-weight:500">{{ p.name() }}</div>
                 {% match p.role %}
-                  {% when Some with (r) %}{% if r == "moderator" %}<div class="muted small">Moderador</div>{% endif %}
+                  {% when Some with (r) %}{% if r == "moderator" %}<div class="muted small">👑 Moderador</div>{% endif %}
                   {% when None %}{% endmatch %}
+              </div>
+              <div style="display:flex;gap:.2rem;align-items:center">
+                <span class="part-status-mic" title="Microfone">🎙</span>
+                <span class="part-status-cam" title="Câmera">📷</span>
+                {% if is_moderator %}
+                <button class="chat-action-btn" title="Silenciar" onclick="muteParticipant('{{ p.name() }}')">🔇</button>
+                {% endif %}
               </div>
             </li>
           {% endfor %}
@@ -253,9 +269,33 @@ var _partCount = {{ participants.len() }};
 function updateParticipantCount(delta) {
   _partCount = Math.max(0, _partCount + delta);
   var el = document.getElementById('part-count');
+  var liveEl = document.getElementById('live-part-count');
   var wrap = document.getElementById('part-count-label');
   if (el) el.textContent = _partCount;
+  if (liveEl) liveEl.textContent = _partCount;
   if (wrap) wrap.style.display = _partCount > 0 ? '' : 'none';
+}
+function muteParticipant(name) {
+  var api = window._jitsiApi;
+  if (!api) return;
+  var parts = api.getParticipantsInfo();
+  var match = parts.find(function(p){ return p.displayName === name; });
+  if (match) api.executeCommand('kickParticipant', match.participantId);
+}
+function addLiveParticipant(name) {
+  var ul = document.getElementById('participant-list');
+  if (!ul) return;
+  var li = document.createElement('li');
+  li.className = 'participant-item';
+  li.id = 'part-item-live-' + name.replace(/\s/g,'_');
+  li.innerHTML = '<div class="participant-avatar">' + escH(name.charAt(0).toUpperCase()) + '</div>' +
+    '<div style="flex:1"><div style="font-size:.88rem;font-weight:500">' + escH(name) + '</div></div>' +
+    '<span class="part-status-mic">🎙</span><span class="part-status-cam">📷</span>';
+  ul.appendChild(li);
+}
+function removeLiveParticipant(name) {
+  var el = document.getElementById('part-item-live-' + name.replace(/\s/g,'_'));
+  if (el) el.remove();
 }
 
 // elapsed timer

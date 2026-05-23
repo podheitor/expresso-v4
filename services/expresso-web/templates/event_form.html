@@ -30,6 +30,31 @@
       <label>Descrição
         <textarea name="description" rows="4">{{ description }}</textarea>
       </label>
+      <!-- Recorrência -->
+      <label>Repetir
+        <select name="rrule_freq" id="rrule-freq" onchange="updateRrule()">
+          <option value="">Não repetir</option>
+          <option value="DAILY">Diariamente</option>
+          <option value="WEEKLY">Semanalmente</option>
+          <option value="MONTHLY">Mensalmente</option>
+          <option value="YEARLY">Anualmente</option>
+        </select>
+      </label>
+      <div id="rrule-extra" style="display:none">
+        <div class="row" style="gap:.75rem">
+          <label style="flex:1">Intervalo
+            <input type="number" name="rrule_interval" id="rrule-interval" min="1" value="1" onchange="updateRrule()">
+          </label>
+          <label style="flex:1">Terminar em
+            <input type="date" name="rrule_until" id="rrule-until" onchange="updateRrule()">
+          </label>
+          <label style="flex:1">Repetições
+            <input type="number" name="rrule_count" id="rrule-count" min="1" placeholder="∞" onchange="updateRrule()">
+          </label>
+        </div>
+      </div>
+      <input type="hidden" name="rrule" id="rrule-value">
+
       <label>Convidados <span class="muted">(um email por linha ou separados por vírgula)</span>
         <textarea name="attendees" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local">{{ attendees }}</textarea>
       </label>
@@ -57,4 +82,20 @@
   <form id="delete-form" method="post" action="/calendar/{{ calendar.id }}/events/{{ id }}/delete" style="display:none"></form>
   {% when None %}{% endmatch %}
 </div>
+<script>
+function updateRrule() {
+  var freq = document.getElementById('rrule-freq').value;
+  var extra = document.getElementById('rrule-extra');
+  var hidden = document.getElementById('rrule-value');
+  if (!freq) { extra.style.display = 'none'; hidden.value = ''; return; }
+  extra.style.display = '';
+  var interval = document.getElementById('rrule-interval').value || '1';
+  var until    = document.getElementById('rrule-until').value;
+  var count    = document.getElementById('rrule-count').value;
+  var rule = 'FREQ=' + freq + ';INTERVAL=' + interval;
+  if (until)  rule += ';UNTIL=' + until.replace(/-/g,'') + 'T000000Z';
+  if (count && !until) rule += ';COUNT=' + count;
+  hidden.value = rule;
+}
+</script>
 {% endblock %}
