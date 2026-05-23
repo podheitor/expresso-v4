@@ -72,6 +72,8 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/:id/delete",             post(contact_delete_action))
         .route("/contacts/:book_id/share", get(addrbook_share_page).post(addrbook_share_create))
         .route("/contacts/:book_id/share/:grantee_id/revoke", post(addrbook_share_revoke))
+        .route("/contacts/:book_id/export.vcf", get(contacts_export_vcf))
+        .route("/contacts/:book_id/import",     post(contacts_import_vcf))
         // mail extras
         .route("/mail/search",                      get(mail_search_page))
         .route("/mail/:id/attachments/:idx",        get(mail_attachment_proxy))
@@ -1893,6 +1895,54 @@ async fn contact_delete_action(
     Ok(Redirect::to(&format!("/contacts?book_id={enc_b}")).into_response())
 }
 
+
+async fn contacts_export_vcf(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(book_id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let url = format!("{}/api/v1/addressbooks/{enc}/contacts.vcf",
+        st.backends.contacts.trim_end_matches('/'));
+    let mut req = st.http.get(&url);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    match req.send().await {
+        Ok(r) if r.status().is_success() => {
+            let body = r.bytes().await.unwrap_or_default();
+            Ok((
+                [(header::CONTENT_TYPE, "text/vcard; charset=utf-8"),
+                 (header::CONTENT_DISPOSITION, "attachment; filename=\"contacts.vcf\"")],
+                body,
+            ).into_response())
+        }
+        _ => Ok((StatusCode::BAD_GATEWAY, "Falha ao exportar contatos.").into_response()),
+    }
+}
+
+async fn contacts_import_vcf(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(book_id): Path<String>, body: Bytes,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc = utf8_percent_encode(&book_id, NON_ALPHANUMERIC).to_string();
+    let ct = headers.get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("text/vcard")
+        .to_string();
+    let _ = crate::upstream::post_body(
+        &st, &st.backends.contacts,
+        &format!("/api/v1/addressbooks/{enc}/import"),
+        &headers, Some((&t, &u)), body, &ct,
+    ).await?;
+    Ok(Redirect::to(&format!("/contacts?book_id={enc}")).into_response())
+}
 
 // ─── ACL sharing pages ───────────────────────────────────────────────────────
 

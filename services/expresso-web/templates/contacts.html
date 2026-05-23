@@ -26,7 +26,14 @@
     <div class="page-header">
       <h1>Contatos</h1>
       {% match selected_book %}{% when Some with (bid) %}
-        <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
+        <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+          <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/export.vcf" title="Exportar todos como vCard">↓ Exportar .vcf</a>
+          <label class="btn btn-ghost btn-sm" title="Importar arquivo .vcf">
+            ↑ Importar .vcf
+            <input type="file" accept=".vcf,text/vcard" style="display:none" onchange="importVcf(this, '{{ bid }}')">
+          </label>
+          <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
+        </div>
       {% when None %}{% endmatch %}
     </div>
 
@@ -62,4 +69,23 @@
     {% endif %}
   </main>
 </section>
+<script>
+function importVcf(input, bookId) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    fetch('/contacts/' + encodeURIComponent(bookId) + '/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/vcard' },
+      credentials: 'include',
+      body: e.target.result,
+    }).then(function(r) {
+      if (r.ok || r.redirected) { window.location.reload(); }
+      else { alert('Erro ao importar (' + r.status + ').'); }
+    }).catch(function() { alert('Erro de conexão.'); });
+  };
+  reader.readAsText(file);
+}
+</script>
 {% endblock %}
