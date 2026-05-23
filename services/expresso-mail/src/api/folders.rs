@@ -1612,4 +1612,9 @@ mod tests {
         assert!(!dto.subscribed);
         assert_eq!(dto.message_count, 3);
     }
+
+    #[test]
+    fn folder_name_hyphen_accepted() {
+        assert!(validate_folder_name("my-folder").is_ok());
+    }
 }

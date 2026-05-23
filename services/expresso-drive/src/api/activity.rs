@@ -353,4 +353,16 @@ mod tests {
     fn page_size_constant_fits_in_usize() {
         assert!(PAGE_SIZE > 0);
     }
+
+    #[test]
+    fn activity_event_user_id_accessible() {
+        use time::macros::datetime;
+        let uid = Uuid::new_v4();
+        let e = ActivityEvent {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            user_id: uid, action: "view".into(), detail: None,
+            created_at: datetime!(2026-05-22 10:00:00 UTC),
+        };
+        assert_eq!(e.user_id, uid);
+    }
 }

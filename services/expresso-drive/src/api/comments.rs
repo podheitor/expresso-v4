@@ -396,4 +396,10 @@ mod tests {
     fn max_comment_bytes_is_positive() {
         assert!(MAX_COMMENT_BYTES > 0);
     }
+
+    #[test]
+    fn create_comment_body_deserializes_special_chars() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":"<div>test</div>"}"#).unwrap();
+        assert!(b.body.contains("<div>"));
+    }
 }

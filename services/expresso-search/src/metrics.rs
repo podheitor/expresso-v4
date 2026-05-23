@@ -172,4 +172,9 @@ mod tests {
     fn op_delete_contains_delete() {
         assert!(OP_DELETE.contains("delete"));
     }
+
+    #[test]
+    fn op_search_and_op_index_are_distinct() {
+        assert_ne!(OP_SEARCH, OP_INDEX);
+    }
 }

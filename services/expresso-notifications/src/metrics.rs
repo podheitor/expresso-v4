@@ -159,4 +159,10 @@ mod tests {
     fn channel_push_and_email_are_distinct() {
         assert_ne!(CHANNEL_PUSH, CHANNEL_EMAIL);
     }
+
+    #[test]
+    fn channel_websocket_differs_from_push_and_email() {
+        assert_ne!(CHANNEL_WEBSOCKET, CHANNEL_PUSH);
+        assert_ne!(CHANNEL_WEBSOCKET, CHANNEL_EMAIL);
+    }
 }

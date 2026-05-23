@@ -221,4 +221,9 @@ mod tests {
     fn lhlo_and_helo_map_to_different_labels() {
         assert_ne!(command_label("LHLO"), command_label("HELO"));
     }
+
+    #[test]
+    fn data_and_mail_are_distinct_labels() {
+        assert_ne!(command_label("DATA"), command_label("MAIL"));
+    }
 }

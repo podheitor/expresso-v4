@@ -279,4 +279,10 @@ mod tests {
         assert_eq!(command_label("COPY"), "COPY");
         assert_eq!(command_label("copy"), "COPY");
     }
+
+    #[test]
+    fn thread_command_is_case_insensitive() {
+        assert_eq!(command_label("THREAD"), "THREAD");
+        assert_eq!(command_label("thread"), "THREAD");
+    }
 }

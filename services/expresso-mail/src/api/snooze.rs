@@ -502,4 +502,18 @@ mod tests {
         };
         assert_eq!(r.woken_at.unwrap(), woken);
     }
+
+    #[test]
+    fn snooze_record_clone_preserves_fields() {
+        use time::macros::datetime;
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2027-02-01 08:00:00 UTC),
+            snoozed_at:   datetime!(2027-01-31 08:00:00 UTC),
+            woken_at: None,
+        };
+        let cloned = r.clone();
+        assert_eq!(cloned.snooze_until, r.snooze_until);
+    }
 }

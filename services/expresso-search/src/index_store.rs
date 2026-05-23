@@ -1523,6 +1523,14 @@ mod tests {
         assert!(!doc.document_id.is_empty());
     }
 
+    fn bucket_day(ts: i64) -> String {
+        unix_secs_to_bucket(ts as u64, "day")
+    }
+
+    fn bucket_month(ts: i64) -> String {
+        unix_secs_to_bucket(ts as u64, "month")
+    }
+
     #[test]
     fn bucket_day_and_bucket_month_differ_for_same_ts() {
         let ts = 1_700_000_000_i64;
@@ -1562,5 +1570,11 @@ mod tests {
         };
         assert!((hit.score - 1.5).abs() < f32::EPSILON);
         assert_eq!(hit.kind.as_deref(), Some("mail"));
+    }
+
+    #[test]
+    fn bucket_day_and_bucket_week_differ_for_known_date() {
+        let ts = 1_748_304_000_i64;
+        assert_ne!(bucket_day(ts), bucket_month(ts));
     }
 }

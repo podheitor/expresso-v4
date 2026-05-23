@@ -654,4 +654,10 @@ mod extra_tests {
         let cd = build_content_disposition("file.txt");
         assert!(cd.starts_with("attachment;"));
     }
+
+    #[test]
+    fn percent_encode_filename_caret_preserved() {
+        let s = percent_encode_filename("file^v2.txt");
+        assert_eq!(s, "file^v2.txt");
+    }
 }
