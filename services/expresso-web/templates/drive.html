@@ -93,6 +93,14 @@
 
 </div>
 
+<!-- Global drag-to-upload overlay -->
+<div id="drive-drop-overlay" class="drive-drop-overlay" style="display:none">
+  <div class="drive-drop-overlay-box">
+    <div style="font-size:2.5rem">📂</div>
+    <p>Solte para enviar arquivos</p>
+  </div>
+</div>
+
 <!-- New folder modal -->
 <div class="modal-overlay" id="drive-new-folder-modal" style="display:none" onclick="if(event.target.id==='drive-new-folder-modal')hideDriveNewFolder()">
   <div class="modal-box" style="max-width:380px">
@@ -220,6 +228,43 @@ function hideDriveNewFolder() {
 }
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') hideDriveNewFolder();
+});
+
+// ── Global drag-to-upload ────────────────────────────────────────────────────
+var _dragCount = 0;
+var _driveUploadAction = document.querySelector('.upload-form') ? document.querySelector('.upload-form').action : '/drive/upload';
+
+document.addEventListener('dragenter', function(e) {
+  if (!e.dataTransfer.types.includes('Files')) return;
+  e.preventDefault();
+  _dragCount++;
+  document.getElementById('drive-drop-overlay').style.display = 'flex';
+});
+document.addEventListener('dragleave', function(e) {
+  _dragCount--;
+  if (_dragCount <= 0) {
+    _dragCount = 0;
+    document.getElementById('drive-drop-overlay').style.display = 'none';
+  }
+});
+document.addEventListener('dragover', function(e) { e.preventDefault(); });
+document.addEventListener('drop', function(e) {
+  e.preventDefault();
+  _dragCount = 0;
+  document.getElementById('drive-drop-overlay').style.display = 'none';
+  var files = e.dataTransfer.files;
+  if (!files || !files.length) return;
+  var form = new FormData();
+  for (var i = 0; i < files.length; i++) {
+    form.append('file', files[i]);
+  }
+  {% match parent_id %}
+  {% when Some with (p) %}form.append('parent_id', '{{ p }}');{% when None %}{% endmatch %}
+  fetch(_driveUploadAction, {
+    method: 'POST', credentials: 'include', body: form,
+  }).then(function(r) {
+    if (r.ok || r.redirected) window.location.reload();
+  }).catch(function(){});
 });
 </script>
 {% endblock %}

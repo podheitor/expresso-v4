@@ -68,7 +68,17 @@
       <ul class="chat-global-results" id="chat-global-results" style="display:none"></ul>
     </div>
     <footer class="sidebar-footer">
-      <a href="/settings" class="sidebar-settings-link">⚙ Configurações</a>
+      <div class="presence-self-wrap">
+        <span class="presence-dot" id="presence-self-dot" title="Meu status"></span>
+        <span class="muted small" id="presence-self-label">Online</span>
+        <select class="presence-select" id="presence-select" onchange="setPresence(this.value)" title="Alterar status">
+          <option value="online">Online</option>
+          <option value="away">Ausente</option>
+          <option value="dnd">Não perturbe</option>
+          <option value="offline">Invisible</option>
+        </select>
+      </div>
+      <a href="/settings" class="sidebar-settings-link">⚙</a>
     </footer>
   </aside>
 
@@ -682,6 +692,55 @@ function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Presence ─────────────────────────────────────────────────────────────────
+var PRESENCE_KEY = 'expresso_presence_{{ me.user_id }}';
+var PRESENCE_COLORS = { online:'#22c55e', away:'#f59e0b', dnd:'#ef4444', offline:'#94a3b8' };
+var PRESENCE_LABELS = { online:'Online', away:'Ausente', dnd:'Não perturbe', offline:'Invisível' };
+
+function setPresence(status) {
+  localStorage.setItem(PRESENCE_KEY, status);
+  broadcastPresence(status);
+  updatePresenceUI(status);
+}
+function broadcastPresence(status) {
+  fetch('/api/v1/presence', {
+    method: 'POST', credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'status=' + encodeURIComponent(status),
+  }).catch(function(){});
+}
+function updatePresenceUI(status) {
+  var dot = document.getElementById('presence-self-dot');
+  var lbl = document.getElementById('presence-self-label');
+  if (dot) dot.style.background = PRESENCE_COLORS[status] || '#94a3b8';
+  if (lbl) lbl.textContent = PRESENCE_LABELS[status] || status;
+}
+(function initPresence() {
+  var saved = localStorage.getItem(PRESENCE_KEY) || 'online';
+  var sel = document.getElementById('presence-select');
+  if (sel) sel.value = saved;
+  updatePresenceUI(saved);
+  broadcastPresence(saved);
+  // heartbeat every 60s
+  setInterval(function() {
+    var s = localStorage.getItem(PRESENCE_KEY) || 'online';
+    broadcastPresence(s);
+  }, 60000);
+  // mark away after 5min of inactivity
+  var _lastActive = Date.now();
+  document.addEventListener('mousemove', function(){ _lastActive = Date.now(); });
+  document.addEventListener('keydown', function(){ _lastActive = Date.now(); });
+  setInterval(function() {
+    var current = localStorage.getItem(PRESENCE_KEY) || 'online';
+    if (current !== 'online') return;
+    if (Date.now() - _lastActive > 5 * 60 * 1000) {
+      updatePresenceUI('away');
+    } else {
+      updatePresenceUI('online');
+    }
+  }, 30000);
+})();
 
 // ── Edit message ─────────────────────────────────────────────────────────────
 function startEditMsg(id) {

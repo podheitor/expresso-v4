@@ -22,19 +22,99 @@
     <strong class="btn btn-primary" aria-current="page">Dia</strong>
   </nav>
 
-  <div class="day-list">
-    {% if events.is_empty() %}
-    <p class="muted">Nenhum evento neste dia.</p>
-    {% endif %}
-    {% for ev in events %}
-    <a class="day-event" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
-      <span class="ev-time">{{ ev.time_label() }}</span>
-      <span class="ev-body">
-        <strong>{{ ev.title() }}</strong>
-        {% match ev.location %}{% when Some with (loc) %}{% if !loc.is_empty() %}<span class="muted"> · {{ loc }}</span>{% endif %}{% when None %}{% endmatch %}
-      </span>
-    </a>
+  <!-- All-day events row -->
+  {% if events.iter().any(|e| e.is_all_day()) %}
+  <div class="cal-day-allday-row">
+    <div class="cal-day-allday-label muted small">Dia inteiro</div>
+    <div class="cal-day-allday-events">
+      {% for ev in events %}{% if ev.is_all_day() %}
+        <a class="event-chip event-chip-allday"
+           href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
+          {% if ev.is_recurring() %}<span class="ev-recur">↻</span>{% endif %}
+          {{ ev.title() }}
+        </a>
+      {% endif %}{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Hourly grid -->
+  <div class="cal-day-grid" id="cal-day-grid">
+    {% for h in hours %}
+    <div class="cal-day-row" data-hour="{{ h }}">
+      <div class="cal-day-hour-label">{% if h < 10 %}0{% endif %}{{ h }}:00</div>
+      <div class="cal-day-slot"
+           onclick="quickNewEvent('{{ date_iso }}', {{ h }}, 0, '{{ selected.id }}')"></div>
+    </div>
+    <div class="cal-day-row cal-day-row-half">
+      <div class="cal-day-hour-label cal-day-half-label">{% if h < 10 %}0{% endif %}{{ h }}:30</div>
+      <div class="cal-day-slot"
+           onclick="quickNewEvent('{{ date_iso }}', {{ h }}, 30, '{{ selected.id }}')"></div>
+    </div>
     {% endfor %}
+
+    <!-- Events overlay -->
+    <div class="cal-day-events-layer" id="cal-day-events-layer">
+      {% for ev in events %}{% if !ev.is_all_day() %}
+      <a class="cal-day-event{% if ev.is_recurring() %} event-chip-recurring{% endif %}"
+         href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
+         data-start="{% match ev.dtstart %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}"
+         data-end="{% match ev.dtend %}{% when Some with (e) %}{{ e }}{% when None %}{% endmatch %}"
+         title="{{ ev.title() }}">
+        <span class="cal-day-event-time">{{ ev.time_label() }}</span>
+        <span class="cal-day-event-title">{{ ev.title() }}</span>
+        {% match ev.location %}{% when Some with (loc) %}{% if !loc.is_empty() %}
+          <span class="cal-day-event-loc muted small">📍 {{ loc }}</span>
+        {% endif %}{% when None %}{% endmatch %}
+      </a>
+      {% endif %}{% endfor %}
+    </div>
   </div>
 </div>
+
+<script>
+(function positionDayEvents() {
+  var ROW_HEIGHT = 30;
+  var COL_LEFT   = 64;
+  var layer = document.getElementById('cal-day-events-layer');
+  var grid  = document.getElementById('cal-day-grid');
+  if (!layer || !grid) return;
+
+  layer.querySelectorAll('.cal-day-event').forEach(function(el) {
+    var startStr = el.dataset.start || '';
+    var endStr   = el.dataset.end   || '';
+    if (!startStr || startStr.length < 16) return;
+
+    var startH = parseInt(startStr.slice(11,13), 10) || 0;
+    var startM = parseInt(startStr.slice(14,16), 10) || 0;
+    var endH   = endStr.length >= 16 ? (parseInt(endStr.slice(11,13), 10) || startH + 1) : startH + 1;
+    var endM   = endStr.length >= 16 ? (parseInt(endStr.slice(14,16), 10) || 0) : 0;
+
+    var topSlots    = startH * 2 + (startM >= 30 ? 1 : 0);
+    var endSlots    = endH   * 2 + (endM   >= 30 ? 1 : 0);
+    var heightSlots = Math.max(endSlots - topSlots, 1);
+
+    el.style.top      = (topSlots * ROW_HEIGHT) + 'px';
+    el.style.height   = (heightSlots * ROW_HEIGHT - 2) + 'px';
+    el.style.left     = COL_LEFT + 'px';
+    el.style.right    = '4px';
+    el.style.position = 'absolute';
+  });
+
+  // Scroll to current hour (or 8am)
+  var now = new Date();
+  var scrollSlot = now.getHours() * 2;
+  grid.scrollTop = Math.max(0, scrollSlot * ROW_HEIGHT - 120);
+})();
+
+function quickNewEvent(dateIso, h, m, calId) {
+  var hh  = String(h).padStart(2,'0');
+  var mm  = String(m).padStart(2,'0');
+  var hEnd = String(m >= 30 ? (h + 1) % 24 : h).padStart(2,'0');
+  var mEnd = m >= 30 ? '00' : '30';
+  window.location.href = '/calendar/' + calId + '/events/new'
+    + '?date=' + dateIso + '&time=' + hh + ':' + mm + ':00'
+    + '&end_time=' + hEnd + ':' + mEnd + ':00';
+}
+</script>
 {% endblock %}

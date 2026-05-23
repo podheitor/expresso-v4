@@ -292,6 +292,11 @@ impl Contact {
     pub fn email_display(&self) -> &str { self.email.as_deref().unwrap_or("") }
     pub fn phone_display(&self) -> &str { self.phone.as_deref().unwrap_or("") }
     pub fn org_display(&self) -> &str { self.organization.as_deref().unwrap_or("") }
+    pub fn avatar_initial(&self) -> String {
+        let name = self.full_name.as_deref().unwrap_or("");
+        let ch = name.chars().next().unwrap_or('?');
+        ch.to_uppercase().to_string()
+    }
 }
 
 #[derive(Template)]
@@ -507,6 +512,7 @@ pub struct CalendarDayTpl {
     pub week_link:   String,
     pub month_link:  String,
     pub events:      Vec<Event>,
+    pub hours:       Vec<u8>,
 }
 
 #[derive(Template)]

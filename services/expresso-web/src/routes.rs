@@ -1431,6 +1431,7 @@ async fn calendar_day_page(
         date_label, date_iso,
         prev_link, next_link, today_link, week_link, month_link,
         events,
+        hours: (0u8..24).collect(),
     }))
 }
 

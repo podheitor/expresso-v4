@@ -223,5 +223,23 @@ window.logExpressoActivity = function(icon, label) {
     localStorage.setItem(key, JSON.stringify(list.slice(0, 20)));
   } catch(e) {}
 };
+
+// Live refresh when other tabs log activity
+window.addEventListener('storage', function(e) {
+  var key = 'expresso_activity_{{ me.user_id }}';
+  if (e.key !== key) return;
+  var ul = document.getElementById('home-activity-list');
+  if (!ul) return;
+  var list = [];
+  try { list = JSON.parse(e.newValue || '[]'); } catch(ex) {}
+  function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  ul.innerHTML = '';
+  list.slice(0, 8).forEach(function(a) {
+    var time = a.ts ? new Date(a.ts).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) : '';
+    ul.innerHTML += '<li class="home-file-item"><span>' + escH(a.icon || '•') + '</span>' +
+      '<span class="home-file-name">' + escH(a.label) + '</span>' +
+      '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + time + '</span></li>';
+  });
+});
 </script>
 {% endblock %}

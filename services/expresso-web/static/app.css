@@ -399,8 +399,12 @@ select option { background: var(--bg-raised); }
 .sidebar-footer {
   padding: .75rem 1rem;
   border-top: 1px solid var(--border);
-  display: flex; flex-direction: column; gap: .4rem;
+  display: flex; align-items: center; gap: .5rem;
 }
+.presence-self-wrap { display:flex; align-items:center; gap:.35rem; flex:1; min-width:0; }
+.presence-dot { width:.65rem; height:.65rem; border-radius:50%; background:#22c55e; flex-shrink:0; }
+.presence-select { font-size:.75rem; background:transparent; border:none; color:var(--text-muted); cursor:pointer; padding:0; max-width:7rem; }
+.presence-select:focus { outline:none; }
 
 /* Mail main area */
 .mail-main {
@@ -577,6 +581,25 @@ select option { background: var(--bg-raised); }
   color: var(--accent); flex-shrink: 0;
 }
 .day-event .ev-body { font-size: .9rem; }
+
+/* ── Calendar day hourly grid (sprint #20026) ──────────────────────────────── */
+.cal-day-allday-row { display:flex; align-items:flex-start; gap:.5rem; margin-bottom:.5rem; padding:.4rem .5rem; background:var(--bg-surface); border-radius:var(--radius-sm); }
+.cal-day-allday-label { flex-shrink:0; width:60px; padding-top:.2rem; }
+.cal-day-allday-events { display:flex; flex-wrap:wrap; gap:.3rem; flex:1; }
+.cal-day-grid { position:relative; overflow-y:auto; max-height:calc(100vh - 280px); border:1px solid var(--border); border-radius:var(--radius-sm); }
+.cal-day-row { display:flex; height:30px; border-bottom:1px solid var(--border); }
+.cal-day-row-half .cal-day-hour-label { opacity:0; }
+.cal-day-row:hover { background:rgba(0,0,0,.015); }
+.cal-day-hour-label { width:60px; flex-shrink:0; font-size:.72rem; color:var(--text-muted); padding:.05rem .4rem 0; text-align:right; user-select:none; }
+.cal-day-half-label { font-size:.65rem; }
+.cal-day-slot { flex:1; cursor:pointer; }
+.cal-day-slot:hover { background:rgba(20,184,166,.07); }
+.cal-day-events-layer { position:absolute; top:0; left:0; right:0; bottom:0; pointer-events:none; }
+.cal-day-event { pointer-events:auto; position:absolute; background:var(--accent); color:#fff; border-radius:var(--radius-sm); padding:.1rem .35rem; font-size:.78rem; overflow:hidden; display:flex; flex-direction:column; gap:.05rem; text-decoration:none; }
+.cal-day-event:hover { background:color-mix(in srgb, var(--accent) 80%, #000); }
+.cal-day-event-time { font-size:.68rem; opacity:.85; }
+.cal-day-event-title { font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.cal-day-event-loc { font-size:.68rem; opacity:.8; }
 
 /* Calendar switch nav */
 .calendar-switch { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
@@ -1426,7 +1449,8 @@ textarea[name="script"] {
 /* ── GAL search ─────────────────────────────────────────────────────────────── */
 .contact-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:1rem; margin-top:1rem; }
 .contact-card { display:flex; align-items:center; gap:.75rem; padding:.75rem; background:var(--bg-raised); border-radius:var(--radius-md); border:1px solid var(--border); }
-.contact-avatar { width:2.5rem; height:2.5rem; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1rem; flex-shrink:0; text-transform:uppercase; }
+.contact-avatar { width:2.2rem; height:2.2rem; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.95rem; flex-shrink:0; text-transform:uppercase; }
+.contact-name-cell { display:flex; align-items:center; gap:.5rem; }
 .contact-info { flex:1; min-width:0; }
 .contact-name { font-weight:500; font-size:.9rem; }
 .contact-email { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -1568,6 +1592,10 @@ textarea[name="script"] {
 .event-chip-allday { background:var(--accent); color:#fff; font-weight:600; border-radius:var(--radius); }
 .event-chip-allday:hover { background: color-mix(in srgb, var(--accent) 80%, #000); }
 .ev-allday-badge { font-size:.6rem; margin-right:.15rem; opacity:.8; }
+
+/* ── Drive drag-to-upload overlay (sprint #20027) ───────────────────────────── */
+.drive-drop-overlay { position:fixed; inset:0; z-index:900; background:rgba(20,184,166,.18); display:flex; align-items:center; justify-content:center; pointer-events:none; }
+.drive-drop-overlay-box { background:var(--bg-card,var(--bg)); border:3px dashed var(--accent); border-radius:var(--radius); padding:2.5rem 4rem; text-align:center; color:var(--accent); font-size:1.1rem; font-weight:600; }
 
 /* ── Drive breadcrumb (sprint #20021) ────────────────────────────────────────── */
 .drive-breadcrumb { display:flex; align-items:center; gap:.35rem; font-size:.85rem; margin-bottom:.75rem; flex-wrap:wrap; }

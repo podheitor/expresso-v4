@@ -48,7 +48,12 @@
         {% for c in contacts %}
         {% match selected_book %}{% when Some with (bid) %}
         <tr>
-          <td><a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">{{ c.name_display() }}</a></td>
+          <td>
+            <div class="contact-name-cell">
+              <div class="contact-avatar" aria-hidden="true">{{ c.avatar_initial() }}</div>
+              <a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">{{ c.name_display() }}</a>
+            </div>
+          </td>
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
           <td class="muted">{{ c.org_display() }}</td>
@@ -56,7 +61,12 @@
         </tr>
         {% when None %}
         <tr>
-          <td>{{ c.name_display() }}</td>
+          <td>
+            <div class="contact-name-cell">
+              <div class="contact-avatar" aria-hidden="true">{{ c.avatar_initial() }}</div>
+              <span>{{ c.name_display() }}</span>
+            </div>
+          </td>
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
           <td class="muted">{{ c.org_display() }}</td>
