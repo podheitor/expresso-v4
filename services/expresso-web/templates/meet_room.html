@@ -37,25 +37,89 @@
     <!-- Painel Jitsi -->
     <div class="meet-room-content">
       {% if jitsi_enabled %}
-        <div id="jitsi-container" style="width:100%;height:100%;"></div>
+        <!-- Sala de espera (pre-join) -->
+        <div id="meet-prejoin" class="meet-prejoin">
+          <div class="meet-prejoin-card">
+            <h2>Pronto para entrar?</h2>
+            <p class="muted small">{{ room_name }}</p>
+            <div class="meet-prejoin-preview">
+              <video id="prejoin-video" autoplay muted playsinline class="meet-prejoin-video"></video>
+              <div id="prejoin-novideo" class="meet-prejoin-novideo muted" style="display:none">🎥 Câmera desativada</div>
+            </div>
+            <div class="meet-prejoin-controls">
+              <button class="btn btn-ghost btn-sm" id="pj-cam-btn" onclick="togglePjCam()" title="Câmera">🎥 Câm.</button>
+              <button class="btn btn-ghost btn-sm" id="pj-mic-btn" onclick="togglePjMic()" title="Microfone">🎤 Mic.</button>
+            </div>
+            <div class="meet-prejoin-name">
+              <input type="text" id="pj-name" placeholder="Seu nome" value="{{ me.display_name.as_deref().unwrap_or(&me.email) }}" class="tasks-add-input" style="text-align:center">
+            </div>
+            <button class="btn btn-primary" onclick="enterMeet()">Entrar agora →</button>
+            <a class="btn btn-ghost btn-sm" href="/meet">Cancelar</a>
+          </div>
+        </div>
+
+        <div id="jitsi-container" style="width:100%;height:100%;display:none"></div>
         <script src="https://{{ jitsi_domain }}/external_api.js"></script>
         <script>
-        (function(){
+        var _pjStream = null;
+        var _pjCamOn = true;
+        var _pjMicOn = true;
+        (function startPrejoinPreview() {
+          navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+            .then(function(stream) {
+              _pjStream = stream;
+              var v = document.getElementById('prejoin-video');
+              if (v) { v.srcObject = stream; }
+            })
+            .catch(function() {
+              document.getElementById('prejoin-novideo').style.display = 'flex';
+              document.getElementById('prejoin-video').style.display = 'none';
+              _pjCamOn = false; _pjMicOn = false;
+              updatePjButtons();
+            });
+        })();
+        function togglePjCam() {
+          _pjCamOn = !_pjCamOn;
+          if (_pjStream) _pjStream.getVideoTracks().forEach(function(t){ t.enabled = _pjCamOn; });
+          var nv = document.getElementById('prejoin-novideo');
+          var v  = document.getElementById('prejoin-video');
+          if (nv && v) { nv.style.display = _pjCamOn ? 'none' : 'flex'; v.style.display = _pjCamOn ? '' : 'none'; }
+          updatePjButtons();
+        }
+        function togglePjMic() {
+          _pjMicOn = !_pjMicOn;
+          if (_pjStream) _pjStream.getAudioTracks().forEach(function(t){ t.enabled = _pjMicOn; });
+          updatePjButtons();
+        }
+        function updatePjButtons() {
+          var cb = document.getElementById('pj-cam-btn');
+          var mb = document.getElementById('pj-mic-btn');
+          if (cb) cb.textContent = (_pjCamOn ? '🎥' : '🚫') + ' Câm.';
+          if (mb) mb.textContent = (_pjMicOn ? '🎤' : '🔇') + ' Mic.';
+        }
+        function enterMeet() {
+          if (_pjStream) { _pjStream.getTracks().forEach(function(t){ t.stop(); }); }
+          document.getElementById('meet-prejoin').style.display = 'none';
+          document.getElementById('jitsi-container').style.display = '';
+          launchJitsi();
+        }
+        function launchJitsi() {
           var domain  = '{{ jitsi_domain }}';
           var room    = '{{ room_name }}';
           var jwt     = '{{ jitsi_jwt }}';
           var isMod   = {{ is_moderator }};
+          var displayName = (document.getElementById('pj-name') || {}).value || '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
           var opts = {
             roomName: room,
             parentNode: document.getElementById('jitsi-container'),
             width: '100%',
             height: '100%',
             configOverwrite: {
-              startWithAudioMuted: false,
-              startWithVideoMuted: false,
+              startWithAudioMuted: !_pjMicOn,
+              startWithVideoMuted: !_pjCamOn,
               disableDeepLinking: true,
               enableClosePage: false,
-              prejoinPageEnabled: {% if join_only %}false{% else %}true{% endif %},
+              prejoinPageEnabled: false,
             },
             interfaceConfigOverwrite: {
               TOOLBAR_BUTTONS: [
@@ -65,7 +129,7 @@
               SHOW_JITSI_WATERMARK: false,
             },
             userInfo: {
-              displayName: '{{ me.display_name.as_deref().unwrap_or(&me.email) }}',
+              displayName: displayName,
               email: '{{ me.email }}',
             },
           };
@@ -88,7 +152,7 @@
             }
           });
           window._jitsiApi = api;
-        })();
+        }
         </script>
       {% else %}
         <div style="display:flex;align-items:center;justify-content:center;flex:1;flex-direction:column;gap:1rem;padding:3rem;text-align:center">
