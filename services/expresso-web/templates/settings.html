@@ -312,6 +312,22 @@
             </div>
             <p class="muted small" style="margin-top:.5rem">Receba alertas mesmo com a aba em segundo plano.</p>
           </div>
+          <div class="subcard stack">
+            <h3>Não perturbe (horário silencioso)</h3>
+            <p class="muted small" style="margin-bottom:.5rem">Notificações desktop são suprimidas durante este período.</p>
+            <label class="checkbox-row" style="margin-bottom:.5rem">
+              <input type="checkbox" id="dnd-enabled" onchange="saveDndPrefs()"> Habilitar horário silencioso
+            </label>
+            <div id="dnd-times" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center">
+              <label style="font-size:.85rem">
+                Início: <input type="time" id="dnd-start" value="22:00" onchange="saveDndPrefs()" class="input-sm" style="width:100px">
+              </label>
+              <label style="font-size:.85rem">
+                Fim: <input type="time" id="dnd-end" value="08:00" onchange="saveDndPrefs()" class="input-sm" style="width:100px">
+              </label>
+            </div>
+            <p id="dnd-status" class="muted small" style="margin-top:.4rem"></p>
+          </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit">Salvar</button>
           </div>
@@ -552,6 +568,48 @@ function saveNotifPrefs() {
     });
   } catch(e) {}
 })();
+
+// ── Do Not Disturb ───────────────────────────────────────────────────────────
+var DND_KEY = 'expresso_dnd';
+function saveDndPrefs() {
+  var enabled = document.getElementById('dnd-enabled');
+  var start = document.getElementById('dnd-start');
+  var end = document.getElementById('dnd-end');
+  if (!enabled) return;
+  var prefs = { enabled: enabled.checked, start: start ? start.value : '22:00', end: end ? end.value : '08:00' };
+  localStorage.setItem(DND_KEY, JSON.stringify(prefs));
+  updateDndStatus(prefs);
+}
+function updateDndStatus(prefs) {
+  var el = document.getElementById('dnd-status');
+  if (!el) return;
+  if (!prefs.enabled) { el.textContent = 'Horário silencioso desabilitado.'; return; }
+  el.textContent = 'Silencioso das ' + prefs.start + ' às ' + prefs.end + '.';
+}
+(function initDnd() {
+  var el = document.getElementById('dnd-enabled');
+  if (!el) return;
+  try {
+    var prefs = JSON.parse(localStorage.getItem(DND_KEY) || '{}');
+    el.checked = !!prefs.enabled;
+    if (prefs.start) document.getElementById('dnd-start').value = prefs.start;
+    if (prefs.end) document.getElementById('dnd-end').value = prefs.end;
+    updateDndStatus(prefs);
+  } catch(e) {}
+})();
+window.isInDndPeriod = function() {
+  try {
+    var prefs = JSON.parse(localStorage.getItem(DND_KEY) || '{}');
+    if (!prefs.enabled) return false;
+    var now = new Date();
+    var cur = now.getHours() * 60 + now.getMinutes();
+    var s = prefs.start.split(':'); var e = prefs.end.split(':');
+    var sm = parseInt(s[0],10)*60 + parseInt(s[1],10);
+    var em = parseInt(e[0],10)*60 + parseInt(e[1],10);
+    if (sm <= em) return cur >= sm && cur < em;
+    return cur >= sm || cur < em; // crosses midnight
+  } catch(x) { return false; }
+};
 
 function previewAvatar(input) {
   var file = input.files && input.files[0];

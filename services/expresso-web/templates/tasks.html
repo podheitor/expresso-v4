@@ -153,6 +153,16 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="addSubtask()">+</button>
         </div>
       </div>
+      <div>
+        <span class="small" style="font-weight:600">Bloqueada por (depende de)</span>
+        <div id="edit-task-deps-list" style="display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem 0"></div>
+        <div style="display:flex;gap:.4rem">
+          <select id="edit-task-dep-select" class="input-sm" style="flex:1">
+            <option value="">— Selecionar tarefa que deve ser concluída antes —</option>
+          </select>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addTaskDep()">+</button>
+        </div>
+      </div>
       <input type="hidden" id="edit-task-id">
       <div class="form-actions">
         <button class="btn btn-danger btn-sm" onclick="deleteTaskById(document.getElementById('edit-task-id').value)">Excluir</button>
@@ -282,6 +292,7 @@ function renderAll() {
         '</button>' +
         '<div class="task-body" ondblclick="openEdit(\'' + escHtml(t.id) + '\')" onclick="expandInlineSubtasks(\'' + escHtml(t.id) + '\')">' +
           '<span class="task-title ' + priClass + '">' + escHtml(t.title) + '</span>' +
+          (isTaskBlocked(t) ? '<span class="muted small" style="color:#ef4444;margin-left:.3rem" title="Depende de tarefa não concluída">🔒</span>' : '') +
           (t.due ? '<span class="task-due ' + (overdue ? 'task-overdue' : '') + '">' + escHtml(t.due) + '</span>' : '') +
           (t.notes ? '<span class="task-notes-preview muted small">' + escHtml(t.notes.substring(0,60)) + '</span>' : '') +
           renderSubtaskBar(t) +
@@ -347,7 +358,60 @@ function openEdit(id) {
   document.getElementById('edit-task-list').value  = task.list || '';
   document.getElementById('edit-task-notes').value = task.notes || '';
   renderSubtaskEditor(task.subtasks || []);
+  renderDepEditor(task.deps || [], id);
   showModal('task-edit-modal');
+}
+
+// ── Dependencies ──────────────────────────────────────────────────────────────
+var _editDeps = [];
+var _editingTaskId = '';
+function renderDepEditor(deps, currentId) {
+  _editDeps = deps.slice();
+  _editingTaskId = currentId;
+  var all = loadTasks();
+  var sel = document.getElementById('edit-task-dep-select');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Selecionar tarefa que deve ser concluída antes —</option>';
+    all.forEach(function(t) {
+      if (t.id === currentId || t.done) return;
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.title;
+      sel.appendChild(opt);
+    });
+  }
+  _renderDepChips();
+}
+function _renderDepChips() {
+  var all = loadTasks();
+  var el = document.getElementById('edit-task-deps-list');
+  if (!el) return;
+  el.innerHTML = _editDeps.map(function(depId) {
+    var dep = all.find(function(t){ return t.id === depId; });
+    var label = dep ? dep.title : depId;
+    return '<span class="mail-label-tag" style="cursor:default">' +
+      escHtml(label.substring(0, 30)) +
+      '<button type="button" style="background:none;border:none;cursor:pointer;margin-left:.2rem" onclick="removeTaskDep(\'' + escHtml(depId) + '\')">✕</button></span>';
+  }).join('');
+}
+function addTaskDep() {
+  var sel = document.getElementById('edit-task-dep-select');
+  if (!sel || !sel.value) return;
+  if (_editDeps.indexOf(sel.value) === -1) _editDeps.push(sel.value);
+  sel.value = '';
+  _renderDepChips();
+}
+function removeTaskDep(depId) {
+  _editDeps = _editDeps.filter(function(d){ return d !== depId; });
+  _renderDepChips();
+}
+function isTaskBlocked(task) {
+  if (!task.deps || !task.deps.length) return false;
+  var all = loadTasks();
+  return task.deps.some(function(depId) {
+    var dep = all.find(function(t){ return t.id === depId; });
+    return dep && !dep.done;
+  });
 }
 
 // ── Subtasks ──────────────────────────────────────────────────────────────────
@@ -397,6 +461,7 @@ function saveEditTask() {
       list:     document.getElementById('edit-task-list').value.trim() || 'Geral',
       notes:    document.getElementById('edit-task-notes').value,
       subtasks: _editSubtasks,
+      deps:     _editDeps.slice(),
     });
   });
   saveTasks(tasks);

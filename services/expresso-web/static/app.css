@@ -1639,6 +1639,8 @@ textarea[name="script"] {
 
 /* ── Chat @mention list (sprint #20009) ─────────────────────────────────────── */
 .mention-list { position:absolute; bottom:100%; left:0; right:0; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); list-style:none; padding:.25rem 0; margin:0; z-index:20; max-height:10rem; overflow-y:auto; }
+.chat-mention { display:inline; background:color-mix(in srgb,var(--accent) 15%,transparent); color:var(--accent); border-radius:3px; padding:0 .2rem; font-weight:500; }
+.chat-mention-self { background:color-mix(in srgb,#f59e0b 20%,transparent); color:#b45309; font-weight:700; }
 .mention-item { padding:.3rem .75rem; cursor:pointer; font-size:.85rem; }
 .mention-item:hover, .mention-item.active { background:color-mix(in srgb,var(--accent) 12%,transparent); }
 
@@ -1774,6 +1776,8 @@ textarea[name="script"] {
 
 /* ── Mail snooze reminder badge (sprint #20064) ──────────────────────────────── */
 .snooze-toast { position:fixed; bottom:1.5rem; right:1.5rem; z-index:9999; background:var(--bg-card,var(--bg-raised)); border:1px solid var(--border); border-radius:var(--radius); padding:1rem 1.25rem; box-shadow:0 4px 24px rgba(0,0,0,.3); min-width:260px; max-width:360px; display:flex; flex-direction:column; gap:.4rem; }
+.mail-snooze-chip { display:inline-flex; align-items:center; font-size:.7rem; padding:.1rem .35rem; background:color-mix(in srgb,var(--accent) 15%,transparent); color:var(--accent); border-radius:1rem; margin-left:.35rem; cursor:pointer; white-space:nowrap; }
+.mail-snooze-chip:hover { background:color-mix(in srgb,var(--accent) 25%,transparent); }
 .snooze-toast-header { display:flex; align-items:center; justify-content:space-between; font-weight:600; font-size:.875rem; }
 .snooze-toast-body { font-size:.82rem; color:var(--text-muted); }
 

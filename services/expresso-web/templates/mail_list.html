@@ -416,19 +416,42 @@ function todayAt(h, m) { var d = new Date(); d.setHours(h, m, 0, 0); return d.to
 function tomorrowAt(h, m) { var d = new Date(); d.setDate(d.getDate()+1); d.setHours(h,m,0,0); return d.toISOString(); }
 function nextWeekAt(h, m) { var d = new Date(); d.setDate(d.getDate()+7-d.getDay()+1); d.setHours(h,m,0,0); return d.toISOString(); }
 
-// Check snooze on load
+// Check snooze on load + render snooze chips
 (function checkSnoozed() {
   var now = Date.now();
   var list = loadSnooze();
   var due = list.filter(function(s){ return new Date(s.until).getTime() <= now; });
-  if (!due.length) return;
-  due.forEach(function(s) {
-    if (Notification.permission === 'granted') {
-      new Notification('Expresso — lembrete', { body: s.subject, icon: '/static/favicon.png', tag: 'snooze-' + s.id });
-    }
-    showSnoozeToast(s.subject, s.id);
+  if (due.length) {
+    due.forEach(function(s) {
+      if (Notification.permission === 'granted') {
+        new Notification('Expresso — lembrete', { body: s.subject, icon: '/static/favicon.png', tag: 'snooze-' + s.id });
+      }
+      showSnoozeToast(s.subject, s.id);
+    });
+    saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
+  }
+  // Render snooze chips on message rows
+  var remaining = loadSnooze();
+  remaining.forEach(function(s) {
+    var row = document.querySelector('[data-mid="' + s.id + '"]');
+    if (!row) return;
+    var chip = document.createElement('span');
+    chip.className = 'mail-snooze-chip';
+    chip.title = 'Soneca até ' + new Date(s.until).toLocaleString('pt-BR');
+    var dt = new Date(s.until);
+    var label = dt.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' }) + ' ' +
+                dt.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+    chip.textContent = '🔔 ' + label;
+    chip.onclick = function(e) {
+      e.preventDefault(); e.stopPropagation();
+      if (confirm('Cancelar soneca desta mensagem?')) {
+        saveSnooze(loadSnooze().filter(function(x){ return x.id !== s.id; }));
+        chip.remove();
+      }
+    };
+    var subj = row.querySelector('.msg-subject');
+    if (subj) subj.appendChild(chip);
   });
-  saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
 })();
 
 function showSnoozeToast(subject, msgId) {
@@ -671,5 +694,69 @@ function mailRowClick(e, mid) {
     });
   });
 })();
+
+// ── Snooze modal (date-time picker) ──────────────────────────────────────────
+var _snoozePendingId = '', _snoozePendingSubj = '';
+function snoozeMailPrompt(id, subject) {
+  document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
+  _snoozePendingId   = id;
+  _snoozePendingSubj = subject || '(sem assunto)';
+  // Pre-fill with tomorrow 09:00
+  var d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+  var dtLocal = d.toISOString().slice(0, 16);
+  document.getElementById('snooze-dt-input').value = dtLocal;
+  document.getElementById('snooze-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('snooze-dt-input').focus(); }, 50);
+}
+function closeSnoozeModal() { document.getElementById('snooze-modal').style.display = 'none'; }
+function snoozePreset(mins) {
+  var d = new Date(Date.now() + mins * 60000);
+  document.getElementById('snooze-dt-input').value = d.toISOString().slice(0, 16);
+}
+function snoozePresetAbs(h) {
+  var d = new Date(); d.setDate(d.getDate() + 1); d.setHours(h, 0, 0, 0);
+  document.getElementById('snooze-dt-input').value = d.toISOString().slice(0, 16);
+}
+function confirmSnooze() {
+  var val = document.getElementById('snooze-dt-input').value;
+  if (!val) return;
+  var until = new Date(val).toISOString();
+  var list = loadSnooze();
+  list = list.filter(function(s){ return s.id !== _snoozePendingId; });
+  list.push({ id: _snoozePendingId, subject: _snoozePendingSubj, until: until });
+  saveSnooze(list);
+  closeSnoozeModal();
+  alert('Soneca definida para ' + new Date(until).toLocaleString('pt-BR') + '.');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('snooze-modal').style.display === 'flex') closeSnoozeModal();
+});
 </script>
+
+<!-- Snooze picker modal -->
+<div class="modal-overlay" id="snooze-modal" style="display:none" onclick="if(event.target.id==='snooze-modal')closeSnoozeModal()">
+  <div class="modal-box" style="max-width:360px">
+    <div class="modal-header">
+      <h3>Soneca</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeSnoozeModal()">✕</button>
+    </div>
+    <div class="compose-form">
+      <p class="muted small" style="margin-bottom:.5rem">Lembrar em:</p>
+      <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.6rem">
+        <button class="btn btn-ghost btn-sm" onclick="snoozePreset(60)">1 hora</button>
+        <button class="btn btn-ghost btn-sm" onclick="snoozePreset(180)">3 horas</button>
+        <button class="btn btn-ghost btn-sm" onclick="snoozePresetAbs(9)">Amanhã 9h</button>
+        <button class="btn btn-ghost btn-sm" onclick="snoozePresetAbs(14)">Amanhã 14h</button>
+      </div>
+      <label>
+        <span class="muted small">Data e hora</span>
+        <input type="datetime-local" id="snooze-dt-input" class="input-sm" style="width:100%">
+      </label>
+      <div class="form-actions" style="margin-top:.75rem">
+        <button class="btn btn-ghost" onclick="closeSnoozeModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmSnooze()">Definir soneca</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

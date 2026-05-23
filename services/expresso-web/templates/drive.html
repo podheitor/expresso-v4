@@ -103,6 +103,16 @@
 
 </div>
 
+<!-- Upload progress bar -->
+<div id="drive-upload-progress" style="display:none;position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);z-index:9999;background:var(--bg-raised);border:1px solid var(--border);border-radius:.5rem;padding:.75rem 1.25rem;min-width:280px;box-shadow:0 4px 16px rgba(0,0,0,.18)">
+  <div style="display:flex;justify-content:space-between;margin-bottom:.4rem;font-size:.85rem">
+    <span>Enviando…</span><span id="drive-upload-label">0%</span>
+  </div>
+  <div style="background:var(--border);border-radius:4px;height:6px;overflow:hidden">
+    <div id="drive-upload-fill" style="height:100%;background:var(--accent);border-radius:4px;width:0;transition:width .15s"></div>
+  </div>
+</div>
+
 <!-- Global drag-to-upload overlay -->
 <div id="drive-drop-overlay" class="drive-drop-overlay" style="display:none">
   <div class="drive-drop-overlay-box">
@@ -339,18 +349,48 @@ document.addEventListener('drop', function(e) {
   document.getElementById('drive-drop-overlay').style.display = 'none';
   var files = e.dataTransfer.files;
   if (!files || !files.length) return;
-  var form = new FormData();
-  for (var i = 0; i < files.length; i++) {
-    form.append('file', files[i]);
-  }
-  {% match parent_id %}
-  {% when Some with (p) %}form.append('parent_id', '{{ p }}');{% when None %}{% endmatch %}
-  fetch(_driveUploadAction, {
-    method: 'POST', credentials: 'include', body: form,
-  }).then(function(r) {
-    if (r.ok || r.redirected) window.location.reload();
-  }).catch(function(){});
+  uploadFilesWithProgress(files);
 });
+
+function uploadFilesWithProgress(files) {
+  var form = new FormData();
+  for (var i = 0; i < files.length; i++) form.append('file', files[i]);
+  {% match parent_id %}{% when Some with (p) %}form.append('parent_id', '{{ p }}');{% when None %}{% endmatch %}
+  var bar = document.getElementById('drive-upload-progress');
+  var fill = document.getElementById('drive-upload-fill');
+  var label = document.getElementById('drive-upload-label');
+  if (bar) bar.style.display = '';
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', _driveUploadAction);
+  xhr.withCredentials = true;
+  xhr.upload.onprogress = function(ev) {
+    if (ev.lengthComputable && fill) {
+      var pct = Math.round(ev.loaded / ev.total * 100);
+      fill.style.width = pct + '%';
+      if (label) label.textContent = pct + '%';
+    }
+  };
+  xhr.onload = function() {
+    if (bar) bar.style.display = 'none';
+    if (xhr.status < 400) window.location.reload();
+    else alert('Erro ao enviar: ' + xhr.status);
+  };
+  xhr.onerror = function() { if (bar) bar.style.display = 'none'; alert('Erro de rede.'); };
+  xhr.send(form);
+}
+
+// Wire up the file input upload button to use XHR progress too
+(function() {
+  var fileInput = document.querySelector('.upload-form input[type="file"]');
+  var uploadForm = document.querySelector('.upload-form');
+  if (fileInput && uploadForm) {
+    uploadForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!fileInput.files || !fileInput.files.length) return;
+      uploadFilesWithProgress(fileInput.files);
+    });
+  }
+})();
 
 // ── Drive view toggle (list/grid) ─────────────────────────────────────────────
 var DRIVE_VIEW_KEY = 'expresso_drive_view';

@@ -13,6 +13,8 @@
       <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
+      <a class="btn btn-ghost btn-sm" href="/calendar/{{ selected.id }}/export.ics" title="Exportar como iCalendar">↓ .ics</a>
+      <button class="btn btn-ghost btn-sm" onclick="showImportIcsModal()" title="Importar arquivo .ics">↑ Importar .ics</button>
     </div>
   </div>
 
@@ -81,7 +83,23 @@
 
   <!-- Agenda view (hidden by default, toggled by JS) -->
   <div id="cal-agenda-view" style="display:none;margin-top:1.5rem">
-    <h2 style="margin-bottom:.75rem">Próximos eventos</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem">
+      <h2 style="margin:0">Próximos eventos</h2>
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <label class="muted small" style="display:flex;align-items:center;gap:.3rem">
+          <span>Exibir:</span>
+          <select id="agenda-range-select" class="input-sm" onchange="buildAgenda()">
+            <option value="14">14 dias</option>
+            <option value="30" selected>30 dias</option>
+            <option value="60">60 dias</option>
+            <option value="90">90 dias</option>
+          </select>
+        </label>
+        <label class="muted small" style="display:flex;align-items:center;gap:.3rem">
+          <input type="checkbox" id="agenda-hide-done" onchange="buildAgenda()"> Apenas futuros
+        </label>
+      </div>
+    </div>
     <ul class="cal-agenda-list" id="cal-agenda-list">
       <li class="muted small">Carregando…</li>
     </ul>
@@ -181,6 +199,11 @@ function buildAgenda() {
   var MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
   var today = new Date();
   today.setHours(0,0,0,0);
+  var rangeSel = document.getElementById('agenda-range-select');
+  var rangeDays = rangeSel ? parseInt(rangeSel.value, 10) : 30;
+  var cutoff = new Date(today.getTime() + rangeDays * 86400000);
+  var todayIso = today.toISOString().slice(0, 10);
+  var cutoffIso = cutoff.toISOString().slice(0, 10);
   // Collect events from month cells
   var events = [];
   document.querySelectorAll('.month-cell').forEach(function(td) {
@@ -197,11 +220,11 @@ function buildAgenda() {
       events.push({ iso: iso, title: title ? title.textContent.trim() : '', time: time ? time.textContent.trim() : '', href: chip.getAttribute('href') || '#' });
     });
   });
-  // Filter future and sort
-  events = events.filter(function(e) { return e.iso >= today.toISOString().slice(0,10); });
+  // Filter by range and sort
+  events = events.filter(function(e) { return e.iso >= todayIso && e.iso <= cutoffIso; });
   events.sort(function(a,b){ return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
   if (!events.length) {
-    ul.innerHTML = '<li class="muted small">Nenhum evento no período.</li>';
+    ul.innerHTML = '<li class="muted small">Nenhum evento nos próximos ' + rangeDays + ' dias.</li>';
     return;
   }
   // Group by day
@@ -211,10 +234,12 @@ function buildAgenda() {
     if (!byDay[e.iso]) { byDay[e.iso] = []; dayOrder.push(e.iso); }
     byDay[e.iso].push(e);
   });
-  ul.innerHTML = dayOrder.slice(0, 30).map(function(iso) {
+  ul.innerHTML = dayOrder.map(function(iso) {
     var d = new Date(iso + 'T12:00:00');
-    var isToday = iso === today.toISOString().slice(0,10);
-    var label = (isToday ? 'Hoje' : DAYS[d.getDay()]) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
+    var isToday = iso === todayIso;
+    var isTomorrow = iso === new Date(today.getTime() + 86400000).toISOString().slice(0, 10);
+    var dayLabel = isToday ? 'Hoje' : isTomorrow ? 'Amanhã' : DAYS[d.getDay()];
+    var label = dayLabel + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
     var evHtml = byDay[iso].map(function(e) {
       return '<a class="cal-agenda-event" href="' + e.href + '">' +
         '<span class="cal-agenda-time">' + (e.time || 'Dia todo') + '</span>' +
@@ -256,5 +281,53 @@ function calDrop(e, targetDate, calId) {
     if (r.ok || r.redirected) window.location.reload();
   }).catch(function(){});
 }
+
+function showImportIcsModal() { document.getElementById('import-ics-modal').style.display = 'flex'; }
+function hideImportIcsModal() { document.getElementById('import-ics-modal').style.display = 'none'; }
+function importIcsFile(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var btn = document.getElementById('import-ics-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importando…'; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    fetch('/calendar/{{ selected.id }}/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/calendar' },
+      credentials: 'include',
+      body: e.target.result,
+    }).then(function(r) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+      hideImportIcsModal();
+      if (r.ok || r.redirected) window.location.reload();
+      else alert('Erro ao importar (' + r.status + ').');
+    }).catch(function() {
+      if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+      alert('Erro de rede.');
+    });
+  };
+  reader.readAsText(file);
+}
 </script>
+
+<!-- Import .ics modal -->
+<div class="modal-overlay" id="import-ics-modal" style="display:none" onclick="if(event.target.id==='import-ics-modal')hideImportIcsModal()">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h3>Importar .ics</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideImportIcsModal()">✕</button>
+    </div>
+    <div class="compose-form">
+      <p class="muted small">Selecione um arquivo iCalendar (.ics) para importar os eventos para <strong>{{ selected.name }}</strong>.</p>
+      <label class="btn btn-ghost" style="cursor:pointer">
+        📂 Selecionar arquivo…
+        <input type="file" accept=".ics,text/calendar" style="display:none" onchange="importIcsFile(this)">
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="hideImportIcsModal()">Cancelar</button>
+        <button class="btn btn-primary" id="import-ics-btn" disabled>Importar</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

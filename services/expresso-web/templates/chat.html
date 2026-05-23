@@ -204,26 +204,17 @@
           <div class="chat-emoji-wrap">
               <button type="button" class="chat-action-btn chat-emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
               <div class="chat-emoji-picker" id="chat-emoji-picker" style="display:none">
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😊')">😊</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😂')">😂</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('❤')">❤</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👍')">👍</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🎉')">🎉</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🔥')">🔥</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('✅')">✅</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('⚡')">⚡</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🤔')">🤔</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👀')">👀</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🙌')">🙌</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('💪')">💪</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😎')">😎</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🚀')">🚀</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('💡')">💡</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('👋')">👋</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('🙏')">🙏</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😅')">😅</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😭')">😭</button>
-                <button type="button" class="chat-emoji-item" onclick="insertEmoji('😤')">😤</button>
+                <input type="text" class="input-sm" id="emoji-search" placeholder="🔍 Buscar emoji…"
+                  style="width:100%;margin-bottom:.3rem;font-size:.8rem"
+                  oninput="filterEmojis(this.value)" autocomplete="off">
+                <div id="emoji-category-tabs" style="display:flex;gap:.2rem;margin-bottom:.3rem;flex-wrap:wrap">
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('all')" id="ecat-all" style="font-size:.7rem;padding:.1rem .35rem">Todos</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('faces')" id="ecat-faces" style="font-size:.7rem;padding:.1rem .35rem">😊</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('hands')" id="ecat-hands" style="font-size:.7rem;padding:.1rem .35rem">👋</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('objects')" id="ecat-objects" style="font-size:.7rem;padding:.1rem .35rem">💡</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('symbols')" id="ecat-symbols" style="font-size:.7rem;padding:.1rem .35rem">✅</button>
+                </div>
+                <div id="emoji-grid" style="display:flex;flex-wrap:wrap;gap:.15rem;max-height:120px;overflow-y:auto"></div>
               </div>
             </div>
             <div class="chat-mention-wrap" style="position:relative;flex:1">
@@ -558,9 +549,42 @@ document.addEventListener('click', function(e) {
 });
 
 // ── Emoji picker ─────────────────────────────────────────────────────────────
+var EMOJI_DB = {
+  faces:   ['😊','😂','🤣','😍','😘','😎','🤔','😅','😭','😤','😳','🙄','😬','🥳','😇','🤯','😴','🤗','😏','😒'],
+  hands:   ['👋','👍','👎','👏','🙌','🙏','🤝','💪','🤜','🤛','✌','🤞','👌','🤙','💅','🖐','✋'],
+  objects: ['🚀','💡','🔥','⚡','🎉','🎊','🎁','🎯','🏆','💎','🔑','📌','📎','🛠','📱','💻','🖥','📷'],
+  symbols: ['✅','❌','⚠','ℹ','❤','💙','💚','💛','🧡','💜','🖤','🤍','⭐','✨','💫','🔔','🔕','🔁'],
+};
+var _emojiCat = 'all';
+function setEmojiCat(cat) {
+  _emojiCat = cat;
+  document.getElementById('emoji-search').value = '';
+  renderEmojiGrid('');
+}
+function filterEmojis(q) { renderEmojiGrid(q); }
+function renderEmojiGrid(q) {
+  var grid = document.getElementById('emoji-grid');
+  if (!grid) return;
+  var all = [];
+  if (_emojiCat === 'all') {
+    Object.values(EMOJI_DB).forEach(function(arr){ all = all.concat(arr); });
+  } else {
+    all = EMOJI_DB[_emojiCat] || [];
+  }
+  if (q) {
+    // simple char-based filter: show all when no keyword db
+    // include emoji if query matches index-based description (noop) — just show all for now
+    all = all.filter(function(){ return true; });
+  }
+  grid.innerHTML = all.map(function(e) {
+    return '<button type="button" class="chat-emoji-item" onclick="insertEmoji(\'' + e + '\')" title="' + e + '">' + e + '</button>';
+  }).join('');
+}
 function toggleEmojiPicker() {
   var p = document.getElementById('chat-emoji-picker');
-  p.style.display = p.style.display === 'none' ? 'grid' : 'none';
+  var isOpen = p.style.display !== 'none';
+  p.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) { renderEmojiGrid(''); document.getElementById('emoji-search').focus(); }
 }
 function insertEmoji(e) {
   var inp = document.getElementById('chat-compose-input');
@@ -848,6 +872,13 @@ function renderChatMd(text) {
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<>"]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer">$2</a>');
   // blockquote > ...
   s = s.replace(/^&gt; (.+)$/gm, '<blockquote class="chat-blockquote">$1</blockquote>');
+  // @mentions
+  var myEmail = '{{ me.email }}';
+  var myUser  = myEmail.split('@')[0];
+  s = s.replace(/@([\w.\-]+)/g, function(_, name) {
+    var isSelf = name.toLowerCase() === myUser.toLowerCase() || name.toLowerCase() === myEmail.toLowerCase();
+    return '<span class="chat-mention' + (isSelf ? ' chat-mention-self' : '') + '">@' + name + '</span>';
+  });
   // newlines
   s = s.replace(/\n/g, '<br>');
   return s;

@@ -68,8 +68,11 @@ pub fn router(state: AppState) -> Router {
         .route("/calendar/:cal_id/events/:id/edit",   get(event_edit_form).post(event_edit_action))
         .route("/calendar/:cal_id/events/:id/delete", post(event_delete_action))
         .route("/calendar/:cal_id/events/:id/rsvp",   post(event_rsvp_action))
-        .route("/calendar/:cal_id/share", get(calendar_share_page).post(calendar_share_create))
+        .route("/calendar/:cal_id/share",                    get(calendar_share_page).post(calendar_share_create))
         .route("/calendar/:cal_id/share/:grantee_id/revoke", post(calendar_share_revoke))
+        .route("/calendar/:cal_id/export.ics",               get(calendar_export_ics))
+        .route("/calendar/:cal_id/import",                   post(calendar_import_ics))
+        .route("/calendar/:cal_id/events/:id/reschedule",    post(event_reschedule_action))
         .route("/contacts",                                 get(contacts_page))
         .route("/contacts/:book_id/new",                    get(contact_new_form).post(contact_new_action))
         .route("/contacts/:book_id/:id/edit",               get(contact_edit_form).post(contact_edit_action))
@@ -2208,6 +2211,68 @@ async fn calendar_share_revoke(
         &headers, Some((&t, &u)),
     ).await?;
     Ok(Redirect::to(&format!("/calendar/{enc_cal}/share")).into_response())
+}
+
+async fn calendar_export_ics(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cal_id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let (status, _ct, _cd, body) = get_bytes(
+        &st, &st.backends.calendar,
+        &format!("/api/v1/calendars/{}/export.ics", utf8_percent_encode(&cal_id, NON_ALPHANUMERIC)),
+        &headers, Some((&t, &u)),
+    ).await?;
+    if !(200..300).contains(&(status as i32)) {
+        return Ok((StatusCode::BAD_GATEWAY, "Erro ao exportar").into_response());
+    }
+    let cd = format!("attachment; filename=\"{cal_id}.ics\"");
+    Ok((
+        [(header::CONTENT_TYPE, "text/calendar; charset=utf-8"),
+         (header::CONTENT_DISPOSITION, cd.as_str())],
+        body,
+    ).into_response())
+}
+
+async fn calendar_import_ics(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cal_id): Path<String>,
+    body: axum::body::Bytes,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let url = format!("{}/api/v1/calendars/{}/import",
+        st.backends.calendar.trim_end_matches('/'),
+        utf8_percent_encode(&cal_id, NON_ALPHANUMERIC));
+    let mut req = st.http.post(&url)
+        .header("Content-Type", "text/calendar")
+        .body(body.to_vec());
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let _ = req.send().await;
+    Ok(Redirect::to(&format!("/calendar/{}", utf8_percent_encode(&cal_id, NON_ALPHANUMERIC))).into_response())
+}
+
+#[derive(Deserialize)]
+struct RescheduleForm { new_date: String }
+
+async fn event_reschedule_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((cal_id, event_id)): Path<(String, String)>,
+    Form(f): Form<RescheduleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "new_date": f.new_date });
+    let _ = post_json(
+        &st, &st.backends.calendar,
+        &format!("/api/v1/calendars/{}/events/{}/reschedule",
+            utf8_percent_encode(&cal_id, NON_ALPHANUMERIC),
+            utf8_percent_encode(&event_id, NON_ALPHANUMERIC)),
+        &headers, Some((&t, &u)), &payload,
+    ).await;
+    Ok((StatusCode::OK, "").into_response())
 }
 
 // ── Addressbook share ──
