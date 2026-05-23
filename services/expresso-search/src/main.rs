@@ -1151,3 +1151,141 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── ct_eq ─────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn ct_eq_equal_slices_returns_true() {
+        assert!(ct_eq(b"hello", b"hello"));
+    }
+
+    #[test]
+    fn ct_eq_different_slices_returns_false() {
+        assert!(!ct_eq(b"hello", b"world"));
+    }
+
+    #[test]
+    fn ct_eq_different_lengths_returns_false() {
+        assert!(!ct_eq(b"short", b"longer_string"));
+    }
+
+    #[test]
+    fn ct_eq_empty_slices_returns_true() {
+        assert!(ct_eq(b"", b""));
+    }
+
+    #[test]
+    fn ct_eq_one_empty_one_not_returns_false() {
+        assert!(!ct_eq(b"", b"x"));
+    }
+
+    #[test]
+    fn ct_eq_same_length_differ_by_one_byte() {
+        assert!(!ct_eq(b"aaa", b"aab"));
+    }
+
+    #[test]
+    fn ct_eq_single_byte_equal() {
+        assert!(ct_eq(b"x", b"x"));
+    }
+
+    #[test]
+    fn ct_eq_single_byte_differ() {
+        assert!(!ct_eq(b"x", b"y"));
+    }
+
+    #[test]
+    fn ct_eq_symmetric() {
+        assert_eq!(ct_eq(b"abc", b"xyz"), ct_eq(b"xyz", b"abc"));
+    }
+
+    #[test]
+    fn ct_eq_same_prefix_different_suffix() {
+        assert!(!ct_eq(b"prefix_a", b"prefix_b"));
+    }
+
+    #[test]
+    fn ct_eq_all_zeros() {
+        assert!(ct_eq(&[0u8; 32], &[0u8; 32]));
+    }
+
+    #[test]
+    fn ct_eq_one_zero_differs_from_nonzero() {
+        assert!(!ct_eq(&[0u8], &[1u8]));
+    }
+
+    // ── resolve_addr ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn resolve_addr_default_port_when_env_unset() {
+        std::env::remove_var("PORT");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+    }
+
+    #[test]
+    fn resolve_addr_custom_port() {
+        std::env::set_var("PORT", "9007");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 9007);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn resolve_addr_default_host_is_all_interfaces() {
+        std::env::remove_var("HOST");
+        std::env::remove_var("PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.ip().to_string(), "0.0.0.0");
+    }
+
+    #[test]
+    fn resolve_addr_loopback_host() {
+        std::env::set_var("HOST", "127.0.0.1");
+        std::env::remove_var("PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        std::env::remove_var("HOST");
+    }
+
+    #[test]
+    fn resolve_addr_invalid_port_uses_default() {
+        std::env::set_var("PORT", "not_a_port");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn default_port_is_8007() {
+        assert_eq!(DEFAULT_PORT, 8007);
+    }
+
+    #[test]
+    fn service_name_is_expresso_search() {
+        assert_eq!(SERVICE, "expresso-search");
+    }
+
+    #[test]
+    fn resolve_addr_returns_ok() {
+        std::env::remove_var("PORT");
+        std::env::remove_var("HOST");
+        assert!(resolve_addr().is_ok());
+    }
+
+    #[test]
+    fn resolve_addr_port_65535() {
+        std::env::set_var("PORT", "65535");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 65535);
+        std::env::remove_var("PORT");
+    }
+}
