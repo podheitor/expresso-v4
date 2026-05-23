@@ -162,3 +162,178 @@ impl IntoResponse for CtxError {
         (status, Json(json!({"error": code, "message": msg}))).into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::{HeaderMap, HeaderValue};
+
+    fn hmap(pairs: &[(&str, &str)]) -> HeaderMap {
+        let mut m = HeaderMap::new();
+        for (k, v) in pairs {
+            m.insert(*k, HeaderValue::from_str(v).unwrap());
+        }
+        m
+    }
+
+    #[test]
+    fn parse_uuid_header_valid() {
+        let id = "00000000-0000-0000-0000-000000000001";
+        let h = hmap(&[("x-tenant-id", id)]);
+        assert_eq!(parse_uuid_header(&h, "x-tenant-id").unwrap(), Uuid::parse_str(id).unwrap());
+    }
+
+    #[test]
+    fn parse_uuid_header_missing_key_returns_none() {
+        let h = HeaderMap::new();
+        assert!(parse_uuid_header(&h, "x-tenant-id").is_none());
+    }
+
+    #[test]
+    fn parse_uuid_header_invalid_uuid_returns_none() {
+        let h = hmap(&[("x-tenant-id", "not-a-uuid")]);
+        assert!(parse_uuid_header(&h, "x-tenant-id").is_none());
+    }
+
+    #[test]
+    fn parse_uuid_header_trims_whitespace() {
+        let id = "00000000-0000-0000-0000-000000000002";
+        let h = hmap(&[("x-tenant-id", &format!("  {id}  "))]);
+        assert_eq!(parse_uuid_header(&h, "x-tenant-id").unwrap(), Uuid::parse_str(id).unwrap());
+    }
+
+    #[test]
+    fn bearer_token_extracts_from_bearer_prefix() {
+        let h = hmap(&[("authorization", "Bearer mytoken123")]);
+        assert_eq!(bearer_token(&h), Some("mytoken123"));
+    }
+
+    #[test]
+    fn bearer_token_extracts_lowercase_bearer() {
+        let h = hmap(&[("authorization", "bearer mytoken123")]);
+        assert_eq!(bearer_token(&h), Some("mytoken123"));
+    }
+
+    #[test]
+    fn bearer_token_missing_auth_header_returns_none() {
+        let h = HeaderMap::new();
+        assert!(bearer_token(&h).is_none());
+    }
+
+    #[test]
+    fn bearer_token_empty_after_prefix_returns_none() {
+        let h = hmap(&[("authorization", "Bearer  ")]);
+        assert!(bearer_token(&h).is_none());
+    }
+
+    #[test]
+    fn bearer_token_no_bearer_prefix_returns_none() {
+        let h = hmap(&[("authorization", "Basic abc123")]);
+        assert!(bearer_token(&h).is_none());
+    }
+
+    #[test]
+    fn cookie_token_extracts_named_cookie() {
+        let h = hmap(&[("cookie", "access_token=tok123; other=val")]);
+        assert_eq!(cookie_token(&h, "access_token"), Some("tok123".into()));
+    }
+
+    #[test]
+    fn cookie_token_missing_name_returns_none() {
+        let h = hmap(&[("cookie", "other=val")]);
+        assert!(cookie_token(&h, "access_token").is_none());
+    }
+
+    #[test]
+    fn cookie_token_no_cookie_header_returns_none() {
+        let h = HeaderMap::new();
+        assert!(cookie_token(&h, "access_token").is_none());
+    }
+
+    #[test]
+    fn cookie_token_empty_value_returns_none() {
+        let h = hmap(&[("cookie", "access_token=")]);
+        assert!(cookie_token(&h, "access_token").is_none());
+    }
+
+    #[test]
+    fn ctx_error_missing_header_is_401() {
+        let resp = CtxError::MissingHeader("x-tenant-id").into_response();
+        assert_eq!(resp.status().as_u16(), 401);
+    }
+
+    #[test]
+    fn ctx_error_missing_bearer_is_401() {
+        let resp = CtxError::MissingBearer.into_response();
+        assert_eq!(resp.status().as_u16(), 401);
+    }
+
+    #[test]
+    fn ctx_error_invalid_token_is_401() {
+        let resp = CtxError::InvalidToken("bad sig".into()).into_response();
+        assert_eq!(resp.status().as_u16(), 401);
+    }
+
+    #[test]
+    fn ctx_error_expired_is_401() {
+        let resp = CtxError::Expired.into_response();
+        assert_eq!(resp.status().as_u16(), 401);
+    }
+
+    #[test]
+    fn ctx_error_forbidden_is_403() {
+        let resp = CtxError::Forbidden("missing_role".into()).into_response();
+        assert_eq!(resp.status().as_u16(), 403);
+    }
+
+    #[test]
+    fn from_auth_error_expired_maps_to_expired() {
+        assert!(matches!(CtxError::from(AuthError::Expired), CtxError::Expired));
+    }
+
+    #[test]
+    fn from_auth_error_missing_bearer_maps_correctly() {
+        assert!(matches!(CtxError::from(AuthError::MissingBearer), CtxError::MissingBearer));
+    }
+
+    #[test]
+    fn from_auth_error_invalid_token_maps_correctly() {
+        assert!(matches!(CtxError::from(AuthError::InvalidToken("x".into())), CtxError::InvalidToken(_)));
+    }
+
+    #[test]
+    fn from_auth_error_kid_not_found_maps_to_invalid_token() {
+        assert!(matches!(CtxError::from(AuthError::KidNotFound("kid".into())), CtxError::InvalidToken(_)));
+    }
+
+    #[test]
+    fn from_auth_error_missing_claim_maps_to_forbidden() {
+        assert!(matches!(CtxError::from(AuthError::MissingClaim("role".into())), CtxError::Forbidden(_)));
+    }
+
+    #[test]
+    fn from_auth_error_malformed_claim_maps_to_invalid_token() {
+        assert!(matches!(
+            CtxError::from(AuthError::MalformedClaim("sub".into(), "not-uuid".into())),
+            CtxError::InvalidToken(_)
+        ));
+    }
+
+    #[test]
+    fn parse_uuid_header_returns_correct_uuid_value() {
+        let id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let h = hmap(&[("x-user-id", id)]);
+        let parsed = parse_uuid_header(&h, "x-user-id").unwrap();
+        assert_eq!(parsed.to_string(), id);
+    }
+
+    #[test]
+    fn h_tenant_constant_value() {
+        assert_eq!(H_TENANT, "x-tenant-id");
+    }
+
+    #[test]
+    fn h_user_constant_value() {
+        assert_eq!(H_USER, "x-user-id");
+    }
+}

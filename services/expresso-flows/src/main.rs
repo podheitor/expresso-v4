@@ -731,3 +731,247 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(
+        folder: &str,
+        from: Option<&str>,
+        subject: Option<&str>,
+        to: Option<Vec<&str>>,
+        has_attachments: Option<bool>,
+        size_bytes: Option<i32>,
+    ) -> ProcessRequest {
+        ProcessRequest {
+            user_id:         Uuid::new_v4(),
+            tenant_id:       Uuid::new_v4(),
+            message_id:      Uuid::new_v4(),
+            folder:          folder.into(),
+            from_addr:       from.map(Into::into),
+            to_addrs:        to.map(|v| v.into_iter().map(Into::into).collect()),
+            subject:         subject.map(Into::into),
+            has_attachments: has_attachments,
+            size_bytes:      size_bytes,
+        }
+    }
+
+    fn cond(field: &str, op: &str, value: &str) -> serde_json::Value {
+        serde_json::json!([{"field": field, "op": op, "value": value}])
+    }
+
+    // ── str_op ────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn str_op_contains_matches_substring() {
+        assert!(str_op("Hello World", "contains", "world"));
+    }
+
+    #[test]
+    fn str_op_contains_no_match() {
+        assert!(!str_op("Hello", "contains", "xyz"));
+    }
+
+    #[test]
+    fn str_op_equals_exact() {
+        assert!(str_op("INBOX", "equals", "inbox"));
+    }
+
+    #[test]
+    fn str_op_equals_case_insensitive() {
+        assert!(str_op("Invoice", "equals", "invoice"));
+    }
+
+    #[test]
+    fn str_op_equals_no_match() {
+        assert!(!str_op("INBOX", "equals", "Sent"));
+    }
+
+    #[test]
+    fn str_op_starts_with_matches() {
+        assert!(str_op("Invoice 2026", "starts_with", "invoice"));
+    }
+
+    #[test]
+    fn str_op_starts_with_no_match() {
+        assert!(!str_op("Hello Invoice", "starts_with", "invoice"));
+    }
+
+    #[test]
+    fn str_op_unknown_op_falls_back_to_contains() {
+        assert!(str_op("foobar", "regex", "bar"));
+    }
+
+    // ── eval_condition ────────────────────────────────────────────────────────
+
+    #[test]
+    fn eval_condition_from_contains() {
+        let r = req("INBOX", Some("boss@corp.com"), None, None, None, None);
+        assert!(eval_condition("from", "contains", "corp.com", &r));
+    }
+
+    #[test]
+    fn eval_condition_from_no_match() {
+        let r = req("INBOX", Some("other@example.com"), None, None, None, None);
+        assert!(!eval_condition("from", "contains", "corp.com", &r));
+    }
+
+    #[test]
+    fn eval_condition_from_none_returns_false() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(!eval_condition("from", "contains", "corp.com", &r));
+    }
+
+    #[test]
+    fn eval_condition_subject_equals() {
+        let r = req("INBOX", None, Some("Invoice"), None, None, None);
+        assert!(eval_condition("subject", "equals", "invoice", &r));
+    }
+
+    #[test]
+    fn eval_condition_folder_matches() {
+        let r = req("Spam", None, None, None, None, None);
+        assert!(eval_condition("folder", "equals", "spam", &r));
+    }
+
+    #[test]
+    fn eval_condition_to_any_addr_matches() {
+        let r = req("INBOX", None, None, Some(vec!["a@x.com", "b@x.com"]), None, None);
+        assert!(eval_condition("to", "contains", "b@x.com", &r));
+    }
+
+    #[test]
+    fn eval_condition_to_empty_vec_returns_false() {
+        let r = req("INBOX", None, None, Some(vec![]), None, None);
+        assert!(!eval_condition("to", "contains", "anyone", &r));
+    }
+
+    #[test]
+    fn eval_condition_has_attachment_true() {
+        let r = req("INBOX", None, None, None, Some(true), None);
+        assert!(eval_condition("has_attachment", "equals", "true", &r));
+    }
+
+    #[test]
+    fn eval_condition_has_attachment_false_when_none() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(!eval_condition("has_attachment", "equals", "true", &r));
+    }
+
+    #[test]
+    fn eval_condition_size_gt() {
+        let r = req("INBOX", None, None, None, None, Some(5000));
+        assert!(eval_condition("size", "gt", "1000", &r));
+    }
+
+    #[test]
+    fn eval_condition_size_lt() {
+        let r = req("INBOX", None, None, None, None, Some(100));
+        assert!(eval_condition("size", "lt", "1000", &r));
+    }
+
+    #[test]
+    fn eval_condition_size_gte_equal() {
+        let r = req("INBOX", None, None, None, None, Some(1000));
+        assert!(eval_condition("size", "gte", "1000", &r));
+    }
+
+    #[test]
+    fn eval_condition_size_lte_equal() {
+        let r = req("INBOX", None, None, None, None, Some(1000));
+        assert!(eval_condition("size", "lte", "1000", &r));
+    }
+
+    #[test]
+    fn eval_condition_unknown_field_returns_false() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(!eval_condition("nonexistent", "equals", "val", &r));
+    }
+
+    // ── rule_matches ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn rule_matches_empty_conditions_always_true() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(rule_matches(&serde_json::json!([]), "and", &r));
+    }
+
+    #[test]
+    fn rule_matches_null_conditions_always_true() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(rule_matches(&serde_json::Value::Null, "and", &r));
+    }
+
+    #[test]
+    fn rule_matches_and_all_match() {
+        let r = req("INBOX", Some("boss@corp.com"), Some("Invoice"), None, None, None);
+        let conds = serde_json::json!([
+            {"field": "from", "op": "contains", "value": "corp.com"},
+            {"field": "subject", "op": "contains", "value": "invoice"}
+        ]);
+        assert!(rule_matches(&conds, "and", &r));
+    }
+
+    #[test]
+    fn rule_matches_and_one_fails() {
+        let r = req("INBOX", Some("boss@corp.com"), Some("Hello"), None, None, None);
+        let conds = serde_json::json!([
+            {"field": "from", "op": "contains", "value": "corp.com"},
+            {"field": "subject", "op": "contains", "value": "invoice"}
+        ]);
+        assert!(!rule_matches(&conds, "and", &r));
+    }
+
+    #[test]
+    fn rule_matches_or_first_matches() {
+        let r = req("INBOX", Some("boss@corp.com"), Some("Hello"), None, None, None);
+        let conds = serde_json::json!([
+            {"field": "from", "op": "contains", "value": "corp.com"},
+            {"field": "subject", "op": "contains", "value": "invoice"}
+        ]);
+        assert!(rule_matches(&conds, "or", &r));
+    }
+
+    #[test]
+    fn rule_matches_or_none_match() {
+        let r = req("INBOX", Some("other@example.com"), Some("Hello"), None, None, None);
+        let conds = serde_json::json!([
+            {"field": "from", "op": "contains", "value": "corp.com"},
+            {"field": "subject", "op": "contains", "value": "invoice"}
+        ]);
+        assert!(!rule_matches(&conds, "or", &r));
+    }
+
+    #[test]
+    fn rule_matches_single_cond_match() {
+        let r = req("Spam", None, None, None, None, None);
+        assert!(rule_matches(&cond("folder", "equals", "spam"), "and", &r));
+    }
+
+    #[test]
+    fn rule_matches_single_cond_no_match() {
+        let r = req("INBOX", None, None, None, None, None);
+        assert!(!rule_matches(&cond("folder", "equals", "spam"), "and", &r));
+    }
+
+    // ── service constants ─────────────────────────────────────────────────────
+
+    #[test]
+    fn service_name_is_expresso_flows() {
+        assert_eq!(SERVICE, "expresso-flows");
+    }
+
+    #[test]
+    fn default_port_is_8005() {
+        assert_eq!(DEFAULT_PORT, 8005);
+    }
+
+    #[test]
+    fn resolve_addr_default_port_when_env_unset() {
+        std::env::remove_var("PORT");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+    }
+}
