@@ -185,4 +185,9 @@ mod tests {
         let e = MailError::QuotaExceeded;
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn send_failed_is_500_status() {
+        assert_eq!(status(MailError::SendFailed("connection refused".into())), 500);
+    }
 }

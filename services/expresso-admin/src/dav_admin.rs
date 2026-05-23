@@ -455,4 +455,10 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.color, "");
     }
+
+    #[test]
+    fn to_dav_row_color_set_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, Some("#0000ff".into()), false, 0);
+        assert_eq!(row.color, "#0000ff");
+    }
 }

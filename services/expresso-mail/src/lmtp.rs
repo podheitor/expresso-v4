@@ -322,4 +322,9 @@ mod tests {
     fn angle_plain_without_params() {
         assert_eq!(extract_angle("<sender@domain.org>"), "sender@domain.org");
     }
+
+    #[test]
+    fn size_param_with_other_params_still_parsed() {
+        assert_eq!(extract_size_param("<a@b> BODY=7BIT SIZE=4096 RET=HDRS"), Some(4096));
+    }
 }

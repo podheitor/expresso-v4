@@ -473,4 +473,9 @@ mod tests {
     fn services_const_first_entry_is_expresso_web() {
         assert_eq!(SERVICES[0].name, "expresso-web");
     }
+
+    #[test]
+    fn services_const_all_entries_have_nonempty_names() {
+        assert!(SERVICES.iter().all(|s| !s.name.is_empty()));
+    }
 }

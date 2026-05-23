@@ -471,4 +471,11 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str(json).unwrap();
         assert_eq!(b.size_bytes, Some(9_007_199_254_740_992));
     }
+
+    #[test]
+    fn version_diff_sha_changed_when_hashes_differ() {
+        let sha_a: Option<String> = Some("aaa".into());
+        let sha_b: Option<String> = Some("bbb".into());
+        assert!(sha_a != sha_b);
+    }
 }

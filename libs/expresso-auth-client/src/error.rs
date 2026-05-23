@@ -148,4 +148,11 @@ mod tests {
         let b = AuthError::Expired.to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn malformed_claim_display_contains_both_field_and_reason() {
+        let e = AuthError::MalformedClaim("iat", "overflow".into());
+        let s = e.to_string();
+        assert!(s.contains("iat") && s.contains("overflow"));
+    }
 }

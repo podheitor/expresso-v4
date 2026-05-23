@@ -203,4 +203,10 @@ mod tests {
         let c = cfg("i", "c", "r", None, None, None);
         assert!(c.http_timeout.as_secs() > 0);
     }
+
+    #[test]
+    fn post_logout_template_none_when_not_provided() {
+        let c = cfg("https://kc/realms/r", "client-id", "https://app/cb", None, None, None);
+        assert!(c.post_logout_template.is_none());
+    }
 }

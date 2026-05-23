@@ -401,4 +401,18 @@ mod tests {
         };
         assert!(v.version_no > 0);
     }
+
+    #[test]
+    fn file_version_tenant_id_preserved() {
+        use time::macros::datetime;
+        let tid = Uuid::new_v4();
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: tid,
+            version_no: 1, storage_key: "blobs/v1".into(), size_bytes: 0,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.tenant_id, tid);
+    }
 }

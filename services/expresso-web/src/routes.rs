@@ -1751,4 +1751,10 @@ mod tests {
         assert_eq!(v.len(), 1);
         assert_eq!(v[0], "alice@example.com");
     }
+
+    #[test]
+    fn split_addrs_multiple_commas_yield_correct_count() {
+        let v = split_addrs("a@x.com,b@x.com,c@x.com");
+        assert_eq!(v.len(), 3);
+    }
 }

@@ -368,4 +368,11 @@ mod tests {
         let r = req("author@example.com", None, None, None);
         assert_eq!(r.from, "author@example.com");
     }
+
+    #[test]
+    fn build_raw_with_bcc_succeeds() {
+        let mut r = req("from@example.com", None, None, None);
+        r.bcc = Some(vec!["bcc@example.com".into()]);
+        assert!(build_raw(&r).is_ok());
+    }
 }

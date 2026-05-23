@@ -266,4 +266,14 @@ mod tests {
         let s = serde_json::to_string(&ev).unwrap();
         assert!(s.contains(r#""kind":"addressbook_deleted""#));
     }
+
+    #[test]
+    fn contact_upserted_addressbook_id_accessible() {
+        let ev = ContactsEvent::ContactUpserted {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            contact_id:     Uuid::nil(),
+        };
+        assert_eq!(ev.tenant_id(), Uuid::nil());
+    }
 }

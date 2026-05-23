@@ -332,4 +332,10 @@ mod tests {
     fn bus_capacity_is_power_of_two() {
         assert_eq!(BUS_CAPACITY & (BUS_CAPACITY - 1), 0);
     }
+
+    #[test]
+    fn event_created_kind_str_ne_counter_received() {
+        let e = Event::EventCreated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None };
+        assert_ne!(e.kind_str(), "counter_received");
+    }
 }

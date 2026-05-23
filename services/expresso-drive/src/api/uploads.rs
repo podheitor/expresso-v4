@@ -519,4 +519,9 @@ mod tests {
     fn sanitize_accepts_dotfile_name() {
         assert!(sanitize_name(".gitignore").is_ok());
     }
+
+    #[test]
+    fn max_upload_bytes_is_fifty_gib() {
+        assert_eq!(MAX_UPLOAD_BYTES, 50 * 1024 * 1024 * 1024);
+    }
 }

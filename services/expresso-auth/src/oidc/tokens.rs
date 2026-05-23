@@ -252,4 +252,16 @@ mod tests {
         };
         assert_eq!(r.code, "mycode123");
     }
+
+    #[test]
+    fn auth_code_request_grant_type_is_authorization_code() {
+        let r = AuthCodeRequest {
+            grant_type:    "authorization_code",
+            code:          "c",
+            redirect_uri:  "https://app/cb",
+            client_id:     "cid",
+            code_verifier: "v",
+        };
+        assert_eq!(r.grant_type, "authorization_code");
+    }
 }

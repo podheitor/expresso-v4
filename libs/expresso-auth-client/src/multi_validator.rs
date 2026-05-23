@@ -197,4 +197,11 @@ mod tests {
         let iss = m.issuer_for("my-realm_01");
         assert!(iss.contains("my-realm_01"));
     }
+
+    #[test]
+    fn issuer_template_field_contains_placeholder_after_construction() {
+        let m = MultiRealmValidator::new("https://sso/{realm}/token", "client").unwrap();
+        assert!(m.issuer_template.contains("{realm}"));
+        assert!(!m.issuer_for("acme").contains("{realm}"));
+    }
 }

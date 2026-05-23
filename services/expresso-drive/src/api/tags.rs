@@ -1585,4 +1585,10 @@ mod tests {
         let b: AddTagBody = serde_json::from_str(r#"{"tag":"work-in-progress"}"#).unwrap();
         assert_eq!(b.tag, "work-in-progress");
     }
+
+    #[test]
+    fn bulk_tags_body_three_tags_count() {
+        let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["a","b","c"]}"#).unwrap();
+        assert_eq!(b.tags.len(), 3);
+    }
 }

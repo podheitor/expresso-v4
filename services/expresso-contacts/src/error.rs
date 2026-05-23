@@ -173,4 +173,10 @@ mod tests {
     fn database_unavailable_is_503_variant() {
         assert_eq!(status(ContactsError::DatabaseUnavailable), 503);
     }
+
+    #[test]
+    fn bad_request_display_contains_message() {
+        let e = ContactsError::BadRequest("missing field".into());
+        assert!(e.to_string().contains("missing field"));
+    }
 }

@@ -188,3 +188,8 @@ fn expires_at_matches_raw_exp() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert_eq!(ctx.expires_at, 9_999_999_999);
 }
+
+#[test]
+fn aud_claim_empty_never_contains_empty_str() {
+    assert!(!AudClaim::Empty.contains(""));
+}

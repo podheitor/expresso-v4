@@ -415,4 +415,10 @@ END:VCALENDAR\r\n";
         let b = compute_etag("input-two");
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn etag_empty_input_has_fixed_length() {
+        let e = compute_etag("");
+        assert_eq!(e.len(), compute_etag("x").len());
+    }
 }

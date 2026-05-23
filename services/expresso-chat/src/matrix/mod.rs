@@ -371,4 +371,9 @@ mod tests {
     fn room_preset_public_as_str_is_public_chat() {
         assert_eq!(RoomPreset::PublicChat.as_str(), "public_chat");
     }
+
+    #[test]
+    fn room_preset_trusted_private_as_str_contains_trusted() {
+        assert!(RoomPreset::TrustedPrivateChat.as_str().contains("trusted"));
+    }
 }

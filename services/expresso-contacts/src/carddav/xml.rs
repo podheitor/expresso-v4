@@ -359,4 +359,10 @@ mod tests {
         let r = PropRequest::all();
         assert!(r.sync_token);
     }
+
+    #[test]
+    fn prop_request_default_has_no_fields_set() {
+        let r = PropRequest::default();
+        assert!(!r.displayname && !r.getetag && !r.allprop);
+    }
 }

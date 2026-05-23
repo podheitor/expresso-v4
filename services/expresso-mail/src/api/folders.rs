@@ -1565,4 +1565,9 @@ mod tests {
     fn folder_name_single_digit_accepted() {
         assert!(validate_folder_name("1").is_ok());
     }
+
+    #[test]
+    fn folder_name_all_digits_accepted() {
+        assert!(validate_folder_name("20260101").is_ok());
+    }
 }

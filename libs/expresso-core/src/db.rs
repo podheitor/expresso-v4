@@ -268,6 +268,12 @@ mod tests {
         let q = p.clone();
         assert_eq!(p.role, q.role);
     }
+
+    #[test]
+    fn rls_posture_tables_unforced_empty_by_default_in_ok() {
+        let p = ok();
+        assert!(p.tables_unforced.is_empty());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

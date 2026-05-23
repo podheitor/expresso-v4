@@ -1494,4 +1494,18 @@ mod tests {
         };
         assert_eq!(doc.kind.as_deref(), Some("email"));
     }
+
+    #[test]
+    fn index_doc_subject_some_preserved() {
+        let doc = IndexDoc {
+            document_id: "d8".into(),
+            tenant_id: TENANT_A.into(),
+            subject: Some("Hello World".into()),
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert_eq!(doc.subject.as_deref(), Some("Hello World"));
+    }
 }

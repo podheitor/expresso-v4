@@ -361,4 +361,16 @@ mod tests {
         };
         assert_eq!(s.id, Uuid::nil());
     }
+
+    #[test]
+    fn share_revoked_some_not_none() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-02-01 00:00:00 UTC),
+            revoked_at: Some(datetime!(2026-01-15 00:00:00 UTC)),
+        };
+        assert!(s.revoked_at.is_some());
+    }
 }

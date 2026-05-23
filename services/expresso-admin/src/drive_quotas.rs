@@ -243,4 +243,9 @@ mod tests {
         let s = pct(1_000, 1_000);
         assert!(s.contains("100"));
     }
+
+    #[test]
+    fn mb_ten_megabytes() {
+        assert_eq!(mb(10 * 1_048_576), "10.0");
+    }
 }

@@ -555,4 +555,9 @@ mod slug_tests {
     fn plans_const_length_is_three() {
         assert_eq!(PLANS.len(), 3);
     }
+
+    #[test]
+    fn statuses_const_length_is_at_least_one() {
+        assert!(!STATUSES.is_empty());
+    }
 }

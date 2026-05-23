@@ -388,4 +388,9 @@ mod tests {
     fn is_live_prop_carddav_addressbook_description_accepted() {
         assert!(is_live_prop("urn:ietf:params:xml:ns:carddav", "addressbook-description"));
     }
+
+    #[test]
+    fn live_props_has_two_entries() {
+        assert_eq!(LIVE_PROPS.len(), 2);
+    }
 }

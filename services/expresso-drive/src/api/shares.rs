@@ -293,4 +293,9 @@ mod tests {
     fn default_ttl_seconds_exceeds_one_hour() {
         assert!(DEFAULT_TTL_SECONDS >= 3600);
     }
+
+    #[test]
+    fn max_ttl_is_thirty_days_in_seconds() {
+        assert_eq!(MAX_TTL_SECONDS, 30 * 24 * 3600);
+    }
 }

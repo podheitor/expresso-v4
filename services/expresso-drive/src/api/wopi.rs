@@ -675,4 +675,12 @@ mod tests {
     fn max_putfile_bytes_is_256_mib_value() {
         assert_eq!(MAX_PUTFILE_BYTES, 256 * 1024 * 1024);
     }
+
+    #[test]
+    fn sign_token_parts_first_segment_is_file_id() {
+        let fid = Uuid::new_v4();
+        let tok = sign_token(b"key", fid, Uuid::new_v4(), Uuid::new_v4(), 60);
+        let parts: Vec<&str> = tok.split('.').collect();
+        assert_eq!(parts[0], fid.to_string());
+    }
 }

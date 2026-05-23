@@ -256,4 +256,9 @@ mod tests {
         let h = axum::http::HeaderMap::new();
         assert!(extract_cookie(&h, "any_cookie").is_none());
     }
+
+    #[test]
+    fn refresh_token_cookie_name_is_nonempty() {
+        assert!(!REFRESH_TOKEN_COOKIE.is_empty());
+    }
 }

@@ -254,4 +254,13 @@ mod tests {
         let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
         assert!(!l.is_locked_out("brand_new@x.com"));
     }
+
+    #[test]
+    fn record_failure_three_times_at_threshold_three_triggers_lockout() {
+        let l = LoginLockout::new(3, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("u@x.com");
+        l.record_failure("u@x.com");
+        l.record_failure("u@x.com");
+        assert!(l.is_locked_out("u@x.com"));
+    }
 }

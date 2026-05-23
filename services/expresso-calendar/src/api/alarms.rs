@@ -542,4 +542,10 @@ mod tests {
         let q: UpcomingQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.within_hours.is_none());
     }
+
+    #[test]
+    fn upcoming_query_within_hours_preserved_when_set() {
+        let q: UpcomingQuery = serde_json::from_str(r#"{"within_hours":24}"#).unwrap();
+        assert_eq!(q.within_hours, Some(24));
+    }
 }

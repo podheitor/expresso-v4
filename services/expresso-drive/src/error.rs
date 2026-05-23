@@ -173,4 +173,12 @@ mod tests {
     fn database_unavailable_is_503_status() {
         assert_eq!(status(DriveError::DatabaseUnavailable), StatusCode::SERVICE_UNAVAILABLE);
     }
+
+    #[test]
+    fn not_found_display_contains_not_found_prefix() {
+        let id = Uuid::new_v4();
+        let e = DriveError::NotFound(id);
+        let s = format!("{e}");
+        assert!(s.starts_with("not found:"));
+    }
 }

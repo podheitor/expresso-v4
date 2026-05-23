@@ -561,4 +561,9 @@ mod tests {
     fn depth_default_on_missing_header_is_zero() {
         assert!(matches!(parse_depth(&HeaderMap::new()), Depth::Zero));
     }
+
+    #[test]
+    fn depth_zero_eq_zero() {
+        assert_eq!(Depth::Zero, Depth::Zero);
+    }
 }

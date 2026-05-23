@@ -243,4 +243,10 @@ mod tests {
         assert_eq!(command_label("STATUS"), "STATUS");
         assert_eq!(command_label("status"), "STATUS");
     }
+
+    #[test]
+    fn subscribe_command_maps_correctly() {
+        assert_eq!(command_label("SUBSCRIBE"), "SUBSCRIBE");
+        assert_eq!(command_label("subscribe"), "SUBSCRIBE");
+    }
 }

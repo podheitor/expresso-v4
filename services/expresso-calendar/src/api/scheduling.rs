@@ -595,4 +595,11 @@ mod tests {
         let raw: i64 = 1;
         assert_eq!(raw.min(200).max(1), 1);
     }
+
+    #[test]
+    fn freebusy_params_include_transparent_explicit_true_is_true() {
+        let json = r#"{"attendees":"a@b.com","from":"2026-06-01T00:00:00Z","to":"2026-06-02T00:00:00Z","include_transparent":true}"#;
+        let p: super::FreeBusyParams = serde_json::from_str(json).unwrap();
+        assert!(p.include_transparent);
+    }
 }

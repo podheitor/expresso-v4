@@ -224,4 +224,10 @@ mod tests {
         let b = "<displayname>it&apos;s here</displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("it's here"));
     }
+
+    #[test]
+    fn extract_prop_whitespace_only_value_preserved() {
+        let b = "<displayname>   </displayname>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("   "));
+    }
 }

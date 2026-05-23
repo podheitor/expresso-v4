@@ -505,4 +505,10 @@ mod tests {
         let r = AuthResults::default();
         assert_eq!(r.dkim, "");
     }
+
+    #[test]
+    fn auth_results_default_spf_helo_is_none() {
+        let r = AuthResults::default();
+        assert!(r.spf_helo.is_none());
+    }
 }

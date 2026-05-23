@@ -271,4 +271,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert_eq!(s.tenant_id, Uuid::nil());
     }
+
+    #[test]
+    fn session_expires_at_after_created_at() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(s.expires_at > s.created_at);
+    }
 }

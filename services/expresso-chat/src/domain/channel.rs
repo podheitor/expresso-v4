@@ -292,4 +292,11 @@ mod tests {
         let r: MemberRole = serde_json::from_str(r#""owner""#).unwrap();
         assert!(matches!(r, MemberRole::Owner));
     }
+
+    #[test]
+    fn channel_kind_announcement_ne_direct() {
+        let a = serde_json::to_string(&ChannelKind::Announcement).unwrap();
+        let d = serde_json::to_string(&ChannelKind::Direct).unwrap();
+        assert_ne!(a, d);
+    }
 }

@@ -25603,4 +25603,16 @@ mod tests {
         };
         assert!(!n.kind.is_empty());
     }
+
+    #[test]
+    fn notification_folder_none_by_default() {
+        let n = Notification {
+            kind: "calendar_event".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(n.folder.is_none());
+    }
 }

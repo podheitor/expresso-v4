@@ -392,4 +392,12 @@ mod tests {
         let (name, _) = parse_header_line("Content-Type: text/plain").unwrap();
         assert_eq!(name, "Content-Type");
     }
+
+    #[test]
+    fn parse_header_long_value_preserved() {
+        let val = "x".repeat(256);
+        let line = format!("X-Long: {val}");
+        let (_, v) = parse_header_line(&line).unwrap();
+        assert_eq!(v.len(), 256);
+    }
 }

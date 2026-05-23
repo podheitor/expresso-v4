@@ -288,4 +288,10 @@ mod tests {
         let b: ReactionBody = serde_json::from_str(r#"{"emoji":"👏"}"#).unwrap();
         assert!(b.emoji.contains('👏'));
     }
+
+    #[test]
+    fn reaction_body_rocket_emoji_preserved() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"🚀"}"#).unwrap();
+        assert!(b.emoji.contains('🚀'));
+    }
 }

@@ -392,4 +392,9 @@ mod tests {
     fn freq_weekly_ne_monthly() {
         assert_ne!(Freq::Weekly, Freq::Monthly);
     }
+
+    #[test]
+    fn freq_daily_ne_yearly() {
+        assert_ne!(Freq::Daily, Freq::Yearly);
+    }
 }

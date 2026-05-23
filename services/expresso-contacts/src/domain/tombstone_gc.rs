@@ -141,4 +141,9 @@ mod tests {
     fn default_retention_days_not_equal_to_interval_hours() {
         assert_ne!(DEFAULT_RETENTION_DAYS as u64, DEFAULT_INTERVAL_HOURS);
     }
+
+    #[test]
+    fn retention_days_constant_is_positive() {
+        assert!(DEFAULT_RETENTION_DAYS > 0);
+    }
 }

@@ -306,4 +306,9 @@ mod tests {
     fn token_prefix_ends_with_colon() {
         assert!(TOKEN_PREFIX.ends_with(':'));
     }
+
+    #[test]
+    fn parse_token_value_100_is_valid() {
+        assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}100")), Some(100));
+    }
 }

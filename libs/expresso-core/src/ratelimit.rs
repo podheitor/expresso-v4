@@ -286,4 +286,12 @@ mod tests {
         let c = RateLimitConfig { rps: 5, burst: 1 };
         assert_eq!(c.burst, 1);
     }
+
+    #[test]
+    fn rate_limiter_new_key_second_check_still_ok_when_burst_two() {
+        let rl = RateLimiter::new(RateLimitConfig { rps: 1, burst: 2 });
+        assert!(rl.check("fresh").is_ok());
+        assert!(rl.check("fresh").is_ok());
+        assert!(rl.check("fresh").is_err());
+    }
 }

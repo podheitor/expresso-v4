@@ -141,4 +141,10 @@ mod tests {
         let e = RpError::TokenExchange("upstream 502".into());
         assert!(e.to_string().contains("upstream 502"));
     }
+
+    #[test]
+    fn refresh_error_message_preserved() {
+        let e = RpError::Refresh("token expired".into());
+        assert!(e.to_string().contains("token expired"));
+    }
 }

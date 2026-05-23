@@ -246,4 +246,9 @@ mod tests {
     fn build_url_path_without_leading_slash() {
         assert_eq!(build_url("http://svc", "health"), "http://svchealth");
     }
+
+    #[test]
+    fn build_url_path_with_slash_is_appended() {
+        assert_eq!(build_url("http://svc", "/api/v1"), "http://svc/api/v1");
+    }
 }

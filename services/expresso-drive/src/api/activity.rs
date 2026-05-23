@@ -315,4 +315,9 @@ mod tests {
         let back: ActivityEvent = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
         assert_eq!(back.action, "rename");
     }
+
+    #[test]
+    fn page_size_constant_exceeds_zero() {
+        assert!(PAGE_SIZE > 0);
+    }
 }

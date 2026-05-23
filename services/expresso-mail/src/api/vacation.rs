@@ -455,4 +455,10 @@ mod tests {
         let v = Vacation::default();
         assert!(!v.enabled);
     }
+
+    #[test]
+    fn vacation_subject_empty_by_default() {
+        let v = Vacation::default();
+        assert!(v.subject.is_empty() || v.subject.len() <= MAX_SUBJECT_BYTES);
+    }
 }

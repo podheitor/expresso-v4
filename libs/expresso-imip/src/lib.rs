@@ -482,4 +482,9 @@ mod tests {
     fn method_request_as_str_is_not_empty() {
         assert!(!Method::Request.as_str().is_empty());
     }
+
+    #[test]
+    fn escape_text_backslash_is_doubled() {
+        assert_eq!(escape_text("a\\b"), "a\\\\b");
+    }
 }

@@ -408,4 +408,11 @@ mod tests {
         let b: AddMemberBody = serde_json::from_str(&json).unwrap();
         assert!(matches!(b.role, Some(MemberRole::Guest)));
     }
+
+    #[test]
+    fn create_body_kind_direct_preserved() {
+        let json = r#"{"name":"dm","kind":"direct"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(matches!(b.kind, Some(ChannelKind::Direct)));
+    }
 }

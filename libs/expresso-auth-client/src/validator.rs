@@ -362,4 +362,10 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/r", "only-client");
         assert_eq!(c.audiences().len(), 1);
     }
+
+    #[test]
+    fn oidc_config_http_timeout_default_is_five_seconds() {
+        let c = OidcConfig::new("https://kc/realms/x", "aud");
+        assert_eq!(c.http_timeout, std::time::Duration::from_secs(5));
+    }
 }

@@ -157,4 +157,9 @@ mod tests {
     fn realm_placeholder_does_not_contain_spaces() {
         assert!(!REALM_PLACEHOLDER.contains(' '));
     }
+
+    #[test]
+    fn realm_placeholder_starts_with_open_brace() {
+        assert!(REALM_PLACEHOLDER.starts_with('{'));
+    }
 }

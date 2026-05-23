@@ -227,4 +227,9 @@ mod tests {
     fn percent_decode_digit_hex_uppercase_f() {
         assert_eq!(percent_decode("%46"), "F");
     }
+
+    #[test]
+    fn percent_decode_lowercase_hex_a() {
+        assert_eq!(percent_decode("%61"), "a");
+    }
 }

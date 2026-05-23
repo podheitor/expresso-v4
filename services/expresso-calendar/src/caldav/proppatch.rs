@@ -415,4 +415,9 @@ mod tests {
     fn is_live_prop_apple_calendar_color() {
         assert!(is_live_prop("http://apple.com/ns/ical/", "calendar-color"));
     }
+
+    #[test]
+    fn is_live_prop_unknown_ns_returns_false() {
+        assert!(!is_live_prop("urn:unknown:ns", "calendar-color"));
+    }
 }

@@ -169,4 +169,10 @@ mod tests {
         let out = UserOut { id: uuid::Uuid::nil(), email: "test@example.com".into() };
         assert_eq!(out.id, uuid::Uuid::nil());
     }
+
+    #[test]
+    fn user_out_email_round_trip() {
+        let out = UserOut { id: uuid::Uuid::nil(), email: "round@trip.io".into() };
+        assert_eq!(out.email, "round@trip.io");
+    }
 }

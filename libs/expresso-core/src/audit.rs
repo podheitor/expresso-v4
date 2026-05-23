@@ -245,4 +245,12 @@ mod tests {
         let e = AuditEntry::new("drive.upload");
         assert!(e.status_code.is_none());
     }
+
+    #[test]
+    fn enrich_metadata_folds_http_path() {
+        let mut e = AuditEntry::new("test.action");
+        e.http_path = Some("/api/v1/events".into());
+        let m = enrich_metadata(&e);
+        assert_eq!(m["http_path"], json!("/api/v1/events"));
+    }
 }

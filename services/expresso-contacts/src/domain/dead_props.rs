@@ -317,4 +317,17 @@ mod tests {
         let q = p.clone();
         assert_eq!(p.xml_value, q.xml_value);
     }
+
+    #[test]
+    fn dead_prop_clone_gives_equal_all_fields() {
+        let p = DeadProp {
+            namespace:  "http://example.com/ns".into(),
+            local_name: "custom-prop".into(),
+            xml_value:  "<value>42</value>".into(),
+        };
+        let q = p.clone();
+        assert_eq!(p.namespace, q.namespace);
+        assert_eq!(p.local_name, q.local_name);
+        assert_eq!(p.xml_value, q.xml_value);
+    }
 }

@@ -640,4 +640,9 @@ mod tests {
         let s = human_size(1023);
         assert!(s.ends_with('B') && !s.contains("KB"));
     }
+
+    #[test]
+    fn human_size_one_mebibyte_is_1_mb() {
+        assert_eq!(human_size(1024 * 1024), "1.0 MB");
+    }
 }

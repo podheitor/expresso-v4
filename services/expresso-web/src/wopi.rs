@@ -185,4 +185,10 @@ mod extra_tests {
     fn editable_mime_rtf_is_editable() {
         assert!(is_editable_mime(Some("application/rtf")));
     }
+
+    #[test]
+    fn sign_token_is_nonempty() {
+        let tok = sign_token(b"secret", "file1", "tenant1", "user1", 3600);
+        assert!(!tok.is_empty());
+    }
 }

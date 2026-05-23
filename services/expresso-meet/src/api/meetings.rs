@@ -1468,6 +1468,11 @@ mod tests {
     fn max_display_name_bytes_is_positive() {
         assert!(MAX_DISPLAY_NAME_BYTES > 0);
     }
+
+    #[test]
+    fn max_display_name_bytes_is_at_least_32() {
+        assert!(MAX_DISPLAY_NAME_BYTES >= 32);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

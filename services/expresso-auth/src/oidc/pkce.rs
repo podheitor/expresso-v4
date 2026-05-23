@@ -157,4 +157,10 @@ mod tests {
         let c = challenge_s256(&v);
         assert!(!c.contains('='));
     }
+
+    #[test]
+    fn verifier_contains_no_plus_sign() {
+        let v = generate_verifier();
+        assert!(!v.contains('+'));
+    }
 }

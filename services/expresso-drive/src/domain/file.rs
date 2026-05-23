@@ -840,4 +840,10 @@ mod tests {
         let f = sample_file();
         assert!(!f.name.is_empty());
     }
+
+    #[test]
+    fn drive_file_expires_at_none_by_default() {
+        let f = sample_file();
+        assert!(f.expires_at.is_none());
+    }
 }

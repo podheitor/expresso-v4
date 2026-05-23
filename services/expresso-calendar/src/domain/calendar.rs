@@ -552,4 +552,11 @@ mod tests {
         assert_eq!(u.name.as_deref(), Some("Renamed"));
         assert!(u.color.is_none());
     }
+
+    #[test]
+    fn update_calendar_is_default_set_when_present() {
+        let json = r#"{"is_default":true}"#;
+        let u: UpdateCalendar = serde_json::from_str(json).unwrap();
+        assert_eq!(u.is_default, Some(true));
+    }
 }

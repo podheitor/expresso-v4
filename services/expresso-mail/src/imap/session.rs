@@ -3926,4 +3926,10 @@ Attachment\r\n\
         assert!(list_matches("", "*"));
         assert!(!list_matches("INBOX", ""));
     }
+
+    #[test]
+    fn list_matches_percent_no_separator() {
+        assert!(list_matches("INBOX", "%"));
+        assert!(!list_matches("INBOX/Sub", "%"));
+    }
 }

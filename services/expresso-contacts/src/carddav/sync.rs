@@ -287,4 +287,9 @@ mod tests {
     fn token_prefix_ends_with_colon() {
         assert!(TOKEN_PREFIX.ends_with(':'));
     }
+
+    #[test]
+    fn parse_token_value_whitespace_string_is_none() {
+        assert_eq!(parse_token_value("urn:expresso:ctag:  "), None);
+    }
 }

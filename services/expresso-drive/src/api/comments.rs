@@ -357,4 +357,9 @@ mod tests {
         let b: CreateCommentBody = serde_json::from_str(r#"{"body":"lgtm"}"#).unwrap();
         assert_eq!(b.body, "lgtm");
     }
+
+    #[test]
+    fn max_comment_bytes_is_four_kib() {
+        assert_eq!(MAX_COMMENT_BYTES, 4096);
+    }
 }

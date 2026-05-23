@@ -1250,4 +1250,10 @@ mod tests {
         let q: EventQuery = serde_json::from_str(r#"{"limit":10000}"#).unwrap();
         assert_eq!(q.limit, Some(10000));
     }
+
+    #[test]
+    fn event_query_negative_limit_preserved() {
+        let q: EventQuery = serde_json::from_str(r#"{"limit":-1}"#).unwrap();
+        assert_eq!(q.limit, Some(-1));
+    }
 }

@@ -421,4 +421,10 @@ mod tests {
         let n = NewAddressbook { name: "Default".into(), description: None, is_default: true };
         assert!(n.is_default);
     }
+
+    #[test]
+    fn update_addressbook_default_is_all_none_via_default_trait() {
+        let u = UpdateAddressbook::default();
+        assert!(u.name.is_none() && u.description.is_none() && u.is_default.is_none());
+    }
 }

@@ -626,4 +626,9 @@ mod tests {
     fn equals_prefix_neutralized() {
         assert_eq!(csv_escape("=SUM(A1)"), "\"'=SUM(A1)\"");
     }
+
+    #[test]
+    fn minus_prefix_neutralized() {
+        assert_eq!(csv_escape("-cmd"), "\"'-cmd\"");
+    }
 }

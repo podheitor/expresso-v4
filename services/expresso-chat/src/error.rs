@@ -171,4 +171,9 @@ mod tests {
         let e = ChatError::Internal("disk full".into());
         assert!(format!("{e}").contains("disk full"));
     }
+
+    #[test]
+    fn not_member_status_is_403() {
+        assert_eq!(status(ChatError::NotMember), 403);
+    }
 }

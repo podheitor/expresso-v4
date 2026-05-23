@@ -618,4 +618,10 @@ mod extra_tests {
         let s = percent_encode_filename("report2026.pdf");
         assert_eq!(s, "report2026.pdf");
     }
+
+    #[test]
+    fn percent_encode_filename_asterisk_encoded() {
+        let s = percent_encode_filename("file*name.txt");
+        assert!(!s.contains('*'));
+    }
 }

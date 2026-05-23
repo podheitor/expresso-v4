@@ -298,4 +298,10 @@ mod tests {
         let v = build_vcard("u4", "Dave", None, None, Some("dave@example.com"), None);
         assert!(v.contains("dave@example.com"));
     }
+
+    #[test]
+    fn build_vcard_phone_field_included_when_provided() {
+        let v = build_vcard("u5", "Eve", None, None, None, Some("+5511999999999"));
+        assert!(v.contains("+5511999999999"));
+    }
 }

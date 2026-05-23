@@ -191,4 +191,9 @@ mod tests {
         assert_eq!(command_label("Helo"), "HELO");
         assert_eq!(command_label("hElO"), "HELO");
     }
+
+    #[test]
+    fn vrfy_command_maps_to_other() {
+        assert_eq!(command_label("VRFY"), "OTHER");
+    }
 }

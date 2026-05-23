@@ -171,4 +171,10 @@ mod tests {
         let q: UserQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.email.is_none());
     }
+
+    #[test]
+    fn user_query_email_nonempty_when_present() {
+        let q: UserQuery = serde_json::from_str(r#"{"email":"someone@corp.io"}"#).unwrap();
+        assert!(!q.email.as_deref().unwrap_or("").is_empty());
+    }
 }

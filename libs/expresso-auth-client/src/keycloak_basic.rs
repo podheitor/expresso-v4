@@ -366,4 +366,10 @@ mod tests {
         let k = cache_key("user", "pass");
         assert_eq!(k.len(), 64);
     }
+
+    #[test]
+    fn kc_basic_error_unreachable_display_contains_reason() {
+        let e = KcBasicError::Unreachable("connection refused".into());
+        assert!(e.to_string().contains("connection refused"));
+    }
 }

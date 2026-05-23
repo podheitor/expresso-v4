@@ -362,4 +362,10 @@ mod tests {
     fn realm_from_iss_empty_string_returns_none() {
         assert_eq!(super::realm_from_iss(""), None);
     }
+
+    #[test]
+    fn aud_claim_many_empty_vec_contains_nothing() {
+        let aud = AudClaim::Many(vec![]);
+        assert!(!aud.contains("anything"));
+    }
 }

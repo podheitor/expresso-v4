@@ -165,4 +165,11 @@ mod tests {
         let e = WebError::Upstream("timeout".into());
         assert!(format!("{e}").contains("timeout"));
     }
+
+    #[test]
+    fn upstream_and_internal_display_differ() {
+        let u = format!("{}", WebError::Upstream("x".into()));
+        let i = format!("{}", WebError::Internal("x".into()));
+        assert_ne!(u, i);
+    }
 }

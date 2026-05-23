@@ -214,4 +214,9 @@ mod tests {
     fn max_message_body_bytes_is_32kb() {
         assert_eq!(MAX_MESSAGE_BODY_BYTES, 32 * 1024);
     }
+
+    #[test]
+    fn max_list_limit_exceeds_default_limit() {
+        assert!(MAX_LIST_LIMIT > DEFAULT_LIST_LIMIT);
+    }
 }

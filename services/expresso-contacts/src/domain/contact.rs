@@ -420,4 +420,10 @@ mod tests {
         let c = sample();
         assert_eq!(c.id, uuid::Uuid::nil());
     }
+
+    #[test]
+    fn contact_uid_nonempty_in_sample() {
+        let c = sample();
+        assert!(!c.uid.is_empty());
+    }
 }

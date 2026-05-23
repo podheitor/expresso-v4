@@ -517,4 +517,9 @@ mod extra_tests {
     fn size_param_with_body_param_before_size() {
         assert_eq!(extract_size_param("<a@b> BODY=8BITMIME SIZE=2048"), Some(2048));
     }
+
+    #[test]
+    fn extract_angle_subdomain_address_extracted() {
+        assert_eq!(extract_angle("<user@mail.example.org>"), "user@mail.example.org");
+    }
 }

@@ -187,4 +187,10 @@ mod tests {
         let tag = "scope:value".to_string();
         assert!(tag.contains(':'));
     }
+
+    #[test]
+    fn tag_string_at_sign_is_valid_rust_string() {
+        let tag = "owner@domain".to_string();
+        assert!(tag.contains('@'));
+    }
 }

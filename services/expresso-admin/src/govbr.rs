@@ -388,4 +388,15 @@ mod tests {
         };
         assert_eq!(body.assurance.as_deref(), Some("prata"));
     }
+
+    #[test]
+    fn upsert_body_cpf_hash_trimmed_check() {
+        let b = UpsertBody {
+            cpf_hash: "  trimmed  ".into(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            assurance: None,
+        };
+        assert!(!b.cpf_hash.trim().is_empty());
+    }
 }

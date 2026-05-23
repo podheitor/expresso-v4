@@ -202,4 +202,11 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert!(!r.email.contains('\n'));
     }
+
+    #[test]
+    fn forgot_req_email_does_not_contain_carriage_return() {
+        let json = r#"{"email":"user@example.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(!r.email.contains('\r'));
+    }
 }

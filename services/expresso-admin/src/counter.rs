@@ -426,4 +426,21 @@ mod tests {
         let ts = OffsetDateTime::UNIX_EPOCH;
         assert!(!fmt_opt_ts(Some(ts)).is_empty());
     }
+
+    #[test]
+    fn counter_row_proposed_dtend_preserved() {
+        let r = CounterRow {
+            id: "id10".into(),
+            tenant_id: "t10".into(),
+            event_id: "e10".into(),
+            event_summary: "Retrospective".into(),
+            attendee_email: "dev@example.com".into(),
+            proposed_dtstart: "2026-08-01T09:00:00Z".into(),
+            proposed_dtend: "2026-08-01T10:00:00Z".into(),
+            received_sequence: "1".into(),
+            comment: None,
+            created_at_fmt: "2026-08-01".into(),
+        };
+        assert_eq!(r.proposed_dtend, "2026-08-01T10:00:00Z");
+    }
 }

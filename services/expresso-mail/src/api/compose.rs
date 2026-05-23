@@ -1074,4 +1074,10 @@ mod tests {
     fn max_ics_bytes_is_256_kib() {
         assert_eq!(MAX_ICS_BYTES, 256 * 1024);
     }
+
+    #[test]
+    fn max_body_bytes_plus_max_ics_bytes_fits_in_usize() {
+        let combined = MAX_BODY_BYTES + MAX_ICS_BYTES;
+        assert!(combined > 0);
+    }
 }

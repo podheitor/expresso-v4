@@ -177,4 +177,10 @@ mod tests {
     fn bad_request_status_is_400() {
         assert_eq!(status(MeetError::BadRequest("x".into())), 400);
     }
+
+    #[test]
+    fn meeting_not_found_display_not_empty() {
+        let e = MeetError::MeetingNotFound(Uuid::nil());
+        assert!(!format!("{e}").is_empty());
+    }
 }

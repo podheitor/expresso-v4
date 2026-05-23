@@ -515,4 +515,10 @@ mod tests {
         let r2 = r;
         assert_eq!(r, r2);
     }
+
+    #[test]
+    fn participant_role_moderator_is_not_participant() {
+        assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
+        assert!(ParticipantRole::Moderator != ParticipantRole::Participant);
+    }
 }

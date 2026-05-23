@@ -463,4 +463,10 @@ mod tests {
         };
         assert!(tm.negate);
     }
+
+    #[test]
+    fn match_type_ends_with_variant_exists() {
+        let mt = MatchType::EndsWith;
+        assert!(matches!(mt, MatchType::EndsWith));
+    }
 }

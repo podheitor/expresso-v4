@@ -367,4 +367,9 @@ mod tests {
     fn is_public_path_ready_is_public() {
         assert!(is_public_path("/ready"));
     }
+
+    #[test]
+    fn is_super_admin_with_multiple_roles_finds_super_admin() {
+        assert!(is_super_admin(&["viewer".into(), "super_admin".into(), "editor".into()]));
+    }
 }

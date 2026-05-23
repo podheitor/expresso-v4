@@ -282,4 +282,10 @@ mod tests {
         let b = PresetBody { name: "Priority".into(), flags: vec![] };
         assert!(!b.name.is_empty());
     }
+
+    #[test]
+    fn preset_body_flags_contain_seen_flag() {
+        let b = PresetBody { name: "Read".into(), flags: vec!["\\Seen".into()] };
+        assert!(b.flags.contains(&"\\Seen".to_string()));
+    }
 }

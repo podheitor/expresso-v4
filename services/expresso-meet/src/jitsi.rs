@@ -347,4 +347,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(cfg.jwt_ttl > 0);
     }
+
+    #[test]
+    fn jitsi_config_domain_is_nonempty() {
+        let cfg = fixture_cfg();
+        assert!(!cfg.domain.is_empty());
+    }
 }

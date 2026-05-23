@@ -330,4 +330,9 @@ mod tests {
     fn validate_priv_read_uppercase_accepted() {
         assert_eq!(validate_priv("READ").unwrap(), "READ");
     }
+
+    #[test]
+    fn validate_priv_rejects_guest() {
+        assert!(validate_priv("GUEST").is_err());
+    }
 }

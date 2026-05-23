@@ -293,4 +293,9 @@ mod tests {
     fn default_log_filter_value_is_info() {
         assert_eq!(default_log_filter(), "info");
     }
+
+    #[test]
+    fn default_db_acquire_timeout_is_five() {
+        assert_eq!(default_db_acquire_timeout(), 5);
+    }
 }

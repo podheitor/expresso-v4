@@ -281,4 +281,9 @@ mod tests {
     fn extract_prop_returns_none_for_missing_tag() {
         assert_eq!(extract_prop("<D:displayname>My Cal</D:displayname>", "calendar-color"), None);
     }
+
+    #[test]
+    fn unescape_xml_lt_gt_entities_decoded() {
+        assert_eq!(unescape_xml("a&lt;b&gt;c"), "a<b>c");
+    }
 }

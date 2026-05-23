@@ -302,4 +302,15 @@ mod tests {
         };
         assert!(w.token_ttl_secs > 0);
     }
+
+    #[test]
+    fn wopi_collabora_url_nonempty() {
+        let w = Wopi {
+            secret:         "x".into(),
+            collabora_url:  "https://collabora.example.com".into(),
+            drive_url:      "http://d".into(),
+            token_ttl_secs: 7200,
+        };
+        assert!(!w.collabora_url.is_empty());
+    }
 }

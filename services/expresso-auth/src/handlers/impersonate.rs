@@ -278,4 +278,9 @@ mod tests {
         let ctx = ctx_with_roles(&["tenantAdmin"]);
         assert!(!is_super(&ctx));
     }
+
+    #[test]
+    fn super_role_constant_is_nonempty() {
+        assert!(!SUPER_ROLE.is_empty());
+    }
 }

@@ -404,4 +404,18 @@ mod tests {
         };
         assert!(!lock.lock_token.is_empty());
     }
+
+    #[test]
+    fn lock_debug_contains_lock_token_field() {
+        let now = OffsetDateTime::now_utc();
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "my-debug-token".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: now,
+            expires_at: now + Duration::minutes(30),
+        };
+        assert!(format!("{lock:?}").contains("my-debug-token"));
+    }
 }

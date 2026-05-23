@@ -230,4 +230,9 @@ mod tests {
     fn percent_decode_no_encoding_returns_same() {
         assert_eq!(percent_decode("plain"), "plain");
     }
+
+    #[test]
+    fn percent_decode_slash_encoded() {
+        assert_eq!(percent_decode("a%2Fb"), "a/b");
+    }
 }

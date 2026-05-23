@@ -433,6 +433,12 @@ mod tests {
         let q = Quota { max_bytes: 500, used_bytes: 500 };
         assert!(!q.fits(1));
     }
+
+    #[test]
+    fn folder_quota_max_bytes_preserved() {
+        let fq = FolderQuota { folder_id: Uuid::new_v4(), max_bytes: 2048, used_bytes: 512 };
+        assert_eq!(fq.max_bytes, 2048);
+    }
 }
 
 impl<'a> QuotaRepo<'a> {

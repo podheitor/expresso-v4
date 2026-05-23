@@ -419,4 +419,9 @@ mod tests {
     fn xml_prolog_starts_with_xml_declaration() {
         assert!(XML_PROLOG.starts_with("<?xml"));
     }
+
+    #[test]
+    fn escape_double_quote_is_quot() {
+        assert_eq!(escape("say \"hi\""), "say &quot;hi&quot;");
+    }
 }

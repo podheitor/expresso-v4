@@ -304,4 +304,10 @@ mod tests {
         assert!(r.is_clean());
         assert!(should_reject(&r).is_none());
     }
+
+    #[test]
+    fn to_headers_spam_score_present_in_output() {
+        let r = ScanResult { spam_score: Some(3.2), spam_action: None, virus: None };
+        assert!(r.to_headers().contains("X-Spam-Score:"));
+    }
 }

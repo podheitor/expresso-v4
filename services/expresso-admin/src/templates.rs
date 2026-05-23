@@ -381,4 +381,11 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert!(!r.enabled);
     }
+
+    #[test]
+    fn kc_user_id_nonempty_after_roundtrip() {
+        let json = r#"{"id":"abc-123","email":"u@ex.com"}"#;
+        let u: KcUser = serde_json::from_str(json).unwrap();
+        assert!(!u.id.is_empty());
+    }
 }

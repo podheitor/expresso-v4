@@ -200,4 +200,9 @@ mod tests {
     fn ops_list_contains_check_file_info() {
         assert!(OPS.contains(&"check_file_info"));
     }
+
+    #[test]
+    fn ops_list_has_nine_entries() {
+        assert_eq!(OPS.len(), 9);
+    }
 }

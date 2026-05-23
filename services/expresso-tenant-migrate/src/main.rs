@@ -473,4 +473,12 @@ mod tests {
         let result = roles_to_assign(&src, &dst);
         assert_eq!(result.len(), 2);
     }
+
+    #[test]
+    fn roles_to_assign_empty_src_returns_empty() {
+        let src: Vec<serde_json::Value> = vec![];
+        let dst = vec![json!({"id": "1", "name": "admin"})];
+        let result = roles_to_assign(&src, &dst);
+        assert!(result.is_empty());
+    }
 }

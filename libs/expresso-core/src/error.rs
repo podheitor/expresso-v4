@@ -149,4 +149,11 @@ mod tests {
         let e = CoreError::NotFound("drive_file".into());
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn quota_exceeded_used_greater_than_limit_in_display() {
+        let e = CoreError::QuotaExceeded { used: 200, limit: 100 };
+        let s = e.to_string();
+        assert!(s.contains("200") && s.contains("100"));
+    }
 }

@@ -340,4 +340,9 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:PUBLISH\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("PUBLISH"));
     }
+
+    #[test]
+    fn extract_organizer_email_returns_none_on_empty_ical() {
+        assert!(extract_organizer_email("").is_none());
+    }
 }

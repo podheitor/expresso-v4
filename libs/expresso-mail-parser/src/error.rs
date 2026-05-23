@@ -127,4 +127,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!(""));
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn internal_error_display_ends_with_cause_text() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("quoted-printable decode error"));
+        assert!(e.to_string().ends_with("quoted-printable decode error"));
+    }
 }

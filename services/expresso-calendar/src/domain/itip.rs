@@ -540,4 +540,16 @@ END:VCALENDAR\r\n";
         };
         assert!(a.partstat.is_none());
     }
+
+    #[test]
+    fn attendee_role_preserved_when_set() {
+        let a = Attendee {
+            email:    "r@example.com".into(),
+            cn:       None,
+            role:     Some("REQ-PARTICIPANT".into()),
+            partstat: None,
+            rsvp:     None,
+        };
+        assert_eq!(a.role.as_deref(), Some("REQ-PARTICIPANT"));
+    }
 }

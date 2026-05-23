@@ -175,4 +175,11 @@ mod tests {
     fn not_supported_status_is_501() {
         assert_eq!(status(CalendarError::NotSupported("REPORT")), 501);
     }
+
+    #[test]
+    fn event_not_found_display_contains_uuid() {
+        let id = uuid::Uuid::nil();
+        let e = CalendarError::EventNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
+    }
 }

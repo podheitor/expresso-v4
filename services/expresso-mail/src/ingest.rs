@@ -1037,4 +1037,11 @@ mod extra_tests {
         assert_eq!(name.as_deref(), Some("Alice B"));
         assert_eq!(addr.as_deref(), Some("alice@ex.com"));
     }
+
+    #[test]
+    fn parse_single_address_empty_returns_none() {
+        let (name, addr) = parse_single_address("");
+        assert!(name.is_none());
+        assert!(addr.is_none());
+    }
 }

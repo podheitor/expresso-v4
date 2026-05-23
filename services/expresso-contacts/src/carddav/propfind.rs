@@ -456,4 +456,9 @@ mod tests {
     fn parse_depth_whitespace_trimmed_to_zero() {
         assert!(matches!(parse_depth(&headers_with_depth("  0  ")), Depth::Zero));
     }
+
+    #[test]
+    fn depth_zero_eq_zero() {
+        assert_eq!(Depth::Zero, Depth::Zero);
+    }
 }

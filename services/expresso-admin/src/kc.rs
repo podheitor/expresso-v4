@@ -466,4 +466,9 @@ mod tests {
         };
         assert_eq!(u.first_name, "Alice");
     }
+
+    #[test]
+    fn token_refresh_skew_is_less_than_max_ttl() {
+        assert!(TOKEN_REFRESH_SKEW < TOKEN_MAX_TTL);
+    }
 }

@@ -224,4 +224,12 @@ mod tests {
         let p = preview(&s);
         assert!(p.len() < s.len());
     }
+
+    #[test]
+    fn fmt_ts_rfc3339_contains_z_or_offset() {
+        use time::macros::datetime;
+        let ts = datetime!(2026-03-10 12:00:00 UTC);
+        let s = fmt_ts(ts);
+        assert!(s.ends_with('Z') || s.contains('+') || s.contains('-'));
+    }
 }

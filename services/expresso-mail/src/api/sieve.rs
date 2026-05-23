@@ -343,4 +343,10 @@ if header :contains "Subject" "[spam]" {
     fn max_test_message_bytes_is_1_mib() {
         assert_eq!(MAX_TEST_MESSAGE_BYTES, 1024 * 1024);
     }
+
+    #[test]
+    fn sieve_rules_enabled_true_by_default() {
+        let r = SieveRules::default();
+        assert!(r.enabled);
+    }
 }

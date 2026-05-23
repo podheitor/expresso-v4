@@ -475,4 +475,10 @@ mod tests {
         let r: SaveRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(r.user_id, Some(id));
     }
+
+    #[test]
+    fn search_query_q_preserved() {
+        let q: SearchQuery = serde_json::from_str(r#"{"q":"alice"}"#).unwrap();
+        assert_eq!(q.q, "alice");
+    }
 }

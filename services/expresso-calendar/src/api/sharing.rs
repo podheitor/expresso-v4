@@ -310,4 +310,9 @@ mod tests {
     fn validate_priv_write_with_spaces_normalises() {
         assert_eq!(validate_priv(" write ").unwrap(), "WRITE");
     }
+
+    #[test]
+    fn validate_priv_numeric_value_returns_error() {
+        assert!(validate_priv("123").is_err());
+    }
 }

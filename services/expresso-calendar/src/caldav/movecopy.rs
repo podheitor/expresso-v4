@@ -242,4 +242,9 @@ mod tests {
     fn strip_origin_https_no_path_yields_empty_string() {
         assert_eq!(strip_origin("https://host"), "");
     }
+
+    #[test]
+    fn strip_origin_http_with_port_and_path() {
+        assert_eq!(strip_origin("http://host:80/caldav/u/"), "/caldav/u/");
+    }
 }

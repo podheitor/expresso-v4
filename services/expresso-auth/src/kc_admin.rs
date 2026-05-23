@@ -364,4 +364,10 @@ mod tests {
         let c = cfg(Some("my-exchange-client"), Some("my-secret"));
         assert_eq!(c.exchange_client_id.as_deref(), Some("my-exchange-client"));
     }
+
+    #[test]
+    fn kc_admin_config_exchange_secret_preserved_when_set() {
+        let c = cfg(Some("cid"), Some("supersecret"));
+        assert_eq!(c.exchange_client_secret.as_deref(), Some("supersecret"));
+    }
 }

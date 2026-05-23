@@ -231,4 +231,9 @@ mod tests {
     fn govbr_staging_issuer_is_https() {
         assert!(GOVBR_STAGING_ISSUER.starts_with("https://"));
     }
+
+    #[test]
+    fn govbr_issuer_and_staging_are_different() {
+        assert_ne!(GOVBR_ISSUER, GOVBR_STAGING_ISSUER);
+    }
 }

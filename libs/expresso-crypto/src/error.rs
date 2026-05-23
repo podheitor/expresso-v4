@@ -130,4 +130,10 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("cipher failure"));
         assert!(e.to_string().starts_with("internal error"));
     }
+
+    #[test]
+    fn internal_error_display_ends_with_cause() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("rsa key too short"));
+        assert!(e.to_string().ends_with("rsa key too short"));
+    }
 }

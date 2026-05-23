@@ -210,4 +210,9 @@ mod tests {
     fn strip_origin_empty_string_unchanged() {
         assert_eq!(strip_origin(""), "");
     }
+
+    #[test]
+    fn strip_origin_ftp_scheme_unchanged() {
+        assert_eq!(strip_origin("ftp://host.example.com/file"), "ftp://host.example.com/file");
+    }
 }

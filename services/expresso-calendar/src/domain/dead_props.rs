@@ -322,4 +322,14 @@ mod tests {
         };
         assert!(format!("{p:?}").contains("my-field"));
     }
+
+    #[test]
+    fn dead_prop_debug_contains_namespace() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "prop".into(),
+            xml_value: "val".into(),
+        };
+        assert!(format!("{p:?}").contains("DAV:"));
+    }
 }

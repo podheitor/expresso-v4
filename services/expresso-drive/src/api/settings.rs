@@ -212,4 +212,10 @@ mod tests {
         let s = TrashPurgeSettings { auto_purge_days: Some(30) };
         assert_eq!(s.auto_purge_days, Some(30));
     }
+
+    #[test]
+    fn trash_purge_put_body_large_value_preserved() {
+        let b: TrashPurgePutBody = serde_json::from_str(r#"{"auto_purge_days":3650}"#).unwrap();
+        assert_eq!(b.auto_purge_days, Some(3650));
+    }
 }

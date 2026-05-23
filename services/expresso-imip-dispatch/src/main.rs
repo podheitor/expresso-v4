@@ -561,4 +561,18 @@ mod tests {
         let m: EnvelopeMethod = serde_json::from_str("\"REQUEST\"").unwrap();
         assert!(matches!(m, EnvelopeMethod::Request));
     }
+
+    #[test]
+    fn human_summary_cancel_contains_event_uid_in_summary() {
+        let inv = EventInvite {
+            uid: "ev-cancel-99".into(), sequence: 0, summary: "CancelMe".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-10-01 08:00 UTC),
+            dtend:   time::macros::datetime!(2026-10-01 09:00 UTC),
+            organizer_email: "a@x".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Cancel);
+        assert!(s.contains("CancelMe"));
+    }
 }

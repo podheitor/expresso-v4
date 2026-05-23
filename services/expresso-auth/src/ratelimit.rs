@@ -273,4 +273,12 @@ mod tests {
         let rl = RateLimiter::new(Duration::from_secs(30), 5);
         assert!(!rl.trust_forwarded);
     }
+
+    #[test]
+    fn with_trust_proxy_true_then_false_disables_flag() {
+        let rl = RateLimiter::with_trust_proxy(Duration::from_secs(30), 5, true);
+        assert!(rl.trust_forwarded);
+        let rl2 = RateLimiter::with_trust_proxy(Duration::from_secs(30), 5, false);
+        assert!(!rl2.trust_forwarded);
+    }
 }

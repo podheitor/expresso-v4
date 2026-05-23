@@ -679,4 +679,10 @@ mod tests {
     fn extract_size_param_returns_none_for_bare_address() {
         assert_eq!(extract_size_param("<user@example.com>"), None);
     }
+
+    #[test]
+    fn decode_plain_single_nul_byte_rejects() {
+        let encoded = B64.encode(b"\x00");
+        assert!(decode_plain(&encoded).is_none());
+    }
 }

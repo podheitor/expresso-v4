@@ -518,4 +518,11 @@ mod tests {
     fn realm_roles_count_is_four() {
         assert_eq!(REALM_ROLES.len(), 4);
     }
+
+    #[test]
+    fn realm_roles_are_unique() {
+        let names: Vec<&str> = REALM_ROLES.iter().map(|(n, _)| *n).collect();
+        let unique: std::collections::HashSet<&str> = names.iter().copied().collect();
+        assert_eq!(names.len(), unique.len());
+    }
 }

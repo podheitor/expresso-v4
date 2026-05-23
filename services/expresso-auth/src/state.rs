@@ -270,4 +270,10 @@ mod tests {
         let p = make_pending(60);
         assert!(!p.code_verifier.is_empty());
     }
+
+    #[test]
+    fn pending_login_redirect_uri_nonempty() {
+        let p = make_pending(60);
+        assert!(!p.redirect_uri.is_empty());
+    }
 }

@@ -184,4 +184,11 @@ mod tests {
         let hosts: Vec<&str> = r.hosts().collect();
         assert_eq!(hosts.len(), 1);
     }
+
+    #[test]
+    fn default_resolver_is_empty() {
+        let r = TenantResolver::default();
+        assert!(r.is_empty());
+        assert_eq!(r.len(), 0);
+    }
 }
