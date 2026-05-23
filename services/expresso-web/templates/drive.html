@@ -2,20 +2,22 @@
 {% block title %}Drive · Expresso{% endblock %}
 {% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
-<section class="page">
-  <header class="page-header">
+<div class="page">
+  <div class="page-header">
     <div>
       <h1>Meu Drive</h1>
       {% match quota %}{% when Some with (q) %}
-        <div class="quota-bar" title="Uso {{ q.used_human() }} / {{ q.max_human() }}">
-          <div class="quota-fill" style="width: {{ q.percent() }}%"></div>
-          <span class="quota-label">{{ q.used_human() }} de {{ q.max_human() }} ({{ q.percent() }}%)</span>
+        <div style="margin-top:.4rem">
+          <div class="quota-bar" title="{{ q.used_human() }} / {{ q.max_human() }}">
+            <div class="quota-fill" style="width:{{ q.percent() }}%"></div>
+          </div>
+          <p class="muted small">{{ q.used_human() }} de {{ q.max_human() }} ({{ q.percent() }}%)</p>
         </div>
       {% when None %}
       {% endmatch %}
     </div>
     <div class="page-header-actions">
-      <a class="btn btn-ghost" href="/drive/trash">🗑 Lixeira</a>
+      <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
       <form class="upload-form" method="post"
             action="/drive/upload{% match parent_id %}{% when Some with (p) %}?parent_id={{ p }}{% when None %}{% endmatch %}"
             enctype="multipart/form-data">
@@ -24,7 +26,7 @@
         <button class="btn btn-primary" type="submit">Enviar</button>
       </form>
     </div>
-  </header>
+  </div>
 
   {% if files.is_empty() %}
     <div class="empty-state">Pasta vazia</div>
@@ -36,7 +38,7 @@
     <tbody>
       {% for f in files %}
       <tr>
-        <td>{{ f.icon() }}</td>
+        <td style="width:2rem">{{ f.icon() }}</td>
         <td>
           {% if f.is_folder() %}
             <a class="link" href="/drive?parent_id={{ f.id }}">{{ f.name }}</a>
@@ -44,18 +46,18 @@
             <span>{{ f.name }}</span>
           {% endif %}
         </td>
-        <td class="mono">{{ f.size_human() }}</td>
+        <td class="mono muted">{{ f.size_human() }}</td>
         <td class="mono muted">{% match f.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
         <td class="row-actions">
           {% if f.is_folder() == false %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
-            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">🔗</a>
-            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">📜</a>
-            {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">✎</a>{% endif %}
+            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">Compartilhar</a>
+            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
+            {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}
           {% endif %}
           <form method="post" action="/drive/{{ f.id }}/trash" style="display:inline">
             <button class="btn btn-ghost btn-sm" type="submit" title="Mover p/ lixeira"
-                    onclick="return confirm('Mover para lixeira?')">🗑</button>
+                    onclick="return confirm('Mover para lixeira?')">Lixeira</button>
           </form>
         </td>
       </tr>
@@ -66,8 +68,8 @@
 
   {% match parent_id %}
   {% when Some with (_pid) %}
-    <p><a class="link" href="/drive">← Raiz</a></p>
+    <p style="margin-top:1rem"><a class="link-sm" href="/drive">← Raiz</a></p>
   {% when None %}
   {% endmatch %}
-</section>
+</div>
 {% endblock %}

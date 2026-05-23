@@ -2,19 +2,19 @@
 {% block title %}Contatos · Expresso{% endblock %}
 {% block nav %}{% let current = "contacts" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
-<section class="page">
+<section class="page" style="display:flex;max-width:none;padding:0;margin:0;height:calc(100vh - var(--topbar-h));overflow:hidden">
   <aside class="contacts-books">
     <h2>Catálogos</h2>
     {% if books.is_empty() %}
-      <p class="muted">Nenhum catálogo</p>
+      <p class="muted small">Nenhum catálogo</p>
     {% else %}
     <ul>
       {% for b in books %}
       <li>
-        <a class="link{% match selected_book %}{% when Some with (sid) %}{% if sid.as_str() == b.id.as_str() %} active{% endif %}{% when None %}{% endmatch %}"
+        <a class="{% match selected_book %}{% when Some with (sid) %}{% if sid.as_str() == b.id.as_str() %}active{% endif %}{% when None %}{% endmatch %}"
            href="/contacts?book_id={{ b.id }}">
           {{ b.name }}
-          {% if b.is_default %}<span class="badge">padrão</span>{% endif %}
+          {% if b.is_default %}<span class="badge" style="font-size:.65rem">padrão</span>{% endif %}
         </a>
       </li>
       {% endfor %}
@@ -23,17 +23,20 @@
   </aside>
 
   <main class="contacts-main">
-    <header class="row" style="justify-content: space-between; align-items: center">
+    <div class="page-header">
       <h1>Contatos</h1>
       {% match selected_book %}{% when Some with (bid) %}
         <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
       {% when None %}{% endmatch %}
-    </header>
+    </div>
+
     {% if contacts.is_empty() %}
       <div class="empty-state">Catálogo vazio</div>
     {% else %}
     <table class="data-table">
-      <thead><tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th><th></th></tr></thead>
+      <thead>
+        <tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th><th></th></tr>
+      </thead>
       <tbody>
         {% for c in contacts %}
         {% match selected_book %}{% when Some with (bid) %}
@@ -41,15 +44,15 @@
           <td><a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">{{ c.name_display() }}</a></td>
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
-          <td>{{ c.org_display() }}</td>
-          <td><a class="link" href="/contacts/{{ bid }}/{{ c.id }}/edit">editar</a></td>
+          <td class="muted">{{ c.org_display() }}</td>
+          <td class="row-actions"><a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/{{ c.id }}/edit">Editar</a></td>
         </tr>
         {% when None %}
         <tr>
           <td>{{ c.name_display() }}</td>
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
-          <td>{{ c.org_display() }}</td>
+          <td class="muted">{{ c.org_display() }}</td>
           <td></td>
         </tr>
         {% endmatch %}

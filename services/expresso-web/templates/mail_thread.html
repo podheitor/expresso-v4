@@ -4,8 +4,8 @@
 <div class="mail-shell">
   <aside class="sidebar">
     <header class="sidebar-header">
-      <span class="app-name">✉ Expresso Mail</span>
-      <a class="btn btn-primary btn-sm" href="/mail/compose" style="margin-top:.5rem;display:block;text-align:center">✎ Nova mensagem</a>
+      <span class="app-name">Mail</span>
+      <a class="btn btn-primary btn-sm" href="/mail/compose">✎ Nova mensagem</a>
     </header>
 
     <nav class="folder-list" aria-label="Pastas">
@@ -21,7 +21,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a class="link-sm" href="/me">👤 {{ me.email }}</a>
+      <a class="link-sm" href="/me">{{ me.email }}</a>
     </div>
   </aside>
 
@@ -30,7 +30,7 @@
       <div class="list-toolbar">
         <a class="link-sm" href="/mail">← Voltar</a>
         <h1 class="folder-title">🧵 {{ subject }}</h1>
-        <span class="muted">{{ messages.len() }} mensagens</span>
+        <span class="muted small">{{ messages.len() }} mensagens</span>
       </div>
 
       {% if messages.is_empty() %}

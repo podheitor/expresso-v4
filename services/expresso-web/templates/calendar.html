@@ -2,28 +2,30 @@
 {% block title %}Agenda · Expresso{% endblock %}
 {% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
-<section class="page">
-  <h1>Minhas agendas</h1>
+<div class="page">
+  <div class="page-header">
+    <h1>Minhas agendas</h1>
+  </div>
   {% if calendars.is_empty() %}
     <div class="empty-state">Nenhuma agenda configurada</div>
   {% else %}
   <ul class="card-list">
     {% for c in calendars %}
     <li class="subcard">
-      <div class="row" style="justify-content: space-between">
-        <div>
+      <div class="row" style="justify-content:space-between">
+        <div class="row">
           <a class="link" href="/calendar/{{ c.id }}"><strong>{{ c.name }}</strong></a>
-          {% if c.is_default %}<span class="badge" style="background:#15803d">padrão</span>{% endif %}
+          {% if c.is_default %}<span class="badge">padrão</span>{% endif %}
         </div>
-        <div class="mono muted">{{ c.id }}</div>
+        <span class="mono muted small">{{ c.id }}</span>
       </div>
       {% match c.description %}
-      {% when Some with (d) %}<p class="muted">{{ d }}</p>
+      {% when Some with (d) %}<p class="muted" style="margin-top:.4rem;font-size:.875rem">{{ d }}</p>
       {% when None %}{% endmatch %}
     </li>
     {% endfor %}
   </ul>
+  <p class="muted" style="margin-top:1rem;font-size:.875rem">Clique em uma agenda para abrir o grid mensal.</p>
   {% endif %}
-  <p class="muted">Clique em uma agenda para abrir o grid mensal.</p>
-</section>
+</div>
 {% endblock %}

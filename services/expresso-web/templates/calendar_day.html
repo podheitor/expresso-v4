@@ -2,23 +2,23 @@
 {% block title %}{{ selected.name }} — {{ date_label }} · Expresso{% endblock %}
 {% block nav %}{% let current = "calendar" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
-<section class="page">
-  <header class="row" style="justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+<div class="page">
+  <div class="page-header">
     <div>
-      <h1 style="margin: 0">{{ selected.name }}</h1>
-      <p class="muted" style="margin: 0">{{ date_label }}</p>
+      <h1>{{ selected.name }}</h1>
+      <p class="muted">{{ date_label }}</p>
     </div>
-    <div class="row" style="gap: .5rem">
-      <a class="btn" href="{{ prev_link }}">◀</a>
-      <a class="btn" href="{{ today_link }}">hoje</a>
-      <a class="btn" href="{{ next_link }}">▶</a>
+    <div class="row">
+      <a class="btn btn-ghost" href="{{ prev_link }}">◀</a>
+      <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
+      <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
     </div>
-  </header>
+  </div>
 
-  <nav class="view-switch" style="margin: .5rem 0">
-    <a class="btn" href="{{ month_link }}">Mês</a>
-    <a class="btn" href="{{ week_link }}">Semana</a>
+  <nav class="view-switch" style="margin-bottom:1rem">
+    <a class="btn btn-ghost" href="{{ month_link }}">Mês</a>
+    <a class="btn btn-ghost" href="{{ week_link }}">Semana</a>
     <strong class="btn btn-primary" aria-current="page">Dia</strong>
   </nav>
 
@@ -36,5 +36,5 @@
     </a>
     {% endfor %}
   </div>
-</section>
+</div>
 {% endblock %}

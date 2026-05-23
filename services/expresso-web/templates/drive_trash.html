@@ -2,11 +2,11 @@
 {% block title %}Lixeira · Drive · Expresso{% endblock %}
 {% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
-<section class="page">
-  <header class="page-header">
+<div class="page">
+  <div class="page-header">
     <h1>Lixeira</h1>
     <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
-  </header>
+  </div>
 
   {% if files.is_empty() %}
     <div class="empty-state">Lixeira vazia</div>
@@ -18,17 +18,17 @@
     <tbody>
       {% for f in files %}
       <tr>
-        <td>{{ f.icon() }}</td>
+        <td style="width:2rem">{{ f.icon() }}</td>
         <td>{{ f.name }}</td>
-        <td class="mono">{{ f.size_human() }}</td>
+        <td class="mono muted">{{ f.size_human() }}</td>
         <td class="mono muted">{% match f.deleted_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
         <td class="row-actions">
           <form method="post" action="/drive/{{ f.id }}/restore" style="display:inline">
-            <button class="btn btn-ghost btn-sm" type="submit" title="Restaurar">↺</button>
+            <button class="btn btn-amber btn-sm" type="submit" title="Restaurar">Restaurar</button>
           </form>
           <form method="post" action="/drive/{{ f.id }}/purge" style="display:inline"
                 onsubmit="return confirm('Excluir permanentemente? Esta ação não pode ser desfeita.')">
-            <button class="btn btn-ghost btn-sm" type="submit" title="Excluir permanentemente">✕</button>
+            <button class="btn btn-danger btn-sm" type="submit" title="Excluir permanentemente">Excluir</button>
           </form>
         </td>
       </tr>
@@ -36,5 +36,5 @@
     </tbody>
   </table>
   {% endif %}
-</section>
+</div>
 {% endblock %}

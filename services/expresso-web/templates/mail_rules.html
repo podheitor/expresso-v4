@@ -4,71 +4,64 @@
 <div class="mail-shell">
   <aside class="sidebar">
     <header class="sidebar-header">
-      <span class="app-name">✉ Expresso Mail</span>
-      <a class="btn btn-primary btn-sm" href="/mail/compose" style="margin-top:.5rem;display:block;text-align:center">✎ Nova mensagem</a>
+      <span class="app-name">Mail</span>
+      <a class="btn btn-primary btn-sm" href="/mail/compose">✎ Nova mensagem</a>
     </header>
     <nav class="folder-list" aria-label="Pastas">
-      <a class="folder-item" href="/mail">📥 Voltar à caixa</a>
+      <a class="folder-item active" href="/mail">← Caixa de entrada</a>
     </nav>
     <div class="sidebar-footer">
-      <a class="link-sm" href="/me">👤 {{ me.email }}</a>
+      <a class="link-sm" href="/me">{{ me.email }}</a>
     </div>
   </aside>
 
-  <main class="mail-main" style="flex-direction:column">
-    <section style="padding:1.5rem;max-width:900px;width:100%">
+  <main class="mail-main" style="flex-direction:column;overflow-y:auto">
+    <div style="padding:1.75rem;max-width:900px;width:100%">
       <h1>Regras de entrada (Sieve)</h1>
-      <p class="muted">
+      <p class="muted" style="margin:.5rem 0 1.25rem;font-size:.9rem">
         Escreva um script
         <a href="https://datatracker.ietf.org/doc/html/rfc5228" target="_blank" rel="noopener">Sieve (RFC 5228)</a>
         para filtrar mensagens recebidas. Suporta <code>fileinto</code>, <code>reject</code>,
-        <code>discard</code>, <code>keep</code>, <code>redirect</code>. O servidor valida a
-        compilação antes de salvar.
+        <code>discard</code>, <code>keep</code>, <code>redirect</code>.
       </p>
 
       {% match error %}
         {% when Some with (e) %}
-          <div class="alert alert-error" role="alert"
-               style="background:#fee;border:1px solid #e77;padding:.6rem 1rem;border-radius:.4rem;margin:.8rem 0">
-            <strong>Erro:</strong> {{ e }}
-          </div>
+          <div class="alert alert-error" role="alert"><strong>Erro:</strong> {{ e }}</div>
         {% when None %}
       {% endmatch %}
 
       {% if saved %}
-        <div class="alert alert-ok" role="status"
-             style="background:#efe;border:1px solid #7c7;padding:.6rem 1rem;border-radius:.4rem;margin:.8rem 0">
-          Regras salvas com sucesso.
-        </div>
+        <div class="alert alert-ok" role="status">Regras salvas com sucesso.</div>
       {% endif %}
 
-      <form method="POST" action="/mail/rules">
-        <label style="display:block;margin:1rem 0 .3rem">
-          <input type="checkbox" name="enabled" value="1"{% if enabled %} checked{% endif %}>
-          Ativar regras
-        </label>
+      <div class="card" style="margin-bottom:1.5rem">
+        <form method="POST" action="/mail/rules" class="form">
+          <label style="flex-direction:row;align-items:center;gap:.6rem">
+            <input type="checkbox" name="enabled" value="1"{% if enabled %} checked{% endif %}>
+            <span style="color:var(--text-primary)">Ativar regras</span>
+          </label>
 
-        <label style="display:block;margin-top:1rem">
-          <span class="muted">Script Sieve</span>
-          <textarea name="script" rows="18" spellcheck="false"
-                    style="width:100%;font-family:monospace;font-size:.9rem;padding:.6rem;border:1px solid #ccc;border-radius:.4rem"
-                    placeholder='require ["fileinto"];
+          <label>
+            <span>Script Sieve</span>
+            <textarea name="script" rows="18" spellcheck="false"
+                      placeholder='require ["fileinto"];
 if header :contains "Subject" "NEWSLETTER" {
     fileinto "Newsletters";
     stop;
 }'>{{ script }}</textarea>
-        </label>
+          </label>
 
-        <div style="margin-top:1rem;display:flex;gap:.6rem;align-items:center">
-          <button class="btn btn-primary" type="submit">Salvar</button>
-          <a class="link-sm" href="/mail">Cancelar</a>
-        </div>
-      </form>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar</button>
+            <a class="btn btn-ghost" href="/mail">Cancelar</a>
+          </div>
+        </form>
+      </div>
 
-      <details style="margin-top:2rem">
-        <summary class="muted">Exemplos</summary>
-        <pre style="background:#f7f7f7;padding:.8rem;border-radius:.4rem;overflow-x:auto">
-require ["fileinto"];
+      <details>
+        <summary>Exemplos</summary>
+        <pre style="margin-top:.75rem">require ["fileinto"];
 
 # Mover boletins para a pasta "Newsletters"
 if header :contains "List-Unsubscribe" "mailto:" {
@@ -82,7 +75,7 @@ if header :contains "Subject" "[SPAM]" {
     stop;
 }</pre>
       </details>
-    </section>
+    </div>
   </main>
 </div>
 {% endblock %}

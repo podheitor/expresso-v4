@@ -2,19 +2,23 @@
 {% block nav %}{% let current = "me" %}{% include "_appnav.html" %}{% endblock %}
 {% block title %}Minha sessão · Expresso{% endblock %}
 {% block body %}
-<section class="card stack">
-  <h1>Sessão atual</h1>
-  <dl class="kv">
-    <dt>Usuário</dt>        <dd>{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}—{% endmatch %}</dd>
-    <dt>Email</dt>          <dd>{{ me.email }}</dd>
-    <dt>User ID</dt>        <dd class="mono">{{ me.user_id }}</dd>
-    <dt>Tenant</dt>         <dd class="mono">{{ me.tenant_id }}</dd>
-    <dt>Roles</dt>          <dd>{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
-    <dt>Expira (epoch)</dt> <dd>{{ me.expires_at }}</dd>
-  </dl>
-  <div class="row">
-    <a class="btn" href="/me/security">Gerenciar segurança / MFA</a>
-    <a class="btn btn-ghost" href="{{ logout_url }}">Sair</a>
+<div class="page">
+  <div class="card stack" style="max-width:640px">
+    <h1>Sessão atual</h1>
+    <div class="subcard">
+      <dl class="kv">
+        <dt>Usuário</dt>  <dd>{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}—{% endmatch %}</dd>
+        <dt>Email</dt>    <dd>{{ me.email }}</dd>
+        <dt>User ID</dt>  <dd class="mono">{{ me.user_id }}</dd>
+        <dt>Tenant</dt>   <dd class="mono">{{ me.tenant_id }}</dd>
+        <dt>Roles</dt>    <dd>{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
+        <dt>Expira</dt>   <dd class="mono">{{ me.expires_at }}</dd>
+      </dl>
+    </div>
+    <div class="row">
+      <a class="btn btn-primary" href="/me/security">Segurança / MFA</a>
+      <a class="btn btn-ghost" href="{{ logout_url }}">Sair</a>
+    </div>
   </div>
-</section>
+</div>
 {% endblock %}
