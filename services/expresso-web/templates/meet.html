@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Meet · Expresso{% endblock %}
+{% block nav %}{% let current = "meet" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page">
+  <div class="page-header">
+    <h1>Videoconferência</h1>
+  </div>
+  <div class="meet-grid">
+    <div class="card meet-card">
+      <div class="meet-card-icon">&#x1F4F9;</div>
+      <h2>Nova reunião</h2>
+      <p class="muted">Inicie uma videochamada agora e compartilhe o link com os participantes.</p>
+      <a class="btn btn-primary btn-lg" href="/meet/new">Iniciar reunião</a>
+    </div>
+    <div class="card meet-card">
+      <div class="meet-card-icon">&#x1F517;</div>
+      <h2>Entrar por link</h2>
+      <p class="muted">Insira o código ou URL da reunião que você recebeu.</p>
+      <form class="compose-form" method="get" action="/meet/join">
+        <input type="text" name="room" placeholder="Código da reunião" required>
+        <div class="form-actions">
+          <button class="btn btn-amber" type="submit">Entrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

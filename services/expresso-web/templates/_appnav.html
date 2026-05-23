@@ -1,13 +1,31 @@
 <header class="topbar">
-  <div class="brand">Expresso</div>
+  <a class="brand" href="/">Expresso</a>
   <nav class="appnav">
-    <a class="appnav-item{% if current == "home" %} active{% endif %}" href="/">Início</a>
     <a class="appnav-item{% if current == "mail"     %} active{% endif %}" href="/mail">Mail</a>
     <a class="appnav-item{% if current == "calendar" %} active{% endif %}" href="/calendar">Agenda</a>
     <a class="appnav-item{% if current == "contacts" %} active{% endif %}" href="/contacts">Contatos</a>
     <a class="appnav-item{% if current == "drive"    %} active{% endif %}" href="/drive">Drive</a>
+    <a class="appnav-item{% if current == "chat"     %} active{% endif %}" href="/chat">Chat</a>
+    <a class="appnav-item{% if current == "meet"     %} active{% endif %}" href="/meet">Meet</a>
   </nav>
   <div class="useract">
-    <a class="appnav-item" href="/me">{{ me.email }}</a>
+    <button class="theme-toggle" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">☀</button>
+    <a class="appnav-item useract-user" href="/me">{{ me.email }}</a>
   </div>
 </header>
+<script>
+(function(){
+  var btn = document.getElementById('themeToggle');
+  var root = document.documentElement;
+  var stored = localStorage.getItem('theme') || 'dark';
+  function apply(t){
+    root.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
+    btn.textContent = t === 'dark' ? '☀' : '☾';
+  }
+  apply(stored);
+  btn.addEventListener('click', function(){
+    apply(root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+  });
+})();
+</script>

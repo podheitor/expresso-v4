@@ -1,11 +1,12 @@
 {% extends "base.html" %}
 {% block title %}{{ selected }} · Expresso Mail{% endblock %}
+{% block nav %}{% let current = "mail" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="mail-shell">
   <aside class="sidebar">
     <header class="sidebar-header">
       <span class="app-name">Mail</span>
-      <a class="btn btn-primary btn-sm" href="/mail/compose">✎ Nova mensagem</a>
+      <a class="btn btn-primary btn-sm" href="/mail/compose">+ Nova mensagem</a>
     </header>
 
     <nav class="folder-list" aria-label="Pastas">
@@ -22,8 +23,9 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a class="link-sm" href="/mail/rules">Regras Sieve</a>
-      <a class="link-sm" href="/me">{{ me.email }}</a>
+      <a class="link-sm sidebar-settings-link" href="/mail/rules">Regras de filtro</a>
+      <a class="link-sm sidebar-settings-link" href="/me/security">Segurança</a>
+      <a class="link-sm sidebar-settings-link" href="/me">{{ me.email }}</a>
     </div>
   </aside>
 
@@ -62,7 +64,7 @@
         <header class="detail-header">
           <h2>{% match d.subject %}{% when Some with (s) %}{{ s }}{% when None %}(sem assunto){% endmatch %}</h2>
           {% match d.thread_id %}
-            {% when Some with (tid) %}<a class="link-sm" href="/mail/thread/{{ tid }}">🧵 Ver thread</a>
+            {% when Some with (tid) %}<a class="link-sm" href="/mail/thread/{{ tid }}">Ver thread</a>
             {% when None %}
           {% endmatch %}
           <div class="detail-from">

@@ -526,6 +526,18 @@ pub struct AddrbookShareTpl {
     pub error:       Option<String>,
 }
 
+#[derive(Template)]
+#[template(path = "chat.html")]
+pub struct ChatTpl {
+    pub me: Me,
+}
+
+#[derive(Template)]
+#[template(path = "meet.html")]
+pub struct MeetTpl {
+    pub me: Me,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

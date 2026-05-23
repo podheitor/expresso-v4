@@ -18,10 +18,16 @@ use crate::{
         AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
         MailRulesTpl, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
         Event, MonthCell, CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl, ContactFormTpl,
-        AclRow, CalendarShareTpl, AddrbookShareTpl,
+        AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl,
     },
     upstream::{get_json, post_body, put_body, put_json, delete_at},
 };
+
+fn dedup_folders(mut folders: Vec<crate::templates::Folder>) -> Vec<crate::templates::Folder> {
+    let mut seen = std::collections::HashSet::new();
+    folders.retain(|f| seen.insert(f.name.to_uppercase()));
+    folders
+}
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -60,6 +66,8 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/:id/delete",             post(contact_delete_action))
         .route("/contacts/:book_id/share", get(addrbook_share_page).post(addrbook_share_create))
         .route("/contacts/:book_id/share/:grantee_id/revoke", post(addrbook_share_revoke))
+        .route("/chat",  get(chat_page))
+        .route("/meet",  get(meet_page))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -149,9 +157,9 @@ async fn mail_page(
     let selected = q.folder.unwrap_or_else(|| "INBOX".into());
     let page     = q.page.unwrap_or(0);
 
-    let folders = get_json::<Vec<Folder>>(
+    let folders = dedup_folders(get_json::<Vec<Folder>>(
         &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
-    ).await?.unwrap_or_default();
+    ).await?.unwrap_or_default());
 
     let enc = utf8_percent_encode(&selected, NON_ALPHANUMERIC).to_string();
     let messages = get_json::<Vec<MessageListItem>>(
@@ -176,9 +184,9 @@ async fn mail_detail_page(
     let selected = q.folder.unwrap_or_else(|| "INBOX".into());
     let page     = q.page.unwrap_or(0);
 
-    let folders = get_json::<Vec<Folder>>(
+    let folders = dedup_folders(get_json::<Vec<Folder>>(
         &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
-    ).await?.unwrap_or_default();
+    ).await?.unwrap_or_default());
 
     let enc = utf8_percent_encode(&selected, NON_ALPHANUMERIC).to_string();
     let messages = get_json::<Vec<MessageListItem>>(
@@ -270,9 +278,9 @@ async fn mail_thread_page(
     };
     let (t, u) = ctx_of(&me);
 
-    let folders = get_json::<Vec<Folder>>(
+    let folders = dedup_folders(get_json::<Vec<Folder>>(
         &st, &st.backends.mail, "/api/v1/mail/folders", &headers, Some((&t, &u)),
-    ).await?.unwrap_or_default();
+    ).await?.unwrap_or_default());
 
     let enc_tid = utf8_percent_encode(&tid, NON_ALPHANUMERIC).to_string();
     let messages = get_json::<Vec<MessageListItem>>(
@@ -1613,6 +1621,24 @@ async fn addrbook_share_revoke(
         &headers, Some((&t, &u)),
     ).await?;
     Ok(Redirect::to(&format!("/contacts/{enc_b}/share")).into_response())
+}
+
+// ─── /chat ───────────────────────────────────────────────────────────────────
+
+async fn chat_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(askama_axum::IntoResponse::into_response(ChatTpl { me }))
+}
+
+// ─── /meet ───────────────────────────────────────────────────────────────────
+
+async fn meet_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(askama_axum::IntoResponse::into_response(MeetTpl { me }))
 }
 
 #[cfg(test)]

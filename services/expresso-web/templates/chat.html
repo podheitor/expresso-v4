@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Chat · Expresso{% endblock %}
+{% block nav %}{% let current = "chat" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="chat-shell">
+  <aside class="sidebar">
+    <header class="sidebar-header">
+      <span class="app-name">Chat</span>
+      <button class="btn btn-primary btn-sm" disabled>+ Novo canal</button>
+    </header>
+    <nav class="folder-list" aria-label="Canais">
+      <div class="folder-item active">
+        <span class="folder-icon">#</span>
+        <span class="folder-name">geral</span>
+      </div>
+    </nav>
+  </aside>
+  <main class="chat-main">
+    <div class="chat-frame-wrap">
+      <iframe
+        src="http://{{ me.tenant_id }}.expresso.local:8108"
+        class="chat-frame"
+        allow="camera; microphone; fullscreen"
+        referrerpolicy="no-referrer">
+      </iframe>
+    </div>
+  </main>
+</div>
+{% endblock %}
