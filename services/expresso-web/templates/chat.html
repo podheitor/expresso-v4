@@ -62,6 +62,11 @@
       {% endif %}
     </nav>
 
+    <div class="sidebar-search-wrap" style="padding:.5rem .75rem;border-top:1px solid var(--border)">
+      <input type="search" class="tasks-add-input" id="chat-global-search" placeholder="🔍 Buscar em todos os canais…"
+             oninput="chatGlobalSearch(this.value)" style="width:100%;font-size:.82rem">
+      <ul class="chat-global-results" id="chat-global-results" style="display:none"></ul>
+    </div>
     <footer class="sidebar-footer">
       <a href="/settings" class="sidebar-settings-link">⚙ Configurações</a>
     </footer>
@@ -439,6 +444,50 @@ document.addEventListener('click', function(e) {
   if (!e.target.closest('.chat-emoji-wrap')) {
     var p = document.getElementById('chat-emoji-picker');
     if (p) p.style.display = 'none';
+  }
+});
+
+// ── Global chat search ────────────────────────────────────────────────────────
+var _chatSearchTimer = null;
+function chatGlobalSearch(q) {
+  var res = document.getElementById('chat-global-results');
+  if (!res) return;
+  if (!q.trim()) { res.style.display = 'none'; res.innerHTML = ''; return; }
+  clearTimeout(_chatSearchTimer);
+  _chatSearchTimer = setTimeout(function() {
+    // Search each channel's recent messages client-side (from rendered DOM)
+    var msgs = document.querySelectorAll('.chat-msg');
+    var ql = q.trim().toLowerCase();
+    var found = [];
+    msgs.forEach(function(el) {
+      var body = (el.querySelector('.chat-msg-body') || {}).textContent || '';
+      var sender = (el.querySelector('.chat-msg-sender') || {}).textContent || '';
+      if (body.toLowerCase().includes(ql) || sender.toLowerCase().includes(ql)) {
+        found.push({ body: body.trim().substring(0, 80), sender: sender.trim(), id: el.dataset.msgId });
+      }
+    });
+    res.innerHTML = '';
+    if (!found.length) {
+      res.innerHTML = '<li class="chat-global-result muted small">Nenhum resultado.</li>';
+    } else {
+      found.slice(0, 8).forEach(function(f) {
+        res.innerHTML += '<li class="chat-global-result" onclick="scrollToMsg(\'' + escHtml(f.id) + '\')">' +
+          '<span class="chat-msg-sender" style="font-size:.78rem">' + escHtml(f.sender) + '</span>' +
+          '<span class="muted small">' + escHtml(f.body) + '</span></li>';
+      });
+    }
+    res.style.display = 'block';
+  }, 250);
+}
+function scrollToMsg(id) {
+  var el = document.querySelector('[data-msg-id="' + id + '"]');
+  if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('chat-msg-highlight'); setTimeout(function(){ el.classList.remove('chat-msg-highlight'); }, 2000); }
+  document.getElementById('chat-global-results').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.sidebar-search-wrap')) {
+    var res = document.getElementById('chat-global-results');
+    if (res) res.style.display = 'none';
   }
 });
 
