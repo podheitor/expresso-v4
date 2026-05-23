@@ -5,7 +5,14 @@
 <div class="admin-page">
   <div class="admin-page-header">
     <h1>Log de auditoria</h1>
-    <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ Exportar CSV</button>
+    <div style="display:flex;gap:.4rem;align-items:center">
+      <label style="display:flex;align-items:center;gap:.3rem;font-size:.82rem">
+        <input type="checkbox" id="audit-live" onchange="toggleAuditLive(this.checked)">
+        <span>Live-tail</span>
+      </label>
+      <span class="muted small" id="audit-live-status" style="display:none">⏺ ao vivo</span>
+      <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ Exportar CSV</button>
+    </div>
   </div>
 
   <!-- Filtros -->
@@ -80,6 +87,53 @@ function filterAudit(q) {
     r.style.display = (textMatch && actionMatch && fromMatch && toMatch) ? '' : 'none';
   });
 }
+// ── Live-tail ─────────────────────────────────────────────────────────────────
+var _auditLiveTimer = null;
+var _auditLastTs = '';
+(function initAuditLastTs() {
+  var rows = document.querySelectorAll('.audit-row');
+  if (rows.length) _auditLastTs = rows[0].dataset.ts || '';
+})();
+function toggleAuditLive(on) {
+  var status = document.getElementById('audit-live-status');
+  if (status) status.style.display = on ? 'inline' : 'none';
+  if (on) {
+    _auditLiveTimer = setInterval(pollAuditLog, 8000);
+  } else {
+    clearInterval(_auditLiveTimer);
+    _auditLiveTimer = null;
+  }
+}
+function pollAuditLog() {
+  fetch('/admin/api/audit?since=' + encodeURIComponent(_auditLastTs), { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(events) {
+      if (!events || !events.length) return;
+      var tbody = document.getElementById('audit-tbody');
+      if (!tbody) return;
+      events.forEach(function(ev) {
+        if (!ev.ts || ev.ts <= _auditLastTs) return;
+        _auditLastTs = ev.ts;
+        var tr = document.createElement('tr');
+        tr.className = 'audit-row audit-row-new';
+        tr.dataset.action   = ev.action   || '';
+        tr.dataset.user     = ev.user_email || '';
+        tr.dataset.resource = ev.resource_id || '';
+        tr.dataset.ts       = ev.ts;
+        tr.innerHTML =
+          '<td class="mono small">' + escAudit(ev.ts) + '</td>' +
+          '<td class="small">' + escAudit(ev.user_email || '') + '</td>' +
+          '<td><span class="audit-action-badge">' + escAudit(ev.action || '') + '</span></td>' +
+          '<td class="mono small muted">' + escAudit(ev.resource_id || '—') + '</td>' +
+          '<td class="mono small muted">' + escAudit(ev.ip || '—') + '</td>' +
+          '<td class="small muted">' + escAudit(ev.detail || '') + '</td>';
+        tbody.insertBefore(tr, tbody.firstChild);
+        setTimeout(function(){ tr.classList.remove('audit-row-new'); }, 2000);
+      });
+    }).catch(function(){});
+}
+function escAudit(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 function exportAuditLog() {
   var rows = document.querySelectorAll('.audit-row');
   var csv = 'Data/Hora,Usuário,Ação,Recurso,IP\n';

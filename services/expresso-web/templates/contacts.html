@@ -120,49 +120,96 @@
   </div>
 </div>
 
+<!-- vCard import preview modal -->
+<div class="modal-overlay" id="vcf-preview-modal" style="display:none" onclick="if(event.target.id==='vcf-preview-modal')closeVcfPreview()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <h3 id="vcf-preview-title">Importar contatos</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeVcfPreview()">✕</button>
+    </div>
+    <div class="compose-form">
+      <ul id="vcf-preview-list" style="list-style:none;padding:0;margin:0 0 .75rem;max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:.2rem"></ul>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeVcfPreview()">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="vcf-confirm-btn" onclick="confirmVcfImport()">Importar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+var _vcfBookId = null;
+var _vcfText   = null;
+
 function importVcf(input, bookId) {
   var file = input.files && input.files[0];
   if (!file) return;
-  // Show progress toast
-  var toast = document.createElement('div');
-  toast.className = 'snooze-toast';
-  toast.innerHTML = '<div class="snooze-toast-header"><span>⏳ Importando contatos…</span></div>' +
-    '<div class="snooze-toast-body">' + escHtml(file.name) + ' (' + Math.round(file.size/1024) + ' KB)</div>' +
-    '<progress id="import-progress" max="100" value="0" style="width:100%;margin-top:.5rem"></progress>';
-  document.body.appendChild(toast);
+  _vcfBookId = bookId;
   var reader = new FileReader();
-  reader.onprogress = function(ev) {
-    if (ev.lengthComputable) {
-      var pct = Math.round(ev.loaded / ev.total * 50);
-      var prog = document.getElementById('import-progress');
-      if (prog) prog.value = pct;
-    }
-  };
   reader.onload = function(e) {
-    var prog = document.getElementById('import-progress');
-    if (prog) prog.value = 70;
-    fetch('/contacts/' + encodeURIComponent(bookId) + '/import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/vcard' },
-      credentials: 'include',
-      body: e.target.result,
-    }).then(function(r) {
-      if (prog) prog.value = 100;
-      setTimeout(function() { toast.remove(); }, 800);
-      if (r.ok || r.redirected) { window.location.reload(); }
-      else {
-        toast.innerHTML += '<p class="muted small" style="color:#ef4444">Erro ao importar (' + r.status + ').</p>';
-        setTimeout(function(){ toast.remove(); }, 4000);
-      }
-    }).catch(function() {
-      toast.innerHTML += '<p class="muted small" style="color:#ef4444">Erro de conexão.</p>';
-      setTimeout(function(){ toast.remove(); }, 4000);
-    });
+    _vcfText = e.target.result;
+    var parsed = parseVcards(_vcfText);
+    showVcfPreview(parsed, file.name);
   };
   reader.readAsText(file);
-  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 }
+
+function parseVcards(text) {
+  var cards = [];
+  var blocks = text.split(/(?=BEGIN:VCARD)/i).filter(function(b){ return b.trim(); });
+  blocks.forEach(function(block) {
+    var get = function(field) {
+      var m = block.match(new RegExp('^' + field + '[^:]*:(.+)', 'im'));
+      return m ? m[1].trim().replace(/\\n/g, ' ') : '';
+    };
+    var name = get('FN') || get('N').replace(/;/g, ' ').trim();
+    if (!name) return;
+    cards.push({ name: name, email: get('EMAIL'), phone: get('TEL'), org: get('ORG') });
+  });
+  return cards;
+}
+
+function showVcfPreview(contacts, filename) {
+  var modal = document.getElementById('vcf-preview-modal');
+  if (!modal) return;
+  var title = document.getElementById('vcf-preview-title');
+  if (title) title.textContent = 'Importar ' + contacts.length + ' contato(s) de "' + filename + '"';
+  var list = document.getElementById('vcf-preview-list');
+  if (list) {
+    list.innerHTML = contacts.slice(0, 50).map(function(c) {
+      return '<li class="vcf-preview-item"><strong>' + escCt(c.name) + '</strong>' +
+        (c.email ? ' · <span class="muted small">' + escCt(c.email) + '</span>' : '') +
+        (c.phone ? ' · <span class="muted small">' + escCt(c.phone) + '</span>' : '') +
+        (c.org   ? ' · <span class="muted small">' + escCt(c.org)   + '</span>' : '') +
+        '</li>';
+    }).join('') + (contacts.length > 50 ? '<li class="muted small">… e mais ' + (contacts.length - 50) + '</li>' : '');
+  }
+  modal.style.display = 'flex';
+}
+
+function closeVcfPreview() {
+  var modal = document.getElementById('vcf-preview-modal');
+  if (modal) modal.style.display = 'none';
+  _vcfText = null;
+}
+
+function confirmVcfImport() {
+  if (!_vcfText || !_vcfBookId) return;
+  var btn = document.getElementById('vcf-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importando…'; }
+  fetch('/contacts/' + encodeURIComponent(_vcfBookId) + '/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/vcard' },
+    credentials: 'include',
+    body: _vcfText,
+  }).then(function(r) {
+    closeVcfPreview();
+    if (r.ok || r.redirected) { window.location.reload(); }
+    else { alert('Erro ao importar (' + r.status + ').'); }
+  }).catch(function() { alert('Erro de conexão.'); });
+}
+
+function escCt(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function filterContacts(q) {
   var rows = document.querySelectorAll('.data-table tbody tr[data-name]');

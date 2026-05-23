@@ -72,6 +72,20 @@
       </div>
     </div>
   </div>
+
+  <!-- Activity chart -->
+  <div class="card stack" style="margin-top:1.5rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <h2>Atividade — últimas 24h</h2>
+      <span class="muted small">Simulado (atualiza a cada 30s)</span>
+    </div>
+    <svg id="admin-activity-chart" width="100%" height="120" viewBox="0 0 480 120" preserveAspectRatio="xMidYMid meet" style="overflow:visible">
+      <text id="admin-chart-placeholder" x="240" y="60" text-anchor="middle" fill="var(--text-muted)" font-size="12">Carregando…</text>
+    </svg>
+    <div style="display:flex;gap:1rem;margin-top:.5rem;font-size:.72rem;color:var(--text-muted)">
+      <span>🟦 Emails</span><span>🟩 Chat</span><span>🟨 Meet</span>
+    </div>
+  </div>
 </div>
 <script>
 (function() {
@@ -101,6 +115,8 @@
   }
   checkServices();
   setInterval(checkServices, 30000);
+  renderActivityChart();
+  setInterval(renderActivityChart, 30000);
 
   // Load stats from API
   fetch('/admin/api/stats', {credentials:'include'})
@@ -112,6 +128,57 @@
         if (el && d[key] !== undefined) el.textContent = d[key];
       });
     }).catch(function(){});
+  // Activity chart
+  function renderActivityChart() {
+    var svg = document.getElementById('admin-activity-chart');
+    if (!svg) return;
+    var ph = document.getElementById('admin-chart-placeholder');
+    if (ph) ph.remove();
+    svg.innerHTML = '';
+    var W = 480, H = 120, bars = 24, bw = Math.floor(W / bars) - 2, gap = 2;
+    var colors = ['#14b8a6','#22c55e','#f59e0b'];
+    var series = [[], [], []];
+    var now = new Date();
+    for (var i = 0; i < bars; i++) {
+      // Simulate data: seed by hour so it stays stable within a minute
+      var h = (now.getHours() - (bars - 1 - i) + 24) % 24;
+      series[0].push(Math.round(20 + h * 3 + (h % 3) * 8));
+      series[1].push(Math.round(15 + h * 2 + (h % 5) * 5));
+      series[2].push(Math.round(h > 8 && h < 19 ? 5 + (h % 4) * 3 : 0));
+    }
+    var maxVal = Math.max.apply(null, series[0].concat(series[1]).concat(series[2]).concat([1]));
+    var subW = Math.floor(bw / 3);
+    for (var i = 0; i < bars; i++) {
+      for (var s = 0; s < 3; s++) {
+        var val = series[s][i];
+        var barH = Math.round((val / maxVal) * (H - 20));
+        var x = i * (bw + gap) + s * subW;
+        var y = H - barH;
+        var rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', x); rect.setAttribute('y', y);
+        rect.setAttribute('width', subW - 1); rect.setAttribute('height', barH);
+        rect.setAttribute('fill', colors[s]); rect.setAttribute('rx', '2');
+        rect.setAttribute('opacity', '0.8');
+        var title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        var label = ['Emails','Chat','Meet'][s];
+        title.textContent = label + ': ' + val + ' (' + (i < bars - 1 ? (bars - 1 - i) + 'h atrás' : 'agora') + ')';
+        rect.appendChild(title);
+        svg.appendChild(rect);
+      }
+      // Hour label every 6 bars
+      if (i % 6 === 0) {
+        var h = ((now.getHours() - (bars - 1 - i) + 24) % 24);
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', i * (bw + gap) + bw/2);
+        label.setAttribute('y', H + 14);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', 'var(--text-muted)');
+        label.textContent = h + 'h';
+        svg.appendChild(label);
+      }
+    }
+  }
 })();
 </script>
 {% endblock %}

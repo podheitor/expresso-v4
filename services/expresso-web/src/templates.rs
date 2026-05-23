@@ -125,6 +125,8 @@ pub struct MailListTpl {
     pub messages: Vec<MessageListItem>,
     pub detail:   Option<MessageDetail>,
     pub selected_id: Option<String>,
+    pub page:         u32,
+    pub has_next:     bool,
 }
 
 #[derive(Template)]

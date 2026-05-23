@@ -173,6 +173,19 @@
       </ul>
     </div>
 
+    <!-- Notificações -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">🔔</span>
+        <span class="home-widget-title">Notificações</span>
+        <span class="muted small" id="home-notif-count"></span>
+        <button class="btn btn-ghost btn-sm" onclick="clearHomeNotifs()">Limpar</button>
+      </div>
+      <ul class="home-file-list" id="home-notif-list">
+        <li class="muted small home-widget-empty" id="home-notif-empty">Nenhuma notificação.</li>
+      </ul>
+    </div>
+
   </div>
 </div>
 <script>
@@ -355,5 +368,66 @@ window.addEventListener('storage', function(e) {
       '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + time + '</span></li>';
   });
 });
+
+// ── Notifications widget ──────────────────────────────────────────────────────
+var NOTIF_KEY = 'expresso_home_notifs_{{ me.user_id }}';
+function loadHomeNotifs() { try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]'); } catch(e) { return []; } }
+function saveHomeNotifs(list) { localStorage.setItem(NOTIF_KEY, JSON.stringify(list)); }
+function renderHomeNotifs() {
+  var ul    = document.getElementById('home-notif-list');
+  var empty = document.getElementById('home-notif-empty');
+  var count = document.getElementById('home-notif-count');
+  var list  = loadHomeNotifs();
+  if (!ul) return;
+  var unread = list.filter(function(n){ return !n.read; }).length;
+  if (count) count.textContent = unread ? unread + ' nova' + (unread > 1 ? 's' : '') : '';
+  ul.innerHTML = '';
+  if (!list.length) { if (empty) ul.appendChild(empty); return; }
+  function escN(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  list.slice(0, 8).forEach(function(n) {
+    var time = n.ts ? new Date(n.ts).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) : '';
+    var li = document.createElement('li');
+    li.className = 'home-file-item' + (n.read ? '' : ' home-notif-unread');
+    li.innerHTML = '<span>' + escN(n.icon || '🔔') + '</span>' +
+      '<span class="home-file-name">' + (n.url ? '<a href="' + escN(n.url) + '">' + escN(n.body) + '</a>' : escN(n.body)) + '</span>' +
+      '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + time + '</span>';
+    li.onclick = function() { n.read = true; saveHomeNotifs(list); renderHomeNotifs(); };
+    ul.appendChild(li);
+  });
+}
+function clearHomeNotifs() {
+  saveHomeNotifs([]);
+  renderHomeNotifs();
+}
+// Push a notification from any module via: window.postHomeNotif({icon,body,url})
+window.postHomeNotif = function(n) {
+  var list = loadHomeNotifs();
+  list.unshift({ icon: n.icon || '🔔', body: n.body, url: n.url || null, ts: new Date().toISOString(), read: false });
+  if (list.length > 50) list.length = 50;
+  saveHomeNotifs(list);
+  renderHomeNotifs();
+};
+// Poll /api/v1/notifications every 60s
+(function() {
+  renderHomeNotifs();
+  function pollNotifs() {
+    fetch('/api/v1/notifications?limit=10', { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(notifs) {
+        if (!notifs || !notifs.length) return;
+        var existing = loadHomeNotifs();
+        var existIds = new Set(existing.map(function(n){ return n.id; }));
+        var added = false;
+        notifs.forEach(function(n) {
+          if (n.id && existIds.has(n.id)) return;
+          existing.unshift({ id: n.id, icon: n.icon || '🔔', body: n.body || n.message, url: n.url || null, ts: n.created_at || new Date().toISOString(), read: false });
+          added = true;
+        });
+        if (added) { if (existing.length > 50) existing.length = 50; saveHomeNotifs(existing); renderHomeNotifs(); }
+      }).catch(function(){});
+  }
+  pollNotifs();
+  setInterval(pollNotifs, 60000);
+})();
 </script>
 {% endblock %}

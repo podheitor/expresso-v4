@@ -36,25 +36,37 @@
       </table>
     </aside>
 
-    <div class="week-grid">
-      {% for d in days %}
-      <section class="week-col{% if d.is_today %} today{% endif %}">
-        <header class="week-col-head">
-          <span class="week-col-label">{{ d.label }}</span>
-        </header>
-        <div class="week-col-events">
-          {% for ev in d.events %}
-          <a class="event-chip" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
-            <span class="ev-time">{{ ev.time_label() }}</span>
-            <span class="ev-title">{{ ev.title() }}</span>
-          </a>
-          {% endfor %}
-          {% if d.events.is_empty() %}
-          <p class="muted small">—</p>
-          {% endif %}
-        </div>
-      </section>
-      {% endfor %}
+    <div style="flex:1;min-width:0">
+      <!-- All-day row for multi-day events -->
+      <div class="cal-week-allday-row" id="cal-week-allday-row" style="display:none">
+        <div class="cal-day-allday-label muted small">Dia inteiro</div>
+        <div class="cal-week-allday-chips" id="cal-week-allday-chips"></div>
+      </div>
+      <div class="week-grid">
+        {% for d in days %}
+        <section class="week-col{% if d.is_today %} today{% endif %}" data-date="{{ d.iso }}">
+          <header class="week-col-head">
+            <a class="week-col-label" href="/calendar/{{ selected.id }}/day?date={{ d.iso }}" title="Ver dia">{{ d.label }}</a>
+          </header>
+          <div class="week-col-events">
+            {% for ev in d.events %}{% if !ev.is_all_day() %}
+            <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}"
+               href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
+               draggable="true"
+               ondragstart="calDragStart(event,'{{ ev.id }}','{{ d.iso }}')"
+               data-evid="{{ ev.id }}">
+              {% if ev.is_recurring() %}<span class="ev-recur">↻</span>{% endif %}
+              <span class="ev-time">{{ ev.time_label() }}</span>
+              <span class="ev-title">{{ ev.title() }}</span>
+            </a>
+            {% endif %}{% endfor %}
+            {% if d.events.iter().all(|e| e.is_all_day()) %}
+            <p class="muted small">—</p>
+            {% endif %}
+          </div>
+        </section>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>
@@ -105,5 +117,59 @@ function miniDayClick(e, iso) {
   window.location.href = '/calendar/{{ selected.id }}/day?date=' + iso;
   return false;
 }
+
+// ── Week drag-and-drop ────────────────────────────────────────────────────────
+var _wkDragEvId = null;
+function calDragStart(e, evId) {
+  _wkDragEvId = evId;
+  e.dataTransfer.effectAllowed = 'move';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.week-col').forEach(function(col) {
+    col.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      col.classList.add('cal-drag-over');
+    });
+    col.addEventListener('dragleave', function() { col.classList.remove('cal-drag-over'); });
+    col.addEventListener('drop', function(e) {
+      e.preventDefault();
+      col.classList.remove('cal-drag-over');
+      var newDate = col.dataset.date;
+      if (!_wkDragEvId || !newDate) return;
+      fetch('/calendar/{{ selected.id }}/events/' + _wkDragEvId + '/reschedule', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        credentials: 'include',
+        body: 'new_date=' + encodeURIComponent(newDate),
+      }).then(function(r) { if (r.ok) location.reload(); });
+      _wkDragEvId = null;
+    });
+  });
+
+  // Collect all-day events from days data
+  var alldayChips = document.getElementById('cal-week-allday-chips');
+  var alldayRow   = document.getElementById('cal-week-allday-row');
+  if (!alldayChips || !alldayRow) return;
+  // All-day events are rendered in Rust as ev.is_all_day() — we surface them here via data attributes
+  var seen = {};
+  document.querySelectorAll('.week-col').forEach(function(col) {
+    // Template renders only non-allday in the column; allday are in d.events but skipped
+    // We read them from a hidden data attribute set below (noop if attr absent)
+    var chips = col.dataset.alldayJson;
+    if (!chips) return;
+    try {
+      JSON.parse(chips).forEach(function(ev) {
+        if (seen[ev.id]) return;
+        seen[ev.id] = true;
+        var a = document.createElement('a');
+        a.className = 'event-chip event-chip-allday';
+        a.href = '/calendar/{{ selected.id }}/events/' + ev.id + '/edit';
+        a.textContent = ev.title;
+        alldayChips.appendChild(a);
+      });
+    } catch(_) {}
+  });
+  if (alldayChips.childElementCount > 0) alldayRow.style.display = 'flex';
+});
 </script>
 {% endblock %}

@@ -80,6 +80,7 @@ pub fn router(state: AppState) -> Router {
         // mail extras
         .route("/mail/search",                      get(mail_search_page))
         .route("/mail/:id/attachments/:idx",        get(mail_attachment_proxy))
+        .route("/mail/quick-reply",                 post(mail_quick_reply_action))
         .route("/mail/:id/flag",                    post(mail_flag_action))
         .route("/mail/:id/move",                    post(mail_move_action))
         .route("/mail/:id/delete",                  post(mail_delete_action))
@@ -96,6 +97,7 @@ pub fn router(state: AppState) -> Router {
         .route("/chat/channels/:cid",        get(chat_channel_page))
         .route("/chat/channels/:cid/send",                       post(chat_send_message))
         .route("/chat/channels/:cid/poll",                       get(chat_poll_messages))
+        .route("/chat/channels/:cid/mark-read",                  post(chat_mark_read))
         .route("/chat/channels/:cid/messages/:mid/react",        post(chat_react_message))
         .route("/meet",           get(meet_page))
         .route("/meet/new",       get(meet_new_page).post(meet_create_action))
@@ -338,8 +340,9 @@ async fn mail_page(
         &headers, Some((&t, &u)),
     ).await?.unwrap_or_default();
 
+    let has_next = messages.len() >= 50; // backend page size
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
-        me, folders, selected, messages, detail: None, selected_id: None,
+        me, folders, selected, messages, detail: None, selected_id: None, page, has_next,
     }))
 }
 
@@ -379,7 +382,7 @@ async fn mail_detail_page(
     }
 
     Ok(askama_axum::IntoResponse::into_response(MailListTpl {
-        me, folders, selected, messages, detail, selected_id: Some(id),
+        me, folders, selected, messages, detail, selected_id: Some(id), page: 0, has_next: false,
     }))
 }
 
@@ -870,6 +873,31 @@ async fn mail_delete_action(
     };
     let (t, u) = ctx_of(&me);
     let _ = delete_at(&st, &st.backends.mail, &format!("/api/v1/mail/messages/{id}"), &headers, Some((&t, &u))).await;
+    let back = f.folder.unwrap_or_else(|| "INBOX".into());
+    Ok(Redirect::to(&format!("/mail?folder={}", utf8_percent_encode(&back, NON_ALPHANUMERIC))).into_response())
+}
+
+#[derive(Deserialize)]
+struct QuickReplyForm {
+    reply_to: String,
+    folder:   Option<String>,
+    body:     String,
+}
+
+async fn mail_quick_reply_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<QuickReplyForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({
+        "reply_to": f.reply_to,
+        "body": f.body,
+        "folder": f.folder.as_deref().unwrap_or("INBOX"),
+    });
+    let _ = post_json(&st, &st.backends.mail, "/api/v1/mail/quick-reply", &headers, Some((&t, &u)), &payload).await;
     let back = f.folder.unwrap_or_else(|| "INBOX".into());
     Ok(Redirect::to(&format!("/mail?folder={}", utf8_percent_encode(&back, NON_ALPHANUMERIC))).into_response())
 }
@@ -2332,6 +2360,16 @@ async fn chat_poll_messages(
 
 #[derive(Deserialize)]
 struct ChatReactForm { emoji: String }
+
+async fn chat_mark_read(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.chat, &format!("/api/v1/channels/{cid}/mark-read"), &headers, Some((&t, &u))).await;
+    Ok((StatusCode::OK, "ok").into_response())
+}
 
 #[derive(serde::Serialize)]
 struct ChatReactResp { reactions: std::collections::HashMap<String, u32> }

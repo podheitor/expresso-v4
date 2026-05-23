@@ -151,9 +151,9 @@
                   </div>
                 </div>
                 <div class="chat-msg-reactions" id="reactions-{{ msg.id }}"></div>
-                <div class="chat-msg-actions">
+                <div class="chat-msg-actions" data-msgid="{{ msg.id }}">
                   <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
-                  <button class="chat-action-btn" onclick="openThread('{{ msg.id }}','{{ msg.sender() }}','{{ ch.id }}')" title="Ver thread">💬 Thread</button>
+                  <button class="chat-action-btn" onclick="openThread('{{ msg.id }}','{{ msg.sender() }}','{{ ch.id }}')" title="Ver thread">💬 <span class="chat-thread-count muted" style="font-size:.72rem"></span></button>
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
                   {% if msg.is_own(&me.user_id) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
@@ -346,6 +346,23 @@ function handleChatSend(e, form) {
       loadNewMessages();
     });
 }
+
+// ── Mark channel as read on open ─────────────────────────────────────────────
+{% match active_channel %}
+{% when Some with (ch) %}
+(function markChannelRead() {
+  var CHAT_UNREAD_KEY = 'expresso_chat_unread';
+  fetch('/chat/channels/{{ ch.id }}/mark-read', {
+    method: 'POST', credentials: 'include',
+  }).catch(function(){});
+  // Clear local unread count for this channel
+  try {
+    var data = JSON.parse(localStorage.getItem(CHAT_UNREAD_KEY) || '{}');
+    data['{{ ch.id }}'] = 0;
+    localStorage.setItem(CHAT_UNREAD_KEY, JSON.stringify(data));
+  } catch(e) {}
+})();
+{% when None %}{% endmatch %}
 
 // ── Long-poll for new messages ────────────────────────────────────────────────
 var lastMsgId = (function() {
@@ -984,6 +1001,9 @@ function openThread(msgId, sender, chId) {
         msgsEl.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma resposta ainda.</p>';
         return;
       }
+      // Update thread-btn reply count badge on the parent message
+      var threadBtn = document.querySelector('[data-msgid="' + msgId + '"] .chat-thread-count');
+      if (threadBtn) threadBtn.textContent = msgs.length + (msgs.length === 1 ? ' resposta' : ' respostas');
       msgsEl.innerHTML = msgs.map(function(m) {
         var initial = ((m.display_name || m.user_id || '?')[0]).toUpperCase();
         var time = (m.created_at || '').slice(11, 16);

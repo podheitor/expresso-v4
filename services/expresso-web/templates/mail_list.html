@@ -36,10 +36,39 @@
         <div class="toolbar-actions">
           <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
           <button class="btn btn-ghost btn-sm" id="sender-filter-btn" onclick="clearSenderFilter()" style="display:none" title="Limpar filtro de remetente">✕ <span id="sender-filter-label"></span></button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleMailFilters()" title="Filtros avançados">⚙ Filtros</button>
           <form method="get" action="/mail/search" class="toolbar-search">
             <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
           </form>
         </div>
+      </div>
+      <!-- Advanced filters panel -->
+      <div id="mail-adv-filters" style="display:none;padding:.5rem .75rem;background:var(--bg-raised);border-bottom:1px solid var(--border);display:none;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+        <label class="mail-filter-group">
+          <span class="muted small">Remetente</span>
+          <input type="text" id="flt-from" class="input-sm" placeholder="nome ou email" oninput="applyMailFilters()">
+        </label>
+        <label class="mail-filter-group">
+          <span class="muted small">Assunto</span>
+          <input type="text" id="flt-subject" class="input-sm" placeholder="contém..." oninput="applyMailFilters()">
+        </label>
+        <label class="mail-filter-group">
+          <span class="muted small">Lida</span>
+          <select id="flt-read" class="input-sm" onchange="applyMailFilters()">
+            <option value="">Todas</option>
+            <option value="unread">Não lidas</option>
+            <option value="read">Lidas</option>
+          </select>
+        </label>
+        <label class="mail-filter-group">
+          <span class="muted small">Anexos</span>
+          <select id="flt-attach" class="input-sm" onchange="applyMailFilters()">
+            <option value="">Todos</option>
+            <option value="yes">Com anexo</option>
+            <option value="no">Sem anexo</option>
+          </select>
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="resetMailFilters()">✕ Limpar</button>
       </div>
 
       {% if messages.is_empty() %}
@@ -86,6 +115,23 @@
         </li>
         {% endfor %}
       </ul>
+      {% endif %}
+
+      <!-- Pagination -->
+      {% if page > 0 || has_next %}
+      <div class="mail-pagination">
+        {% if page > 0 %}
+          <a class="btn btn-ghost btn-sm" href="/mail?folder={{ selected }}&page={{ page - 1 }}">← Anterior</a>
+        {% else %}
+          <span class="btn btn-ghost btn-sm" style="opacity:.35;cursor:default">← Anterior</span>
+        {% endif %}
+        <span class="muted small">Página {{ page + 1 }}</span>
+        {% if has_next %}
+          <a class="btn btn-ghost btn-sm" href="/mail?folder={{ selected }}&page={{ page + 1 }}">Próxima →</a>
+        {% else %}
+          <span class="btn btn-ghost btn-sm" style="opacity:.35;cursor:default">Próxima →</span>
+        {% endif %}
+      </div>
       {% endif %}
     </section>
 
@@ -193,6 +239,31 @@
               {% endmatch %}
           {% endmatch %}
         </article>
+        <!-- Inline quick reply -->
+        <div class="mail-inline-reply" id="mail-inline-reply" style="display:none">
+          <div class="mail-inline-reply-header">
+            <span class="muted small">Responder a
+              {% match d.from_name %}{% when Some with (n) %}<strong>{{ n }}</strong>{% when None %}{% match d.from_addr %}{% when Some with (a) %}<strong>{{ a }}</strong>{% when None %}{% endmatch %}{% endmatch %}
+            </span>
+            <button class="btn btn-ghost btn-sm" onclick="closeInlineReply()" style="margin-left:auto">✕</button>
+          </div>
+          <textarea id="mail-inline-reply-body" class="mail-inline-reply-ta"
+                    placeholder="Escreva sua resposta…"
+                    onkeydown="inlineReplyKeydown(event,'{{ d.id }}','{{ selected }}')"></textarea>
+          <div class="mail-inline-reply-actions">
+            <button class="btn btn-ghost btn-sm" onclick="closeInlineReply()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" id="mail-inline-reply-send"
+                    onclick="sendInlineReply('{{ d.id }}','{{ selected }}')">Enviar ↵</button>
+          </div>
+        </div>
+        <div class="mail-reply-trigger" id="mail-reply-trigger">
+          <button class="btn btn-ghost btn-sm" onclick="openInlineReply()" title="Responder aqui">
+            ↩ Responder
+          </button>
+          <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ d.id }}&folder={{ selected }}">
+            Resposta completa →
+          </a>
+        </div>
       {% when None %}
         <div class="empty-state">Selecione uma mensagem</div>
       {% endmatch %}
@@ -205,6 +276,43 @@ document.addEventListener('click', function(e){
     document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
   }
 });
+
+// ── Advanced filters ──────────────────────────────────────────────────────────
+function toggleMailFilters() {
+  var p = document.getElementById('mail-adv-filters');
+  if (!p) return;
+  var vis = p.style.display === 'flex';
+  p.style.display = vis ? 'none' : 'flex';
+}
+function applyMailFilters() {
+  var from    = (document.getElementById('flt-from')    || {}).value || '';
+  var subj    = (document.getElementById('flt-subject') || {}).value || '';
+  var read    = (document.getElementById('flt-read')    || {}).value || '';
+  var attach  = (document.getElementById('flt-attach')  || {}).value || '';
+  document.querySelectorAll('.msg-rows li.msg-row-wrap').forEach(function(li) {
+    var row = li.querySelector('.msg-row');
+    if (!row) return;
+    var fromEl  = row.querySelector('.msg-from');
+    var subjEl  = row.querySelector('.msg-subject');
+    var fromTxt = fromEl  ? fromEl.textContent : '';
+    var subjTxt = subjEl  ? subjEl.textContent : '';
+    var isUnread = row.classList.contains('unread');
+    var hasAttach = !!row.querySelector('.attach-badge');
+    var ok = true;
+    if (from   && !fromTxt.toLowerCase().includes(from.toLowerCase()))   ok = false;
+    if (subj   && !subjTxt.toLowerCase().includes(subj.toLowerCase()))   ok = false;
+    if (read   === 'unread' && !isUnread)  ok = false;
+    if (read   === 'read'   &&  isUnread)  ok = false;
+    if (attach === 'yes'    && !hasAttach) ok = false;
+    if (attach === 'no'     &&  hasAttach) ok = false;
+    li.style.display = ok ? '' : 'none';
+  });
+}
+function resetMailFilters() {
+  ['flt-from','flt-subject'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  ['flt-read','flt-attach'].forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  applyMailFilters();
+}
 
 // ── Sender filter ─────────────────────────────────────────────────────────────
 function filterBySender(sender) {
@@ -391,6 +499,53 @@ function toggleMailBodyView() {
   htmlEl.style.display = _mailHtmlMode ? '' : 'none';
   if (textEl) textEl.style.display = _mailHtmlMode ? 'none' : '';
   if (btn) btn.textContent = _mailHtmlMode ? 'Texto simples' : 'Ver HTML';
+}
+
+// ── Inline quick reply ────────────────────────────────────────────────────────
+function openInlineReply() {
+  var box = document.getElementById('mail-inline-reply');
+  var trigger = document.getElementById('mail-reply-trigger');
+  if (box) { box.style.display = 'flex'; }
+  if (trigger) trigger.style.display = 'none';
+  var ta = document.getElementById('mail-inline-reply-body');
+  if (ta) { ta.value = ''; ta.focus(); }
+}
+function closeInlineReply() {
+  var box = document.getElementById('mail-inline-reply');
+  var trigger = document.getElementById('mail-reply-trigger');
+  if (box) box.style.display = 'none';
+  if (trigger) trigger.style.display = '';
+}
+function inlineReplyKeydown(e, msgId, folder) {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); sendInlineReply(msgId, folder); }
+  if (e.key === 'Escape') { e.preventDefault(); closeInlineReply(); }
+}
+function sendInlineReply(replyTo, folder) {
+  var ta = document.getElementById('mail-inline-reply-body');
+  var body = ta ? ta.value.trim() : '';
+  if (!body) return;
+  var btn = document.getElementById('mail-inline-reply-send');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enviando…'; }
+  var fd = new FormData();
+  fd.append('reply_to', replyTo);
+  fd.append('folder', folder || 'INBOX');
+  fd.append('body', body);
+  fetch('/mail/quick-reply', {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  }).then(function(r) {
+    if (r.ok || r.redirected) {
+      closeInlineReply();
+      if (btn) { btn.disabled = false; btn.textContent = 'Enviar ↵'; }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = 'Enviar ↵'; }
+      alert('Erro ao enviar.');
+    }
+  }).catch(function() {
+    if (btn) { btn.disabled = false; btn.textContent = 'Enviar ↵'; }
+    alert('Erro de rede.');
+  });
 }
 
 // ── Mail labels ───────────────────────────────────────────────────────────────

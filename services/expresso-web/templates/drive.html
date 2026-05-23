@@ -26,6 +26,11 @@
       {% endmatch %}
     </div>
     <div class="page-header-actions">
+      <div style="position:relative">
+        <input type="search" id="drive-search-input" class="search-input-sm" placeholder="🔍 Buscar arquivos…"
+               style="width:200px" oninput="driveSearch(this.value)">
+        <ul id="drive-search-results" class="autocomplete-list" style="display:none;min-width:240px"></ul>
+      </div>
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveView()" id="drive-view-btn" title="Alternar lista/grade">⊞ Grade</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
@@ -80,7 +85,7 @@
           {% if f.is_folder() == false %}
             {% if f.is_previewable() %}<button class="btn btn-ghost btn-sm" onclick="openDrivePreview('{{ f.id }}','{{ f.name }}')" title="Visualizar">👁 Ver</button>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
-            <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">Compartilhar</a>
+            <button class="btn btn-ghost btn-sm" onclick="openShareModal('{{ f.id }}','{{ f.name }}')" title="Compartilhar">Compartilhar</button>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
             {% if f.is_editable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/edit" title="Editar online">Editar</a>{% endif %}
           {% endif %}
@@ -137,6 +142,45 @@
       <div class="form-actions" style="margin-top:.75rem">
         <button type="button" class="btn btn-ghost" onclick="closeMoveModal()">Cancelar</button>
         <button type="button" class="btn btn-primary" id="drive-move-confirm" onclick="confirmMove()">Mover</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Share modal -->
+<div class="modal-overlay" id="drive-share-modal" style="display:none" onclick="if(event.target.id==='drive-share-modal')closeShareModal()">
+  <div class="modal-box" style="max-width:440px">
+    <div class="modal-header">
+      <h3>Compartilhar arquivo</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeShareModal()">✕</button>
+    </div>
+    <div class="compose-form">
+      <p class="muted small" id="drive-share-filename" style="margin-bottom:.75rem"></p>
+      <label>
+        <span>Adicionar pessoas (email ou nome)</span>
+        <div style="display:flex;gap:.4rem">
+          <input type="text" id="drive-share-email" placeholder="usuario@empresa.com" style="flex:1">
+          <select id="drive-share-perm" class="input-sm">
+            <option value="view">Visualizar</option>
+            <option value="edit">Editar</option>
+            <option value="comment">Comentar</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addShareRecipient()">Adicionar</button>
+        </div>
+      </label>
+      <ul id="drive-share-list" style="list-style:none;padding:0;margin:.75rem 0;display:flex;flex-direction:column;gap:.35rem"></ul>
+      <hr style="margin:.5rem 0">
+      <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem">
+        <input type="checkbox" id="drive-share-link-enabled" onchange="toggleShareLink()">
+        <span>Gerar link de compartilhamento</span>
+      </label>
+      <div id="drive-share-link-row" style="display:none;margin-top:.5rem;gap:.4rem;align-items:center;display:none">
+        <input type="text" id="drive-share-link-val" readonly style="flex:1;font-size:.78rem" class="input-sm">
+        <button class="btn btn-ghost btn-sm" onclick="copyShareLink()">Copiar</button>
+      </div>
+      <div class="form-actions" style="margin-top:.75rem">
+        <button type="button" class="btn btn-ghost" onclick="closeShareModal()">Fechar</button>
+        <button type="button" class="btn btn-primary" onclick="saveSharing()">Salvar</button>
       </div>
     </div>
   </div>
@@ -476,5 +520,133 @@ function confirmMove() {
   }).catch(function(){ alert('Erro de rede.'); });
 }
 function escDrv(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
+
+// ── Drive search ──────────────────────────────────────────────────────────────
+var _driveSearchTimer = 0;
+function driveSearch(q) {
+  var results = document.getElementById('drive-search-results');
+  var table   = document.getElementById('drive-table');
+  clearTimeout(_driveSearchTimer);
+  q = q.trim();
+  // Local filter for short queries
+  if (q.length < 3) {
+    if (results) results.style.display = 'none';
+    if (table) {
+      table.querySelectorAll('tbody tr[data-file-id]').forEach(function(row){ row.style.display = ''; });
+    }
+    return;
+  }
+  // Local filter first
+  if (table) {
+    var lq = q.toLowerCase();
+    table.querySelectorAll('tbody tr[data-file-id]').forEach(function(row) {
+      var name = (row.querySelector('.drive-name') || {}).textContent || '';
+      row.style.display = name.toLowerCase().includes(lq) ? '' : 'none';
+    });
+  }
+  // Remote search for >= 3 chars
+  _driveSearchTimer = setTimeout(function() {
+    fetch('/api/v1/drive/search?q=' + encodeURIComponent(q), { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(files) {
+        if (!results) return;
+        if (!files || !files.length) { results.style.display = 'none'; return; }
+        results.innerHTML = files.slice(0, 10).map(function(f) {
+          return '<li class="autocomplete-item" onclick="window.location.href=\'/drive?parent_id=' + escDrv(f.parent_id || '') + '\'"><span>' +
+            escDrv(f.icon ? f.icon() : '📄') + ' ' + escDrv(f.name) + '</span>' +
+            '<span class="muted small" style="font-size:.7rem;margin-left:.5rem">' + escDrv(f.size_human || '') + '</span></li>';
+        }).join('');
+        results.style.display = '';
+      }).catch(function(){ if (results) results.style.display = 'none'; });
+  }, 250);
+}
+document.addEventListener('click', function(e) {
+  var r = document.getElementById('drive-search-results');
+  if (r && !e.target.closest('#drive-search-input') && !e.target.closest('#drive-search-results')) r.style.display = 'none';
+});
+
+// ── Share modal ───────────────────────────────────────────────────────────────
+var _shareFileId = null;
+var _shareRecipients = [];
+function openShareModal(fileId, name) {
+  _shareFileId = fileId;
+  _shareRecipients = [];
+  var fn = document.getElementById('drive-share-filename');
+  if (fn) fn.textContent = name;
+  var list = document.getElementById('drive-share-list');
+  if (list) list.innerHTML = '';
+  var email = document.getElementById('drive-share-email');
+  if (email) email.value = '';
+  var linkChk = document.getElementById('drive-share-link-enabled');
+  if (linkChk) linkChk.checked = false;
+  var linkRow = document.getElementById('drive-share-link-row');
+  if (linkRow) linkRow.style.display = 'none';
+  // Load existing shares
+  fetch('/api/v1/drive/files/' + encodeURIComponent(fileId) + '/shares', { credentials: 'include' })
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(shares) {
+      (shares || []).forEach(function(s) { addShareRecipientEntry(s.email, s.permission || 'view'); });
+    }).catch(function(){});
+  document.getElementById('drive-share-modal').style.display = 'flex';
+}
+function closeShareModal() {
+  document.getElementById('drive-share-modal').style.display = 'none';
+  _shareFileId = null;
+}
+function addShareRecipient() {
+  var emailEl = document.getElementById('drive-share-email');
+  var permEl  = document.getElementById('drive-share-perm');
+  var email = emailEl ? emailEl.value.trim() : '';
+  var perm  = permEl  ? permEl.value : 'view';
+  if (!email) return;
+  addShareRecipientEntry(email, perm);
+  if (emailEl) emailEl.value = '';
+}
+function addShareRecipientEntry(email, perm) {
+  if (_shareRecipients.some(function(r){ return r.email === email; })) return;
+  _shareRecipients.push({ email: email, permission: perm });
+  var list = document.getElementById('drive-share-list');
+  if (!list) return;
+  var li = document.createElement('li');
+  li.style.cssText = 'display:flex;align-items:center;gap:.4rem;font-size:.84rem;padding:.2rem 0';
+  li.innerHTML = '<span style="flex:1">' + escDrv(email) + '</span>' +
+    '<span class="muted small">' + escDrv(perm) + '</span>' +
+    '<button class="btn btn-ghost btn-sm" style="padding:.1rem .3rem" onclick="removeShareRecipient(\'' + escDrv(email) + '\',this.closest(\'li\'))">✕</button>';
+  list.appendChild(li);
+}
+function removeShareRecipient(email, li) {
+  _shareRecipients = _shareRecipients.filter(function(r){ return r.email !== email; });
+  if (li) li.remove();
+}
+function toggleShareLink() {
+  var chk = document.getElementById('drive-share-link-enabled');
+  var row = document.getElementById('drive-share-link-row');
+  if (!row) return;
+  if (chk && chk.checked) {
+    var link = window.location.origin + '/drive/shared/' + (_shareFileId || '') + '?token=public';
+    var inp = document.getElementById('drive-share-link-val');
+    if (inp) inp.value = link;
+    row.style.display = 'flex';
+  } else {
+    row.style.display = 'none';
+  }
+}
+function copyShareLink() {
+  var inp = document.getElementById('drive-share-link-val');
+  if (!inp) return;
+  navigator.clipboard.writeText(inp.value).then(function(){ inp.select(); }).catch(function(){});
+}
+function saveSharing() {
+  if (!_shareFileId) return;
+  fetch('/api/v1/drive/files/' + encodeURIComponent(_shareFileId) + '/shares', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ recipients: _shareRecipients }),
+  }).then(function(r) {
+    if (r.ok) closeShareModal();
+    else alert('Erro ao salvar compartilhamento.');
+  }).catch(function(){ alert('Erro de rede.'); });
+}
 </script>
 {% endblock %}

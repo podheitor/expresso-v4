@@ -54,7 +54,25 @@
       </div>
       <label>
         <span>Assunto</span>
-        <input type="text" name="subject" value="{{ prefill_subject }}" required>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <input type="text" name="subject" value="{{ prefill_subject }}" required style="flex:1">
+          <div style="position:relative">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toggleComposeLabelPicker()" title="Adicionar etiqueta">🏷</button>
+            <div id="compose-label-picker" style="display:none;position:absolute;right:0;top:2rem;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem;z-index:50;min-width:170px">
+              <div style="font-size:.75rem;font-weight:600;color:var(--text-muted);margin-bottom:.3rem">Etiqueta da mensagem</div>
+              <div style="display:flex;flex-wrap:wrap;gap:.3rem">
+                <button type="button" class="compose-label-chip" onclick="setComposeLabel('importante','🔴')" style="background:#ef4444">🔴 Importante</button>
+                <button type="button" class="compose-label-chip" onclick="setComposeLabel('trabalho','🔵')" style="background:#3b82f6">🔵 Trabalho</button>
+                <button type="button" class="compose-label-chip" onclick="setComposeLabel('pessoal','🟢')" style="background:#22c55e">🟢 Pessoal</button>
+                <button type="button" class="compose-label-chip" onclick="setComposeLabel('aguardando','🟡')" style="background:#f59e0b">🟡 Aguardando</button>
+                <button type="button" class="compose-label-chip" onclick="setComposeLabel('','')">✕ Remover</button>
+              </div>
+            </div>
+          </div>
+          <span id="compose-label-badge" style="display:none;font-size:.78rem;border-radius:1rem;padding:.1rem .5rem;background:var(--bg-hover)"></span>
+        </div>
+        <input type="hidden" name="label_name" id="compose-label-name">
+        <input type="hidden" name="label_icon" id="compose-label-icon">
       </label>
       <div>
         <span>Mensagem</span>
@@ -296,5 +314,28 @@ function toggleCcBcc() {
   if (btn) btn.textContent = open ? 'Cc/Bcc' : 'Fechar Cc';
 }
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Compose label picker ──────────────────────────────────────────────────────
+function toggleComposeLabelPicker() {
+  var p = document.getElementById('compose-label-picker');
+  if (p) p.style.display = p.style.display === 'none' ? '' : 'none';
+}
+function setComposeLabel(name, icon) {
+  document.getElementById('compose-label-name').value = name;
+  document.getElementById('compose-label-icon').value = icon;
+  var badge = document.getElementById('compose-label-badge');
+  if (badge) {
+    if (name) { badge.textContent = icon + ' ' + name; badge.style.display = ''; }
+    else { badge.style.display = 'none'; badge.textContent = ''; }
+  }
+  var p = document.getElementById('compose-label-picker');
+  if (p) p.style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  var p = document.getElementById('compose-label-picker');
+  if (p && !e.target.closest('#compose-label-picker') && !e.target.closest('[onclick*="toggleComposeLabelPicker"]')) {
+    p.style.display = 'none';
+  }
+});
 </script>
 {% endblock %}

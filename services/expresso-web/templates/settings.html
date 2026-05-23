@@ -61,6 +61,21 @@
           </div>
         </form>
 
+        <!-- Theme switcher -->
+        <div class="subcard stack" style="margin-top:1rem">
+          <h3>Tema</h3>
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+            <button class="settings-theme-card" id="theme-card-dark" onclick="setSettingsTheme('dark')">
+              <div class="settings-theme-preview settings-theme-preview-dark"></div>
+              <span class="small">Escuro</span>
+            </button>
+            <button class="settings-theme-card" id="theme-card-light" onclick="setSettingsTheme('light')">
+              <div class="settings-theme-preview settings-theme-preview-light"></div>
+              <span class="small">Claro</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Accent color picker -->
         <div class="subcard stack" style="margin-top:1rem">
           <h3>Cor de destaque</h3>
@@ -358,6 +373,25 @@
   </div>
 </div>
 <script>
+// ── Theme switcher in settings ────────────────────────────────────────────────
+function setSettingsTheme(t) {
+  var root = document.documentElement;
+  root.setAttribute('data-theme', t);
+  localStorage.setItem('theme', t);
+  var btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = t === 'dark' ? '☀' : '🌙';
+  updateSettingsThemeCards();
+}
+function updateSettingsThemeCards() {
+  var cur = localStorage.getItem('theme') || 'dark';
+  ['dark','light'].forEach(function(t) {
+    var card = document.getElementById('theme-card-' + t);
+    if (!card) return;
+    card.style.outline = cur === t ? '2px solid var(--accent)' : 'none';
+  });
+}
+(function(){ updateSettingsThemeCards(); })();
+
 // ── Keyboard shortcuts pref ───────────────────────────────────────────────────
 var SHORTCUTS_KEY = 'expresso_shortcuts_enabled';
 function saveShortcutsPref(enabled) {

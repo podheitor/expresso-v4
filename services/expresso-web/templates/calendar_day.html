@@ -22,6 +22,22 @@
     <strong class="btn btn-primary" aria-current="page">Dia</strong>
   </nav>
 
+  <!-- Mini-calendar + holiday sidebar -->
+  <div class="cal-week-layout" style="align-items:flex-start">
+    <aside class="cal-mini-sidebar">
+      <div class="cal-mini-nav">
+        <button class="btn btn-ghost btn-sm" id="mini-prev" onclick="miniNav(-1)">◀</button>
+        <span class="cal-mini-title" id="mini-title"></span>
+        <button class="btn btn-ghost btn-sm" id="mini-next" onclick="miniNav(1)">▶</button>
+      </div>
+      <table class="cal-mini-grid" id="cal-mini-grid">
+        <thead><tr id="cal-mini-head"></tr></thead>
+        <tbody id="cal-mini-body"></tbody>
+      </table>
+      <div id="day-holiday-notice" style="margin-top:.5rem;font-size:.75rem;color:var(--accent)"></div>
+    </aside>
+    <div style="flex:1">
+
   <!-- All-day events row -->
   {% if events.iter().any(|e| e.is_all_day()) %}
   <div class="cal-day-allday-row">
@@ -70,6 +86,8 @@
       {% endif %}{% endfor %}
     </div>
   </div>
+    </div><!-- /flex:1 -->
+  </div><!-- /cal-week-layout -->
 </div>
 
 <script>
@@ -106,6 +124,64 @@
   var scrollSlot = now.getHours() * 2;
   grid.scrollTop = Math.max(0, scrollSlot * ROW_HEIGHT - 120);
 })();
+
+// ── Mini-calendar ─────────────────────────────────────────────────────────────
+var BR_HOLIDAYS = {
+  '01-01':'Ano Novo','04-21':'Tiradentes','05-01':'Dia do Trabalho',
+  '09-07':'Independência','10-12':'N.S.Aparecida','11-02':'Finados',
+  '11-15':'Proclamação da República','12-25':'Natal',
+};
+var _miniYear, _miniMonth;
+(function initMiniCal() {
+  var iso = '{{ date_iso }}';
+  var d = iso ? new Date(iso + 'T12:00:00') : new Date();
+  _miniYear = d.getFullYear(); _miniMonth = d.getMonth();
+  renderMiniCal();
+})();
+function miniNav(delta) {
+  _miniMonth += delta;
+  if (_miniMonth < 0) { _miniMonth = 11; _miniYear--; }
+  if (_miniMonth > 11) { _miniMonth = 0; _miniYear++; }
+  renderMiniCal();
+}
+function renderMiniCal() {
+  var months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  var title = document.getElementById('mini-title');
+  if (title) title.textContent = months[_miniMonth] + ' ' + _miniYear;
+  var head = document.getElementById('cal-mini-head');
+  if (head) head.innerHTML = ['D','S','T','Q','Q','S','S'].map(function(d){ return '<th>' + d + '</th>'; }).join('');
+  var first = new Date(_miniYear, _miniMonth, 1).getDay();
+  var days  = new Date(_miniYear, _miniMonth + 1, 0).getDate();
+  var today = new Date(); var todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  var curDay = parseInt('{{ date_iso }}'.slice(8,10) || '0', 10);
+  var curM   = parseInt('{{ date_iso }}'.slice(5,7)  || '0', 10) - 1;
+  var curY   = parseInt('{{ date_iso }}'.slice(0,4)  || '0', 10);
+  var tbody = document.getElementById('cal-mini-body');
+  if (!tbody) return;
+  var html = '<tr>'; var col = 0;
+  for (var i = 0; i < first; i++) { html += '<td></td>'; col++; }
+  for (var d = 1; d <= days; d++) {
+    var iso2 = _miniYear + '-' + String(_miniMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var mmdd = String(_miniMonth+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    var isToday = iso2 === todayStr;
+    var isSelected = (d === curDay && _miniMonth === curM && _miniYear === curY);
+    var isHoliday = !!BR_HOLIDAYS[mmdd];
+    var cls = (isToday ? ' cal-mini-today' : '') + (isSelected ? ' cal-mini-selected' : '') + (isHoliday ? ' cal-mini-holiday' : '');
+    var calId = '{{ selected.id }}';
+    html += '<td class="' + cls.trim() + '" title="' + (isHoliday ? BR_HOLIDAYS[mmdd] : '') + '"><a href="/calendar/' + calId + '/day?date=' + iso2 + '">' + d + '</a></td>';
+    col++;
+    if (col % 7 === 0 && d < days) { html += '</tr><tr>'; }
+  }
+  while (col % 7 !== 0) { html += '<td></td>'; col++; }
+  html += '</tr>';
+  tbody.innerHTML = html;
+  // Holiday notice for current day
+  var notice = document.getElementById('day-holiday-notice');
+  if (notice) {
+    var todayMmdd = '{{ date_iso }}'.slice(5,10);
+    notice.textContent = BR_HOLIDAYS[todayMmdd] ? '🎉 ' + BR_HOLIDAYS[todayMmdd] : '';
+  }
+}
 
 function quickNewEvent(dateIso, h, m, calId) {
   var hh  = String(h).padStart(2,'0');

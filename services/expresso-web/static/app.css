@@ -432,6 +432,16 @@ select option { background: var(--bg-raised); }
 }
 .folder-title { font-size: 1rem; font-weight: 700; }
 .msg-rows { flex: 1; }
+.mail-pagination { display:flex; align-items:center; gap:.5rem; justify-content:center; padding:.5rem .75rem; border-top:1px solid var(--border); }
+.mail-filter-group { display:flex; flex-direction:column; gap:.2rem; }
+.mail-filter-group .input-sm { font-size:.8rem; padding:.2rem .4rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); width:9rem; }
+.compose-label-chip { border:none; color:#fff; border-radius:1rem; padding:.2rem .55rem; font-size:.75rem; cursor:pointer; opacity:.9; }
+.compose-label-chip:hover { opacity:1; }
+
+.settings-theme-card { background:none; border:1px solid var(--border); border-radius:var(--radius); padding:.5rem; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:.3rem; transition:outline .15s; }
+.settings-theme-preview { width:80px; height:52px; border-radius:var(--radius-sm); border:1px solid rgba(0,0,0,.15); }
+.settings-theme-preview-dark { background:linear-gradient(135deg,#0f1117 50%,#14b8a6 50%); }
+.settings-theme-preview-light { background:linear-gradient(135deg,#f8fafc 50%,#14b8a6 50%); }
 .msg-row {
   display: block;
   padding: .75rem 1rem;
@@ -569,9 +579,13 @@ select option { background: var(--bg-raised); }
   border-bottom: 1px solid var(--border);
   text-align: center;
 }
-.week-col-label { font-size: .78rem; font-weight: 600; color: var(--text-secondary); }
+.week-col-label { font-size: .78rem; font-weight: 600; color: var(--text-secondary); text-decoration:none; }
+.week-col-label:hover { text-decoration:underline; }
 .week-col.today .week-col-label { color: var(--accent); }
+.week-col.cal-drag-over { background:color-mix(in srgb,var(--accent) 8%,transparent); }
 .week-col-events { padding: .4rem; display: flex; flex-direction: column; gap: .2rem; min-height: 80px; }
+.cal-week-allday-row { display:flex; align-items:flex-start; gap:.5rem; padding:.3rem .5rem; border-bottom:1px solid var(--border); background:var(--bg-raised); }
+.cal-week-allday-chips { display:flex; flex-wrap:wrap; gap:.25rem; flex:1; }
 
 /* Day list */
 .day-list { display: flex; flex-direction: column; gap: .5rem; margin-top: 1rem; }
@@ -1603,6 +1617,11 @@ textarea[name="script"] {
 .mini-day:hover { background:var(--bg-raised); }
 .mini-today { background:var(--accent); color:#fff; font-weight:700; }
 .mini-today:hover { background:var(--accent); }
+.cal-mini-grid td a { display:inline-flex; align-items:center; justify-content:center; width:1.4rem; height:1.4rem; border-radius:50%; text-decoration:none; color:var(--text); }
+.cal-mini-grid td a:hover { background:var(--bg-raised); }
+.cal-mini-today a { background:var(--accent); color:#fff; font-weight:700; }
+.cal-mini-selected a { outline:2px solid var(--accent); outline-offset:1px; }
+.cal-mini-holiday a { color:var(--accent); font-style:italic; }
 
 /* ── Chat pinned message (sprint #20006) ─────────────────────────────────────── */
 .chat-pinned { display:flex; align-items:center; gap:.5rem; padding:.35rem .75rem; background:color-mix(in srgb,var(--accent) 10%,transparent); border-bottom:1px solid var(--border); font-size:.82rem; }
@@ -1717,6 +1736,8 @@ textarea[name="script"] {
 .svc-ok  { color:#22c55e; }
 .svc-err { color:#ef4444; }
 .audit-action-badge { display:inline-block; padding:.1rem .4rem; background:var(--bg-raised); border-radius:3px; font-size:.75rem; font-family:monospace; }
+.audit-row-new { animation:audit-flash 2s ease-out; }
+@keyframes audit-flash { from { background:color-mix(in srgb,var(--accent) 18%,transparent); } to { background:transparent; } }
 .appnav-admin { font-size:.75rem; font-weight:700; background:var(--accent); color:#fff !important; padding:.2rem .5rem; border-radius:3px; }
 .appnav-badge { display:inline-block; background:var(--danger); color:#fff; border-radius:1rem; padding:.05rem .35rem; font-size:.65rem; font-weight:700; margin-left:.2rem; vertical-align:middle; }
 
@@ -1833,6 +1854,24 @@ kbd { display:inline-block; background:var(--bg-raised); border:1px solid var(--
 
 /* ── Chat search highlight (sprint #20092) ───────────────────────────────────── */
 mark.chat-search-hl { background:color-mix(in srgb,var(--accent) 30%,transparent); color:inherit; border-radius:2px; padding:0 .1rem; }
+
+/* ── vCard import preview (sprint #20106) ────────────────────────────────────── */
+.vcf-preview-item { padding:.2rem 0; border-bottom:1px solid var(--border); font-size:.84rem; }
+
+/* ── Home notifications widget (sprint #20110) ───────────────────────────────── */
+.home-notif-unread { background:color-mix(in srgb,var(--accent) 8%,transparent); border-radius:var(--radius); }
+.home-notif-unread .home-file-name { font-weight:600; }
+
+/* ── Tasks Pomodoro button (sprint #20109) ───────────────────────────────────── */
+.task-pomodoro-btn { opacity:0; transition:opacity .15s; font-size:.8rem; padding:.1rem .3rem; }
+.task-item:hover .task-pomodoro-btn { opacity:1; }
+
+/* ── Mail inline reply (sprint #20108) ───────────────────────────────────────── */
+.mail-inline-reply { display:flex; flex-direction:column; gap:.4rem; padding:.75rem; border-top:2px solid var(--accent); background:var(--bg-raised); }
+.mail-inline-reply-header { display:flex; align-items:center; font-size:.82rem; }
+.mail-inline-reply-ta { width:100%; min-height:5rem; resize:vertical; padding:.5rem; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); color:var(--text); font-size:.875rem; font-family:inherit; }
+.mail-inline-reply-actions { display:flex; gap:.4rem; justify-content:flex-end; }
+.mail-reply-trigger { display:flex; gap:.5rem; padding:.5rem .75rem; border-top:1px solid var(--border); }
 
 /* ── Meet soon badge (sprint #20089) ────────────────────────────────────────── */
 .meet-soon-badge { display:inline-block; background:var(--danger); color:#fff; border-radius:1rem; padding:.1rem .5rem; font-size:.72rem; font-weight:600; animation:pulse 1.2s infinite alternate; }
