@@ -54,10 +54,12 @@
                href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
                draggable="true"
                ondragstart="calDragStart(event,'{{ ev.id }}','{{ d.iso }}')"
-               data-evid="{{ ev.id }}">
+               data-evid="{{ ev.id }}"
+               data-calid="{{ selected.id }}">
               {% if ev.is_recurring() %}<span class="ev-recur">↻</span>{% endif %}
               <span class="ev-time">{{ ev.time_label() }}</span>
               <span class="ev-title">{{ ev.title() }}</span>
+              <span class="ev-resize-handle" title="Arrastar para redimensionar" onmousedown="evResizeStart(event,'{{ ev.id }}','{{ selected.id }}')">▲</span>
             </a>
             {% endif %}{% endfor %}
             {% if d.events.iter().all(|e| e.is_all_day()) %}
@@ -171,5 +173,45 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   if (alldayChips.childElementCount > 0) alldayRow.style.display = 'flex';
 });
+
+// ── Event resize (drag bottom handle to extend end time) ──────────────────────
+var _evResizeId = null, _evResizeCalId = null, _evResizeStartY = 0;
+function evResizeStart(e, evId, calId) {
+  e.preventDefault();
+  e.stopPropagation();
+  _evResizeId = evId;
+  _evResizeCalId = calId;
+  _evResizeStartY = e.clientY;
+  document.addEventListener('mousemove', evResizeMove);
+  document.addEventListener('mouseup', evResizeEnd);
+  var chip = e.currentTarget.closest('.event-chip');
+  if (chip) chip.style.outline = '2px solid var(--accent)';
+}
+function evResizeMove(e) {
+  if (!_evResizeId) return;
+  var chip = document.querySelector('[data-evid="' + _evResizeId + '"]');
+  if (!chip) return;
+  var delta = e.clientY - _evResizeStartY;
+  var addMins = Math.round(delta / 2 / 15) * 15; // 2px ≈ 1min, snap 15min
+  chip.dataset.resizeDelta = addMins;
+  chip.title = (addMins >= 0 ? '+' : '') + addMins + ' min';
+}
+function evResizeEnd(e) {
+  document.removeEventListener('mousemove', evResizeMove);
+  document.removeEventListener('mouseup', evResizeEnd);
+  var chip = document.querySelector('[data-evid="' + _evResizeId + '"]');
+  var addMins = chip ? parseInt(chip.dataset.resizeDelta || '0', 10) : 0;
+  if (chip) { chip.style.outline = ''; chip.removeAttribute('data-resize-delta'); chip.title = ''; }
+  if (!_evResizeId || addMins === 0) { _evResizeId = null; return; }
+  fetch('/calendar/' + encodeURIComponent(_evResizeCalId) + '/events/' + encodeURIComponent(_evResizeId) + '/extend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'include',
+    body: 'add_minutes=' + addMins,
+  }).then(function(r) {
+    if (r.ok || r.redirected) window.location.reload();
+  }).catch(function(){});
+  _evResizeId = null;
+}
 </script>
 {% endblock %}

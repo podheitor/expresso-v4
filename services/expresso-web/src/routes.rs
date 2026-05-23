@@ -73,6 +73,7 @@ pub fn router(state: AppState) -> Router {
         .route("/calendar/:cal_id/export.ics",               get(calendar_export_ics))
         .route("/calendar/:cal_id/import",                   post(calendar_import_ics))
         .route("/calendar/:cal_id/events/:id/reschedule",    post(event_reschedule_action))
+        .route("/calendar/:cal_id/events/:id/extend",        post(event_extend_action))
         .route("/contacts",                                 get(contacts_page))
         .route("/contacts/:book_id/new",                    get(contact_new_form).post(contact_new_action))
         .route("/contacts/:book_id/:id/edit",               get(contact_edit_form).post(contact_edit_action))
@@ -103,6 +104,7 @@ pub fn router(state: AppState) -> Router {
         .route("/chat/channels/:cid/poll",                       get(chat_poll_messages))
         .route("/chat/channels/:cid/mark-read",                  post(chat_mark_read))
         .route("/chat/channels/:cid/messages/:mid/react",        post(chat_react_message))
+        .route("/chat/channels/:cid/pin",                        get(chat_get_pin).post(chat_set_pin).delete(chat_delete_pin))
         .route("/meet",           get(meet_page))
         .route("/meet/new",       get(meet_new_page).post(meet_create_action))
         .route("/meet/schedule",  get(meet_schedule_page).post(meet_schedule_action))
@@ -142,6 +144,8 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/api/stats",                 get(admin_api_stats))
         .route("/admin/api/audit",                 get(admin_api_audit))
         .route("/admin/api/domain-quotas",         get(admin_api_domain_quotas).put(admin_api_domain_quotas_save))
+        .route("/admin/api/smtp-queue",            get(admin_api_smtp_queue))
+        .route("/admin/api/smtp-queue/flush",      post(admin_api_smtp_queue_flush))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -2275,6 +2279,29 @@ async fn event_reschedule_action(
     Ok((StatusCode::OK, "").into_response())
 }
 
+// ── Calendar event extend (resize) ──
+
+#[derive(serde::Deserialize)]
+struct ExtendForm { add_minutes: i64 }
+
+async fn event_extend_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((cal_id, event_id)): Path<(String, String)>,
+    Form(f): Form<ExtendForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "add_minutes": f.add_minutes });
+    let _ = post_json(
+        &st, &st.backends.calendar,
+        &format!("/api/v1/calendars/{}/events/{}/extend",
+            utf8_percent_encode(&cal_id, NON_ALPHANUMERIC),
+            utf8_percent_encode(&event_id, NON_ALPHANUMERIC)),
+        &headers, Some((&t, &u)), &payload,
+    ).await;
+    Ok((StatusCode::OK, "").into_response())
+}
+
 // ── Addressbook share ──
 
 async fn addrbook_share_page(
@@ -2506,6 +2533,56 @@ async fn chat_react_message(
         _ => std::collections::HashMap::new(),
     };
     Ok(axum::Json(ChatReactResp { reactions }).into_response())
+}
+
+// ── Chat pin ──
+
+#[derive(serde::Deserialize)]
+struct ChatPinForm { message_id: String }
+
+async fn chat_get_pin(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let data: serde_json::Value = get_json(
+        &st, &st.backends.chat,
+        &format!("/api/v1/channels/{}/pin", utf8_percent_encode(&cid, NON_ALPHANUMERIC)),
+        &headers, Some((&t, &u)),
+    ).await?.unwrap_or(serde_json::Value::Null);
+    Ok(axum::Json(data).into_response())
+}
+
+async fn chat_set_pin(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>, Form(f): Form<ChatPinForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "message_id": f.message_id });
+    let _ = post_json(
+        &st, &st.backends.chat,
+        &format!("/api/v1/channels/{}/pin", utf8_percent_encode(&cid, NON_ALPHANUMERIC)),
+        &headers, Some((&t, &u)), &payload,
+    ).await;
+    Ok((StatusCode::OK, "").into_response())
+}
+
+async fn chat_delete_pin(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(cid): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    let (t, u) = ctx_of(&me);
+    let url = format!("{}/api/v1/channels/{}/pin",
+        st.backends.chat.trim_end_matches('/'),
+        utf8_percent_encode(&cid, NON_ALPHANUMERIC));
+    let mut req = st.http.delete(&url);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let _ = req.send().await;
+    Ok((StatusCode::OK, "").into_response())
 }
 
 // ─── /meet ───────────────────────────────────────────────────────────────────
@@ -3460,5 +3537,30 @@ async fn admin_api_domain_quotas_save(
     let (t, u) = ctx_of(&me);
     let payload: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::json!([]));
     let _ = put_json(&st, &st.backends.auth, "/api/v1/admin/domain-quotas", &headers, Some((&t, &u)), &payload).await;
+    Ok((StatusCode::OK, "").into_response())
+}
+
+async fn admin_api_smtp_queue(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let data: serde_json::Value = get_json(
+        &st, &st.backends.mail, "/api/v1/admin/smtp-queue", &headers, Some((&t, &u)),
+    ).await?.unwrap_or(serde_json::json!({"queued":0,"deferred":0,"failed":0,"items":[]}));
+    Ok(axum::Json(data).into_response())
+}
+
+async fn admin_api_smtp_queue_flush(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_json(
+        &st, &st.backends.mail, "/api/v1/admin/smtp-queue/flush",
+        &headers, Some((&t, &u)), &serde_json::json!({}),
+    ).await;
     Ok((StatusCode::OK, "").into_response())
 }

@@ -224,15 +224,21 @@
     return;
   }
   var show = todayTasks.length ? todayTasks : pending;
-  show = show.slice(0, 4);
+  show = show.slice(0, 5);
   var html = '<ul class="home-file-list">';
   show.forEach(function(t) {
-    html += '<li class="home-file-item"><span>' + (t.priority==='high'?'🔴':t.priority==='low'?'⚪':'🔵') + '</span>' +
-      '<span class="home-file-name" style="cursor:default">' + escHtml(t.title) + '</span>' +
-      (t.due ? '<span class="muted small" style="font-size:.72rem">' + t.due + '</span>' : '') + '</li>';
+    var priIcon = t.priority==='high'?'🔴':t.priority==='low'?'⚪':'🔵';
+    var overdueMark = (t.due && t.due < today && !t.done) ? ' style="color:#ef4444"' : '';
+    html += '<li class="home-file-item" data-htid="' + escHtml(t.id) + '">' +
+      '<button class="task-checkbox' + (t.done?' task-checkbox-done':'') + '" style="width:18px;height:18px;flex-shrink:0;font-size:.65rem" ' +
+        'onclick="homeToggleTask(\'' + escHtml(t.id) + '\')" title="' + (t.done?'Reabrir':'Concluir') + '">' +
+        (t.done?'✓':'') + '</button>' +
+      '<span' + overdueMark + ' class="home-file-name" style="cursor:default;' + (t.done?'text-decoration:line-through;opacity:.5':'') + '">' + escHtml(t.title) + '</span>' +
+      '<span>' + priIcon + '</span>' +
+      (t.due ? '<span class="muted small" style="font-size:.7rem">' + t.due + '</span>' : '') + '</li>';
   });
   html += '</ul>';
-  if (pending.length > 4) html += '<p class="muted small" style="margin-top:.25rem">+' + (pending.length-4) + ' mais</p>';
+  if (pending.length > 5) html += '<p class="muted small" style="margin-top:.25rem">+' + (pending.length-5) + ' mais em <a class="link" href="/tasks">Tarefas</a></p>';
   el.innerHTML = html;
   // Update tasks today count badge
   var cntEl = document.getElementById('home-tasks-today-count');
@@ -324,6 +330,25 @@
 })();
 
 // ── Activity logger (called from other pages via shared helper) ───────────────
+// ── Toggle task done from home widget ─────────────────────────────────────────
+function homeToggleTask(id) {
+  var key = 'expresso_tasks_{{ me.user_id }}';
+  try {
+    var tasks = JSON.parse(localStorage.getItem(key) || '[]');
+    tasks = tasks.map(function(t){ return t.id === id ? Object.assign({}, t, { done: !t.done }) : t; });
+    localStorage.setItem(key, JSON.stringify(tasks));
+  } catch(e) {}
+  // Update UI inline without reload
+  var li = document.querySelector('[data-htid="' + id + '"]');
+  if (li) {
+    var btn = li.querySelector('button');
+    var name = li.querySelector('.home-file-name');
+    var now = !!btn && btn.textContent !== '✓';
+    if (btn) { btn.textContent = now ? '✓' : ''; btn.classList.toggle('task-checkbox-done', now); }
+    if (name) { name.style.textDecoration = now ? 'line-through' : ''; name.style.opacity = now ? '0.5' : ''; }
+  }
+}
+
 // ── Quick add task from home ──────────────────────────────────────────────────
 function homeAddTask() {
   var inp = document.getElementById('home-task-quick-input');

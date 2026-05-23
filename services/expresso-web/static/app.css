@@ -559,6 +559,9 @@ select option { background: var(--bg-raised); }
 .event-chip:hover { background: rgba(20,184,166,.28); text-decoration: none; }
 .ev-time { flex-shrink: 0; font-weight: 600; font-size: .7rem; }
 .ev-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ev-resize-handle { margin-left:auto; cursor:s-resize; opacity:0; font-size:.6rem; user-select:none; transition:opacity .12s; }
+.event-chip:hover .ev-resize-handle { opacity:.6; }
+.event-chip:hover .ev-resize-handle:hover { opacity:1; }
 
 /* Week grid */
 .week-grid {

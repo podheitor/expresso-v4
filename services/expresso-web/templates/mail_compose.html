@@ -55,7 +55,7 @@
       <label>
         <span>Assunto</span>
         <div style="display:flex;gap:.4rem;align-items:center">
-          <input type="text" name="subject" value="{{ prefill_subject }}" required style="flex:1">
+          <input type="text" name="subject" id="compose-subject" value="{{ prefill_subject }}" required style="flex:1" oninput="updateSubjectCounter(this.value.length)">
           <div style="position:relative">
             <button type="button" class="btn btn-ghost btn-sm" onclick="toggleComposeLabelPicker()" title="Adicionar etiqueta">🏷</button>
             <div id="compose-label-picker" style="display:none;position:absolute;right:0;top:2rem;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem;z-index:50;min-width:170px">
@@ -69,6 +69,7 @@
               </div>
             </div>
           </div>
+          <span id="compose-subject-counter" class="muted small" style="font-size:.7rem;white-space:nowrap">0/998</span>
           <span id="compose-label-badge" style="display:none;font-size:.78rem;border-radius:1rem;padding:.1rem .5rem;background:var(--bg-hover)"></span>
         </div>
         <input type="hidden" name="label_name" id="compose-label-name">
@@ -145,6 +146,15 @@ function toggleRichMode(rich) {
     if (tb) tb.style.opacity = '.5';
   }
 }
+// ── Subject counter ───────────────────────────────────────────────────────────
+function updateSubjectCounter(len) {
+  var el = document.getElementById('compose-subject-counter');
+  if (!el) return;
+  el.textContent = len + '/998';
+  el.style.color = len > 900 ? '#ef4444' : len > 700 ? '#f59e0b' : '';
+}
+(function() { var s = document.getElementById('compose-subject'); if (s) updateSubjectCounter(s.value.length); })();
+
 // sync + validate + send-lock before form submit
 document.getElementById('compose-form').addEventListener('submit', function(e) {
   syncRichToText();
@@ -154,6 +164,21 @@ document.getElementById('compose-form').addEventListener('submit', function(e) {
     if (wrap) { wrap.style.outline = '2px solid var(--error)'; setTimeout(function(){ wrap.style.outline=''; }, 2000); }
     document.getElementById('to-input').placeholder = 'Adicione pelo menos um destinatário';
     document.getElementById('to-input').focus();
+    return;
+  }
+  // Forgotten attachment warning: body mentions "anexo/attach" but no file attached
+  var bodyText = (document.getElementById('compose-body-hidden') || {}).value || '';
+  var richText = (document.getElementById('compose-rich-editor') || {}).textContent || '';
+  var fullText = (bodyText + richText).toLowerCase();
+  var mentionsAttach = /\banex[oa]\b|\battach|\bjunt[oa]\b|segue em anexo|em anexo/.test(fullText);
+  var hasFiles = _attachFiles.length > 0;
+  if (mentionsAttach && !hasFiles) {
+    e.preventDefault();
+    if (!confirm('O texto menciona um anexo mas nenhum arquivo foi adicionado. Enviar mesmo assim?')) return;
+    // user confirmed — submit
+    var btn2 = this.querySelector('button[type=submit]');
+    if (btn2) { btn2.disabled = true; btn2.textContent = 'Enviando…'; }
+    this.submit();
     return;
   }
   var btn = this.querySelector('button[type=submit]');

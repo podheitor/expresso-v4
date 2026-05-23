@@ -143,6 +143,16 @@
         </label>
       </div>
       <label><span>Lista</span><input type="text" id="edit-task-list" placeholder="ex: Pessoal"></label>
+      <div>
+        <span class="small" style="font-weight:600">Tags</span>
+        <div id="edit-task-tags-list" style="display:flex;flex-wrap:wrap;gap:.3rem;margin:.3rem 0"></div>
+        <div style="display:flex;gap:.4rem;align-items:center">
+          <input type="text" id="edit-task-tag-input" class="input-sm" placeholder="Nova tag…" style="flex:1"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskTag();}">
+          <input type="color" id="edit-task-tag-color" value="#14b8a6" class="input-sm" style="width:32px;padding:0;border:none;cursor:pointer" title="Cor da tag">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addTaskTag()">+</button>
+        </div>
+      </div>
       <label><span>Notas</span><textarea id="edit-task-notes" rows="3"></textarea></label>
       <div>
         <span class="small" style="font-weight:600">Subtarefas</span>
@@ -294,6 +304,7 @@ function renderAll() {
           '<span class="task-title ' + priClass + '">' + escHtml(t.title) + '</span>' +
           (isTaskBlocked(t) ? '<span class="muted small" style="color:#ef4444;margin-left:.3rem" title="Depende de tarefa não concluída">🔒</span>' : '') +
           (t.due ? '<span class="task-due ' + (overdue ? 'task-overdue' : '') + '">' + escHtml(t.due) + '</span>' : '') +
+          (t.tags && t.tags.length ? '<span style="display:flex;gap:.2rem;flex-wrap:wrap;margin-top:.15rem">' + renderTaskTags(t.tags) + '</span>' : '') +
           (t.notes ? '<span class="task-notes-preview muted small">' + escHtml(t.notes.substring(0,60)) + '</span>' : '') +
           renderSubtaskBar(t) +
         '</div>' +
@@ -359,7 +370,45 @@ function openEdit(id) {
   document.getElementById('edit-task-notes').value = task.notes || '';
   renderSubtaskEditor(task.subtasks || []);
   renderDepEditor(task.deps || [], id);
+  _editTags = (task.tags || []).map(function(t){ return Object.assign({}, t); });
+  _renderTagChips();
   showModal('task-edit-modal');
+}
+
+// ── Tags ──────────────────────────────────────────────────────────────────────
+var _editTags = [];
+function _renderTagChips() {
+  var el = document.getElementById('edit-task-tags-list');
+  if (!el) return;
+  el.innerHTML = _editTags.map(function(tag, i) {
+    var bg = tag.color || '#14b8a6';
+    return '<span class="mail-label-tag" style="background:' + bg + ';color:#fff;cursor:default">' +
+      escHtml(tag.label) +
+      '<button type="button" style="background:none;border:none;cursor:pointer;color:inherit;margin-left:.2rem" onclick="removeTaskTag(' + i + ')">✕</button></span>';
+  }).join('');
+}
+function addTaskTag() {
+  var inp = document.getElementById('edit-task-tag-input');
+  var col = document.getElementById('edit-task-tag-color');
+  var label = inp ? inp.value.trim() : '';
+  if (!label) return;
+  var color = col ? col.value : '#14b8a6';
+  if (!_editTags.find(function(t){ return t.label === label; })) {
+    _editTags.push({ label: label, color: color });
+  }
+  if (inp) inp.value = '';
+  _renderTagChips();
+}
+function removeTaskTag(idx) {
+  _editTags.splice(idx, 1);
+  _renderTagChips();
+}
+function renderTaskTags(tags) {
+  if (!tags || !tags.length) return '';
+  return tags.map(function(tag) {
+    var bg = tag.color || '#14b8a6';
+    return '<span class="mail-label-tag" style="background:' + bg + ';color:#fff;font-size:.68rem">' + escHtml(tag.label) + '</span>';
+  }).join('');
 }
 
 // ── Dependencies ──────────────────────────────────────────────────────────────
@@ -462,6 +511,7 @@ function saveEditTask() {
       notes:    document.getElementById('edit-task-notes').value,
       subtasks: _editSubtasks,
       deps:     _editDeps.slice(),
+      tags:     _editTags.slice(),
     });
   });
   saveTasks(tasks);

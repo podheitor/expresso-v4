@@ -417,12 +417,65 @@
         </div>
         <div class="subcard stack">
           <h3>Sessões ativas</h3>
-          <p class="muted small">Gerencie dispositivos conectados no console de segurança do Keycloak.</p>
-          <div class="row">
+          <p class="muted small" style="margin-bottom:.5rem">Dispositivos e navegadores conectados à sua conta.</p>
+          <div id="sessions-list" style="display:flex;flex-direction:column;gap:.4rem">
+            <span class="muted small">Carregando…</span>
+          </div>
+          <div class="row" style="margin-top:.75rem;gap:.5rem">
             <a class="btn btn-ghost btn-sm" href="{{ logout_url }}">Sair desta sessão</a>
+            <button class="btn btn-danger btn-sm" onclick="revokeAllOtherSessions()" id="revoke-all-btn">Encerrar outras sessões</button>
           </div>
         </div>
       </div>
+      <script>
+      (function loadSessions() {
+        var list = document.getElementById('sessions-list');
+        if (!list) return;
+        fetch('/api/v1/auth/sessions', { credentials: 'include' })
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(sessions) {
+            if (!sessions || !sessions.length) {
+              list.innerHTML = '<span class="muted small">Nenhuma sessão encontrada.</span>';
+              return;
+            }
+            function escS(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+            list.innerHTML = sessions.map(function(s) {
+              var isCurrent = !!s.current;
+              var ua = s.user_agent || 'Dispositivo desconhecido';
+              var ip = s.ip || '';
+              var lastSeen = s.last_seen ? new Date(s.last_seen).toLocaleString('pt-BR') : '';
+              return '<div class="subcard" style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem">' +
+                '<span style="font-size:1.4rem">' + (ua.toLowerCase().includes('mobile')?'📱':'💻') + '</span>' +
+                '<div style="flex:1;min-width:0">' +
+                  '<div class="small" style="font-weight:600">' + escS(ua.substring(0,60)) + (isCurrent?' <span style="color:var(--accent)">(esta sessão)</span>':'') + '</div>' +
+                  '<div class="muted small">' + escS(ip) + (lastSeen ? ' · ' + escS(lastSeen) : '') + '</div>' +
+                '</div>' +
+                (!isCurrent ? '<button class="btn btn-ghost btn-sm" onclick="revokeSession(\'' + escS(s.id) + '\',this)">Encerrar</button>' : '') +
+              '</div>';
+            }).join('');
+          }).catch(function() {
+            if (list) list.innerHTML = '<span class="muted small" style="color:#ef4444">Erro ao carregar sessões.</span>';
+          });
+      })();
+      function revokeSession(sessionId, btn) {
+        if (!confirm('Encerrar esta sessão?')) return;
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        fetch('/api/v1/auth/sessions/' + encodeURIComponent(sessionId), {
+          method: 'DELETE', credentials: 'include',
+        }).then(function(r) {
+          if (r.ok) { var card = btn.closest('[class="subcard"]'); if (card) card.remove(); }
+          else { if (btn) { btn.disabled = false; btn.textContent = 'Encerrar'; } }
+        }).catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Encerrar'; } });
+      }
+      function revokeAllOtherSessions() {
+        if (!confirm('Encerrar todas as outras sessões?')) return;
+        var btn = document.getElementById('revoke-all-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+        fetch('/api/v1/auth/sessions', { method: 'DELETE', credentials: 'include' })
+          .then(function(){ window.location.reload(); })
+          .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = 'Encerrar outras sessões'; } });
+      }
+      </script>
 
       {% else if tab == "filters" %}
       <div class="card stack">

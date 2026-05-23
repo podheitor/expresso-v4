@@ -86,6 +86,28 @@
       <span>🟦 Emails</span><span>🟩 Chat</span><span>🟨 Meet</span>
     </div>
   </div>
+
+  <!-- SMTP Delivery Queue -->
+  <div class="card stack" style="margin-top:1.5rem" id="admin-smtp-queue">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+      <h2 style="margin:0">Fila de entrega SMTP</h2>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <span class="muted small">Total: <strong id="smtp-q-total">—</strong></span>
+        <button class="btn btn-ghost btn-sm" id="smtp-q-flush-btn">↺ Reenviar adiados</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin:.5rem 0">
+      <span class="muted small">Na fila: <strong id="smtp-q-queued">—</strong></span>
+      <span class="muted small" style="color:#f59e0b">Adiadas: <strong id="smtp-q-deferred">—</strong></span>
+      <span class="muted small admin-stat-error">Falhas: <strong id="smtp-q-failed">—</strong></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table" style="font-size:.82rem">
+        <thead><tr><th>ID</th><th>Destinatário</th><th>Assunto</th><th>Status</th><th>Na fila desde</th></tr></thead>
+        <tbody id="smtp-q-body"><tr><td colspan="5" class="muted small" style="text-align:center">Carregando…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 <script>
 (function() {
@@ -179,6 +201,45 @@
       }
     }
   }
+  // ── SMTP delivery queue panel ──────────────────────────────────────────────
+  (function() {
+    var queueEl = document.getElementById('admin-smtp-queue');
+    if (!queueEl) return;
+    function refreshQueue() {
+      fetch('/admin/api/smtp-queue', { credentials: 'include' })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (!d) return;
+          var total = (d.queued || 0) + (d.deferred || 0) + (d.failed || 0);
+          document.getElementById('smtp-q-total').textContent = total;
+          document.getElementById('smtp-q-queued').textContent   = d.queued   || 0;
+          document.getElementById('smtp-q-deferred').textContent = d.deferred || 0;
+          document.getElementById('smtp-q-failed').textContent   = d.failed   || 0;
+          var tbody = document.getElementById('smtp-q-body');
+          if (!tbody) return;
+          var items = d.items || [];
+          if (!items.length) { tbody.innerHTML = '<tr><td colspan="5" class="muted small" style="text-align:center">Fila vazia</td></tr>'; return; }
+          tbody.innerHTML = items.slice(0, 20).map(function(it) {
+            var stClass = it.status === 'failed' ? 'admin-stat-error' : it.status === 'deferred' ? 'muted' : '';
+            return '<tr><td class="mono small">' + escAdm(it.id || '') + '</td>' +
+              '<td class="small">' + escAdm(it.recipient || '') + '</td>' +
+              '<td class="small">' + escAdm(it.subject || '') + '</td>' +
+              '<td class="small ' + stClass + '">' + escAdm(it.status || '') + '</td>' +
+              '<td class="small muted">' + escAdm(it.queued_at || '') + '</td></tr>';
+          }).join('');
+        }).catch(function(){});
+    }
+    function escAdm(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    refreshQueue();
+    setInterval(refreshQueue, 15000);
+    var flushBtn = document.getElementById('smtp-q-flush-btn');
+    if (flushBtn) flushBtn.addEventListener('click', function() {
+      if (!confirm('Tentar reenviar todos os adiados (deferred)?')) return;
+      fetch('/admin/api/smtp-queue/flush', { method: 'POST', credentials: 'include' })
+        .then(function(){ refreshQueue(); })
+        .catch(function(){});
+    });
+  })();
 })();
 </script>
 {% endblock %}

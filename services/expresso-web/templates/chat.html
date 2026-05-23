@@ -715,16 +715,30 @@ document.addEventListener('click', function(e) {
 
 // ── Pinned message ────────────────────────────────────────────────────────────
 var _pinKey = 'expresso_pin_{% match active_channel %}{% when Some with (ch) %}{{ ch.id }}{% when None %}global{% endmatch %}';
+var _pinChanId = '{% match active_channel %}{% when Some with (ch) %}{{ ch.id }}{% when None %}{% endmatch %}';
 function pinMessage(msgId, btn) {
   var msgEl = btn.closest('[data-msg-id]');
   var body  = msgEl ? (msgEl.querySelector('.chat-msg-body') || {}).textContent || '' : msgId;
   var pinned = { id: msgId, body: body.trim().substring(0, 120) };
   localStorage.setItem(_pinKey, JSON.stringify(pinned));
   showPinned(pinned);
+  if (_pinChanId) {
+    fetch('/chat/channels/' + encodeURIComponent(_pinChanId) + '/pin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'message_id=' + encodeURIComponent(msgId),
+    }).catch(function(){});
+  }
 }
 function unpinMessage() {
   localStorage.removeItem(_pinKey);
   document.getElementById('chat-pinned').style.display = 'none';
+  if (_pinChanId) {
+    fetch('/chat/channels/' + encodeURIComponent(_pinChanId) + '/pin', {
+      method: 'DELETE', credentials: 'include',
+    }).catch(function(){});
+  }
 }
 function showPinned(pinned) {
   var el = document.getElementById('chat-pinned');
@@ -732,12 +746,32 @@ function showPinned(pinned) {
   if (!el || !body || !pinned) return;
   body.textContent = pinned.body;
   el.style.display = 'flex';
+  // Make pinned message clickable to scroll into view
+  body.style.cursor = 'pointer';
+  body.onclick = function() {
+    var msgEl = document.querySelector('[data-msg-id="' + pinned.id + '"]');
+    if (msgEl) { msgEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); msgEl.style.outline = '2px solid var(--accent)'; setTimeout(function(){ msgEl.style.outline = ''; }, 1500); }
+  };
 }
 (function() {
-  try {
-    var p = JSON.parse(localStorage.getItem(_pinKey) || 'null');
-    if (p) showPinned(p);
-  } catch(e) {}
+  // Try to load pinned message from backend first, fallback to localStorage
+  if (_pinChanId) {
+    fetch('/chat/channels/' + encodeURIComponent(_pinChanId) + '/pin', { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d) {
+        if (d && d.message_id) {
+          var pinned = { id: d.message_id, body: d.body || '(mensagem fixada)' };
+          localStorage.setItem(_pinKey, JSON.stringify(pinned));
+          showPinned(pinned);
+        } else {
+          try { var p = JSON.parse(localStorage.getItem(_pinKey) || 'null'); if (p) showPinned(p); } catch(e) {}
+        }
+      }).catch(function() {
+        try { var p = JSON.parse(localStorage.getItem(_pinKey) || 'null'); if (p) showPinned(p); } catch(e) {}
+      });
+  } else {
+    try { var p = JSON.parse(localStorage.getItem(_pinKey) || 'null'); if (p) showPinned(p); } catch(e) {}
+  }
 })();
 
 // ── Chat file upload ──────────────────────────────────────────────────────────

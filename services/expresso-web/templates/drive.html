@@ -26,10 +26,20 @@
       {% endmatch %}
     </div>
     <div class="page-header-actions">
-      <div style="position:relative">
+      <div style="position:relative;display:flex;gap:.3rem;align-items:center">
+        <select id="drive-type-filter" class="input-sm" style="font-size:.8rem" onchange="driveSearch(document.getElementById('drive-search-input').value)">
+          <option value="">Todos os tipos</option>
+          <option value="image">Imagens</option>
+          <option value="video">Vídeos</option>
+          <option value="audio">Áudios</option>
+          <option value="pdf">PDF</option>
+          <option value="doc">Documentos</option>
+          <option value="sheet">Planilhas</option>
+          <option value="folder">Pastas</option>
+        </select>
         <input type="search" id="drive-search-input" class="search-input-sm" placeholder="🔍 Buscar arquivos…"
-               style="width:200px" oninput="driveSearch(this.value)">
-        <ul id="drive-search-results" class="autocomplete-list" style="display:none;min-width:240px"></ul>
+               style="width:180px" oninput="driveSearch(this.value)">
+        <ul id="drive-search-results" class="autocomplete-list" style="display:none;min-width:260px"></ul>
       </div>
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveView()" id="drive-view-btn" title="Alternar lista/grade">⊞ Grade</button>
@@ -563,37 +573,56 @@ function escDrv(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
 
 // ── Drive search ──────────────────────────────────────────────────────────────
 var _driveSearchTimer = 0;
+var DRIVE_TYPE_EXTS = {
+  image: ['.png','.jpg','.jpeg','.gif','.svg','.webp','.bmp'],
+  video: ['.mp4','.mkv','.avi','.mov','.webm'],
+  audio: ['.mp3','.ogg','.wav','.flac','.aac'],
+  pdf:   ['.pdf'],
+  doc:   ['.doc','.docx','.odt','.txt','.rtf','.md'],
+  sheet: ['.xls','.xlsx','.ods','.csv'],
+};
 function driveSearch(q) {
   var results = document.getElementById('drive-search-results');
   var table   = document.getElementById('drive-table');
+  var typeFilter = (document.getElementById('drive-type-filter') || {}).value || '';
   clearTimeout(_driveSearchTimer);
   q = q.trim();
-  // Local filter for short queries
-  if (q.length < 3) {
+  function matchesType(name, mime) {
+    if (!typeFilter) return true;
+    if (typeFilter === 'folder') return (mime || '').includes('directory') || (mime || '').includes('folder');
+    var exts = DRIVE_TYPE_EXTS[typeFilter] || [];
+    var nl = (name || '').toLowerCase();
+    return exts.some(function(e){ return nl.endsWith(e); });
+  }
+  if (!q && !typeFilter) {
     if (results) results.style.display = 'none';
-    if (table) {
-      table.querySelectorAll('tbody tr[data-file-id]').forEach(function(row){ row.style.display = ''; });
-    }
+    if (table) table.querySelectorAll('tbody tr[data-file-id]').forEach(function(row){ row.style.display = ''; });
     return;
   }
-  // Local filter first
+  // Local filter
   if (table) {
     var lq = q.toLowerCase();
     table.querySelectorAll('tbody tr[data-file-id]').forEach(function(row) {
       var name = (row.querySelector('.drive-name') || {}).textContent || '';
-      row.style.display = name.toLowerCase().includes(lq) ? '' : 'none';
+      var mime = row.dataset.mime || '';
+      var nameOk = !lq || name.toLowerCase().includes(lq);
+      var typeOk = matchesType(name, mime);
+      row.style.display = (nameOk && typeOk) ? '' : 'none';
     });
   }
-  // Remote search for >= 3 chars
+  if (q.length < 3) { if (results) results.style.display = 'none'; return; }
+  // Remote search
   _driveSearchTimer = setTimeout(function() {
-    fetch('/api/v1/drive/search?q=' + encodeURIComponent(q), { credentials: 'include' })
+    var url = '/api/v1/drive/search?q=' + encodeURIComponent(q) + (typeFilter ? '&type=' + encodeURIComponent(typeFilter) : '');
+    fetch(url, { credentials: 'include' })
       .then(function(r){ return r.ok ? r.json() : []; })
       .then(function(files) {
         if (!results) return;
-        if (!files || !files.length) { results.style.display = 'none'; return; }
-        results.innerHTML = files.slice(0, 10).map(function(f) {
+        var filtered = (files || []).filter(function(f){ return matchesType(f.name, f.mime); });
+        if (!filtered.length) { results.style.display = 'none'; return; }
+        results.innerHTML = filtered.slice(0, 10).map(function(f) {
           return '<li class="autocomplete-item" onclick="window.location.href=\'/drive?parent_id=' + escDrv(f.parent_id || '') + '\'"><span>' +
-            escDrv(f.icon ? f.icon() : '📄') + ' ' + escDrv(f.name) + '</span>' +
+            escDrv(f.name) + '</span>' +
             '<span class="muted small" style="font-size:.7rem;margin-left:.5rem">' + escDrv(f.size_human || '') + '</span></li>';
         }).join('');
         results.style.display = '';

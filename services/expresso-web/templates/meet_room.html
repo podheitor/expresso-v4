@@ -30,6 +30,7 @@
       {% if is_moderator %}
         <button class="btn btn-ghost btn-sm" id="rec-btn" onclick="toggleRecording()" title="Iniciar/parar gravação">⏺ Gravar</button>
         <button class="btn btn-ghost btn-sm" onclick="showRecordingsPanel()" title="Gravações desta sala">📼 Gravações</button>
+        <button class="btn btn-ghost btn-sm" onclick="showRoomSettings()" title="Configurações da sala">⚙ Sala</button>
         <form method="post" action="/meet/{{ room_id }}/end" style="display:inline" onsubmit="return confirm('Encerrar esta reunião para todos?')">
           <button class="btn btn-danger btn-sm" type="submit">⏹ Encerrar</button>
         </form>
@@ -602,7 +603,72 @@ function hideRecordingsPanel() {
   if (modal) modal.style.display = 'none';
 }
 function escRec(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Room settings ─────────────────────────────────────────────────────────────
+function showRoomSettings() { document.getElementById('room-settings-modal').style.display = 'flex'; }
+function hideRoomSettings() { document.getElementById('room-settings-modal').style.display = 'none'; }
+function applyRoomSetting(key, value) {
+  var api = window._jitsiApi;
+  if (!api) return;
+  if (key === 'lobby') {
+    api.executeCommand('toggleLobby', value);
+  } else if (key === 'chat') {
+    if (!value) api.executeCommand('toggleChat');
+  } else if (key === 'startMutedPolicy') {
+    api.executeCommand('setVideoQuality', 0); // proxy — actual mute policy via config
+    api.executeCommand('muteEveryone', 'audio');
+  } else if (key === 'startVideoMutedPolicy') {
+    api.executeCommand('muteEveryone', 'video');
+  } else if (key === 'maxParticipants') {
+    // Post to backend for soft enforcement
+    fetch('/meet/{{ room_id }}/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'include',
+      body: 'max_participants=' + encodeURIComponent(value),
+    }).catch(function(){});
+  }
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('room-settings-modal').style.display === 'flex') hideRoomSettings();
+});
 </script>
+
+<!-- Room settings modal -->
+<div class="modal-overlay" id="room-settings-modal" style="display:none" onclick="if(event.target.id==='room-settings-modal')hideRoomSettings()">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h3>Configurações da sala</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideRoomSettings()">✕</button>
+    </div>
+    <div class="compose-form" style="gap:.75rem">
+      <label class="checkbox-row">
+        <input type="checkbox" id="rs-lobby" onchange="applyRoomSetting('lobby', this.checked)">
+        <span>Sala de espera (lobby) — participantes aguardam aprovação</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="rs-chat" checked onchange="applyRoomSetting('chat', this.checked)">
+        <span>Chat na sala habilitado</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="rs-startmuted" onchange="applyRoomSetting('startMutedPolicy', this.checked)">
+        <span>Participantes entram mutados</span>
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="rs-novideodefault" onchange="applyRoomSetting('startVideoMutedPolicy', this.checked)">
+        <span>Participantes entram sem vídeo</span>
+      </label>
+      <label>
+        <span class="muted small">Máximo de participantes (0 = ilimitado)</span>
+        <input type="number" id="rs-maxpart" min="0" max="500" value="0" class="input-sm" style="width:100px"
+          oninput="applyRoomSetting('maxParticipants', parseInt(this.value)||0)">
+      </label>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="hideRoomSettings()">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Invite modal -->
 <div class="modal-overlay" id="meet-invite-modal" style="display:none" onclick="if(event.target.id==='meet-invite-modal')hideInviteModal()">

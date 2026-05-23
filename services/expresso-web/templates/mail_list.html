@@ -175,6 +175,11 @@
                 <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','pessoal','🟢')">🟢 Pessoal</button>
                 <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','aguardando','🟡')">🟡 Aguardando</button>
                 <hr class="dropdown-sep">
+                <form method="post" action="/mail/{{ d.id }}/move">
+                  <input type="hidden" name="target_folder" value="Spam">
+                  <input type="hidden" name="from_folder" value="{{ selected }}">
+                  <button class="dropdown-item danger" type="submit" onclick="return confirm('Marcar como spam?')">⚠ Marcar como spam</button>
+                </form>
                 <form method="post" action="/mail/{{ d.id }}/delete" onsubmit="return confirm('Apagar mensagem?')">
                   <input type="hidden" name="folder" value="{{ selected }}">
                   <button class="dropdown-item danger" type="submit">🗑 Apagar</button>
