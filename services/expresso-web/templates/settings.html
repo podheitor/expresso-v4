@@ -142,18 +142,81 @@
             </label>
           </div>
           <div class="subcard stack">
-            <h3>Browser (push)</h3>
-            <label class="checkbox-row">
-              <input type="checkbox" name="browser_push" value="1">
-              <span>Notificações push no navegador</span>
-            </label>
-            <p class="muted small">Requer permissão concedida ao site.</p>
+            <h3>Notificações do navegador</h3>
+            <div id="notif-status" class="muted small" style="margin-bottom:.5rem"></div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary btn-sm" id="notif-enable-btn" onclick="requestDesktopNotifications()">Habilitar notificações</button>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="testDesktopNotification()">Testar</button>
+            </div>
+            <p class="muted small" style="margin-top:.5rem">Receba alertas de novo e-mail e mensagens de chat mesmo com a aba em segundo plano.</p>
           </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit">Salvar</button>
           </div>
         </form>
       </div>
+      <script>
+      (function() {
+        var btn = document.getElementById('notif-enable-btn');
+        var status = document.getElementById('notif-status');
+        function updateStatus() {
+          if (!('Notification' in window)) {
+            status.textContent = 'Seu navegador não suporta notificações desktop.';
+            if (btn) btn.disabled = true;
+            return;
+          }
+          var p = Notification.permission;
+          if (p === 'granted') {
+            status.textContent = '✓ Notificações habilitadas.';
+            status.style.color = 'var(--ok)';
+            if (btn) btn.textContent = 'Habilitado';
+          } else if (p === 'denied') {
+            status.textContent = '✗ Bloqueado pelo navegador. Redefina nas configurações do site.';
+            status.style.color = 'var(--error)';
+            if (btn) btn.disabled = true;
+          } else {
+            status.textContent = 'Permissão não concedida ainda.';
+          }
+        }
+        updateStatus();
+        window.requestDesktopNotifications = function() {
+          if (!('Notification' in window)) return;
+          Notification.requestPermission().then(updateStatus);
+        };
+        window.testDesktopNotification = function() {
+          if (Notification.permission !== 'granted') {
+            alert('Habilite as notificações primeiro.');
+            return;
+          }
+          new Notification('Expresso — teste', {
+            body: 'Notificações funcionando! 🎉',
+            icon: '/static/favicon.png',
+          });
+        };
+
+        // Poll for new mail and notify
+        if (Notification.permission === 'granted') {
+          var lastKnownUnread = parseInt(localStorage.getItem('expresso_unread') || '0', 10);
+          setInterval(function() {
+            fetch('/api/mail/unread-count', { credentials: 'include' })
+              .then(function(r){ return r.ok ? r.json() : null; })
+              .then(function(d) {
+                if (!d) return;
+                var count = d.count || 0;
+                if (count > lastKnownUnread) {
+                  new Notification('Expresso Mail', {
+                    body: count + ' mensagen' + (count>1?'s':'') + ' não lida' + (count>1?'s':'') + '.',
+                    icon: '/static/favicon.png',
+                    tag: 'expresso-mail',
+                  });
+                }
+                lastKnownUnread = count;
+                localStorage.setItem('expresso_unread', String(count));
+              }).catch(function(){});
+          }, 60000);
+        }
+      })();
+      </script>
 
       {% else if tab == "security" %}
       <div class="card stack">
