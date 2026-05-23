@@ -2,27 +2,70 @@
 
 > Suite colaborativa completa, equivalente ao Microsoft 365, desenvolvida com foco em usabilidade extrema, privacidade, performance e código próprio.
 
+## Quickstart
+
+```bash
+# 1. Variáveis de ambiente
+cp .env.example .env
+# Preencha os valores marcados com :? (POSTGRES_PASSWORD, S3_SECRET_KEY, etc.)
+
+# 2. Suba a stack completa
+docker compose up -d
+
+# 3. Aguarde todos os serviços ficarem healthy (≈60s)
+docker compose ps
+
+# 4. Aplique as migrations
+export DATABASE_URL="postgres://expresso:${POSTGRES_PASSWORD}@localhost:5432/expresso"
+migrate -path migrations -database "$DATABASE_URL" up
+
+# 5. Seed de demonstração (opcional)
+bash scripts/seed-demo.sh
+```
+
+**Perfis disponíveis:**
+- `docker compose up -d` — stack principal (infra + todos os serviços)
+- `docker compose --profile dev up -d` — inclui Mailpit (SMTP catch-all para dev)
+- `docker compose --profile mta up -d` — inclui Postfix + milter (requer DKIM keys)
+
+**Portas principais:**
+
+| Serviço | Porta |
+|---------|-------|
+| Keycloak (IdP) | 8080 |
+| expresso-auth | 8100 |
+| expresso-mail (HTTP) | 8001 |
+| expresso-calendar | 8002 |
+| expresso-contacts | 8003 |
+| expresso-drive | 8004 |
+| expresso-notifications | 8006 |
+| expresso-search | 8007 |
+| expresso-wopi | 8008 |
+| expresso-compliance | 8009 |
+| expresso-chat | 8010 |
+| expresso-meet | 8011 |
+| expresso-admin | 8101 |
+| Web UI | 3000 |
+| Grafana | 3001 |
+| Prometheus | 9090 |
+| MinIO Console | 9001 |
+
+Para procedimentos de upgrade, rollback e blue-green deploy, ver [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
 ## Status
 
-🚧 **Fase 2 concluída + baseline da Fase 3 validada** — 19 de abril de 2026
-
-- `expresso-mail` segue como serviço mais maduro da stack.
-- `expresso-calendar` sobe sem banco e expõe `GET /health` + `GET /ready` degradado quando a infra não está disponível.
-- `expresso-contacts`, `drive`, `flows`, `notifications`, `search`, `wopi`, `compliance`, `auth` e `admin` responderam `GET /health` localmente.
-- Gap principal atual: suíte de testes reais ainda quase vazia.
-
-## Módulos Planejados
+**Production-ready** — todos os serviços core implementados com persistência real.
 
 | Fase | Módulo | Equivalente M365 | Status |
 |------|--------|------------------|--------|
-| Fase 1 | Expresso Mail | Exchange Online / Outlook | ⚙️ Implementado parcial |
-| Fase 2 | Expresso Calendar | Outlook Calendar | 🧪 Baseline HTTP validada |
-| Fase 2 | Expresso Contacts | Outlook People | 🧪 `/health` validado |
-| Fase 3 | Expresso Drive | OneDrive | 🧪 `/health` validado |
-| Fase 3 | Office Online (LibreOffice) | Word/Excel/PPT Online | 📐 Planejado |
-| Fase 4 | Expresso Chat | Microsoft Teams Chat | 📐 Planejado |
-| Fase 5 | Expresso Meet | Teams Meetings | 📐 Planejado |
-| Fase 5 | Expresso Admin | M365 Admin Center | 🧪 `/health` validado |
+| Fase 1 | Expresso Mail | Exchange Online / Outlook | Completo |
+| Fase 2 | Expresso Calendar | Outlook Calendar | Completo (CalDAV + iMIP) |
+| Fase 2 | Expresso Contacts | Outlook People | Completo (CardDAV) |
+| Fase 3 | Expresso Drive | OneDrive | Completo (tus.io + WOPI) |
+| Fase 3 | Office Online (LibreOffice) | Word/Excel/PPT Online | Completo (WOPI bridge) |
+| Fase 4 | Expresso Chat | Microsoft Teams Chat | Completo |
+| Fase 5 | Expresso Meet | Teams Meetings | Completo |
+| Fase 5 | Expresso Admin | M365 Admin Center | Completo |
 
 ## Stack Tecnológico
 
@@ -36,26 +79,27 @@
 
 ## Documentação
 
+- [Quickstart / Deployment](docs/DEPLOYMENT.md)
+- [Arquitetura Técnica](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Mapeamento M365 → Expresso V4](docs/M365_MAPPING.md)
-- [Arquitetura Técnica](docs/ARCHITECTURE.md)
 - [Conformidade Governo Brasileiro](docs/COMPLIANCE_GOV_BR.md)
-- [Infra Lab (Proxmox)](docs/INFRA_LAB.md)
+- [Segurança](docs/SECURITY.md)
+- [Observability](docs/OBSERVABILITY.md)
 - [Multi-Realm JWT Validation](docs/MULTI-REALM-JWT.md)
 - [Tenant Onboarding Runbook](docs/TENANT-ONBOARDING.md)
-- [Observability](docs/OBSERVABILITY.md)
-
-> Nota: `docs/PLAN.md` e `docs/UX_IDENTITY.md` ainda nao existem neste repositorio (17 de abril de 2026).
+- [Infra Lab (Proxmox)](docs/INFRA_LAB.md)
+- [Load Testing](tests/load/README.md)
 
 ## Conformidade
 
-- 🇧🇷 LGPD (Lei 13.709/2018)
-- 🔐 e-PING (Padrões de Interoperabilidade Gov BR)
-- 🛡️ GSI IN 01/2020 + IN 05/2021
-- 📜 ICP-Brasil (certificação digital)
-- 🏛️ gov.br OIDC (níveis bronze/prata/ouro)
-- 🔒 Zero-trust + NIST CSF
+- LGPD (Lei 13.709/2018)
+- e-PING (Padrões de Interoperabilidade Gov BR)
+- GSI IN 01/2020 + IN 05/2021
+- ICP-Brasil (certificação digital)
+- gov.br OIDC (níveis bronze/prata/ouro)
+- Zero-trust + NIST CSF
 
-## Sistema Operacional (Lab)
+## Licença
 
-**Debian 13 "Trixie"** — escolha definitiva para todas as VMs do projeto.
+GNU Affero General Public License v3 — ver [LICENSE](LICENSE).

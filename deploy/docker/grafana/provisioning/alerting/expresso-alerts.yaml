@@ -1,0 +1,188 @@
+# Grafana Alerting provisioning — Expresso V4
+# Gerencia alert rules e contact points via código.
+# Documentação: https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: ops-webhook
+    receivers:
+      - uid: ops-webhook-default
+        type: webhook
+        settings:
+          url: "${GRAFANA_WEBHOOK_URL:-http://localhost:5001/hook}"
+          httpMethod: POST
+        disableResolveMessage: false
+
+  - orgId: 1
+    name: ops-critical
+    receivers:
+      - uid: ops-critical-webhook
+        type: webhook
+        settings:
+          url: "${GRAFANA_WEBHOOK_CRITICAL_URL:-http://localhost:5001/hook-critical}"
+          httpMethod: POST
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: ops-webhook
+    group_by: [alertname, service]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 3h
+    routes:
+      - receiver: ops-critical
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        repeat_interval: 1h
+        continue: true
+
+groups:
+  - orgId: 1
+    name: expresso-service-health
+    folder: Expresso
+    interval: 1m
+    rules:
+      - uid: expresso-service-down
+        title: Serviço Expresso indisponível
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                up{job=~"expresso-.*"} == 0
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "{{ $labels.job }} está DOWN"
+          description: "O serviço {{ $labels.job }} ({{ $labels.instance }}) não responde há mais de 2 minutos."
+          runbook_url: "https://github.com/<org>/expresso/blob/main/docs/DEPLOYMENT.md"
+
+      - uid: expresso-high-error-rate
+        title: Taxa de erros HTTP > 1%
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum by (job) (rate(http_requests_total{status=~"5..",job=~"expresso-.*"}[5m]))
+                /
+                sum by (job) (rate(http_requests_total{job=~"expresso-.*"}[5m]))
+                > 0.01
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "{{ $labels.job }} com taxa de erro > 1%"
+          description: "Taxa de erros HTTP 5xx em {{ $labels.job }} acima de 1% por 5 minutos."
+
+      - uid: expresso-high-latency
+        title: Latência p99 > 500ms
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                histogram_quantile(0.99,
+                  sum by (job, le) (rate(http_request_duration_seconds_bucket{job=~"expresso-.*"}[5m]))
+                ) > 0.5
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "{{ $labels.job }} latência p99 > 500ms"
+          description: "p99 de latência em {{ $labels.job }} está acima de 500ms por 5 minutos."
+
+  - orgId: 1
+    name: expresso-infra
+    folder: Expresso
+    interval: 1m
+    rules:
+      - uid: expresso-postgres-connections
+        title: Postgres conexões > 80%
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum(pg_stat_activity_count) / sum(pg_settings_max_connections) > 0.8
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Postgres acima de 80% das conexões máximas"
+          description: "Pool de conexões do Postgres em {{ $value | humanizePercentage }}. Risco de rejeição de novas conexões."
+
+      - uid: expresso-nats-publish-errors
+        title: NATS publish errors > 0.1/s
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                sum(rate(calendar_nats_publish_total{result!="ok"}[5m]))
+                + sum(rate(contacts_nats_publish_total{result!="ok"}[5m]))
+                > 0.1
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "NATS publishers com erros sustentados"
+          description: "Taxa de erros de publish NATS > 0.1/s por 5 minutos. Verificar broker e logs dos publishers."
+
+      - uid: expresso-disk-pressure
+        title: Disco > 85%
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: prometheus
+            model:
+              expr: |
+                (node_filesystem_size_bytes{mountpoint="/"} - node_filesystem_free_bytes{mountpoint="/"})
+                / node_filesystem_size_bytes{mountpoint="/"}
+                > 0.85
+              intervalMs: 60000
+              maxDataPoints: 43200
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Disco root acima de 85% em {{ $labels.instance }}"
+          description: "Uso de disco em {{ $value | humanizePercentage }}. Considerar limpeza de logs ou expansão do volume."

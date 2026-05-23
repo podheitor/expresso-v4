@@ -84,7 +84,7 @@ jobs:
                 --reporters console --silent services/ libs/
 
   frontend:
-    name: Frontend — TypeCheck + Lint
+    name: Frontend — TypeCheck + Lint + Build
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +98,7 @@ jobs:
       - run: pnpm install
       - run: pnpm -r typecheck
       - run: pnpm -r lint
+      - run: pnpm -r build
 
   shellcheck:
     name: Shell — shellcheck scripts/

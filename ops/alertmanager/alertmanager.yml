@@ -1,50 +1,81 @@
-# Alertmanager — Expresso V4 (sprint #35 template)
-# Roteamento básico. Receivers com placeholders; preencher em deploy real.
+# Alertmanager — Expresso V4
+# Variáveis de ambiente injetadas em runtime (docker compose env_file ou secrets):
+#   ALERTMANAGER_WEBHOOK_URL      — webhook padrão (Slack / Teams / etc)
+#   ALERTMANAGER_WEBHOOK_CRITICAL — webhook para alertas críticos (PagerDuty / SMS)
+#   ALERTMANAGER_SMTP_FROM        — remetente de e-mail
+#   ALERTMANAGER_SMTP_SMARTHOST   — host:porta SMTP (ex.: smtp.example.com:587)
+#   ALERTMANAGER_SMTP_AUTH_USER   — usuário SMTP
+#   ALERTMANAGER_SMTP_AUTH_PASS   — senha SMTP
+#   ALERTMANAGER_EMAIL_TO         — destinatário(s) de e-mail ops
+
 global:
   resolve_timeout: 5m
-  # smtp_* preenchidos via env via --config.file render.
+  smtp_from: '{{ env "ALERTMANAGER_SMTP_FROM" | default "alerts@expresso.local" }}'
+  smtp_smarthost: '{{ env "ALERTMANAGER_SMTP_SMARTHOST" | default "localhost:25" }}'
+  smtp_auth_username: '{{ env "ALERTMANAGER_SMTP_AUTH_USER" }}'
+  smtp_auth_password: '{{ env "ALERTMANAGER_SMTP_AUTH_PASS" }}'
+  smtp_require_tls: true
 
 route:
   receiver: ops-default
-  group_by: ['alertname', 'component']
+  group_by: [alertname, job, severity]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 3h
   routes:
     - matchers:
-        - severity="critical"
+        - severity = critical
       receiver: ops-critical
+      group_wait: 10s
+      repeat_interval: 1h
       continue: true
     - matchers:
-        - severity="info"
+        - severity = info
       receiver: ops-info
       group_wait: 2m
       repeat_interval: 24h
 
 receivers:
   - name: ops-default
-    # Placeholder — substituir por webhook Slack/Teams/etc em prod.
     webhook_configs:
-      - url: 'http://localhost:5001/hook'
+      - url: '{{ env "ALERTMANAGER_WEBHOOK_URL" | default "http://localhost:5001/hook" }}'
         send_resolved: true
+        http_config:
+          follow_redirects: true
 
   - name: ops-critical
-    # Mesma destinação agora; em prod: PagerDuty / SMS.
     webhook_configs:
-      - url: 'http://localhost:5001/hook-critical'
+      - url: '{{ env "ALERTMANAGER_WEBHOOK_CRITICAL" | default "http://localhost:5001/hook-critical" }}'
         send_resolved: true
+    email_configs:
+      - to: '{{ env "ALERTMANAGER_EMAIL_TO" | default "" }}'
+        send_resolved: true
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }} — Expresso'
 
   - name: ops-info
     webhook_configs:
-      - url: 'http://localhost:5001/hook-info'
+      - url: '{{ env "ALERTMANAGER_WEBHOOK_URL" | default "http://localhost:5001/hook-info" }}'
         send_resolved: false
 
 inhibit_rules:
-  # Se serviço down, não alerta sobre 5xx / 429 no mesmo serviço
-  - source_matchers: [alertname="ExpressoServiceDown"]
-    target_matchers: [component=~"service|rate-limit"]
-    equal: [instance]
-  # Crítico de publish errors inibe warning
-  - source_matchers: [alertname="ExpressoNatsPublishErrorsCritical"]
-    target_matchers: [alertname="ExpressoNatsPublishErrors"]
+  # Se o serviço está down, suprimir alertas de latência e 5xx no mesmo job
+  - source_matchers:
+      - alertname = "Serviço Expresso indisponível"
+    target_matchers:
+      - alertname =~ "Taxa de erros HTTP.*|Latência p99.*"
+    equal: [job]
+  # Crítico de erros NATS inibe o warning correspondente
+  - source_matchers:
+      - alertname = "ExpressoNatsPublishErrorsCritical"
+    target_matchers:
+      - alertname = "expresso-nats-publish-errors"
     equal: []
+  # Pressão de disco crítica inibe warning de disco
+  - source_matchers:
+      - severity = critical
+        alertname = "Disco > 85%"
+    target_matchers:
+      - severity = warning
+        alertname = "Disco > 85%"
+    equal: [instance]
