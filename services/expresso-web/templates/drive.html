@@ -32,9 +32,15 @@
   {% if files.is_empty() %}
     <div class="empty-state">Pasta vazia</div>
   {% else %}
-  <table class="data-table">
+  <table class="data-table" id="drive-table">
     <thead>
-      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Modificado</th><th>Ações</th></tr>
+      <tr>
+        <th></th>
+        <th class="sortable" onclick="driveSort('name')" title="Ordenar por nome">Nome <span class="sort-arrow" id="sort-name"></span></th>
+        <th class="sortable" onclick="driveSort('size')" title="Ordenar por tamanho">Tamanho <span class="sort-arrow" id="sort-size"></span></th>
+        <th class="sortable" onclick="driveSort('date')" title="Ordenar por data">Modificado <span class="sort-arrow" id="sort-date"></span></th>
+        <th>Ações</th>
+      </tr>
     </thead>
     <tbody>
       {% for f in files %}
@@ -128,6 +134,41 @@ function startRename(e, fileId, el) {
     if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
     if (ev.key === 'Escape') { inp.replaceWith(el); }
   });
+}
+
+// ── Table sort ────────────────────────────────────────────────────────────────
+var _driveSortCol = null;
+var _driveSortDir = 1;
+function driveSort(col) {
+  if (_driveSortCol === col) { _driveSortDir *= -1; }
+  else { _driveSortCol = col; _driveSortDir = 1; }
+  ['name','size','date'].forEach(function(c) {
+    var el = document.getElementById('sort-' + c);
+    if (el) el.textContent = c === col ? (_driveSortDir > 0 ? '▲' : '▼') : '';
+  });
+  var tbody = document.querySelector('#drive-table tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('tr'));
+  rows.sort(function(a, b) {
+    var va, vb;
+    if (col === 'name') {
+      va = (a.querySelector('td:nth-child(2)') || {}).textContent || '';
+      vb = (b.querySelector('td:nth-child(2)') || {}).textContent || '';
+      return _driveSortDir * va.localeCompare(vb, 'pt');
+    }
+    if (col === 'size') {
+      va = parseFloat((a.querySelector('td:nth-child(3)') || {}).textContent) || 0;
+      vb = parseFloat((b.querySelector('td:nth-child(3)') || {}).textContent) || 0;
+      return _driveSortDir * (va - vb);
+    }
+    if (col === 'date') {
+      va = (a.querySelector('td:nth-child(4)') || {}).textContent || '';
+      vb = (b.querySelector('td:nth-child(4)') || {}).textContent || '';
+      return _driveSortDir * va.localeCompare(vb);
+    }
+    return 0;
+  });
+  rows.forEach(function(r){ tbody.appendChild(r); });
 }
 
 function showDriveNewFolder() {
