@@ -292,4 +292,13 @@ mod tests {
     fn parse_token_value_whitespace_string_is_none() {
         assert_eq!(parse_token_value("urn:expresso:ctag:  "), None);
     }
+
+    #[test]
+    fn push_member_contains_200_ok_status() {
+        let user = Uuid::nil();
+        let ab   = Uuid::nil();
+        let mut out = String::new();
+        push_member(&mut out, user, ab, "uid-abc", "etag-x");
+        assert!(out.contains("200 OK"));
+    }
 }

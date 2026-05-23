@@ -372,4 +372,10 @@ mod tests {
         let e = KcBasicError::Unreachable("connection refused".into());
         assert!(e.to_string().contains("connection refused"));
     }
+
+    #[test]
+    fn kc_basic_error_upstream_display_contains_reason() {
+        let e = KcBasicError::Upstream("http 500".into());
+        assert!(e.to_string().contains("http 500"));
+    }
 }

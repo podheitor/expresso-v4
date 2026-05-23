@@ -209,4 +209,11 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert!(!r.email.contains('\r'));
     }
+
+    #[test]
+    fn forgot_req_email_contains_at_sign() {
+        let json = r#"{"email":"user@example.com"}"#;
+        let r: ForgotReq = serde_json::from_str(json).unwrap();
+        assert!(r.email.contains('@'));
+    }
 }

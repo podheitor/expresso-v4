@@ -304,4 +304,10 @@ mod tests {
         let v = build_vcard("u5", "Eve", None, None, None, Some("+5511999999999"));
         assert!(v.contains("+5511999999999"));
     }
+
+    #[test]
+    fn build_vcard_org_field_included_when_provided() {
+        let v = build_vcard("u6", "Frank", None, None, None, Some("ACME Corp"));
+        assert!(v.contains("ACME Corp"));
+    }
 }

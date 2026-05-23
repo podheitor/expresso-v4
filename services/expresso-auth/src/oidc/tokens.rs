@@ -264,4 +264,16 @@ mod tests {
         };
         assert_eq!(r.grant_type, "authorization_code");
     }
+
+    #[test]
+    fn auth_code_request_redirect_uri_preserved() {
+        let r = AuthCodeRequest {
+            grant_type:    "authorization_code",
+            code:          "c",
+            redirect_uri:  "https://app/callback",
+            client_id:     "cid",
+            code_verifier: "v",
+        };
+        assert_eq!(r.redirect_uri, "https://app/callback");
+    }
 }

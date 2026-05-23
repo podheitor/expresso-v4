@@ -191,4 +191,9 @@ mod extra_tests {
         let tok = sign_token(b"secret", "file1", "tenant1", "user1", 3600);
         assert!(!tok.is_empty());
     }
+
+    #[test]
+    fn is_editable_mime_image_jpeg_is_false() {
+        assert!(!is_editable_mime(Some("image/jpeg")));
+    }
 }

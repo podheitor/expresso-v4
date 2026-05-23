@@ -249,4 +249,10 @@ mod tests {
         assert_eq!(command_label("SUBSCRIBE"), "SUBSCRIBE");
         assert_eq!(command_label("subscribe"), "SUBSCRIBE");
     }
+
+    #[test]
+    fn unsubscribe_command_maps_correctly() {
+        assert_eq!(command_label("UNSUBSCRIBE"), "UNSUBSCRIBE");
+        assert_eq!(command_label("unsubscribe"), "UNSUBSCRIBE");
+    }
 }

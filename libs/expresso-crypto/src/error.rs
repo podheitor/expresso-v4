@@ -136,4 +136,11 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("rsa key too short"));
         assert!(e.to_string().ends_with("rsa key too short"));
     }
+
+    #[test]
+    fn two_different_messages_produce_different_displays() {
+        let a = ExpresscryptoError::Internal(anyhow::anyhow!("msg_a")).to_string();
+        let b = ExpresscryptoError::Internal(anyhow::anyhow!("msg_b")).to_string();
+        assert_ne!(a, b);
+    }
 }

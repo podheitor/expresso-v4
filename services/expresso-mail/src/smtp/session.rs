@@ -522,4 +522,9 @@ mod extra_tests {
     fn extract_angle_subdomain_address_extracted() {
         assert_eq!(extract_angle("<user@mail.example.org>"), "user@mail.example.org");
     }
+
+    #[test]
+    fn size_param_missing_returns_none() {
+        assert_eq!(extract_size_param("<a@b> BODY=7BIT"), None);
+    }
 }

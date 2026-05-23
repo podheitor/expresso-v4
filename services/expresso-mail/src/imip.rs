@@ -247,4 +247,10 @@ BEGIN:VCALENDAR\r\nMETHOD:REPLY\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:u1\r\nEND:
     fn has_method_reply_returns_false_for_publish() {
         assert!(!has_method_reply("METHOD:PUBLISH"));
     }
+
+    #[test]
+    fn has_method_reply_ignores_non_method_colon_prefix() {
+        assert!(!has_method_reply("X-METHOD:REPLY"));
+        assert!(!has_method_reply("XMETHOD:REPLY"));
+    }
 }

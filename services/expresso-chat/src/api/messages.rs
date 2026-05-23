@@ -219,4 +219,10 @@ mod tests {
     fn max_list_limit_exceeds_default_limit() {
         assert!(MAX_LIST_LIMIT > DEFAULT_LIST_LIMIT);
     }
+
+    #[test]
+    fn send_body_missing_body_field_fails_deser() {
+        let result: Result<SendBody, _> = serde_json::from_str(r#"{}"#);
+        assert!(result.is_err());
+    }
 }

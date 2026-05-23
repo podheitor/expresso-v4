@@ -193,4 +193,10 @@ mod tests {
         let tag = "owner@domain".to_string();
         assert!(tag.contains('@'));
     }
+
+    #[test]
+    fn tag_string_numeric_only_is_valid_rust_string() {
+        let tag = "42".to_string();
+        assert_eq!(tag.parse::<u64>().unwrap(), 42);
+    }
 }

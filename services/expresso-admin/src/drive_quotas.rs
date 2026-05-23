@@ -248,4 +248,10 @@ mod tests {
     fn mb_ten_megabytes() {
         assert_eq!(mb(10 * 1_048_576), "10.0");
     }
+
+    #[test]
+    fn pct_one_quarter_usage_contains_25() {
+        let s = pct(25, 100);
+        assert!(s.contains("25"));
+    }
 }

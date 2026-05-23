@@ -1508,4 +1508,18 @@ mod tests {
         };
         assert_eq!(doc.subject.as_deref(), Some("Hello World"));
     }
+
+    #[test]
+    fn index_doc_document_id_nonempty_after_construction() {
+        let doc = IndexDoc {
+            document_id: "doc-99".into(),
+            tenant_id: TENANT_A.into(),
+            subject: None,
+            from_addr: None,
+            body: None,
+            kind: None,
+            received_at: None,
+        };
+        assert!(!doc.document_id.is_empty());
+    }
 }

@@ -204,4 +204,12 @@ mod tests {
         assert!(m.issuer_template.contains("{realm}"));
         assert!(!m.issuer_for("acme").contains("{realm}"));
     }
+
+    #[test]
+    fn issuer_for_uuid_realm_produces_valid_url_segment() {
+        let m = MultiRealmValidator::new("https://kc/realms/{realm}", "aud").unwrap();
+        let realm = "a1b2c3d4-0000-0000-0000-000000000001";
+        let iss = m.issuer_for(realm);
+        assert!(iss.ends_with(realm));
+    }
 }

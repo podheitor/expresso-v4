@@ -261,4 +261,9 @@ mod tests {
     fn refresh_token_cookie_name_is_nonempty() {
         assert!(!REFRESH_TOKEN_COOKIE.is_empty());
     }
+
+    #[test]
+    fn refresh_token_cookie_name_starts_with_expresso() {
+        assert!(REFRESH_TOKEN_COOKIE.starts_with("expresso"));
+    }
 }

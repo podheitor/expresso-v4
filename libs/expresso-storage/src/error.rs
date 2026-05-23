@@ -132,4 +132,11 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 multipart upload failed"));
         assert!(e.to_string().ends_with("s3 multipart upload failed"));
     }
+
+    #[test]
+    fn two_errors_with_different_messages_produce_different_displays() {
+        let a = ExpressstorageError::Internal(anyhow::anyhow!("error_a")).to_string();
+        let b = ExpressstorageError::Internal(anyhow::anyhow!("error_b")).to_string();
+        assert_ne!(a, b);
+    }
 }

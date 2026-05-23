@@ -277,4 +277,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(1));
         assert!(s.expires_at > s.created_at);
     }
+
+    #[test]
+    fn session_parent_id_is_none_by_default() {
+        let s = session_with_expiry(Duration::hours(2));
+        assert!(s.parent_id.is_none());
+    }
 }

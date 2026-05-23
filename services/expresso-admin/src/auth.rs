@@ -372,4 +372,9 @@ mod tests {
     fn is_super_admin_with_multiple_roles_finds_super_admin() {
         assert!(is_super_admin(&["viewer".into(), "super_admin".into(), "editor".into()]));
     }
+
+    #[test]
+    fn is_public_path_static_js_is_public() {
+        assert!(is_public_path("/static/bundle.js"));
+    }
 }

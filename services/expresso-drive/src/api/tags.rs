@@ -1591,4 +1591,10 @@ mod tests {
         let b: BulkTagsBody = serde_json::from_str(r#"{"tags":["a","b","c"]}"#).unwrap();
         assert_eq!(b.tags.len(), 3);
     }
+
+    #[test]
+    fn rename_tag_body_new_tag_preserved() {
+        let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"reviewed"}"#).unwrap();
+        assert_eq!(b.new_tag, "reviewed");
+    }
 }

@@ -146,4 +146,10 @@ mod tests {
     fn retention_days_constant_is_positive() {
         assert!(DEFAULT_RETENTION_DAYS > 0);
     }
+
+    #[test]
+    fn interval_hours_product_with_retention_is_large() {
+        let product = DEFAULT_RETENTION_DAYS as u64 * DEFAULT_INTERVAL_HOURS;
+        assert!(product > 100);
+    }
 }

@@ -175,4 +175,13 @@ mod tests {
         let out = UserOut { id: uuid::Uuid::nil(), email: "round@trip.io".into() };
         assert_eq!(out.email, "round@trip.io");
     }
+
+    #[test]
+    fn user_out_json_contains_id_key() {
+        let id = uuid::Uuid::nil();
+        let out = UserOut { id, email: "key@test.com".into() };
+        let v: serde_json::Value = serde_json::to_value(&out).unwrap();
+        assert!(v.get("id").is_some());
+        assert!(v.get("email").is_some());
+    }
 }

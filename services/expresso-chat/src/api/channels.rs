@@ -415,4 +415,11 @@ mod tests {
         let b: CreateBody = serde_json::from_str(json).unwrap();
         assert!(matches!(b.kind, Some(ChannelKind::Direct)));
     }
+
+    #[test]
+    fn create_body_team_id_none_when_absent() {
+        let json = r#"{"name":"general"}"#;
+        let b: CreateBody = serde_json::from_str(json).unwrap();
+        assert!(b.team_id.is_none());
+    }
 }

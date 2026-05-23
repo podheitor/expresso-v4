@@ -368,4 +368,10 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/x", "aud");
         assert_eq!(c.http_timeout, std::time::Duration::from_secs(5));
     }
+
+    #[test]
+    fn oidc_config_primary_audience_from_multi_csv_is_first_entry() {
+        let c = OidcConfig::new("https://kc/realms/r", "first,second,third");
+        assert_eq!(c.primary_audience(), "first");
+    }
 }

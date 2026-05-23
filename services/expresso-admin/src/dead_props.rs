@@ -232,4 +232,12 @@ mod tests {
         let s = fmt_ts(ts);
         assert!(s.ends_with('Z') || s.contains('+') || s.contains('-'));
     }
+
+    #[test]
+    fn preview_119_chars_unchanged() {
+        let s = "b".repeat(119);
+        let out = preview(s.clone());
+        assert_eq!(out, s);
+        assert!(!out.contains('…'));
+    }
 }

@@ -205,4 +205,9 @@ mod tests {
     fn ops_list_has_nine_entries() {
         assert_eq!(OPS.len(), 9);
     }
+
+    #[test]
+    fn outcomes_list_does_not_contain_empty_string() {
+        assert!(!OUTCOMES.contains(&""));
+    }
 }

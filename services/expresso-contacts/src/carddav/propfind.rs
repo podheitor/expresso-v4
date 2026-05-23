@@ -461,4 +461,9 @@ mod tests {
     fn depth_zero_eq_zero() {
         assert_eq!(Depth::Zero, Depth::Zero);
     }
+
+    #[test]
+    fn depth_one_eq_one() {
+        assert_eq!(Depth::One, Depth::One);
+    }
 }

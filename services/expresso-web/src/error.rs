@@ -172,4 +172,10 @@ mod tests {
         let i = format!("{}", WebError::Internal("x".into()));
         assert_ne!(u, i);
     }
+
+    #[test]
+    fn upstream_error_is_not_internal_variant() {
+        assert!(matches!(WebError::Upstream("x".into()), WebError::Upstream(_)));
+        assert!(!matches!(WebError::Upstream("x".into()), WebError::Internal(_)));
+    }
 }

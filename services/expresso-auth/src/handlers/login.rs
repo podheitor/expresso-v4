@@ -208,4 +208,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/"));
     }
+
+    #[test]
+    fn login_query_redirect_uri_numeric_path_stored() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/123"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/123"));
+    }
 }

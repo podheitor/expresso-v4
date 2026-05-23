@@ -163,4 +163,10 @@ mod tests {
         let v = generate_verifier();
         assert!(!v.contains('+'));
     }
+
+    #[test]
+    fn verifier_is_urlsafe_no_slash() {
+        let v = generate_verifier();
+        assert!(!v.contains('/'));
+    }
 }

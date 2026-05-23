@@ -548,4 +548,11 @@ mod tests {
         let q: UpcomingQuery = serde_json::from_str(r#"{"within_hours":24}"#).unwrap();
         assert_eq!(q.within_hours, Some(24));
     }
+
+    #[test]
+    fn count_query_delivered_false_filter() {
+        let json = r#"{"delivered":false}"#;
+        let q: CountQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(q.delivered, Some(false));
+    }
 }

@@ -298,4 +298,9 @@ mod tests {
     fn default_db_acquire_timeout_is_five() {
         assert_eq!(default_db_acquire_timeout(), 5);
     }
+
+    #[test]
+    fn default_redis_pool_size_is_ten() {
+        assert_eq!(default_redis_pool_size(), 10);
+    }
 }

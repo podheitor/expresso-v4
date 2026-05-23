@@ -400,4 +400,9 @@ mod tests {
         let (_, v) = parse_header_line(&line).unwrap();
         assert_eq!(v.len(), 256);
     }
+
+    #[test]
+    fn parse_header_all_uppercase_name_no_colon_returns_none() {
+        assert!(parse_header_line("NOCOLONHERE").is_none());
+    }
 }

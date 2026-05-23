@@ -362,4 +362,17 @@ mod tests {
     fn max_comment_bytes_is_four_kib() {
         assert_eq!(MAX_COMMENT_BYTES, 4096);
     }
+
+    #[test]
+    fn file_comment_tenant_id_accessible() {
+        use time::macros::datetime;
+        let tid = Uuid::new_v4();
+        let c = FileComment {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: tid,
+            user_id: Uuid::nil(), body: "note".into(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            updated_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(c.tenant_id, tid);
+    }
 }

@@ -345,4 +345,10 @@ mod tests {
         let q: StatsByTenantQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.limit.is_none());
     }
+
+    #[test]
+    fn stats_by_tenant_query_limit_fifty_preserved() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":50}"#).unwrap();
+        assert_eq!(q.limit, Some(50));
+    }
 }

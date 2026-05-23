@@ -349,4 +349,9 @@ if header :contains "Subject" "[spam]" {
         let r = SieveRules::default();
         assert!(r.enabled);
     }
+
+    #[test]
+    fn max_sieve_script_bytes_is_less_than_max_test_message_bytes() {
+        assert!(MAX_SIEVE_SCRIPT_BYTES < MAX_TEST_MESSAGE_BYTES);
+    }
 }

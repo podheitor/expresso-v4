@@ -155,4 +155,10 @@ mod tests {
     fn default_interval_hours_is_less_than_24() {
         assert!(DEFAULT_INTERVAL_HOURS < 24);
     }
+
+    #[test]
+    fn retention_days_default_fits_in_u64_hours() {
+        let hours = DEFAULT_RETENTION_DAYS as u64 * 24;
+        assert!(hours > DEFAULT_INTERVAL_HOURS);
+    }
 }

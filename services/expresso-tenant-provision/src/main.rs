@@ -525,4 +525,9 @@ mod tests {
         let unique: std::collections::HashSet<&str> = names.iter().copied().collect();
         assert_eq!(names.len(), unique.len());
     }
+
+    #[test]
+    fn realm_roles_count_is_nonzero() {
+        assert!(!REALM_ROLES.is_empty());
+    }
 }

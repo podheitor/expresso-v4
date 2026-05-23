@@ -313,4 +313,15 @@ mod tests {
         };
         assert!(!w.collabora_url.is_empty());
     }
+
+    #[test]
+    fn wopi_drive_url_nonempty() {
+        let w = Wopi {
+            secret:         "s".into(),
+            collabora_url:  "https://co".into(),
+            drive_url:      "https://drive.example.com".into(),
+            token_ttl_secs: 300,
+        };
+        assert!(!w.drive_url.is_empty());
+    }
 }

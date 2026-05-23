@@ -683,4 +683,12 @@ mod tests {
         let parts: Vec<&str> = tok.split('.').collect();
         assert_eq!(parts[0], fid.to_string());
     }
+
+    #[test]
+    fn sign_token_second_segment_is_tenant_id() {
+        let tid = Uuid::new_v4();
+        let tok = sign_token(b"secret", Uuid::new_v4(), tid, Uuid::new_v4(), 30);
+        let parts: Vec<&str> = tok.split('.').collect();
+        assert_eq!(parts[1], tid.to_string());
+    }
 }

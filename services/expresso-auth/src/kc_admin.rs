@@ -370,4 +370,11 @@ mod tests {
         let c = cfg(Some("cid"), Some("supersecret"));
         assert_eq!(c.exchange_client_secret.as_deref(), Some("supersecret"));
     }
+
+    #[test]
+    fn impersonation_tokens_access_token_preserved() {
+        let json = r#"{"access_token":"bearer-xyz"}"#;
+        let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
+        assert_eq!(t.access_token, "bearer-xyz");
+    }
 }

@@ -276,4 +276,13 @@ mod tests {
         };
         assert_eq!(ev.tenant_id(), Uuid::nil());
     }
+
+    #[test]
+    fn contacts_event_bus_noop_does_not_panic() {
+        let bus = ContactsEventBus::noop();
+        bus.publish(ContactsEvent::AddressbookDeleted {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+        });
+    }
 }

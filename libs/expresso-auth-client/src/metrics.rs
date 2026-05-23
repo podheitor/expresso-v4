@@ -152,4 +152,19 @@ mod tests {
     fn result_label_invalid_token_is_invalid() {
         assert_eq!(result_label(&AuthError::InvalidToken("x".into())), "invalid");
     }
+
+    #[test]
+    fn result_label_all_variants_are_nonempty() {
+        let labels = [
+            result_label(&AuthError::Expired),
+            result_label(&AuthError::MissingBearer),
+            result_label(&AuthError::InvalidToken("t".into())),
+            result_label(&AuthError::KidNotFound(None)),
+            result_label(&AuthError::MalformedClaim("f", "r".into())),
+            result_label(&AuthError::MissingClaim("c")),
+            result_label(&AuthError::Config("c".into())),
+            result_label(&AuthError::JwksFetch("e".into())),
+        ];
+        for l in labels { assert!(!l.is_empty()); }
+    }
 }

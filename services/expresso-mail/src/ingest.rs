@@ -1044,4 +1044,11 @@ mod extra_tests {
         assert!(name.is_none());
         assert!(addr.is_none());
     }
+
+    #[test]
+    fn normalize_message_id_with_angle_brackets_strips_them() {
+        let result = normalize_message_id("<abc@example.com>");
+        assert!(!result.starts_with('<'));
+        assert!(!result.ends_with('>'));
+    }
 }

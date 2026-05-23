@@ -393,4 +393,9 @@ mod tests {
     fn live_props_has_two_entries() {
         assert_eq!(LIVE_PROPS.len(), 2);
     }
+
+    #[test]
+    fn is_live_prop_rejects_empty_namespace() {
+        assert!(!is_live_prop("", "displayname"));
+    }
 }

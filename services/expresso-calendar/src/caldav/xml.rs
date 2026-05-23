@@ -424,4 +424,9 @@ mod tests {
     fn escape_double_quote_is_quot() {
         assert_eq!(escape("say \"hi\""), "say &quot;hi&quot;");
     }
+
+    #[test]
+    fn xml_prolog_contains_utf8_encoding() {
+        assert!(XML_PROLOG.contains("utf-8"));
+    }
 }

@@ -327,4 +327,9 @@ mod tests {
     fn size_param_with_other_params_still_parsed() {
         assert_eq!(extract_size_param("<a@b> BODY=7BIT SIZE=4096 RET=HDRS"), Some(4096));
     }
+
+    #[test]
+    fn max_rcpts_is_positive() {
+        assert!(super::MAX_RCPTS > 0);
+    }
 }

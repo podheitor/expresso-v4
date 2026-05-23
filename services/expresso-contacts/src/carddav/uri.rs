@@ -232,4 +232,9 @@ mod tests {
     fn percent_decode_lowercase_hex_a() {
         assert_eq!(percent_decode("%61"), "a");
     }
+
+    #[test]
+    fn percent_decode_mixed_case_hex() {
+        assert_eq!(percent_decode("%4a%4B"), "JK");
+    }
 }

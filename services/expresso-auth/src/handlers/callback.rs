@@ -318,4 +318,9 @@ mod tests {
     fn accepts_path_with_multiple_segments() {
         assert!(is_safe_local_redirect("/a/b/c/d"));
     }
+
+    #[test]
+    fn rejects_ftp_scheme() {
+        assert!(!is_safe_local_redirect("ftp://files.example.com/"));
+    }
 }

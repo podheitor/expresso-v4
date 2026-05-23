@@ -190,4 +190,10 @@ mod tests {
     fn send_failed_is_500_status() {
         assert_eq!(status(MailError::SendFailed("connection refused".into())), 500);
     }
+
+    #[test]
+    fn invalid_message_display_not_empty() {
+        let e = MailError::InvalidMessage("bad mime structure".into());
+        assert!(!format!("{e}").is_empty());
+    }
 }

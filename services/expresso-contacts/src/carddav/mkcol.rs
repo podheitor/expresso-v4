@@ -230,4 +230,10 @@ mod tests {
         let b = "<displayname>   </displayname>";
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some("   "));
     }
+
+    #[test]
+    fn extract_prop_quot_entity_unescaped() {
+        let b = r#"<displayname>say &quot;hi&quot;</displayname>"#;
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some(r#"say "hi""#));
+    }
 }

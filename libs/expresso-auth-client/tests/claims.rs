@@ -193,3 +193,12 @@ fn expires_at_matches_raw_exp() {
 fn aud_claim_empty_never_contains_empty_str() {
     assert!(!AudClaim::Empty.contains(""));
 }
+
+#[test]
+fn from_raw_govbr_confiabilidades_defaults_empty_when_none() {
+    let uid = uuid::Uuid::new_v4();
+    let mut r = base(&uid.to_string(), None);
+    r.govbr_confiabilidades = None;
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(ctx.govbr_confiabilidades.is_empty());
+}

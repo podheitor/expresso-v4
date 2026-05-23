@@ -645,4 +645,10 @@ mod tests {
     fn human_size_one_mebibyte_is_1_mb() {
         assert_eq!(human_size(1024 * 1024), "1.0 MB");
     }
+
+    #[test]
+    fn human_size_negative_bytes_handled() {
+        let s = human_size(-1);
+        assert!(!s.is_empty());
+    }
 }

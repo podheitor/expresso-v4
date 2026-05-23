@@ -294,4 +294,12 @@ mod tests {
         assert!(rl.check("fresh").is_ok());
         assert!(rl.check("fresh").is_err());
     }
+
+    #[test]
+    fn rate_limit_config_clone_preserves_values() {
+        let cfg = RateLimitConfig { rps: 7, burst: 42 };
+        let c2 = cfg.clone();
+        assert_eq!(c2.rps, 7);
+        assert_eq!(c2.burst, 42);
+    }
 }

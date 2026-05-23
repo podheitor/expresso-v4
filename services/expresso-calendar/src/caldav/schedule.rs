@@ -345,4 +345,10 @@ mod tests {
     fn extract_organizer_email_returns_none_on_empty_ical() {
         assert!(extract_organizer_email("").is_none());
     }
+
+    #[test]
+    fn extract_method_add_returns_add() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:ADD\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("ADD"));
+    }
 }

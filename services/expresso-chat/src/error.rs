@@ -176,4 +176,10 @@ mod tests {
     fn not_member_status_is_403() {
         assert_eq!(status(ChatError::NotMember), 403);
     }
+
+    #[test]
+    fn matrix_error_display_contains_message() {
+        let e = ChatError::Matrix("timeout".into());
+        assert!(format!("{e}").contains("timeout"));
+    }
 }

@@ -25615,4 +25615,16 @@ mod tests {
         };
         assert!(n.folder.is_none());
     }
+
+    #[test]
+    fn notification_kind_is_nonempty_on_construction() {
+        let n = Notification {
+            kind: "mail".into(),
+            user_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(!n.kind.is_empty());
+    }
 }

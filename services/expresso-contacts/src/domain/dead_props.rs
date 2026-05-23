@@ -330,4 +330,14 @@ mod tests {
         assert_eq!(p.local_name, q.local_name);
         assert_eq!(p.xml_value, q.xml_value);
     }
+
+    #[test]
+    fn dead_prop_xml_value_contains_tag_chars() {
+        let p = DeadProp {
+            namespace:  "DAV:".into(),
+            local_name: "prop".into(),
+            xml_value:  "<item>val</item>".into(),
+        };
+        assert!(p.xml_value.contains('<') && p.xml_value.contains('>'));
+    }
 }

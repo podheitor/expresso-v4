@@ -375,4 +375,11 @@ mod tests {
         r.bcc = Some(vec!["bcc@example.com".into()]);
         assert!(build_raw(&r).is_ok());
     }
+
+    #[test]
+    fn build_raw_with_cc_succeeds() {
+        let mut r = req("from@example.com", None, None, None);
+        r.cc = Some(vec!["cc@example.com".into()]);
+        assert!(build_raw(&r).is_ok());
+    }
 }

@@ -342,4 +342,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["invite"]["sequence"], 2);
     }
+
+    #[test]
+    fn envelope_attendees_count_matches_ical() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let bytes = build_envelope_bytes(&ev, "REQUEST").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["attendees"].as_array().unwrap().len(), 2);
+    }
 }

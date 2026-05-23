@@ -511,4 +511,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.spf_helo.is_none());
     }
+
+    #[test]
+    fn auth_results_default_spf_envelope_from_is_none() {
+        let r = AuthResults::default();
+        assert!(r.spf_envelope_from.is_none());
+    }
 }

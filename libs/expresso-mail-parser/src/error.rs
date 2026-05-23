@@ -133,4 +133,11 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("quoted-printable decode error"));
         assert!(e.to_string().ends_with("quoted-printable decode error"));
     }
+
+    #[test]
+    fn two_errors_with_different_messages_differ() {
+        let a = ExpressmailParserError::Internal(anyhow::anyhow!("msg_a")).to_string();
+        let b = ExpressmailParserError::Internal(anyhow::anyhow!("msg_b")).to_string();
+        assert_ne!(a, b);
+    }
 }

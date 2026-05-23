@@ -1256,4 +1256,11 @@ mod tests {
         let q: EventQuery = serde_json::from_str(r#"{"limit":-1}"#).unwrap();
         assert_eq!(q.limit, Some(-1));
     }
+
+    #[test]
+    fn event_query_from_field_roundtrips_via_serde() {
+        let json = r#"{"from":"2026-01-01T00:00:00Z"}"#;
+        let q: EventQuery = serde_json::from_str(json).unwrap();
+        assert!(q.from.is_some());
+    }
 }

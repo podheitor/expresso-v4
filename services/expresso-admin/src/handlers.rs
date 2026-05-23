@@ -478,4 +478,9 @@ mod tests {
     fn services_const_all_entries_have_nonempty_names() {
         assert!(SERVICES.iter().all(|s| !s.name.is_empty()));
     }
+
+    #[test]
+    fn services_const_all_entries_have_nonempty_roles() {
+        assert!(SERVICES.iter().all(|s| !s.role.is_empty()));
+    }
 }

@@ -471,4 +471,9 @@ mod tests {
     fn token_refresh_skew_is_less_than_max_ttl() {
         assert!(TOKEN_REFRESH_SKEW < TOKEN_MAX_TTL);
     }
+
+    #[test]
+    fn token_max_ttl_is_nonzero() {
+        assert!(TOKEN_MAX_TTL.as_secs() > 0);
+    }
 }

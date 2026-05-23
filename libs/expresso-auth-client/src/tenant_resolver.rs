@@ -191,4 +191,10 @@ mod tests {
         assert!(r.is_empty());
         assert_eq!(r.len(), 0);
     }
+
+    #[test]
+    fn resolve_returns_correct_realm_for_uppercase_host() {
+        let r = TenantResolver::parse("CORP.EXAMPLE.COM:corp-realm");
+        assert_eq!(r.resolve("corp.example.com"), Some("corp-realm"));
+    }
 }

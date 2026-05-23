@@ -1757,4 +1757,10 @@ mod tests {
         let v = split_addrs("a@x.com,b@x.com,c@x.com");
         assert_eq!(v.len(), 3);
     }
+
+    #[test]
+    fn split_addrs_empty_string_returns_empty_vec() {
+        let v = split_addrs("");
+        assert!(v.is_empty());
+    }
 }

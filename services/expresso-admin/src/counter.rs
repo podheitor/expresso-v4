@@ -443,4 +443,10 @@ mod tests {
         };
         assert_eq!(r.proposed_dtend, "2026-08-01T10:00:00Z");
     }
+
+    #[test]
+    fn fmt_opt_ts_returns_em_dash_for_none() {
+        let s = fmt_opt_ts(None);
+        assert_eq!(s, "—");
+    }
 }

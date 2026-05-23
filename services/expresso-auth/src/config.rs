@@ -209,4 +209,10 @@ mod tests {
         let c = cfg("https://kc/realms/r", "client-id", "https://app/cb", None, None, None);
         assert!(c.post_logout_template.is_none());
     }
+
+    #[test]
+    fn client_id_nonempty_after_construction() {
+        let c = cfg("https://kc/r", "my-client", "https://app/cb", None, None, None);
+        assert!(!c.client_id.is_empty());
+    }
 }

@@ -365,4 +365,10 @@ mod tests {
         let r = PropRequest::default();
         assert!(!r.displayname && !r.getetag && !r.allprop);
     }
+
+    #[test]
+    fn prop_request_all_has_displayname_set() {
+        let r = PropRequest::all();
+        assert!(r.displayname);
+    }
 }

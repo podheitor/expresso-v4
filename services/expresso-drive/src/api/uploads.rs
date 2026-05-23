@@ -524,4 +524,9 @@ mod tests {
     fn max_upload_bytes_is_fifty_gib() {
         assert_eq!(MAX_UPLOAD_BYTES, 50 * 1024 * 1024 * 1024);
     }
+
+    #[test]
+    fn tus_version_constant_is_100() {
+        assert_eq!(TUS_VERSION, "1.0.0");
+    }
 }

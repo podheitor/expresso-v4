@@ -624,4 +624,10 @@ mod extra_tests {
         let s = percent_encode_filename("file*name.txt");
         assert!(!s.contains('*'));
     }
+
+    #[test]
+    fn percent_encode_filename_question_mark_encoded() {
+        let s = percent_encode_filename("what?.txt");
+        assert!(!s.contains('?'));
+    }
 }

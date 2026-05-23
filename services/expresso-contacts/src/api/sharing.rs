@@ -335,4 +335,9 @@ mod tests {
     fn validate_priv_rejects_guest() {
         assert!(validate_priv("GUEST").is_err());
     }
+
+    #[test]
+    fn validate_priv_rejects_viewer() {
+        assert!(validate_priv("VIEWER").is_err());
+    }
 }

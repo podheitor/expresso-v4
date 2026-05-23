@@ -426,4 +426,10 @@ mod tests {
         let c = sample();
         assert!(!c.uid.is_empty());
     }
+
+    #[test]
+    fn contact_organization_some_in_sample() {
+        let c = sample();
+        assert_eq!(c.organization.as_deref(), Some("Acme Inc."));
+    }
 }

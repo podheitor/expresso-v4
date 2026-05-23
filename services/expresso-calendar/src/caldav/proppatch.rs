@@ -420,4 +420,9 @@ mod tests {
     fn is_live_prop_unknown_ns_returns_false() {
         assert!(!is_live_prop("urn:unknown:ns", "calendar-color"));
     }
+
+    #[test]
+    fn is_live_prop_dav_ns_displayname_is_live() {
+        assert!(is_live_prop("DAV:", "displayname"));
+    }
 }

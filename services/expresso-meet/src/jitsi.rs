@@ -353,4 +353,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(!cfg.domain.is_empty());
     }
+
+    #[test]
+    fn jitsi_config_app_id_is_nonempty() {
+        let cfg = fixture_cfg();
+        assert!(!cfg.app_id.is_empty());
+    }
 }

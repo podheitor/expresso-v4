@@ -183,4 +183,9 @@ mod tests {
         let e = MeetError::MeetingNotFound(Uuid::nil());
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn not_participant_status_is_403() {
+        assert_eq!(status(MeetError::NotParticipant), 403);
+    }
 }

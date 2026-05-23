@@ -1080,4 +1080,9 @@ mod tests {
         let combined = MAX_BODY_BYTES + MAX_ICS_BYTES;
         assert!(combined > 0);
     }
+
+    #[test]
+    fn max_recipients_is_positive() {
+        assert!(MAX_RECIPIENTS_PER_MESSAGE > 0);
+    }
 }

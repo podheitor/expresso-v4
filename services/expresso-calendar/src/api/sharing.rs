@@ -315,4 +315,9 @@ mod tests {
     fn validate_priv_numeric_value_returns_error() {
         assert!(validate_priv("123").is_err());
     }
+
+    #[test]
+    fn validate_priv_whitespace_only_returns_error() {
+        assert!(validate_priv("   ").is_err());
+    }
 }

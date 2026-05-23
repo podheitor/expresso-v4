@@ -196,4 +196,9 @@ mod tests {
     fn vrfy_command_maps_to_other() {
         assert_eq!(command_label("VRFY"), "OTHER");
     }
+
+    #[test]
+    fn expn_command_maps_to_other() {
+        assert_eq!(command_label("EXPN"), "OTHER");
+    }
 }

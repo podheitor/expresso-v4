@@ -281,4 +281,11 @@ mod tests {
         let rl2 = RateLimiter::with_trust_proxy(Duration::from_secs(30), 5, false);
         assert!(!rl2.trust_forwarded);
     }
+
+    #[test]
+    fn new_rate_limiter_starts_with_empty_buckets() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 10);
+        let ip: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        assert!(rl.check(ip));
+    }
 }

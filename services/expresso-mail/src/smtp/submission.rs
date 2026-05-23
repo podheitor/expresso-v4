@@ -685,4 +685,9 @@ mod tests {
         let encoded = B64.encode(b"\x00");
         assert!(decode_plain(&encoded).is_none());
     }
+
+    #[test]
+    fn max_msg_bytes_is_fifty_mib() {
+        assert_eq!(MAX_MSG_BYTES, 50 * 1024 * 1024);
+    }
 }

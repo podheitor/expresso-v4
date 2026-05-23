@@ -235,4 +235,9 @@ mod tests {
     fn percent_decode_slash_encoded() {
         assert_eq!(percent_decode("a%2Fb"), "a/b");
     }
+
+    #[test]
+    fn percent_decode_uppercase_hex_decoded() {
+        assert_eq!(percent_decode("%41"), "A");
+    }
 }

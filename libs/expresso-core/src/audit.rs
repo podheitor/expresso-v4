@@ -253,4 +253,12 @@ mod tests {
         let m = enrich_metadata(&e);
         assert_eq!(m["http_path"], json!("/api/v1/events"));
     }
+
+    #[test]
+    fn enrich_metadata_folds_target_type() {
+        let mut e = AuditEntry::new("test.action");
+        e.target_type = Some("drive_file".into());
+        let m = enrich_metadata(&e);
+        assert_eq!(m["target_type"], json!("drive_file"));
+    }
 }

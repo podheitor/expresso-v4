@@ -263,4 +263,13 @@ mod tests {
         l.record_failure("u@x.com");
         assert!(l.is_locked_out("u@x.com"));
     }
+
+    #[test]
+    fn lockout_two_users_independent_lockout() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("alice@x.com");
+        l.record_failure("alice@x.com");
+        assert!(l.is_locked_out("alice@x.com"));
+        assert!(!l.is_locked_out("bob@x.com"));
+    }
 }

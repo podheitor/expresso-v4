@@ -156,4 +156,10 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("200") && s.contains("100"));
     }
+
+    #[test]
+    fn not_found_variant_display_starts_with_not_found() {
+        let e = CoreError::NotFound { resource: "contact" };
+        assert!(e.to_string().starts_with("not found:"));
+    }
 }

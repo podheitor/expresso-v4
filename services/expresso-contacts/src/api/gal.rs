@@ -481,4 +481,12 @@ mod tests {
         let q: SearchQuery = serde_json::from_str(r#"{"q":"alice"}"#).unwrap();
         assert_eq!(q.q, "alice");
     }
+
+    #[test]
+    fn save_response_fields_accessible() {
+        let id = Uuid::nil();
+        let r = SaveResponse { contact_id: id, addressbook_id: id, uid: "dir:x".into(), created: true };
+        assert_eq!(r.uid, "dir:x");
+        assert!(r.created);
+    }
 }

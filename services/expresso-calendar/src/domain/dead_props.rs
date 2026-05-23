@@ -332,4 +332,14 @@ mod tests {
         };
         assert!(format!("{p:?}").contains("DAV:"));
     }
+
+    #[test]
+    fn dead_prop_local_name_not_empty_after_construction() {
+        let p = DeadProp {
+            namespace: "DAV:".into(),
+            local_name: "getcontenttype".into(),
+            xml_value: "text/calendar".into(),
+        };
+        assert!(!p.local_name.is_empty());
+    }
 }

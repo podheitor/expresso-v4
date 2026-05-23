@@ -631,4 +631,10 @@ mod tests {
     fn minus_prefix_neutralized() {
         assert_eq!(csv_escape("-cmd"), "\"'-cmd\"");
     }
+
+    #[test]
+    fn field_with_only_comma_is_quoted() {
+        let out = csv_escape(",");
+        assert!(out.starts_with('"') && out.ends_with('"'));
+    }
 }

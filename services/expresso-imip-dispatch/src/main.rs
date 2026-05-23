@@ -575,4 +575,18 @@ mod tests {
         let s = human_summary(&inv, Method::Cancel);
         assert!(s.contains("CancelMe"));
     }
+
+    #[test]
+    fn human_summary_is_nonempty_for_request() {
+        let inv = EventInvite {
+            uid: "ev-req-01".into(), sequence: 0, summary: "Team Sync".into(),
+            description: None, location: None,
+            dtstart: time::macros::datetime!(2026-06-01 10:00 UTC),
+            dtend:   time::macros::datetime!(2026-06-01 11:00 UTC),
+            organizer_email: "org@example.com".into(), organizer_cn: None,
+            attendees: vec![],
+        };
+        let s = human_summary(&inv, Method::Request);
+        assert!(!s.is_empty());
+    }
 }

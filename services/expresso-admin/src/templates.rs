@@ -388,4 +388,11 @@ mod tests {
         let u: KcUser = serde_json::from_str(json).unwrap();
         assert!(!u.id.is_empty());
     }
+
+    #[test]
+    fn kc_realm_password_policy_default_is_empty() {
+        let json = r#"{"realm":"myrealm"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.password_policy, "");
+    }
 }

@@ -373,4 +373,16 @@ mod tests {
         };
         assert!(s.revoked_at.is_some());
     }
+
+    #[test]
+    fn share_permission_is_not_empty() {
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "write".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-06-01 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert!(!s.permission.is_empty());
+    }
 }

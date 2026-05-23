@@ -276,4 +276,11 @@ mod tests {
         let p = make_pending(60);
         assert!(!p.redirect_uri.is_empty());
     }
+
+    #[test]
+    fn pending_login_expires_at_is_future_when_ttl_is_positive() {
+        let p = make_pending(120);
+        let now = std::time::Instant::now();
+        assert!(p.expires_at > now);
+    }
 }

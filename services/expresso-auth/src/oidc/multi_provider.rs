@@ -162,4 +162,9 @@ mod tests {
     fn realm_placeholder_starts_with_open_brace() {
         assert!(REALM_PLACEHOLDER.starts_with('{'));
     }
+
+    #[test]
+    fn realm_placeholder_ends_with_close_brace() {
+        assert!(REALM_PLACEHOLDER.ends_with('}'));
+    }
 }

@@ -182,4 +182,10 @@ mod tests {
         let e = CalendarError::EventNotFound(id);
         assert!(format!("{e}").contains(&id.to_string()));
     }
+
+    #[test]
+    fn calendar_not_found_display_contains_calendar_name() {
+        let e = CalendarError::CalendarNotFound("work".into());
+        assert!(format!("{e}").contains("work"));
+    }
 }

@@ -846,4 +846,10 @@ mod tests {
         let f = sample_file();
         assert!(f.expires_at.is_none());
     }
+
+    #[test]
+    fn drive_file_sha256_none_in_sample() {
+        let f = sample_file();
+        assert!(f.sha256.is_none());
+    }
 }

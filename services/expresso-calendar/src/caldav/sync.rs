@@ -311,4 +311,11 @@ mod tests {
     fn parse_token_value_100_is_valid() {
         assert_eq!(parse_token_value(&format!("{TOKEN_PREFIX}100")), Some(100));
     }
+
+    #[test]
+    fn push_token_output_contains_prefix_value() {
+        let mut out = String::new();
+        push_token(&mut out, &format!("{TOKEN_PREFIX}7"));
+        assert!(out.contains("urn:expresso:ctag:7"));
+    }
 }

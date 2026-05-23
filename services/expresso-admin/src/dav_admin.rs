@@ -461,4 +461,11 @@ mod tests {
         let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, Some("#0000ff".into()), false, 0);
         assert_eq!(row.color, "#0000ff");
     }
+
+    #[test]
+    fn to_dav_row_id_is_uuid_string() {
+        let id = Uuid::nil();
+        let row = to_dav_row(id, Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, None, false, 0);
+        assert_eq!(row.id, "00000000-0000-0000-0000-000000000000");
+    }
 }

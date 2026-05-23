@@ -290,4 +290,9 @@ mod tests {
         let actions = evaluate(br#"require "redirect"; redirect "fwd@example.com";"#, MSG.as_bytes());
         assert!(!matches!(actions[0], FilterAction::Discard));
     }
+
+    #[test]
+    fn filter_action_discard_is_not_keep() {
+        assert!(!matches!(FilterAction::Discard, FilterAction::Keep { .. }));
+    }
 }

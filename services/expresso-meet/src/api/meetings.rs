@@ -1473,6 +1473,11 @@ mod tests {
     fn max_display_name_bytes_is_at_least_32() {
         assert!(MAX_DISPLAY_NAME_BYTES >= 32);
     }
+
+    #[test]
+    fn max_email_bytes_is_254() {
+        assert_eq!(MAX_EMAIL_BYTES, 254);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

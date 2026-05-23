@@ -181,4 +181,10 @@ mod tests {
         let s = format!("{e}");
         assert!(s.starts_with("not found:"));
     }
+
+    #[test]
+    fn bad_request_display_is_not_empty() {
+        let e = DriveError::BadRequest("missing field".into());
+        assert!(!format!("{e}").is_empty());
+    }
 }

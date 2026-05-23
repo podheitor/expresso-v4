@@ -179,4 +179,10 @@ mod tests {
         let e = ContactsError::BadRequest("missing field".into());
         assert!(e.to_string().contains("missing field"));
     }
+
+    #[test]
+    fn invalid_vcard_display_contains_bad_input() {
+        let e = ContactsError::InvalidVCard("bad input".into());
+        assert!(e.to_string().contains("bad input"));
+    }
 }

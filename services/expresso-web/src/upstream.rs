@@ -251,4 +251,9 @@ mod tests {
     fn build_url_path_with_slash_is_appended() {
         assert_eq!(build_url("http://svc", "/api/v1"), "http://svc/api/v1");
     }
+
+    #[test]
+    fn build_url_query_string_in_path_preserved() {
+        assert_eq!(build_url("http://svc", "/search?q=foo&limit=5"), "http://svc/search?q=foo&limit=5");
+    }
 }

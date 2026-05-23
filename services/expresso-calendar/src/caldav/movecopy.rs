@@ -247,4 +247,12 @@ mod tests {
     fn strip_origin_http_with_port_and_path() {
         assert_eq!(strip_origin("http://host:80/caldav/u/"), "/caldav/u/");
     }
+
+    #[test]
+    fn strip_origin_path_with_uuid_segment_preserved() {
+        assert_eq!(
+            strip_origin("https://cal.example.com/caldav/u/abc-123/events/"),
+            "/caldav/u/abc-123/events/",
+        );
+    }
 }

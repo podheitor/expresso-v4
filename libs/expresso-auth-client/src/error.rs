@@ -155,4 +155,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("iat") && s.contains("overflow"));
     }
+
+    #[test]
+    fn config_and_jwks_fetch_are_distinct_variants() {
+        let a = AuthError::Config("x".into()).to_string();
+        let b = AuthError::JwksFetch("x".into()).to_string();
+        assert_ne!(a, b);
+    }
 }

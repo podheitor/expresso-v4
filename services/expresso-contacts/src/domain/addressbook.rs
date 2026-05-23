@@ -427,4 +427,10 @@ mod tests {
         let u = UpdateAddressbook::default();
         assert!(u.name.is_none() && u.description.is_none() && u.is_default.is_none());
     }
+
+    #[test]
+    fn addressbook_description_some_preserved() {
+        let a = sample();
+        assert_eq!(a.description.as_deref(), Some("Main addressbook"));
+    }
 }

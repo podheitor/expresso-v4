@@ -399,4 +399,15 @@ mod tests {
         };
         assert!(!b.cpf_hash.trim().is_empty());
     }
+
+    #[test]
+    fn upsert_body_assurance_bronze_preserved() {
+        let b = UpsertBody {
+            cpf_hash: "abc".into(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            assurance: Some("bronze".into()),
+        };
+        assert_eq!(b.assurance.as_deref(), Some("bronze"));
+    }
 }

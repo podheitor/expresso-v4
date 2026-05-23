@@ -487,4 +487,9 @@ mod tests {
     fn escape_text_backslash_is_doubled() {
         assert_eq!(escape_text("a\\b"), "a\\\\b");
     }
+
+    #[test]
+    fn escape_text_comma_is_escaped() {
+        assert_eq!(escape_text("a,b"), "a\\,b");
+    }
 }

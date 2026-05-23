@@ -469,4 +469,9 @@ mod tests {
         let mt = MatchType::EndsWith;
         assert!(matches!(mt, MatchType::EndsWith));
     }
+
+    #[test]
+    fn combine_allof_empty_slice_is_true() {
+        assert!(combine(Op::AllOf, &[]));
+    }
 }

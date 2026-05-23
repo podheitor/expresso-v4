@@ -478,4 +478,10 @@ mod tests {
         let sha_b: Option<String> = Some("bbb".into());
         assert!(sha_a != sha_b);
     }
+
+    #[test]
+    fn create_version_body_size_bytes_is_none_when_absent() {
+        let b: CreateVersionBody = serde_json::from_str("{}").unwrap();
+        assert!(b.size_bytes.is_none());
+    }
 }

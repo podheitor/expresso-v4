@@ -459,6 +459,11 @@ mod tests {
     #[test]
     fn vacation_subject_empty_by_default() {
         let v = Vacation::default();
-        assert!(v.subject.is_empty() || v.subject.len() <= MAX_SUBJECT_BYTES);
+        assert!(v.subject.is_empty() || v.subject.len() <= MAX_VACATION_SUBJECT_BYTES);
+    }
+
+    #[test]
+    fn max_vacation_body_bytes_is_larger_than_max_vacation_subject_bytes() {
+        assert!(MAX_VACATION_BODY_BYTES > MAX_VACATION_SUBJECT_BYTES);
     }
 }

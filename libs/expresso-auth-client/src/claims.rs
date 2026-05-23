@@ -368,4 +368,25 @@ mod tests {
         let aud = AudClaim::Many(vec![]);
         assert!(!aud.contains("anything"));
     }
+
+    #[test]
+    fn from_raw_display_name_uses_name_when_present() {
+        let uid = uuid::Uuid::new_v4();
+        let tid = uuid::Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None, preferred_username: Some("fallback".into()),
+            name: Some("Full Name".into()),
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None, amr: None,
+            govbr_cpf_hash: None, govbr_confiabilidades: None,
+        };
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert_eq!(c.display_name, "Full Name");
+    }
 }

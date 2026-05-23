@@ -215,4 +215,9 @@ mod tests {
     fn strip_origin_ftp_scheme_unchanged() {
         assert_eq!(strip_origin("ftp://host.example.com/file"), "ftp://host.example.com/file");
     }
+
+    #[test]
+    fn strip_origin_https_path_with_encoded_chars_preserved() {
+        assert_eq!(strip_origin("https://host/path%20with%20spaces"), "/path%20with%20spaces");
+    }
 }

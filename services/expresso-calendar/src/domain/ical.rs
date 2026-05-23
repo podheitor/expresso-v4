@@ -421,4 +421,11 @@ END:VCALENDAR\r\n";
         let e = compute_etag("");
         assert_eq!(e.len(), compute_etag("x").len());
     }
+
+    #[test]
+    fn parse_vevent_summary_extracted() {
+        let raw = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:s@x\r\nSUMMARY:Hello World\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ev = parse_vevent(raw).unwrap();
+        assert_eq!(ev.summary.as_deref(), Some("Hello World"));
+    }
 }

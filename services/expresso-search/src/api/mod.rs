@@ -16964,6 +16964,11 @@ mod tests {
     fn max_limit_constant_exceeds_default_limit() {
         assert!(MAX_LIMIT > DEFAULT_LIMIT);
     }
+
+    #[test]
+    fn facet_subject_top_n_is_positive() {
+        assert!(FACET_SUBJECT_TOP_N > 0);
+    }
 }
 
 pub async fn segment_ratio_count_above_p01(State(store): State<IndexStore>) -> Json<serde_json::Value> {

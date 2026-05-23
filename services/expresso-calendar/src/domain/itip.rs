@@ -552,4 +552,16 @@ END:VCALENDAR\r\n";
         };
         assert_eq!(a.role.as_deref(), Some("REQ-PARTICIPANT"));
     }
+
+    #[test]
+    fn attendee_partstat_accepted_preserved() {
+        let a = Attendee {
+            email:    "u@example.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: Some("ACCEPTED".into()),
+            rsvp:     None,
+        };
+        assert_eq!(a.partstat.as_deref(), Some("ACCEPTED"));
+    }
 }

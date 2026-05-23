@@ -286,4 +286,12 @@ mod tests {
     fn unescape_xml_lt_gt_entities_decoded() {
         assert_eq!(unescape_xml("a&lt;b&gt;c"), "a<b>c");
     }
+
+    #[test]
+    fn extract_prop_returns_some_for_matching_tag() {
+        assert_eq!(
+            extract_prop("<calendar-color>blue</calendar-color>", "calendar-color"),
+            Some("blue".into()),
+        );
+    }
 }

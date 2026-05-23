@@ -418,4 +418,18 @@ mod tests {
         };
         assert!(format!("{lock:?}").contains("my-debug-token"));
     }
+
+    #[test]
+    fn wopi_lock_expires_after_acquired() {
+        let now = OffsetDateTime::now_utc();
+        let lock = WopiLock {
+            file_id: Uuid::nil(),
+            tenant_id: Uuid::nil(),
+            lock_token: "tok".into(),
+            locked_by: Uuid::nil(),
+            acquired_at: now,
+            expires_at: now + Duration::minutes(30),
+        };
+        assert!(lock.expires_at > lock.acquired_at);
+    }
 }

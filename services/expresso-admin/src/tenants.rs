@@ -560,4 +560,9 @@ mod slug_tests {
     fn statuses_const_length_is_at_least_one() {
         assert!(!STATUSES.is_empty());
     }
+
+    #[test]
+    fn statuses_const_contains_suspended() {
+        assert!(STATUSES.contains(&"suspended"));
+    }
 }

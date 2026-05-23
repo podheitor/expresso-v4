@@ -521,4 +521,9 @@ mod tests {
         assert_ne!(ParticipantRole::Moderator, ParticipantRole::Participant);
         assert!(ParticipantRole::Moderator != ParticipantRole::Participant);
     }
+
+    #[test]
+    fn participant_role_participant_is_not_moderator() {
+        assert_ne!(ParticipantRole::Participant, ParticipantRole::Moderator);
+    }
 }

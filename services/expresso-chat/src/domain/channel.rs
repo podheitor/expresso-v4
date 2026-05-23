@@ -299,4 +299,11 @@ mod tests {
         let d = serde_json::to_string(&ChannelKind::Direct).unwrap();
         assert_ne!(a, d);
     }
+
+    #[test]
+    fn channel_kind_project_ne_team() {
+        let p = serde_json::to_string(&ChannelKind::Project).unwrap();
+        let t = serde_json::to_string(&ChannelKind::Team).unwrap();
+        assert_ne!(p, t);
+    }
 }

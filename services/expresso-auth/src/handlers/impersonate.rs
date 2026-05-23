@@ -283,4 +283,9 @@ mod tests {
     fn super_role_constant_is_nonempty() {
         assert!(!SUPER_ROLE.is_empty());
     }
+
+    #[test]
+    fn super_role_constant_contains_super() {
+        assert!(SUPER_ROLE.contains("super"));
+    }
 }

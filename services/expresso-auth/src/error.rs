@@ -147,4 +147,10 @@ mod tests {
         let e = RpError::Refresh("token expired".into());
         assert!(e.to_string().contains("token expired"));
     }
+
+    #[test]
+    fn config_error_nonempty_message_preserved() {
+        let e = RpError::Config("key_not_found".into());
+        assert!(!e.to_string().is_empty());
+    }
 }

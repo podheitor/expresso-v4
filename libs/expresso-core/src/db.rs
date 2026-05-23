@@ -274,6 +274,17 @@ mod tests {
         let p = ok();
         assert!(p.tables_unforced.is_empty());
     }
+
+    #[test]
+    fn rls_posture_is_strict_requires_no_bypassrls_no_missing_no_unforced() {
+        let p = RlsPosture {
+            role: "svc".into(),
+            bypassrls: false,
+            tables_missing: vec![],
+            tables_unforced: vec![],
+        };
+        assert!(p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

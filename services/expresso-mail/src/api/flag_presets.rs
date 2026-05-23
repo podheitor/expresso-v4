@@ -288,4 +288,11 @@ mod tests {
         let b = PresetBody { name: "Read".into(), flags: vec!["\\Seen".into()] };
         assert!(b.flags.contains(&"\\Seen".to_string()));
     }
+
+    #[test]
+    fn preset_body_name_max_length_boundary() {
+        let name = "A".repeat(100);
+        let b = PresetBody { name: name.clone(), flags: vec![] };
+        assert_eq!(b.name.len(), 100);
+    }
 }

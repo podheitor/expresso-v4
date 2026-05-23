@@ -211,4 +211,10 @@ mod tests {
         let q = QuotaDto { used_bytes: 512, quota_bytes: Some(1024) };
         assert!(q.quota_bytes.is_some());
     }
+
+    #[test]
+    fn quota_dto_used_bytes_equals_assigned_value() {
+        let q = QuotaDto { used_bytes: 999, quota_bytes: None };
+        assert_eq!(q.used_bytes, 999);
+    }
 }

@@ -3932,4 +3932,10 @@ Attachment\r\n\
         assert!(list_matches("INBOX", "%"));
         assert!(!list_matches("INBOX/Sub", "%"));
     }
+
+    #[test]
+    fn list_matches_exact_name_without_wildcard() {
+        assert!(list_matches("INBOX", "INBOX"));
+        assert!(!list_matches("INBOX", "Trash"));
+    }
 }
