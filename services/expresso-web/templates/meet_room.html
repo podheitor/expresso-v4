@@ -14,13 +14,18 @@
       </span>
     {% endif %}
     <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+      <span class="meet-duration muted small" id="meet-duration">00:00</span>
       {% if !participants.is_empty() %}
-        <span class="muted small">👥 {{ participants.len() }} participante{% if participants.len() != 1 %}s{% endif %}</span>
+        <span class="muted small" id="part-count-label">👥 <span id="part-count">{{ participants.len() }}</span></span>
+      {% else %}
+        <span class="muted small" style="display:none" id="part-count-label">👥 <span id="part-count">0</span></span>
       {% endif %}
+      <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
       {% if is_moderator %}
+        <button class="btn btn-ghost btn-sm" id="rec-btn" onclick="toggleRecording()" title="Iniciar/parar gravação">⏺ Gravar</button>
         <form method="post" action="/meet/{{ room_id }}/end" style="display:inline" onsubmit="return confirm('Encerrar esta reunião para todos?')">
           <button class="btn btn-danger btn-sm" type="submit">⏹ Encerrar</button>
         </form>
@@ -71,6 +76,18 @@
           });
           api.addEventListener('participantJoined', function(e) { updateParticipantCount(1); });
           api.addEventListener('participantLeft',   function(e) { updateParticipantCount(-1); });
+          api.addEventListener('recordingStatusChanged', function(e) {
+            var btn = document.getElementById('rec-btn');
+            if (!btn) return;
+            if (e.on) {
+              btn.textContent = '⏹ Parar gravação';
+              btn.classList.add('btn-accent');
+            } else {
+              btn.textContent = '⏺ Gravar';
+              btn.classList.remove('btn-accent');
+            }
+          });
+          window._jitsiApi = api;
         })();
         </script>
       {% else %}
@@ -127,16 +144,51 @@ function togglePanel(id) {
   var el = document.getElementById(id);
   el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
-function copyRoomId(id) {
-  navigator.clipboard.writeText(id).then(function() {
+function copyRoomId(rid) {
+  navigator.clipboard.writeText(rid).then(function() {
     var el = document.getElementById('room-id-label');
+    if (!el) return;
+    var prev = el.textContent;
     el.textContent = 'ID copiado!';
-    setTimeout(function(){ el.textContent = 'ID: ' + id; }, 2000);
+    setTimeout(function(){ el.textContent = prev; }, 2000);
   });
 }
+function shareMeetLink() {
+  var url = window.location.href;
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = event.currentTarget || event.target;
+    var prev = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    setTimeout(function(){ btn.textContent = prev; }, 2200);
+  });
+}
+function toggleRecording() {
+  var api = window._jitsiApi;
+  if (!api) return;
+  api.executeCommand('toggleRecording', { mode: 'file' });
+}
+
+// participant count
 var _partCount = {{ participants.len() }};
 function updateParticipantCount(delta) {
   _partCount = Math.max(0, _partCount + delta);
+  var el = document.getElementById('part-count');
+  var wrap = document.getElementById('part-count-label');
+  if (el) el.textContent = _partCount;
+  if (wrap) wrap.style.display = _partCount > 0 ? '' : 'none';
 }
+
+// elapsed timer
+(function() {
+  var start = Date.now();
+  var el = document.getElementById('meet-duration');
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  setInterval(function() {
+    var s = Math.floor((Date.now() - start) / 1000);
+    var m = Math.floor(s / 60); s = s % 60;
+    var h = Math.floor(m / 60); m = m % 60;
+    el.textContent = (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
+  }, 1000);
+})();
 </script>
 {% endblock %}

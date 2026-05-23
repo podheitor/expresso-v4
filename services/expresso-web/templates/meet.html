@@ -61,15 +61,18 @@
     <h2>Próximas reuniões</h2>
     <ul class="meet-list">
       {% for m in upcoming %}
-      <li class="meet-list-item">
+      <li class="meet-list-item" data-meet-id="{{ m.id }}"
+        {% match m.scheduled_at %}{% when Some with (s) %}data-scheduled="{{ s }}"{% when None %}{% endmatch %}>
         <div class="meet-list-info">
           <span class="meet-list-name">{{ m.title() }}</span>
           {% if m.is_scheduled() %}
             <span class="meet-schedule-badge meet-scheduled">📅 {{ m.scheduled_time() }}</span>
+            <span class="meet-countdown muted small" id="cd-{{ m.id }}"></span>
           {% endif %}
           {% match m.created_at %}{% when Some with (d) %}<span class="muted small">Criada em {{ d }}</span>{% when None %}{% endmatch %}
         </div>
         <div style="display:flex;gap:.4rem;align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="copyMeetLink('{{ m.id }}')" title="Copiar link">🔗</button>
           <a class="btn btn-primary btn-sm" href="/meet/{{ m.id }}">Entrar</a>
         </div>
       </li>
@@ -108,4 +111,37 @@
   </div>
   {% endif %}
 </div>
+<script>
+function copyMeetLink(id) {
+  var url = window.location.origin + '/meet/' + id;
+  navigator.clipboard.writeText(url).then(function() {
+    var btn = event.currentTarget || event.target;
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 2000);
+  });
+}
+(function() {
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function tick() {
+    var now = Date.now();
+    document.querySelectorAll('[data-scheduled]').forEach(function(li) {
+      var s = li.getAttribute('data-scheduled');
+      var id = li.getAttribute('data-meet-id');
+      var el = document.getElementById('cd-' + id);
+      if (!el || !s) return;
+      var diff = Math.floor((new Date(s).getTime() - now) / 1000);
+      if (diff <= 0) { el.textContent = '(agora)'; el.style.color = 'var(--accent)'; return; }
+      var d = Math.floor(diff / 86400); diff %= 86400;
+      var h = Math.floor(diff / 3600);  diff %= 3600;
+      var m = Math.floor(diff / 60);    diff %= 60;
+      if (d > 0) { el.textContent = 'em ' + d + 'd ' + pad(h) + 'h'; }
+      else if (h > 0) { el.textContent = 'em ' + pad(h) + ':' + pad(m) + ':' + pad(diff); }
+      else { el.textContent = 'em ' + pad(m) + ':' + pad(diff); el.style.color = diff < 300 ? 'var(--accent)' : ''; }
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
 {% endblock %}
