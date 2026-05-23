@@ -192,4 +192,9 @@ mod tests {
     fn clamp_limit_at_max() {
         assert_eq!(clamp_suggest_limit(MAX_SUGGEST_RESULTS), MAX_SUGGEST_RESULTS);
     }
+
+    #[test]
+    fn clamp_limit_at_one() {
+        assert_eq!(clamp_suggest_limit(1), 1);
+    }
 }

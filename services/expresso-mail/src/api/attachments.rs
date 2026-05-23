@@ -648,4 +648,10 @@ mod extra_tests {
         let result = sanitize_header_token("text/plain\t; charset=utf-8", "application/octet-stream");
         assert!(result.contains('\t'));
     }
+
+    #[test]
+    fn build_content_disposition_starts_with_attachment() {
+        let cd = build_content_disposition("file.txt");
+        assert!(cd.starts_with("attachment;"));
+    }
 }

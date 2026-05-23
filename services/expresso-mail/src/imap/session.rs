@@ -3956,4 +3956,10 @@ Attachment\r\n\
         assert!(list_matches("inbox", "INBOX"));
         assert!(list_matches("INBOX", "inbox"));
     }
+
+    #[test]
+    fn list_matches_empty_pattern_matches_only_empty_name() {
+        assert!(list_matches("", ""));
+        assert!(!list_matches("INBOX", ""));
+    }
 }

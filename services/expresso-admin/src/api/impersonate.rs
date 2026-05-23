@@ -228,4 +228,14 @@ mod tests {
         let s = format!("{:?}", ImpersonateScope::ReadOnly);
         assert!(s.contains("ReadOnly"));
     }
+
+    #[test]
+    fn response_tenant_id_preserved() {
+        let tid = uuid::Uuid::new_v4();
+        let r = ImpersonateResponse {
+            token: "t".into(), expires_in: 900,
+            user_id: uuid::Uuid::nil(), tenant_id: tid,
+        };
+        assert_eq!(r.tenant_id, tid);
+    }
 }

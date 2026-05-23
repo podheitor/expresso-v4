@@ -319,4 +319,9 @@ mod tests {
         let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":1}"#).unwrap();
         assert_eq!(b.expires_in_seconds, Some(1));
     }
+
+    #[test]
+    fn max_ttl_is_not_equal_to_default_ttl() {
+        assert_ne!(MAX_TTL_SECONDS, DEFAULT_TTL_SECONDS);
+    }
 }

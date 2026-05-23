@@ -218,4 +218,10 @@ mod tests {
         let s = format!("{:?}", XwrvWeights::default());
         assert!(s.contains("w_recency"));
     }
+
+    #[test]
+    fn xwrv_weights_valid_custom_sum_to_one() {
+        let w = XwrvWeights { w_recency: 0.4, w_frequency: 0.4, w_volume: 0.2 };
+        assert!(w.is_valid());
+    }
 }

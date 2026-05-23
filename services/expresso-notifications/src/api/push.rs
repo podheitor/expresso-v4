@@ -221,4 +221,14 @@ mod tests {
     fn provider_display_apns() {
         assert_eq!(format!("{}", PushProvider::Apns), "apns");
     }
+
+    #[test]
+    fn push_subscription_id_accessible() {
+        let id = uuid::Uuid::new_v4();
+        let sub = PushSubscription {
+            id, user_id: uuid::Uuid::nil(), tenant_id: uuid::Uuid::nil(),
+            provider: PushProvider::WebPush, endpoint: "e".into(), enabled: true,
+        };
+        assert_eq!(sub.id, id);
+    }
 }

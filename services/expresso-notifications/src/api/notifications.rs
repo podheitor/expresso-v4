@@ -225,4 +225,11 @@ mod tests {
         let back: Priority = serde_json::from_str(&json).unwrap();
         assert_eq!(back, Priority::High);
     }
+
+    #[test]
+    fn channel_serde_roundtrip_websocket() {
+        let json = serde_json::to_string(&Channel::Websocket).unwrap();
+        let back: Channel = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Channel::Websocket);
+    }
 }

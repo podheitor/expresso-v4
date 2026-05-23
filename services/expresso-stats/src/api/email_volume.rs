@@ -202,4 +202,10 @@ mod tests {
         let e = VolumeEntry { bucket: "2026-01".into(), sent: 10, received: 30 };
         assert_eq!(e.received, 30);
     }
+
+    #[test]
+    fn validate_since_days_one_is_ok() {
+        let p = EmailVolumeParams { tenant_id: "t1".into(), granularity: None, since_days: Some(1) };
+        assert!(validate_email_volume_params(&p).is_none());
+    }
 }

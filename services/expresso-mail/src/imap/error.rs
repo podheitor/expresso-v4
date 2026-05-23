@@ -199,4 +199,9 @@ mod tests {
     fn read_only_is_client_error() {
         assert!(ImapError::ReadOnly.is_client_error());
     }
+
+    #[test]
+    fn permission_denied_is_client_error() {
+        assert!(ImapError::PermissionDenied.is_client_error());
+    }
 }

@@ -195,4 +195,9 @@ mod tests {
     fn sender_asc_is_not_date_based() {
         assert!(!SortOrder::SenderAsc.is_date_based());
     }
+
+    #[test]
+    fn sender_desc_is_not_date_based() {
+        assert!(!SortOrder::SenderDesc.is_date_based());
+    }
 }

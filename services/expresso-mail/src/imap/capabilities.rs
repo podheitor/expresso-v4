@@ -196,4 +196,9 @@ mod tests {
         let s = capability_string(&[]);
         assert_eq!(s, "CAPABILITY ");
     }
+
+    #[test]
+    fn all_capabilities_does_not_contain_sasl_ir() {
+        assert!(!all_capabilities().contains(&ImapCapability::SaslIr));
+    }
 }

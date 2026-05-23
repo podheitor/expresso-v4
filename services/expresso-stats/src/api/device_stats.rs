@@ -203,4 +203,11 @@ mod tests {
         let pct = compute_pct(25, 100);
         assert!((pct - 25.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn platform_serde_roundtrip_unknown() {
+        let json = serde_json::to_string(&Platform::Unknown).unwrap();
+        let back: Platform = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Platform::Unknown);
+    }
 }

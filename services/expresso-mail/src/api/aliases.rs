@@ -203,4 +203,12 @@ mod tests {
         };
         assert_eq!(a.tenant_id, tid);
     }
+
+    #[test]
+    fn valid_alias_exactly_at_max_length() {
+        let local = "a".repeat(MAX_ALIAS_BYTES - "@x.com".len());
+        let addr = format!("{}@x.com", local);
+        assert_eq!(addr.len(), MAX_ALIAS_BYTES);
+        assert!(is_valid_alias(&addr));
+    }
 }

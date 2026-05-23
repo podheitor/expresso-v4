@@ -251,4 +251,10 @@ mod tests {
         let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok+/="}"#).unwrap();
         assert_eq!(q.id_token_hint.as_deref(), Some("tok+/="));
     }
+
+    #[test]
+    fn logout_query_hint_with_spaces_preserved() {
+        let q: LogoutQuery = serde_json::from_str(r#"{"id_token_hint":"tok with space"}"#).unwrap();
+        assert_eq!(q.id_token_hint.as_deref(), Some("tok with space"));
+    }
 }

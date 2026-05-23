@@ -207,4 +207,9 @@ mod tests {
         let e = CalendarError::AlarmNotFound(id);
         assert!(format!("{e}").contains(&id.to_string()));
     }
+
+    #[test]
+    fn bad_request_status_is_400() {
+        assert_eq!(status(CalendarError::BadRequest("x".into())), 400);
+    }
 }

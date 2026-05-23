@@ -425,4 +425,11 @@ mod tests {
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert!(c.amr.is_empty());
     }
+
+    #[test]
+    fn aud_claim_many_case_sensitive_match() {
+        let aud = AudClaim::Many(vec!["Web".into(), "api".into()]);
+        assert!(!aud.contains("web"));
+        assert!(aud.contains("api"));
+    }
 }

@@ -183,4 +183,9 @@ mod tests {
     fn xoauth2_does_not_require_tls() {
         assert!(!AuthMechanism::XOAuth2.requires_tls());
     }
+
+    #[test]
+    fn from_str_login_lowercase() {
+        assert_eq!(AuthMechanism::from_str("login"), Some(AuthMechanism::Login));
+    }
 }

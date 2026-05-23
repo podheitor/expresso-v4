@@ -216,4 +216,10 @@ mod tests {
         let r = TenantResolver::parse("a.x:r1,b.x:r2,c.x:r3");
         assert_eq!(r.hosts().count(), r.len());
     }
+
+    #[test]
+    fn resolve_with_mixed_case_port_host_returns_realm() {
+        let r = TenantResolver::parse("MAIL.CORP.COM:corp-mail");
+        assert_eq!(r.resolve("mail.corp.com:465"), Some("corp-mail"));
+    }
 }

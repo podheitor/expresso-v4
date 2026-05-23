@@ -1548,4 +1548,19 @@ mod tests {
         };
         assert_eq!(hit.document_id, "doc-test-42");
     }
+
+    #[test]
+    fn search_hit_score_preserved() {
+        let hit = SearchHit {
+            document_id: "doc-score".to_owned(),
+            score: 1.5,
+            subject: Some("Re: Invoice".to_owned()),
+            from_addr: None,
+            snippet: None,
+            kind: Some("mail".to_owned()),
+            received_at: Some(1_700_000_000),
+        };
+        assert!((hit.score - 1.5).abs() < f32::EPSILON);
+        assert_eq!(hit.kind.as_deref(), Some("mail"));
+    }
 }

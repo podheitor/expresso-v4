@@ -234,4 +234,11 @@ mod tests {
         let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
         assert!(!m.issuer_template.is_empty());
     }
+
+    #[test]
+    fn audience_and_issuer_for_are_independent() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "my-aud").unwrap();
+        assert!(!m.issuer_for("corp").contains("my-aud"));
+        assert_eq!(m.audience(), "my-aud");
+    }
 }

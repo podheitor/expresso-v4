@@ -212,6 +212,17 @@ mod tests {
         }).unwrap();
         assert!(tok.expires_at_epoch > 0);
     }
+
+    #[test]
+    fn issued_token_domain_matches_config() {
+        let j = Jitsi::new(fixture_cfg());
+        let tok = j.mint(&IssueRequest {
+            room: "r3", user_id: Uuid::nil(),
+            display_name: "Y", email: "y@y",
+            moderator: false, allow_recording: false,
+        }).unwrap();
+        assert_eq!(tok.domain, "meet.expresso.local");
+    }
 }
 
 #[cfg(test)]
@@ -381,5 +392,11 @@ mod extra_tests {
     fn jitsi_config_app_id_differs_from_secret() {
         let cfg = fixture_cfg();
         assert_ne!(cfg.app_id, cfg.secret);
+    }
+
+    #[test]
+    fn jitsi_config_app_secret_is_nonempty() {
+        let cfg = fixture_cfg();
+        assert!(!cfg.app_secret.is_empty());
     }
 }

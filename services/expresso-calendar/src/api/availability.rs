@@ -232,4 +232,9 @@ mod tests {
         };
         assert_eq!(slot.start, "2026-01-01T08:00:00Z");
     }
+
+    #[test]
+    fn busy_status_display_out_of_office() {
+        assert_eq!(format!("{}", BusyStatus::OutOfOffice), "out_of_office");
+    }
 }

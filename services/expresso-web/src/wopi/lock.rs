@@ -199,4 +199,11 @@ mod tests {
     fn validate_uuid_style_lock_id_is_ok() {
         assert!(validate_lock_id("550e8400-e29b-41d4-a716-446655440000").is_none());
     }
+
+    #[test]
+    fn lock_operation_serde_roundtrip_refresh_lock() {
+        let json = serde_json::to_string(&LockOperation::RefreshLock).unwrap();
+        let back: LockOperation = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, LockOperation::RefreshLock);
+    }
 }

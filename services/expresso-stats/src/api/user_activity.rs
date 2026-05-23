@@ -217,4 +217,11 @@ mod tests {
         };
         assert_eq!(e.bucket, "2026-05-22");
     }
+
+    #[test]
+    fn activity_type_serde_roundtrip_file_download() {
+        let json = serde_json::to_string(&ActivityType::FileDownload).unwrap();
+        let back: ActivityType = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, ActivityType::FileDownload);
+    }
 }

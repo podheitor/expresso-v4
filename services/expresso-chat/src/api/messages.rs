@@ -240,4 +240,9 @@ mod tests {
     fn default_limit_equals_fifty() {
         assert_eq!(DEFAULT_LIST_LIMIT, 50);
     }
+
+    #[test]
+    fn max_message_body_bytes_is_less_than_one_mib() {
+        assert!(MAX_MESSAGE_BODY_BYTES < 1024 * 1024);
+    }
 }

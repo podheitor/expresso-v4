@@ -205,4 +205,14 @@ mod tests {
     fn totp_algo_is_sha1() {
         assert_eq!(TOTP_ALGO, "SHA1");
     }
+
+    #[test]
+    fn mfa_status_all_variants_have_distinct_str() {
+        let variants = [MfaStatus::Disabled, MfaStatus::Pending, MfaStatus::Enabled];
+        let strs: Vec<&str> = variants.iter().map(|v| v.as_str()).collect();
+        assert_eq!(strs.len(), 3);
+        assert_ne!(strs[0], strs[1]);
+        assert_ne!(strs[1], strs[2]);
+        assert_ne!(strs[0], strs[2]);
+    }
 }

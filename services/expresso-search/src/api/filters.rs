@@ -216,4 +216,10 @@ mod tests {
     fn parse_bool_empty_string_returns_none() {
         assert_eq!(parse_bool_param(""), None);
     }
+
+    #[test]
+    fn date_range_span_secs_none_when_only_after() {
+        let dr = DateRange { after_secs: Some(500), before_secs: None };
+        assert_eq!(dr.span_secs(), None);
+    }
 }

@@ -273,4 +273,10 @@ mod tests {
         assert_eq!(command_label("EXAMINE"), "EXAMINE");
         assert_eq!(command_label("examine"), "EXAMINE");
     }
+
+    #[test]
+    fn copy_command_maps_correctly() {
+        assert_eq!(command_label("COPY"), "COPY");
+        assert_eq!(command_label("copy"), "COPY");
+    }
 }

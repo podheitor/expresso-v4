@@ -167,4 +167,9 @@ mod tests {
     fn op_bulk_index_contains_bulk() {
         assert!(OP_BULK_INDEX.contains("bulk"));
     }
+
+    #[test]
+    fn op_delete_contains_delete() {
+        assert!(OP_DELETE.contains("delete"));
+    }
 }

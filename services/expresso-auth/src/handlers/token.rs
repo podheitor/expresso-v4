@@ -220,4 +220,12 @@ mod tests {
     fn token_type_mac_nonempty() {
         assert!(!TOKEN_TYPE_MAC.is_empty());
     }
+
+    #[test]
+    fn introspect_response_iat_optional() {
+        let r = IntrospectResponse {
+            active: true, sub: None, exp: None, iat: None, client_id: None, token_type: None,
+        };
+        assert!(r.iat.is_none());
+    }
 }

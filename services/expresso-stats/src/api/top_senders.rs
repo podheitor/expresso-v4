@@ -203,4 +203,9 @@ mod tests {
         let d = TopSenderEntry::domain_from_addr("user@mail.example.org");
         assert_eq!(d, "mail.example.org");
     }
+
+    #[test]
+    fn validate_top_n_one_is_ok() {
+        assert!(validate_top_senders_params(&make_params("t1", Some(1), None)).is_none());
+    }
 }

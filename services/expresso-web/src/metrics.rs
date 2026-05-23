@@ -174,4 +174,9 @@ mod tests {
     fn wopi_tokens_metric_contains_wopi() {
         assert!(METRIC_WOPI_TOKENS.contains("wopi"));
     }
+
+    #[test]
+    fn upstream_drive_and_upstream_mail_differ() {
+        assert_ne!(UPSTREAM_DRIVE, UPSTREAM_MAIL);
+    }
 }

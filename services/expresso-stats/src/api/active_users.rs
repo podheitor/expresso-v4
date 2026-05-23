@@ -195,4 +195,9 @@ mod tests {
     fn max_days_is_365() {
         assert_eq!(MAX_DAYS, 365);
     }
+
+    #[test]
+    fn retention_rate_three_quarters() {
+        assert!((retention_rate(75, 100) - 75.0).abs() < 1e-9);
+    }
 }

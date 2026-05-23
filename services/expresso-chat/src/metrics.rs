@@ -161,4 +161,9 @@ mod tests {
     fn metric_name_starts_with_namespace() {
         assert!(metric_name("foo").starts_with(NAMESPACE));
     }
+
+    #[test]
+    fn matrix_error_label_contains_no_spaces() {
+        assert!(!MATRIX_ERROR.contains(' '));
+    }
 }

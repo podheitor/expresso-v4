@@ -503,4 +503,22 @@ mod tests {
         let sha_b: Option<String> = Some("abc".into());
         assert_eq!(sha_a, sha_b);
     }
+
+    #[test]
+    fn file_version_version_num_accessible() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_num: 42, size_bytes: 0, sha256: None, storage_key: None,
+            created_by: Uuid::nil(), created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert_eq!(v.version_num, 42);
+    }
+
+    #[test]
+    fn create_version_body_storage_key_and_sha256_both_optional() {
+        let b: CreateVersionBody = serde_json::from_str(r#"{"size_bytes":100}"#).unwrap();
+        assert!(b.sha256.is_none());
+        assert!(b.storage_key.is_none());
+    }
 }

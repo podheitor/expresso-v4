@@ -201,4 +201,9 @@ mod tests {
     fn contact_not_found_status_is_404() {
         assert_eq!(status(ContactsError::ContactNotFound(uuid::Uuid::nil())), 404);
     }
+
+    #[test]
+    fn addressbook_not_found_status_is_404() {
+        assert_eq!(status(ContactsError::AddressbookNotFound("ab".into())), 404);
+    }
 }

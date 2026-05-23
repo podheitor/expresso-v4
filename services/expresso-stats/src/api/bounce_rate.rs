@@ -201,4 +201,9 @@ mod tests {
         let back: BounceKind = serde_json::from_str(&json).unwrap();
         assert_eq!(back, BounceKind::SpamReport);
     }
+
+    #[test]
+    fn from_str_unsubscribed() {
+        assert_eq!(BounceKind::from_str("unsubscribed"), Some(BounceKind::Unsubscribed));
+    }
 }

@@ -179,4 +179,12 @@ mod tests {
             assert!(!f.as_str().is_empty());
         }
     }
+
+    #[test]
+    fn frequency_roundtrip_all_variants() {
+        for f in [Frequency::Secondly, Frequency::Minutely, Frequency::Hourly,
+                  Frequency::Daily, Frequency::Weekly, Frequency::Monthly, Frequency::Yearly] {
+            assert_eq!(Frequency::from_str(f.as_str()), Some(f));
+        }
+    }
 }

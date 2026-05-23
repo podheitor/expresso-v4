@@ -424,4 +424,10 @@ mod tests {
         let (name, _) = parse_header_line("Content-Type: text/plain").unwrap();
         assert_eq!(name, "Content-Type");
     }
+
+    #[test]
+    fn parse_header_colon_only_returns_some() {
+        let result = parse_header_line(":");
+        assert!(result.is_some());
+    }
 }

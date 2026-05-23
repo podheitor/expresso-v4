@@ -223,4 +223,11 @@ mod tests {
     fn max_subject_bytes_is_998() {
         assert_eq!(MAX_SUBJECT_BYTES, 998);
     }
+
+    #[test]
+    fn default_settings_ne_enabled_variant() {
+        let mut s = AutoresponderSettings::default();
+        s.enabled = true;
+        assert_ne!(s, AutoresponderSettings::default());
+    }
 }

@@ -164,4 +164,9 @@ mod tests {
     fn users_migrated_contains_migrated() {
         assert!(METRIC_USERS_MIGRATED.contains("migrated"));
     }
+
+    #[test]
+    fn label_realm_and_label_reason_differ() {
+        assert_ne!(LABEL_REALM, LABEL_REASON);
+    }
 }

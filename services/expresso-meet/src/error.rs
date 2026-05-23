@@ -204,4 +204,9 @@ mod tests {
         let e = MeetError::BadRequest("empty title".into());
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn jitsi_unavailable_and_database_unavailable_have_same_status() {
+        assert_eq!(status(MeetError::JitsiUnavailable), status(MeetError::DatabaseUnavailable));
+    }
 }

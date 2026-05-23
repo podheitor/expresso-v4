@@ -1598,4 +1598,18 @@ mod tests {
         };
         assert!(dto.special_use.is_none());
     }
+
+    #[test]
+    fn folder_dto_subscribed_flag_preserved() {
+        let dto = FolderDto {
+            id: uuid::Uuid::nil(),
+            name: "Drafts".into(),
+            special_use: Some("\\Drafts".into()),
+            message_count: 3,
+            unseen_count: 1,
+            subscribed: false,
+        };
+        assert!(!dto.subscribed);
+        assert_eq!(dto.message_count, 3);
+    }
 }

@@ -154,4 +154,9 @@ mod tests {
     fn subscriptions_active_metric_does_not_end_with_total() {
         assert!(!METRIC_SUBSCRIPTIONS_ACTIVE.ends_with("_total"));
     }
+
+    #[test]
+    fn channel_push_and_email_are_distinct() {
+        assert_ne!(CHANNEL_PUSH, CHANNEL_EMAIL);
+    }
 }

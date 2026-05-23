@@ -536,4 +536,13 @@ mod tests {
         let v = r.to_value("mail.corp.example");
         assert!(v.starts_with("mail.corp.example"));
     }
+
+    #[test]
+    fn auth_results_none_policy_to_value_has_no_p_fragment() {
+        let r = AuthResults {
+            spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(),
+            dmarc_policy: None, ..Default::default()
+        };
+        assert!(!r.to_value("mx.example.com").contains("(p="));
+    }
 }

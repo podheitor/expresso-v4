@@ -239,4 +239,9 @@ mod tests {
         };
         assert_eq!(u.email, "admin@corp.com");
     }
+
+    #[test]
+    fn status_display_disabled() {
+        assert_eq!(format!("{}", UserStatus::Disabled), "disabled");
+    }
 }

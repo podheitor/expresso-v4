@@ -216,4 +216,9 @@ mod tests {
     fn data_command_label_is_nonempty() {
         assert!(!command_label("DATA").is_empty());
     }
+
+    #[test]
+    fn lhlo_and_helo_map_to_different_labels() {
+        assert_ne!(command_label("LHLO"), command_label("HELO"));
+    }
 }

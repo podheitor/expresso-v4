@@ -198,4 +198,9 @@ mod tests {
     fn default_days_constant() {
         assert_eq!(DEFAULT_DAYS, 30);
     }
+
+    #[test]
+    fn quota_pct_zero_used() {
+        assert_eq!(quota_pct(0, 1000), 0.0);
+    }
 }

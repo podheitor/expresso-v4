@@ -184,4 +184,11 @@ mod tests {
     fn preset_display_d30() {
         assert_eq!(format!("{}", AuditPreset::D30), "30d");
     }
+
+    #[test]
+    fn preset_serde_roundtrip_d30() {
+        let s = serde_json::to_string(&AuditPreset::D30).unwrap();
+        let back: AuditPreset = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, AuditPreset::D30);
+    }
 }

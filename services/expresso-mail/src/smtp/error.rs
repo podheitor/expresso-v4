@@ -209,4 +209,11 @@ mod tests {
     fn mailbox_full_is_transient() {
         assert!(SmtpError::MailboxFull.is_transient());
     }
+
+    #[test]
+    fn invalid_address_is_permanent() {
+        let e = SmtpError::InvalidAddress("bad@".into());
+        assert!(e.is_permanent());
+        assert!(!e.is_transient());
+    }
 }

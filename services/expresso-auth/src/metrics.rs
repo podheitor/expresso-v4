@@ -161,4 +161,9 @@ mod tests {
     fn namespace_has_no_trailing_underscore() {
         assert!(!namespace().ends_with('_'));
     }
+
+    #[test]
+    fn metric_name_starts_with_namespace_underscore() {
+        assert!(metric_name("x").starts_with(&format!("{}_", namespace())));
+    }
 }

@@ -508,4 +508,9 @@ mod tests {
         let s = Method::Cancel.as_str();
         assert_eq!(s, s.to_ascii_uppercase());
     }
+
+    #[test]
+    fn escape_text_cr_is_dropped() {
+        assert_eq!(escape_text("line\rend"), "lineend");
+    }
 }

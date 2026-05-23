@@ -230,4 +230,9 @@ mod tests {
         let back: ResponseTimeMetric = serde_json::from_str(&json).unwrap();
         assert_eq!(back, ResponseTimeMetric::P95Ms);
     }
+
+    #[test]
+    fn service_display_drive() {
+        assert_eq!(ServiceName::Drive.to_string(), "drive");
+    }
 }

@@ -171,4 +171,9 @@ mod tests {
     fn realms_created_contains_realms() {
         assert!(METRIC_REALMS_CREATED.contains("realms"));
     }
+
+    #[test]
+    fn step_client_and_step_user_differ() {
+        assert_ne!(STEP_CLIENT, STEP_USER);
+    }
 }

@@ -224,3 +224,8 @@ fn aud_claim_many_contains_all_listed_values() {
     assert!(aud.contains("svc-c"));
     assert!(!aud.contains("svc-d"));
 }
+
+#[test]
+fn aud_claim_one_case_sensitive_does_not_match_uppercase() {
+    assert!(!AudClaim::One("expresso-web".into()).contains("Expresso-Web"));
+}

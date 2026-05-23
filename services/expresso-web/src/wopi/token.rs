@@ -178,4 +178,9 @@ mod tests {
     fn token_expired_boundary_one_second_after_is_expired() {
         assert!(token_expired(999, 1000));
     }
+
+    #[test]
+    fn validate_token_ttl_exactly_min_is_ok() {
+        assert_eq!(validate_token_ttl(MIN_TOKEN_TTL_SECS), None);
+    }
 }

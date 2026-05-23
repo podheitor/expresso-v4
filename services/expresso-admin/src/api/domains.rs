@@ -212,4 +212,11 @@ mod tests {
     fn valid_domain_with_hyphen() {
         assert!(is_valid_domain("my-company.com"));
     }
+
+    #[test]
+    fn status_serde_roundtrip_failed() {
+        let s = serde_json::to_string(&DomainStatus::Failed).unwrap();
+        let back: DomainStatus = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, DomainStatus::Failed);
+    }
 }

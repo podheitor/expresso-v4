@@ -182,4 +182,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains("500") && s.contains("1000") && s.contains("bytes"));
     }
+
+    #[test]
+    fn quota_exceeded_zero_limit_in_display() {
+        let e = CoreError::QuotaExceeded { used: 1, limit: 0 };
+        let s = e.to_string();
+        assert!(s.contains('0'));
+    }
 }

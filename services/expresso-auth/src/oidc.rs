@@ -153,4 +153,10 @@ mod tests {
     fn is_https_url_rejects_ftp_scheme() {
         assert!(!is_https_url("ftp://example.com/file"));
     }
+
+    #[test]
+    fn build_scope_four_scopes_has_three_spaces() {
+        let result = build_scope(&["openid", "profile", "email", "offline_access"]);
+        assert_eq!(result.chars().filter(|&c| c == ' ').count(), 3);
+    }
 }

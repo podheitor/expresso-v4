@@ -160,4 +160,10 @@ mod tests {
     fn validate_room_name_numbers_accepted() {
         assert!(validate_room_name("Room42").is_ok());
     }
+
+    #[test]
+    fn validate_topic_max_len_minus_one_accepted() {
+        let topic = "t".repeat(MAX_TOPIC_LEN - 1);
+        assert!(validate_topic(&topic).is_ok());
+    }
 }

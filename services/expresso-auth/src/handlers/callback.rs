@@ -338,4 +338,9 @@ mod tests {
     fn accepts_path_with_query_param_and_hash() {
         assert!(is_safe_local_redirect("/settings?tab=security#notifications"));
     }
+
+    #[test]
+    fn rejects_path_with_carriage_return_only() {
+        assert!(!is_safe_local_redirect("/path\rfoo"));
+    }
 }

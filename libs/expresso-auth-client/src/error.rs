@@ -181,4 +181,11 @@ mod tests {
         let e = AuthError::JwksFetch("dns timeout".into());
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn kid_not_found_some_and_none_displays_differ() {
+        let a = AuthError::KidNotFound(Some("k1".into())).to_string();
+        let b = AuthError::KidNotFound(None).to_string();
+        assert_ne!(a, b);
+    }
 }

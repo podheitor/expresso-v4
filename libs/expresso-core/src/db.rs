@@ -304,6 +304,15 @@ mod tests {
         let p = ok();
         assert!(!format!("{p:?}").is_empty());
     }
+
+    #[test]
+    fn rls_posture_tables_unforced_count_reflects_pushes() {
+        let mut p = ok();
+        p.tables_unforced.push("t1".into());
+        p.tables_unforced.push("t2".into());
+        assert_eq!(p.tables_unforced.len(), 2);
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

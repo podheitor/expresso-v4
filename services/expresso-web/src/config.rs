@@ -358,4 +358,15 @@ mod tests {
         };
         assert!(!b.calendar.is_empty());
     }
+
+    #[test]
+    fn wopi_is_enabled_false_after_empty_secret_construction() {
+        let w = Wopi {
+            secret:         String::new(),
+            collabora_url:  "https://c".into(),
+            drive_url:      "https://d".into(),
+            token_ttl_secs: 3600,
+        };
+        assert!(!w.is_enabled());
+    }
 }

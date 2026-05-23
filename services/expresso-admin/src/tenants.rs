@@ -581,4 +581,9 @@ mod slug_tests {
         assert!(!valid_slug("my@tenant"));
         assert!(!valid_slug("ten ant"));
     }
+
+    #[test]
+    fn plans_const_does_not_contain_free() {
+        assert!(!PLANS.contains(&"free"));
+    }
 }

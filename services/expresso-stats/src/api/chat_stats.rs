@@ -184,4 +184,9 @@ mod tests {
     fn engagement_ratio_equal_messages_and_users() {
         assert!((engagement_ratio(10, 10) - 1.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn clamp_days_max_boundary_preserved() {
+        assert_eq!(clamp_days(MAX_DAYS), MAX_DAYS);
+    }
 }

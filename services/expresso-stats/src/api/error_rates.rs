@@ -224,4 +224,9 @@ mod tests {
         let back: HttpStatusClass = serde_json::from_str(&json).unwrap();
         assert_eq!(back, HttpStatusClass::ClientError4xx);
     }
+
+    #[test]
+    fn from_status_boundary_299_is_2xx() {
+        assert_eq!(HttpStatusClass::from_status(299), Some(HttpStatusClass::Success2xx));
+    }
 }

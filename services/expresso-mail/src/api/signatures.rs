@@ -228,4 +228,9 @@ mod tests {
             serde_json::from_str(r#"{"name":"My Sig","content":"X"}"#).unwrap();
         assert_eq!(b.name, "My Sig");
     }
+
+    #[test]
+    fn max_signature_name_bytes_positive() {
+        assert!(MAX_SIGNATURE_NAME_BYTES > 0);
+    }
 }

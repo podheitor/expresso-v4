@@ -177,4 +177,10 @@ mod tests {
         let r: SearchResult<i32> = Err(SearchError::BadQuery("oops".into()));
         assert!(matches!(r, Err(SearchError::BadQuery(_))));
     }
+
+    #[test]
+    fn invalid_tenant_status_as_u16_is_400() {
+        let resp = SearchError::InvalidTenant("bad-id".into()).into_response();
+        assert_eq!(resp.status().as_u16(), 400);
+    }
 }

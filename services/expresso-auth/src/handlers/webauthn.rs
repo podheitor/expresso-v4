@@ -228,4 +228,12 @@ mod tests {
     fn max_credential_name_bytes_is_64() {
         assert_eq!(MAX_CREDENTIAL_NAME_BYTES, 64);
     }
+
+    #[test]
+    fn both_attachment_variants_have_distinct_str() {
+        assert_ne!(
+            AuthenticatorAttachment::Platform.as_str(),
+            AuthenticatorAttachment::CrossPlatform.as_str(),
+        );
+    }
 }

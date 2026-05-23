@@ -200,4 +200,9 @@ mod tests {
         let back: RenameError = serde_json::from_str(&json).unwrap();
         assert_eq!(back, RenameError::NotLocked);
     }
+
+    #[test]
+    fn strip_extension_dot_at_start_returns_whole() {
+        assert_eq!(strip_extension(".hidden"), ".hidden");
+    }
 }

@@ -190,4 +190,10 @@ mod tests {
         let e = MigrateError::UserConflict("u".into());
         assert!(e.to_string().starts_with("user conflict:"));
     }
+
+    #[test]
+    fn is_retryable_true_for_599() {
+        let e = MigrateError::ApiFailure { status: 599, body: "timeout".into() };
+        assert!(is_retryable(&e));
+    }
 }

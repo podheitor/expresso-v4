@@ -171,4 +171,9 @@ mod tests {
         };
         assert!(a.ext.is_none());
     }
+
+    #[test]
+    fn ext_to_mime_doc_maps_to_msword() {
+        assert_eq!(ext_to_mime("doc"), Some("application/msword"));
+    }
 }

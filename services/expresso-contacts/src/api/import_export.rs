@@ -195,4 +195,10 @@ mod tests {
         let q: ExportQuery = serde_json::from_str(r#"{}"#).unwrap();
         assert!(q.version.is_none());
     }
+
+    #[test]
+    fn import_result_skipped_field_accessible() {
+        let r = ImportResult { imported: 7, skipped: 3, errors: vec![] };
+        assert_eq!(r.skipped, 3);
+    }
 }

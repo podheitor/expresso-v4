@@ -401,4 +401,10 @@ mod tests {
         let r = req("from@example.com", None, None, None);
         assert!(r.bcc.is_none());
     }
+
+    #[test]
+    fn build_raw_with_cc_and_subject_succeeds() {
+        let r = req("from@example.com", Some(vec!["to@example.com"]), Some("Hello"), None);
+        assert!(build_raw(&r).is_ok());
+    }
 }

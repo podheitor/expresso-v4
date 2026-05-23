@@ -233,4 +233,10 @@ mod tests {
         let c = cfg("i", "c", "https://app/cb", None, None, None);
         assert!(c.redirect_uri.starts_with("https://"));
     }
+
+    #[test]
+    fn issuer_and_redirect_uri_are_independent_fields() {
+        let c = cfg("https://issuer.example.com", "cid", "https://app.example.com/cb", None, None, None);
+        assert_ne!(c.issuer, c.redirect_uri);
+    }
 }

@@ -227,4 +227,9 @@ mod tests {
     fn kind_display_audio() {
         assert_eq!(format!("{}", AttachmentKind::Audio), "audio");
     }
+
+    #[test]
+    fn kind_display_video() {
+        assert_eq!(format!("{}", AttachmentKind::Video), "video");
+    }
 }

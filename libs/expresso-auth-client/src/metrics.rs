@@ -187,4 +187,11 @@ mod tests {
         let b = result_label(&AuthError::InvalidToken("x".into()));
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn result_label_missing_claim_and_malformed_claim_differ() {
+        let a = result_label(&AuthError::MissingClaim("sub"));
+        let b = result_label(&AuthError::MalformedClaim("sub", "bad".into()));
+        assert_ne!(a, b);
+    }
 }

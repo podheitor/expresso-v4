@@ -201,4 +201,9 @@ mod tests {
         assert!(!sanitize_file_name("f<ile>").contains('<'));
         assert!(!sanitize_file_name("f<ile>").contains('>'));
     }
+
+    #[test]
+    fn sanitize_removes_pipe_character() {
+        assert!(!sanitize_file_name("fi|le").contains('|'));
+    }
 }

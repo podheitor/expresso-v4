@@ -165,4 +165,10 @@ mod tests {
     fn namespace_contains_no_spaces() {
         assert!(!NAMESPACE.contains(' '));
     }
+
+    #[test]
+    fn metric_name_separator_is_between_namespace_and_base() {
+        let result = metric_name("latency");
+        assert_eq!(result, format!("{NAMESPACE}_latency"));
+    }
 }

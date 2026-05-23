@@ -220,4 +220,9 @@ mod tests {
         let back: GeoGrouping = serde_json::from_str(&json).unwrap();
         assert_eq!(back, GeoGrouping::Continent);
     }
+
+    #[test]
+    fn from_str_region() {
+        assert_eq!(GeoGrouping::from_str("region"), Some(GeoGrouping::Region));
+    }
 }

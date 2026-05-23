@@ -488,4 +488,18 @@ mod tests {
         let body: SnoozeBody = serde_json::from_str(json).unwrap();
         assert_eq!(body.snooze_until.year(), 2027);
     }
+
+    #[test]
+    fn snooze_record_woken_at_some_roundtrip() {
+        use time::macros::datetime;
+        let woken = datetime!(2027-01-10 06:00:00 UTC);
+        let r = SnoozeRecord {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), user_id: Uuid::nil(),
+            message_id: Uuid::nil(), mailbox_id: Uuid::nil(),
+            snooze_until: datetime!(2027-01-10 05:00:00 UTC),
+            snoozed_at:   datetime!(2027-01-09 05:00:00 UTC),
+            woken_at: Some(woken),
+        };
+        assert_eq!(r.woken_at.unwrap(), woken);
+    }
 }

@@ -156,4 +156,9 @@ mod tests {
     fn validate_member_count_max_minus_one_accepted() {
         assert!(validate_member_count(MAX_GROUP_MEMBERS - 1).is_ok());
     }
+
+    #[test]
+    fn validate_group_name_newline_only_rejected() {
+        assert!(validate_group_name("\n").is_err());
+    }
 }

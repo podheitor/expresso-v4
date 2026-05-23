@@ -214,4 +214,9 @@ mod tests {
         let back: SecurityEventRow = serde_json::from_str(&json).unwrap();
         assert_eq!(back, row);
     }
+
+    #[test]
+    fn login_success_is_auth_event() {
+        assert!(SecurityEventKind::LoginSuccess.is_auth_event());
+    }
 }

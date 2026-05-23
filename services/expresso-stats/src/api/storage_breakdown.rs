@@ -206,4 +206,11 @@ mod tests {
         let p = StorageBreakdownParams { tenant_id: "t1".into(), user_id: Some("bob".into()) };
         assert!(validate_storage_params(&p).is_none());
     }
+
+    #[test]
+    fn storage_category_serde_roundtrip_contacts() {
+        let json = serde_json::to_string(&StorageCategory::Contacts).unwrap();
+        let back: StorageCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, StorageCategory::Contacts);
+    }
 }

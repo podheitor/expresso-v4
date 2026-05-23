@@ -213,4 +213,9 @@ mod tests {
         let back: RsvpStatus = serde_json::from_str(&s).unwrap();
         assert_eq!(back, RsvpStatus::NeedsAction);
     }
+
+    #[test]
+    fn rsvp_display_needs_action() {
+        assert_eq!(format!("{}", RsvpStatus::NeedsAction), "needs-action");
+    }
 }

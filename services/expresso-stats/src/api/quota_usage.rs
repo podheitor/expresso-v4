@@ -199,4 +199,11 @@ mod tests {
         let e = entry(100, 2_000_000);
         assert_eq!(e.limit_bytes, 2_000_000);
     }
+
+    #[test]
+    fn usage_ratio_one_byte_used_of_large_limit() {
+        let e = entry(1, 1_000_000_000);
+        assert!(e.usage_ratio() > 0.0);
+        assert!(e.usage_ratio() < 0.001);
+    }
 }

@@ -183,4 +183,9 @@ mod tests {
     fn acceptance_rate_quarter() {
         assert!((acceptance_rate(25, 100) - 0.25).abs() < 1e-9);
     }
+
+    #[test]
+    fn clamp_days_middle_value_unchanged() {
+        assert_eq!(clamp_days(180), 180);
+    }
 }

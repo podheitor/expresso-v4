@@ -206,4 +206,9 @@ mod tests {
     fn host_default_is_any_address() {
         assert_eq!(SmtpConfig::default().host, "0.0.0.0");
     }
+
+    #[test]
+    fn submission_port_differs_from_mx_port() {
+        assert_ne!(SmtpConfig::submission_port(), SmtpConfig::mx_port());
+    }
 }

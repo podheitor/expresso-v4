@@ -160,4 +160,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("{cause}"));
         assert_ne!(e.to_string(), cause);
     }
+
+    #[test]
+    fn display_contains_colon_space_before_cause() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("cause text"));
+        assert!(e.to_string().contains(": cause text"));
+    }
 }

@@ -214,4 +214,12 @@ mod tests {
         let e = MailError::NotFound;
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn mail_error_not_found_and_folder_not_found_same_status() {
+        assert_eq!(
+            status(MailError::NotFound),
+            status(MailError::FolderNotFound { folder: "X".into() })
+        );
+    }
 }

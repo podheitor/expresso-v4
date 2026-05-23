@@ -163,4 +163,11 @@ mod tests {
         let e = ExpresscryptoError::Internal(anyhow::anyhow!("{cause}"));
         assert_ne!(e.to_string(), cause);
     }
+
+    #[test]
+    fn internal_error_display_contains_space_after_colon() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("msg"));
+        let s = e.to_string();
+        assert!(s.contains(": msg"));
+    }
 }

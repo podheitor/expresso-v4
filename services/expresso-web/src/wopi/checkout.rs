@@ -207,4 +207,9 @@ mod tests {
         let back: LockOperation = serde_json::from_str(&json).unwrap();
         assert_eq!(back, LockOperation::RefreshLock);
     }
+
+    #[test]
+    fn unlock_requires_lock_id() {
+        assert!(LockOperation::Unlock.requires_lock_id());
+    }
 }

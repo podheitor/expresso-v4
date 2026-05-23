@@ -215,4 +215,12 @@ mod tests {
             storage_used_bytes: 0, emails_sent: 0, meetings_held: 0, drive_files: 0 };
         assert_eq!(o.active_user_pct(), 0.0);
     }
+
+    #[test]
+    fn storage_gib_two_gib() {
+        let two_gib = 2i64 * 1024 * 1024 * 1024;
+        let o = TenantOverview { tenant_id: "t".into(), total_users: 0, active_users: 0,
+            storage_used_bytes: two_gib, emails_sent: 0, meetings_held: 0, drive_files: 0 };
+        assert!((o.storage_gib() - 2.0).abs() < 1e-6);
+    }
 }

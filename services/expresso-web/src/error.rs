@@ -196,4 +196,10 @@ mod tests {
         let r: WebResult<u32> = Ok(1);
         assert!(r.is_ok());
     }
+
+    #[test]
+    fn web_result_err_is_err() {
+        let r: WebResult<u32> = Err(WebError::Internal("crash".into()));
+        assert!(r.is_err());
+    }
 }

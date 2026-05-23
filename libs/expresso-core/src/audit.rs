@@ -280,4 +280,10 @@ mod tests {
         assert_eq!(status_enum(Some(399)), "success");
         assert_eq!(status_enum(Some(400)), "failure");
     }
+
+    #[test]
+    fn audit_entry_action_contains_dot_for_namespaced_event() {
+        let e = AuditEntry::new("user.password_changed");
+        assert!(e.action.contains('.'));
+    }
 }

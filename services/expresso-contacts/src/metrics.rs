@@ -165,4 +165,9 @@ mod tests {
     fn metric_name_starts_with_namespace() {
         assert!(metric_name("baz").starts_with(NAMESPACE));
     }
+
+    #[test]
+    fn namespace_does_not_contain_hyphen() {
+        assert!(!NAMESPACE.contains('-'));
+    }
 }

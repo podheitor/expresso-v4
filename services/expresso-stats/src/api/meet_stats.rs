@@ -192,4 +192,9 @@ mod tests {
     fn default_days_constant() {
         assert_eq!(DEFAULT_DAYS, 30);
     }
+
+    #[test]
+    fn secs_to_minutes_half_hour() {
+        assert!((secs_to_minutes(1800) - 30.0).abs() < 1e-9);
+    }
 }

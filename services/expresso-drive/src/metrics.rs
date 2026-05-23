@@ -167,4 +167,9 @@ mod tests {
     fn is_known_op_case_sensitive_rejects_uppercase() {
         assert!(!is_known_op("FILE_UPLOAD"));
     }
+
+    #[test]
+    fn event_quota_exceeded_label_is_nonempty() {
+        assert!(!EVENT_QUOTA_EXCEEDED.is_empty());
+    }
 }

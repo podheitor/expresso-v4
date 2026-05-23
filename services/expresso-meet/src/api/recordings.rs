@@ -229,4 +229,11 @@ mod tests {
     fn status_display_failed() {
         assert_eq!(format!("{}", RecordingStatus::Failed), "failed");
     }
+
+    #[test]
+    fn status_serde_roundtrip_processing() {
+        let s = serde_json::to_string(&RecordingStatus::Processing).unwrap();
+        let back: RecordingStatus = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, RecordingStatus::Processing);
+    }
 }

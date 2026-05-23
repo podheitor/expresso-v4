@@ -199,4 +199,9 @@ mod tests {
     fn pkce_verifier_max_len_is_128() {
         assert_eq!(PKCE_VERIFIER_MAX_LEN, 128);
     }
+
+    #[test]
+    fn challenge_method_s256_and_plain_have_distinct_str() {
+        assert_ne!(ChallengeMethod::S256.as_str(), ChallengeMethod::Plain.as_str());
+    }
 }

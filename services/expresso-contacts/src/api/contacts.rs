@@ -574,4 +574,9 @@ mod tests {
     fn validate_vcard_whitespace_only_rejected() {
         assert!(validate_vcard("\t\n\r  ", MAX_CONTACT_VCARD_BYTES).is_err());
     }
+
+    #[test]
+    fn max_import_vcf_bytes_is_nonzero() {
+        assert!(MAX_IMPORT_VCF_BYTES > 0);
+    }
 }

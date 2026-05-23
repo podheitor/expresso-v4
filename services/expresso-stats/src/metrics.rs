@@ -210,4 +210,11 @@ mod tests {
     fn granularity_month_display() {
         assert_eq!(format!("{}", Granularity::Month), "month");
     }
+
+    #[test]
+    fn granularity_serde_roundtrip_week() {
+        let s = serde_json::to_string(&Granularity::Week).unwrap();
+        let back: Granularity = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, Granularity::Week);
+    }
 }

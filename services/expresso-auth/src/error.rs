@@ -172,4 +172,10 @@ mod tests {
     fn refresh_error_status_is_401() {
         assert_eq!(status(RpError::Refresh("timeout".into())), StatusCode::UNAUTHORIZED);
     }
+
+    #[test]
+    fn state_not_found_display_is_nonempty() {
+        let e = RpError::StateNotFound;
+        assert!(!e.to_string().is_empty());
+    }
 }

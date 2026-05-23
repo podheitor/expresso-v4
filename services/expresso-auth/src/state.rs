@@ -301,4 +301,12 @@ mod tests {
         let p = make_pending(60);
         assert!(p.redirect_uri.contains("callback"));
     }
+
+    #[test]
+    fn redirect_uri_template_host_placeholder_present() {
+        let tmpl = "https://{host}/auth/callback";
+        assert!(tmpl.contains("{host}"));
+        let result = tmpl.replace("{host}", "example.com");
+        assert!(!result.contains("{host}"));
+    }
 }

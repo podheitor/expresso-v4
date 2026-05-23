@@ -159,4 +159,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("{cause}"));
         assert_ne!(e.to_string(), cause);
     }
+
+    #[test]
+    fn display_contains_colon_space_before_cause_text() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 read error"));
+        assert!(e.to_string().contains(": s3 read error"));
+    }
 }

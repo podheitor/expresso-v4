@@ -209,4 +209,10 @@ mod tests {
         let e = ProvisionError::UserCreateFailed { username: "u".into(), reason: "r".into() };
         assert!(!is_idempotent_safe(&e));
     }
+
+    #[test]
+    fn is_idempotent_safe_false_for_role_create_failed() {
+        let e = ProvisionError::RoleCreateFailed { role: "admin".into(), reason: "dup".into() };
+        assert!(!is_idempotent_safe(&e));
+    }
 }

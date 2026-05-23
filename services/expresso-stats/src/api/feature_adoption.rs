@@ -213,4 +213,9 @@ mod tests {
         let back: Feature = serde_json::from_str(&json).unwrap();
         assert_eq!(back, Feature::Chat);
     }
+
+    #[test]
+    fn all_features_contains_notes() {
+        assert!(Feature::all().contains(&Feature::Notes));
+    }
 }

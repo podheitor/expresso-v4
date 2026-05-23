@@ -199,4 +199,10 @@ mod tests {
         let e = ChatError::BadRequest("empty body".into());
         assert!(format!("{e}").contains("empty body"));
     }
+
+    #[test]
+    fn channel_not_found_display_is_nonempty() {
+        let e = ChatError::ChannelNotFound(uuid::Uuid::nil());
+        assert!(!format!("{e}").is_empty());
+    }
 }

@@ -224,4 +224,11 @@ mod tests {
     fn max_subs_per_user_value_is_ten() {
         assert_eq!(MAX_SUBS_PER_USER, 10);
     }
+
+    #[test]
+    fn push_subscription_clone_equals_original() {
+        let sub = valid_sub();
+        let cloned = sub.clone();
+        assert_eq!(sub, cloned);
+    }
 }

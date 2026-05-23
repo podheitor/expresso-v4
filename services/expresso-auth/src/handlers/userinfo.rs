@@ -310,4 +310,16 @@ mod tests {
         let v: serde_json::Value = serde_json::to_value(&u).unwrap();
         assert_eq!(v["tenant_id"].as_str().unwrap(), id.to_string());
     }
+
+    #[test]
+    fn userinfo_roles_empty_vec_len_is_zero() {
+        let u = UserInfo {
+            sub: "s".into(),
+            email: "e".into(),
+            name: "n".into(),
+            tenant_id: Uuid::nil(),
+            roles: vec![],
+        };
+        assert_eq!(u.roles.len(), 0);
+    }
 }

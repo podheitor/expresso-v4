@@ -227,4 +227,11 @@ mod tests {
     fn facet_top_n_less_than_max_limit() {
         assert!(FACET_TOP_N < MAX_LIMIT);
     }
+
+    #[test]
+    fn search_params_sort_field_optional() {
+        let p = make_params("q", "t", 10);
+        assert!(p.facet.is_none());
+        assert!(p.offset == 0);
+    }
 }

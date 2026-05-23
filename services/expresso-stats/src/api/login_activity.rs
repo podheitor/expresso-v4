@@ -209,4 +209,9 @@ mod tests {
         let back: LoginOutcome = serde_json::from_str(&json).unwrap();
         assert_eq!(back, LoginOutcome::Failure);
     }
+
+    #[test]
+    fn failure_rate_single_failure_in_one() {
+        assert!((failure_rate(1, 1) - 1.0).abs() < 1e-9);
+    }
 }

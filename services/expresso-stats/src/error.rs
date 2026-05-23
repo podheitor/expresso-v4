@@ -202,4 +202,11 @@ mod tests {
     fn unauthorized_display_is_unauthorized() {
         assert_eq!(StatsError::Unauthorized.to_string(), "unauthorized");
     }
+
+    #[test]
+    fn internal_debug_contains_message() {
+        let e = StatsError::Internal("detail".into());
+        let s = format!("{:?}", e);
+        assert!(s.contains("detail"));
+    }
 }

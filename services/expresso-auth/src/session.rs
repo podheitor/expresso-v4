@@ -162,4 +162,10 @@ mod tests {
         let cookie = build_at_cookie("t", -1, false);
         assert!(cookie.contains("Max-Age=-1"));
     }
+
+    #[test]
+    fn clear_at_cookie_starts_with_cookie_name() {
+        let cookie = clear_at_cookie();
+        assert!(cookie.starts_with("expresso_at="));
+    }
 }

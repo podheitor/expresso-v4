@@ -1100,4 +1100,9 @@ mod tests {
     fn max_recipients_per_message_equals_100() {
         assert_eq!(MAX_RECIPIENTS_PER_MESSAGE, 100);
     }
+
+    #[test]
+    fn min_schedule_seconds_is_less_than_one_hour() {
+        assert!(MIN_SCHEDULE_SECONDS < 3600);
+    }
 }

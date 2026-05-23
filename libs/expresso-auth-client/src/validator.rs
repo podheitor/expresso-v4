@@ -394,4 +394,11 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/prod", "my-app");
         assert_ne!(c.issuer, c.audience);
     }
+
+    #[test]
+    fn oidc_config_trailing_comma_audience_filters_empty() {
+        let c = OidcConfig::new("https://kc/realms/r", "client-a,");
+        let auds = c.audiences();
+        assert_eq!(auds, vec!["client-a"]);
+    }
 }
