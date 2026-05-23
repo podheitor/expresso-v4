@@ -1,0 +1,134 @@
+# Prometheus — Expresso V4 Cloud (Ansible template Jinja2)
+# Instalado em /opt/expresso/prometheus.yml na VM obs.
+# Scrape de todas as VMs pela rede privada.
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    env: cloud-pilot
+    domain: "{{ domain }}"
+
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+scrape_configs:
+
+  # ── VM: app — serviços Rust ──────────────────────────────────────────────
+  - job_name: expresso-auth
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8100']
+        labels: { vm: app, service: auth }
+
+  - job_name: expresso-mail
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8001']
+        labels: { vm: app, service: mail }
+
+  - job_name: expresso-calendar
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8002']
+        labels: { vm: app, service: calendar }
+
+  - job_name: expresso-contacts
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8003']
+        labels: { vm: app, service: contacts }
+
+  - job_name: expresso-drive
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8004']
+        labels: { vm: app, service: drive }
+
+  - job_name: expresso-flows
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8005']
+        labels: { vm: app, service: flows }
+
+  - job_name: expresso-notifications
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8006']
+        labels: { vm: app, service: notifications }
+
+  - job_name: expresso-search
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8007']
+        labels: { vm: app, service: search }
+
+  - job_name: expresso-wopi
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8008']
+        labels: { vm: app, service: wopi }
+
+  - job_name: expresso-compliance
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8009']
+        labels: { vm: app, service: compliance }
+
+  - job_name: expresso-chat
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8010']
+        labels: { vm: app, service: chat }
+
+  - job_name: expresso-admin
+    static_configs:
+      - targets: ['{{ app_private_ip }}:8101']
+        labels: { vm: app, service: admin }
+
+  # ── VM: meet ─────────────────────────────────────────────────────────────
+  - job_name: expresso-meet
+    static_configs:
+      - targets: ['{{ meet_private_ip }}:8011']
+        labels: { vm: meet, service: meet }
+
+  # ── VM: data — exporters ─────────────────────────────────────────────────
+  - job_name: postgres
+    static_configs:
+      - targets: ['{{ data_private_ip }}:9187']   # postgres_exporter
+        labels: { vm: data }
+
+  - job_name: redis
+    static_configs:
+      - targets: ['{{ data_private_ip }}:9121']   # redis_exporter
+        labels: { vm: data }
+
+  - job_name: nats
+    static_configs:
+      - targets: ['{{ data_private_ip }}:7777']   # nats_prometheus_exporter
+        labels: { vm: data }
+
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ['{{ data_private_ip }}:9000']
+        labels: { vm: data }
+
+  # ── Node exporter — todas as VMs ─────────────────────────────────────────
+  - job_name: node
+    static_configs:
+      - targets:
+          - '{{ app_private_ip }}:9100'
+          - '{{ data_private_ip }}:9100'
+          - '{{ meet_private_ip }}:9100'
+          - '{{ obs_private_ip }}:9100'
+
+  # ── Auto-monitoramento obs ────────────────────────────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+        labels: { vm: obs }
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ['localhost:9093']
+        labels: { vm: obs }
+
+  - job_name: grafana
+    static_configs:
+      - targets: ['localhost:3001']
+        labels: { vm: obs }

@@ -1,0 +1,109 @@
+#cloud-config
+# VM: data — 8 vCPU / 32 GB RAM / 60 GB OS + 500 GB NVMe (Postgres) + 2 TB SSD (MinIO)
+# Serviços: PostgreSQL 16 + MinIO + NATS JetStream
+
+hostname: expresso-data
+fqdn: data.expresso.internal
+manage_etc_hosts: true
+
+users:
+  - name: expresso
+    groups: [docker, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - <SUA_CHAVE_SSH_PUBLICA>
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - ufw
+  - htop
+  - jq
+  - postgresql-client-16   # para pg_dump local e healthchecks
+
+runcmd:
+  # Docker
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - chmod a+r /etc/apt/keyrings/docker.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update -qq
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+  # Montar disco Postgres (NVMe — /dev/vdb)
+  - mkfs.ext4 -L pgdata /dev/vdb
+  - mkdir -p /data/postgres
+  - echo "LABEL=pgdata /data/postgres ext4 defaults,noatime 0 2" >> /etc/fstab
+  - mount -a
+
+  # Montar disco MinIO (SSD — /dev/vdc)
+  - mkfs.xfs -L miniodata /dev/vdc
+  - mkdir -p /data/minio
+  - echo "LABEL=miniodata /data/minio xfs defaults,noatime 0 2" >> /etc/fstab
+  - mount -a
+
+  # Permissões
+  - chown -R 999:999 /data/postgres    # uid postgres no container
+  - chown -R 1000:1000 /data/minio
+
+  # Firewall — aceita apenas da rede privada (app, meet, obs)
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow from 10.0.0.0/8 to any port 5432  # Postgres
+  - ufw allow from 10.0.0.0/8 to any port 6379  # Redis
+  - ufw allow from 10.0.0.0/8 to any port 9000  # MinIO API
+  - ufw allow from 10.0.0.0/8 to any port 9001  # MinIO Console
+  - ufw allow from 10.0.0.0/8 to any port 4222  # NATS client
+  - ufw allow from 10.0.0.0/8 to any port 8222  # NATS monitor
+  - ufw --force enable
+
+  # Tuning kernel para Postgres
+  - sysctl -w vm.swappiness=10
+  - sysctl -w vm.dirty_ratio=15
+  - sysctl -w vm.dirty_background_ratio=5
+  - echo "vm.swappiness=10"              >> /etc/sysctl.d/99-expresso.conf
+  - echo "vm.dirty_ratio=15"             >> /etc/sysctl.d/99-expresso.conf
+  - echo "vm.dirty_background_ratio=5"   >> /etc/sysctl.d/99-expresso.conf
+
+  # Docker log rotation
+  - |
+    cat > /etc/docker/daemon.json <<'EOF'
+    {
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "50m", "max-file": "5" }
+    }
+    EOF
+  - systemctl restart docker
+
+  - mkdir -p /opt/expresso
+  - chown -R expresso:expresso /opt/expresso
+
+write_files:
+  # Cron de backup Postgres diário (comprimido, retém 7 dias)
+  - path: /etc/cron.d/expresso-pgbackup
+    content: |
+      SHELL=/bin/bash
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      0 2 * * * expresso /opt/expresso/scripts/pg-backup.sh >> /var/log/expresso-pgbackup.log 2>&1
+
+  - path: /opt/expresso/scripts/pg-backup.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      BACKUP_DIR="/data/backups/postgres"
+      KEEP_DAYS=7
+      DATE=$(date +%Y%m%d-%H%M%S)
+      mkdir -p "$BACKUP_DIR"
+      source /opt/expresso/env/.env
+      docker exec expresso-postgres pg_dumpall -U expresso \
+        | gzip > "${BACKUP_DIR}/expresso-${DATE}.sql.gz"
+      find "$BACKUP_DIR" -name "*.sql.gz" -mtime +${KEEP_DAYS} -delete
+      echo "$(date) backup OK: expresso-${DATE}.sql.gz"

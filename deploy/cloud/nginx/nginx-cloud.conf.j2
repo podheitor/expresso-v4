@@ -1,0 +1,249 @@
+# Nginx — Expresso V4 Cloud (Ansible template Jinja2)
+# VM: app | Domínio: {{ domain }}
+# Pré-req: certbot já emitiu certificado em /etc/letsencrypt/live/{{ domain }}/
+
+worker_processes auto;
+worker_rlimit_nofile 65536;
+
+events {
+  worker_connections 4096;
+  use epoll;
+  multi_accept on;
+}
+
+http {
+  include       /etc/nginx/mime.types;
+  default_type  application/octet-stream;
+
+  sendfile    on;
+  tcp_nopush  on;
+  tcp_nodelay on;
+  keepalive_timeout 65;
+  keepalive_requests 1000;
+
+  # Uploads Drive (tus.io — chunks de até 256 MB por padrão)
+  client_max_body_size 512m;
+  client_body_timeout  300s;
+
+  # Gzip
+  gzip on;
+  gzip_vary on;
+  gzip_types text/plain text/css application/json application/javascript
+             text/xml application/xml application/xml+rss text/javascript;
+
+  # Logging JSON
+  log_format json_combined escape=json
+    '{"time":"$time_iso8601",'
+    '"remote_addr":"$remote_addr",'
+    '"method":"$request_method",'
+    '"uri":"$request_uri",'
+    '"status":$status,'
+    '"bytes":$body_bytes_sent,'
+    '"referrer":"$http_referer",'
+    '"ua":"$http_user_agent",'
+    '"host":"$host",'
+    '"duration":$request_time}';
+
+  access_log /var/log/nginx/access.log json_combined;
+  error_log  /var/log/nginx/error.log warn;
+
+  # Rate limiting
+  limit_req_zone $binary_remote_addr zone=api:10m rate=30r/s;
+  limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+
+  # TLS compartilhado
+  ssl_certificate     /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/{{ domain }}/privkey.pem;
+  ssl_trusted_certificate /etc/letsencrypt/live/{{ domain }}/chain.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+  ssl_ciphers         ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
+  ssl_prefer_server_ciphers off;
+  ssl_session_cache   shared:SSL:20m;
+  ssl_session_timeout 1d;
+  ssl_session_tickets off;
+  ssl_stapling        on;
+  ssl_stapling_verify on;
+
+  # Security headers
+  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+  add_header X-Frame-Options SAMEORIGIN always;
+  add_header X-Content-Type-Options nosniff always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+  # Proxy headers comuns
+  proxy_http_version 1.1;
+  proxy_set_header Host              $host;
+  proxy_set_header X-Real-IP         $remote_addr;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header Upgrade           $http_upgrade;
+  proxy_set_header Connection        $connection_upgrade;
+  proxy_read_timeout 300s;
+  proxy_send_timeout 300s;
+
+  map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+  }
+
+  # ── HTTP → HTTPS redirect ──────────────────────────────────────────────────
+  server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+  }
+
+  # ── {{ domain }} — Web UI ──────────────────────────────────────────────────
+  server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name {{ domain }} www.{{ domain }};
+
+    location /auth/ {
+      limit_req zone=auth burst=10 nodelay;
+      proxy_pass http://127.0.0.1:8100/auth/;
+    }
+
+    # SSE — notificações push (não pode fazer buffer)
+    location /api/v1/notifications/stream {
+      proxy_pass         http://127.0.0.1:8006;
+      proxy_buffering    off;
+      proxy_cache        off;
+      proxy_read_timeout 3600s;
+      chunked_transfer_encoding on;
+    }
+
+    # Drive — uploads tus.io grandes
+    location /api/v1/files/upload {
+      proxy_pass              http://127.0.0.1:8004;
+      proxy_request_buffering off;
+      proxy_read_timeout      600s;
+      client_max_body_size    512m;
+    }
+
+    location /api/ {
+      limit_req zone=api burst=50 nodelay;
+      proxy_pass http://127.0.0.1:8001;   # mail como default; nginx rota por prefixo abaixo
+    }
+
+    # Roteamento de API por serviço
+    location /api/v1/calendars  { proxy_pass http://127.0.0.1:8002; }
+    location /api/v1/events     { proxy_pass http://127.0.0.1:8002; }
+    location /api/v1/addressbooks { proxy_pass http://127.0.0.1:8003; }
+    location /api/v1/contacts   { proxy_pass http://127.0.0.1:8003; }
+    location /api/v1/files      { proxy_pass http://127.0.0.1:8004; }
+    location /api/v1/search     { proxy_pass http://127.0.0.1:8007; }
+    location /api/v1/notifications { proxy_pass http://127.0.0.1:8006; }
+    location /api/v1/channels   { proxy_pass http://127.0.0.1:8010; }
+    location /api/v1/meetings   { proxy_pass http://127.0.0.1:{{ meet_private_ip }}:8011; }
+    location /api/v1/compliance { proxy_pass http://127.0.0.1:8009; }
+    location /api/v1/flows      { proxy_pass http://127.0.0.1:8005; }
+
+    # CalDAV / CardDAV (clientes nativos)
+    location /dav/calendar { proxy_pass http://127.0.0.1:8002; }
+    location /dav/contacts { proxy_pass http://127.0.0.1:8003; }
+
+    # WOPI (LibreOffice Online)
+    location /wopi/ { proxy_pass http://127.0.0.1:8008/wopi/; }
+
+    location / {
+      proxy_pass http://127.0.0.1:3000;
+    }
+  }
+
+  # ── auth.{{ domain }} — Keycloak ──────────────────────────────────────────
+  server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name auth.{{ domain }};
+
+    location / {
+      limit_req zone=auth burst=20 nodelay;
+      proxy_pass          http://127.0.0.1:8080;
+      proxy_buffer_size   32k;
+      proxy_buffers       8 32k;
+      proxy_busy_buffers_size 64k;
+      proxy_read_timeout  120s;
+    }
+  }
+
+  # ── mail.{{ domain }} — Webmail API / IMAP autodiscover ───────────────────
+  server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name mail.{{ domain }};
+
+    location /autodiscover/ { proxy_pass http://127.0.0.1:8001/autodiscover/; }
+    location /autoconfig/   { proxy_pass http://127.0.0.1:8001/autoconfig/; }
+    location /api/          { proxy_pass http://127.0.0.1:8001/api/; }
+    location / {
+      return 301 https://{{ domain }}$request_uri;
+    }
+  }
+
+  # ── meet.{{ domain }} — WebRTC signalling ─────────────────────────────────
+  server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name meet.{{ domain }};
+
+    location / {
+      proxy_pass http://{{ meet_private_ip }}:8011;
+      # WebSocket para signalling
+      proxy_read_timeout 3600s;
+    }
+  }
+
+  # ── admin.{{ domain }} — painel admin ─────────────────────────────────────
+  server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name admin.{{ domain }};
+
+    # Restringir a IPs de operação (substituir pelo IP real do time)
+    # allow <IP_OPS>/32;
+    # deny all;
+
+    location / {
+      proxy_pass http://127.0.0.1:8101;
+    }
+  }
+
+  # ── grafana.{{ domain }} — observability ──────────────────────────────────
+  server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name grafana.{{ domain }};
+
+    location / {
+      proxy_pass http://{{ obs_private_ip }}:3001;
+    }
+  }
+}
+
+# Stream TCP — IMAP over TLS (porta 993) e SMTP Submission (587)
+stream {
+  log_format stream_log '$remote_addr [$time_local] $protocol $status $bytes_sent $bytes_received';
+  access_log /var/log/nginx/stream.log stream_log;
+
+  # IMAP TLS (993) — repassa para expresso-mail com terminação TLS
+  server {
+    listen 993 ssl;
+    ssl_certificate     /etc/letsencrypt/live/{{ domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ domain }}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    proxy_pass 127.0.0.1:14300;   # expresso-mail IMAP interno
+    proxy_timeout 600s;
+  }
+
+  # SMTP Submission (587)
+  server {
+    listen 587;
+    proxy_pass 127.0.0.1:15870;   # expresso-mail SMTP interno
+    proxy_timeout 120s;
+  }
+}

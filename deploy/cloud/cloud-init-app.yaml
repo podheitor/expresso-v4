@@ -1,0 +1,102 @@
+#cloud-config
+# VM: app — 8 vCPU / 16 GB RAM / 60 GB SSD
+# Serviços: 13 binários Rust + Keycloak + Redis + Nginx
+# Preencher ANTES de aplicar:
+#   <DOMAIN>        ex.: expresso.exemplo.gov.br
+#   <DATA_IP>       IP privado da VM data
+#   <OBS_IP>        IP privado da VM obs
+#   <MEET_IP>       IP privado da VM meet
+
+hostname: expresso-app
+fqdn: app.expresso.internal
+manage_etc_hosts: true
+
+users:
+  - name: expresso
+    groups: [docker, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - <SUA_CHAVE_SSH_PUBLICA>
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - nginx
+  - certbot
+  - python3-certbot-nginx
+  - fail2ban
+  - ufw
+  - htop
+  - jq
+  - git
+
+runcmd:
+  # Docker
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - chmod a+r /etc/apt/keyrings/docker.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update -qq
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+  # golang-migrate (para aplicar migrations)
+  - curl -L https://github.com/golang-migrate/migrate/releases/download/v4.18.1/migrate.linux-amd64.tar.gz | tar xz -C /usr/local/bin
+
+  # Firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp      # SSH
+  - ufw allow 80/tcp      # HTTP (redirect)
+  - ufw allow 443/tcp     # HTTPS
+  - ufw allow 587/tcp     # SMTP submission
+  - ufw allow 993/tcp     # IMAP over TLS
+  - ufw allow 143/tcp     # IMAP STARTTLS
+  - ufw --force enable
+
+  # fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Diretórios
+  - mkdir -p /opt/expresso/{tls,env}
+  - chown -R expresso:expresso /opt/expresso
+
+  # Docker daemon — log rotation
+  - |
+    cat > /etc/docker/daemon.json <<'EOF'
+    {
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "50m", "max-file": "5" }
+    }
+    EOF
+  - systemctl restart docker
+
+write_files:
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime  = 3600
+      findtime = 600
+      maxretry = 5
+
+      [sshd]
+      enabled = true
+      port    = ssh
+      logpath = %(sshd_log)s
+
+      [nginx-http-auth]
+      enabled = true
+
+  - path: /opt/expresso/README.txt
+    content: |
+      VM: expresso-app
+      Próximos passos:
+        1. Copiar .env para /opt/expresso/env/.env
+        2. cd /opt/expresso && git clone <repo> app
+        3. bash app/deploy/cloud/bootstrap.sh app

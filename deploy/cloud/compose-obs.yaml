@@ -1,0 +1,81 @@
+# VM: obs — Prometheus + Grafana + Alertmanager
+# Uso: docker compose -f deploy/cloud/compose-obs.yaml --env-file /opt/expresso/env/.env up -d
+
+services:
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: expresso-prometheus
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-remote-write-receiver'
+      - '--web.enable-lifecycle'
+    volumes:
+      - /opt/expresso/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/expresso/app/ops/prometheus/alerts:/etc/prometheus/alerts:ro
+      - /data/prometheus:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: expresso-grafana
+    restart: unless-stopped
+    user: "472:472"
+    environment:
+      GF_SERVER_ROOT_URL: https://grafana.${DOMAIN:?}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-localhost:25}
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-grafana@expresso.local}
+    volumes:
+      - /data/grafana:/var/lib/grafana
+      - /opt/expresso/app/deploy/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/expresso/app/deploy/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "0.0.0.0:3001:3000"
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: expresso-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://alertmanager.expresso.internal:9093'
+    environment:
+      ALERTMANAGER_WEBHOOK_URL: ${ALERTMANAGER_WEBHOOK_URL:-}
+      ALERTMANAGER_WEBHOOK_CRITICAL: ${ALERTMANAGER_WEBHOOK_CRITICAL:-}
+      ALERTMANAGER_SMTP_FROM: ${ALERTMANAGER_SMTP_FROM:-}
+      ALERTMANAGER_SMTP_SMARTHOST: ${ALERTMANAGER_SMTP_SMARTHOST:-}
+      ALERTMANAGER_SMTP_AUTH_USER: ${ALERTMANAGER_SMTP_AUTH_USER:-}
+      ALERTMANAGER_SMTP_AUTH_PASS: ${ALERTMANAGER_SMTP_AUTH_PASS:-}
+      ALERTMANAGER_EMAIL_TO: ${ALERTMANAGER_EMAIL_TO:-}
+    volumes:
+      - /opt/expresso/app/ops/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /data/alertmanager:/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

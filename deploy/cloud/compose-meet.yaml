@@ -1,0 +1,29 @@
+# VM: meet — expresso-meet (WebRTC SFU)
+# Uso: docker compose -f deploy/cloud/compose-meet.yaml --env-file /opt/expresso/env/.env up -d
+# CRÍTICO: APP_IP e MEET_PUBLIC_IP precisam estar corretos para ICE funcionar.
+
+services:
+
+  expresso-meet:
+    image: expresso-meet:latest
+    container_name: expresso-meet
+    restart: unless-stopped
+    network_mode: host   # necessário para UDP WebRTC — NAT no container quebra ICE
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      HOST: 0.0.0.0
+      PORT: "8011"
+      DATABASE_URL: postgres://${POSTGRES_USER:-expresso}:${POSTGRES_PASSWORD}@${DATA_IP:?}:5432/expresso
+      REDIS_URL: redis://${DATA_IP}:6379
+      NATS_URL: nats://${DATA_IP}:4222
+      KEYCLOAK_URL: http://${APP_IP:?}:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-expresso}
+      # WebRTC — IPs para ICE candidates
+      MEET_ANNOUNCE_IP: ${MEET_PUBLIC_IP:?}   # IP público da VM meet
+      MEET_RTP_PORT_MIN: "10000"
+      MEET_RTP_PORT_MAX: "20000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6

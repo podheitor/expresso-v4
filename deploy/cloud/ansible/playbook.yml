@@ -1,0 +1,198 @@
+---
+# Expresso V4 — Ansible Playbook
+# Uso: ansible-playbook -i inventory.ini playbook.yml
+# Pré-req: VMs já provisionadas com cloud-init, SSH acessível.
+
+- name: Configuração comum a todas as VMs
+  hosts: all
+  become: true
+  tasks:
+    - name: Ajustar /etc/hosts com IPs privados
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          {{ app_private_ip }}  expresso-app  app.expresso.internal
+          {{ data_private_ip }} expresso-data data.expresso.internal
+          {{ meet_private_ip }} expresso-meet meet.expresso.internal
+          {{ obs_private_ip }}  expresso-obs  obs.expresso.internal
+
+    - name: Clonar repositório
+      become_user: expresso
+      git:
+        repo: "{{ lookup('env', 'EXPRESSO_REPO') | default('git@github.com:<org>/expresso.git') }}"
+        dest: /opt/expresso/app
+        version: main
+        accept_hostkey: true
+
+# ── VM: data ────────────────────────────────────────────────────────────────
+- name: Configurar VM data (Postgres + MinIO + NATS)
+  hosts: data
+  become: true
+  tasks:
+    - name: Copiar .env de data
+      copy:
+        src: ../env/data.env
+        dest: /opt/expresso/env/.env
+        owner: expresso
+        mode: '0600'
+
+    - name: Criar diretório de scripts de backup
+      file:
+        path: /opt/expresso/scripts
+        state: directory
+        owner: expresso
+        mode: '0755'
+
+    - name: Subir stack de dados
+      become_user: expresso
+      community.docker.docker_compose_v2:
+        project_src: /opt/expresso/app
+        files:
+          - deploy/cloud/compose-data.yaml
+        state: present
+        pull: always
+
+    - name: Aguardar Postgres ficar healthy
+      community.docker.docker_container_info:
+        name: expresso-postgres
+      register: pg_info
+      until: pg_info.container.State.Health.Status == "healthy"
+      retries: 30
+      delay: 5
+
+    - name: Aguardar MinIO ficar healthy
+      community.docker.docker_container_info:
+        name: expresso-minio
+      register: minio_info
+      until: minio_info.container.State.Health.Status == "healthy"
+      retries: 20
+      delay: 5
+
+# ── VM: app ─────────────────────────────────────────────────────────────────
+- name: Configurar VM app (serviços Rust + Keycloak + Nginx)
+  hosts: app
+  become: true
+  tasks:
+    - name: Copiar .env de app
+      copy:
+        src: ../env/app.env
+        dest: /opt/expresso/env/.env
+        owner: expresso
+        mode: '0600'
+
+    - name: Obter certificado TLS (Let's Encrypt)
+      command: >
+        certbot certonly --nginx --non-interactive --agree-tos
+        -m {{ letsencrypt_email }}
+        -d {{ domain }}
+        -d auth.{{ domain }}
+        -d mail.{{ domain }}
+        -d meet.{{ domain }}
+        -d admin.{{ domain }}
+        -d grafana.{{ domain }}
+      args:
+        creates: /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+
+    - name: Instalar nginx.conf
+      template:
+        src: ../nginx/nginx-cloud.conf.j2
+        dest: /etc/nginx/nginx.conf
+        owner: root
+        mode: '0644'
+      notify: reload nginx
+
+    - name: Aplicar migrations
+      become_user: expresso
+      command: >
+        migrate
+          -path /opt/expresso/app/migrations
+          -database "{{ lookup('env', 'DATABASE_URL') }}"
+          up
+      environment:
+        DATABASE_URL: "postgres://expresso:{{ lookup('env', 'POSTGRES_PASSWORD') }}@{{ data_private_ip }}:5432/expresso"
+
+    - name: Subir serviços de aplicação
+      become_user: expresso
+      community.docker.docker_compose_v2:
+        project_src: /opt/expresso/app
+        files:
+          - deploy/cloud/compose-app.yaml
+        state: present
+        pull: always
+
+    - name: Aguardar expresso-auth ficar healthy
+      community.docker.docker_container_info:
+        name: expresso-auth
+      register: auth_info
+      until: auth_info.container.State.Health.Status == "healthy"
+      retries: 30
+      delay: 5
+
+  handlers:
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded
+
+# ── VM: meet ────────────────────────────────────────────────────────────────
+- name: Configurar VM meet (WebRTC SFU)
+  hosts: meet
+  become: true
+  tasks:
+    - name: Copiar .env de meet
+      copy:
+        src: ../env/meet.env
+        dest: /opt/expresso/env/.env
+        owner: expresso
+        mode: '0600'
+
+    - name: Subir expresso-meet
+      become_user: expresso
+      community.docker.docker_compose_v2:
+        project_src: /opt/expresso/app
+        files:
+          - deploy/cloud/compose-meet.yaml
+        state: present
+        pull: always
+
+# ── VM: obs ─────────────────────────────────────────────────────────────────
+- name: Configurar VM obs (Prometheus + Grafana + Alertmanager)
+  hosts: obs
+  become: true
+  tasks:
+    - name: Copiar .env de obs
+      copy:
+        src: ../env/obs.env
+        dest: /opt/expresso/env/.env
+        owner: expresso
+        mode: '0600'
+
+    - name: Instalar prometheus.yml
+      template:
+        src: ../prometheus/prometheus-cloud.yml.j2
+        dest: /opt/expresso/prometheus.yml
+        owner: expresso
+        mode: '0644'
+
+    - name: Subir stack de observability
+      become_user: expresso
+      community.docker.docker_compose_v2:
+        project_src: /opt/expresso/app
+        files:
+          - deploy/cloud/compose-obs.yaml
+        state: present
+        pull: always
+
+- name: Verificação final — health de todos os serviços
+  hosts: app
+  become: false
+  tasks:
+    - name: Checar health endpoints
+      uri:
+        url: "https://{{ domain }}/health"
+        status_code: 200
+        validate_certs: true
+      register: health_result
+      retries: 10
+      delay: 10
+      until: health_result.status == 200

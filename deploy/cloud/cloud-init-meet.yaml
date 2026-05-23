@@ -1,0 +1,76 @@
+#cloud-config
+# VM: meet — 8 vCPU / 8 GB RAM / 40 GB SSD
+# Serviços: expresso-meet (WebRTC SFU)
+# CRÍTICO: interface de rede pública precisa de UDP 10000-20000 aberto no
+# security group do provedor — ufw sozinho não basta se houver firewall externo.
+
+hostname: expresso-meet
+fqdn: meet.expresso.internal
+manage_etc_hosts: true
+
+users:
+  - name: expresso
+    groups: [docker, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - <SUA_CHAVE_SSH_PUBLICA>
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - ufw
+  - htop
+  - iperf3     # diagnóstico de banda
+
+runcmd:
+  # Docker
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - chmod a+r /etc/apt/keyrings/docker.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update -qq
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+  # Tuning de rede para WebRTC (alta frequência de pacotes UDP pequenos)
+  - sysctl -w net.core.rmem_max=26214400
+  - sysctl -w net.core.wmem_max=26214400
+  - sysctl -w net.core.rmem_default=1048576
+  - sysctl -w net.core.wmem_default=1048576
+  - sysctl -w net.ipv4.udp_mem="102400 873800 16777216"
+  - |
+    cat >> /etc/sysctl.d/99-expresso-meet.conf <<'EOF'
+    net.core.rmem_max       = 26214400
+    net.core.wmem_max       = 26214400
+    net.core.rmem_default   = 1048576
+    net.core.wmem_default   = 1048576
+    net.ipv4.udp_mem        = 102400 873800 16777216
+    EOF
+
+  # Firewall
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 443/tcp                   # HTTPS signalling
+  - ufw allow 8011/tcp                  # meet HTTP API (interno)
+  - ufw allow 10000:20000/udp           # RTP/RTCP WebRTC
+  - ufw allow from 10.0.0.0/8 to any   # tráfego interno irrestrito
+  - ufw --force enable
+
+  # Docker log rotation
+  - |
+    cat > /etc/docker/daemon.json <<'EOF'
+    {
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "50m", "max-file": "5" }
+    }
+    EOF
+  - systemctl restart docker
+
+  - mkdir -p /opt/expresso
+  - chown -R expresso:expresso /opt/expresso

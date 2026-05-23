@@ -1,0 +1,104 @@
+# VM: data — PostgreSQL + MinIO + NATS
+# Dados persistidos em volumes bind-mount nos discos provisionados pelo cloud-init.
+# Uso: docker compose -f deploy/cloud/compose-data.yaml --env-file /opt/expresso/env/.env up -d
+
+services:
+
+  postgres:
+    image: postgres:16-bookworm
+    container_name: expresso-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: expresso
+      POSTGRES_USER: ${POSTGRES_USER:-expresso}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+      - ./deploy/docker/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    ports:
+      - "0.0.0.0:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-expresso}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command: >
+      postgres
+        -c shared_buffers=8GB
+        -c effective_cache_size=24GB
+        -c maintenance_work_mem=2GB
+        -c wal_buffers=64MB
+        -c max_wal_size=4GB
+        -c checkpoint_completion_target=0.9
+        -c random_page_cost=1.1
+        -c effective_io_concurrency=200
+        -c max_connections=200
+        -c log_min_duration_statement=500
+        -c log_checkpoints=on
+
+  redis:
+    image: redis:7-bookworm
+    container_name: expresso-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 4gb
+        --maxmemory-policy allkeys-lru
+        --tcp-backlog 511
+        --save 900 1
+        --save 300 10
+    volumes:
+      - redisdata:/data
+    ports:
+      - "0.0.0.0:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: expresso-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
+      MINIO_BROWSER_REDIRECT_URL: https://storage.${DOMAIN:?}
+    volumes:
+      - /data/minio:/data
+    ports:
+      - "0.0.0.0:9000:9000"
+      - "0.0.0.0:9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: expresso-nats
+    restart: unless-stopped
+    command: >
+      --jetstream
+      --store-dir /data
+      --http-port 8222
+      --max-memory-store 2GB
+      --max-file-store 20GB
+    volumes:
+      - natsdata:/data
+    ports:
+      - "0.0.0.0:4222:4222"
+      - "0.0.0.0:8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  redisdata:
+  natsdata:

@@ -1,0 +1,65 @@
+#cloud-config
+# VM: obs — 2 vCPU / 8 GB RAM / 200 GB SSD
+# Serviços: Prometheus + Grafana + Alertmanager
+
+hostname: expresso-obs
+fqdn: obs.expresso.internal
+manage_etc_hosts: true
+
+users:
+  - name: expresso
+    groups: [docker, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - <SUA_CHAVE_SSH_PUBLICA>
+
+package_update: true
+package_upgrade: true
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - ufw
+  - htop
+
+runcmd:
+  # Docker
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  - chmod a+r /etc/apt/keyrings/docker.gpg
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update -qq
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+  # Disco de dados Prometheus (vdb)
+  - mkfs.ext4 -L promdata /dev/vdb
+  - mkdir -p /data/prometheus /data/grafana /data/alertmanager
+  - echo "LABEL=promdata /data ext4 defaults,noatime 0 2" >> /etc/fstab
+  - mount -a
+  - chown -R 65534:65534 /data/prometheus   # nobody — uid Prometheus
+  - chown -R 472:472     /data/grafana       # uid Grafana
+
+  # Firewall — Grafana público, Prometheus/Alertmanager apenas rede interna
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 3001/tcp                          # Grafana (público)
+  - ufw allow from 10.0.0.0/8 to any port 9090 # Prometheus
+  - ufw allow from 10.0.0.0/8 to any port 9093 # Alertmanager
+  - ufw --force enable
+
+  # Docker log rotation
+  - |
+    cat > /etc/docker/daemon.json <<'EOF'
+    {
+      "log-driver": "json-file",
+      "log-opts": { "max-size": "50m", "max-file": "5" }
+    }
+    EOF
+  - systemctl restart docker
+
+  - mkdir -p /opt/expresso
+  - chown -R expresso:expresso /opt/expresso
