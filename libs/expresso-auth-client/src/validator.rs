@@ -388,4 +388,10 @@ mod tests {
         assert!(!auds.contains(&""));
         assert_eq!(auds.len(), 2);
     }
+
+    #[test]
+    fn oidc_config_audience_and_issuer_are_independent_fields() {
+        let c = OidcConfig::new("https://kc/realms/prod", "my-app");
+        assert_ne!(c.issuer, c.audience);
+    }
 }

@@ -156,4 +156,11 @@ mod tests {
         let b = format!("{:?}", ExpresscryptoError::Internal(anyhow::anyhow!("err_beta")));
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn internal_error_display_does_not_equal_cause_alone() {
+        let cause = "key too short";
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("{cause}"));
+        assert_ne!(e.to_string(), cause);
+    }
 }

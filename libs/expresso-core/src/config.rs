@@ -313,4 +313,9 @@ mod tests {
     fn default_imaps_port_is_993() {
         assert_eq!(default_imaps_port(), 993);
     }
+
+    #[test]
+    fn default_smtps_port_is_465() {
+        assert_eq!(default_smtps_port(), 465);
+    }
 }

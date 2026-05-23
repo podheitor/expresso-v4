@@ -152,4 +152,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.starts_with("internal error:") && s.contains("presign expired"));
     }
+
+    #[test]
+    fn display_does_not_equal_raw_cause_message() {
+        let cause = "object key not found";
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("{cause}"));
+        assert_ne!(e.to_string(), cause);
+    }
 }

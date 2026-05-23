@@ -401,4 +401,11 @@ mod tests {
         };
         assert_eq!(cfg.cache_ttl, Duration::from_secs(60));
     }
+
+    #[test]
+    fn kc_basic_error_upstream_and_invalid_credentials_are_distinct() {
+        let a = KcBasicError::Upstream("http 401".into()).to_string();
+        let b = KcBasicError::InvalidCredentials.to_string();
+        assert_ne!(a, b);
+    }
 }

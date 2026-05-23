@@ -649,4 +649,11 @@ mod tests {
         let out = csv_escape("\"");
         assert!(out.starts_with('"') && out.contains("\"\""));
     }
+
+    #[test]
+    fn audit_query_limit_none_by_default() {
+        let q: AuditQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.limit.is_none());
+        assert!(q.action_prefix.is_none());
+    }
 }

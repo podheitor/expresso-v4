@@ -167,4 +167,9 @@ mod tests {
         let resp = e.into_response();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
+
+    #[test]
+    fn refresh_error_status_is_401() {
+        assert_eq!(status(RpError::Refresh("timeout".into())), StatusCode::UNAUTHORIZED);
+    }
 }

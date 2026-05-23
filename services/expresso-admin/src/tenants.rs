@@ -575,4 +575,10 @@ mod slug_tests {
     fn plans_const_standard_is_at_index_zero() {
         assert_eq!(PLANS[0], "standard");
     }
+
+    #[test]
+    fn valid_slug_rejects_special_chars() {
+        assert!(!valid_slug("my@tenant"));
+        assert!(!valid_slug("ten ant"));
+    }
 }

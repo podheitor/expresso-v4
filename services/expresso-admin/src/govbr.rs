@@ -427,4 +427,12 @@ mod tests {
         let q = ListQuery { tenant_id: None };
         assert!(q.tenant_id.is_none());
     }
+
+    #[test]
+    fn upsert_body_cpf_hash_is_preserved_verbatim() {
+        let t = uuid::Uuid::new_v4();
+        let u = uuid::Uuid::new_v4();
+        let b = UpsertBody { cpf_hash: "deadbeef1234".into(), tenant_id: t, user_id: u, assurance: None };
+        assert_eq!(b.cpf_hash, "deadbeef1234");
+    }
 }

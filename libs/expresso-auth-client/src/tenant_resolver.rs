@@ -210,4 +210,10 @@ mod tests {
         assert_eq!(r.len(), 1);
         assert!(r.resolve("app.ex").is_some());
     }
+
+    #[test]
+    fn hosts_iterator_count_matches_len() {
+        let r = TenantResolver::parse("a.x:r1,b.x:r2,c.x:r3");
+        assert_eq!(r.hosts().count(), r.len());
+    }
 }

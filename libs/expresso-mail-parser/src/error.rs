@@ -153,4 +153,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.starts_with("internal error:") && s.contains("unexpected eof"));
     }
+
+    #[test]
+    fn display_does_not_equal_cause_alone() {
+        let cause = "truncated header";
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("{cause}"));
+        assert_ne!(e.to_string(), cause);
+    }
 }

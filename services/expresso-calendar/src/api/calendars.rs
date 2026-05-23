@@ -363,4 +363,10 @@ mod tests {
         let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":null}"#).unwrap();
         assert!(q.bucket.is_none());
     }
+
+    #[test]
+    fn stats_by_tenant_query_limit_clamped_to_min() {
+        let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":0}"#).unwrap();
+        assert_eq!(q.limit.unwrap_or(20).clamp(1, 200), 1);
+    }
 }

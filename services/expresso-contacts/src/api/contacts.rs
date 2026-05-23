@@ -569,4 +569,9 @@ mod tests {
     fn max_contact_vcard_bytes_less_than_max_import_vcf_by_factor_of_64() {
         assert_eq!(MAX_IMPORT_VCF_BYTES / MAX_CONTACT_VCARD_BYTES, 64);
     }
+
+    #[test]
+    fn validate_vcard_whitespace_only_rejected() {
+        assert!(validate_vcard("\t\n\r  ", MAX_CONTACT_VCARD_BYTES).is_err());
+    }
 }

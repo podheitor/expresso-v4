@@ -208,4 +208,9 @@ mod extra_tests {
     fn editable_mime_ods_is_editable() {
         assert!(is_editable_mime(Some("application/vnd.oasis.opendocument.spreadsheet")));
     }
+
+    #[test]
+    fn is_editable_mime_ms_excel_is_true() {
+        assert!(is_editable_mime(Some("application/vnd.ms-excel")));
+    }
 }

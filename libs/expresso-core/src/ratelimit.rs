@@ -317,4 +317,11 @@ mod tests {
         }
         assert!(rl.check("hi-burst").is_err());
     }
+
+    #[test]
+    fn rate_limit_config_rps_and_burst_stored_correctly() {
+        let cfg = RateLimitConfig { rps: 42, burst: 84 };
+        assert_eq!(cfg.rps, 42);
+        assert_eq!(cfg.burst, 84);
+    }
 }

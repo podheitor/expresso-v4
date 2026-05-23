@@ -1534,4 +1534,18 @@ mod tests {
         let ts: u64 = 1748304000;
         assert_ne!(unix_secs_to_bucket(ts, "week"), unix_secs_to_bucket(ts, "day"));
     }
+
+    #[test]
+    fn search_hit_document_id_preserved() {
+        let hit = SearchHit {
+            document_id: "doc-test-42".to_owned(),
+            score: 0.9,
+            subject: None,
+            from_addr: None,
+            snippet: None,
+            kind: None,
+            received_at: None,
+        };
+        assert_eq!(hit.document_id, "doc-test-42");
+    }
 }

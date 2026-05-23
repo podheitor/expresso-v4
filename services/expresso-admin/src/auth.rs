@@ -387,4 +387,9 @@ mod tests {
     fn is_public_path_static_css_is_public() {
         assert!(is_public_path("/static/app.css"));
     }
+
+    #[test]
+    fn is_public_path_readyz_path_is_not_recognized() {
+        assert!(!is_public_path("/readyz"));
+    }
 }

@@ -175,4 +175,10 @@ mod tests {
         let b = AuthError::MissingClaim("sub").to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn jwks_fetch_display_is_not_empty() {
+        let e = AuthError::JwksFetch("dns timeout".into());
+        assert!(!e.to_string().is_empty());
+    }
 }

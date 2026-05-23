@@ -298,6 +298,12 @@ mod tests {
         assert!(!p.is_strict());
         assert_eq!(p.tables_unforced.len(), 1);
     }
+
+    #[test]
+    fn rls_posture_debug_format_is_not_empty() {
+        let p = ok();
+        assert!(!format!("{p:?}").is_empty());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

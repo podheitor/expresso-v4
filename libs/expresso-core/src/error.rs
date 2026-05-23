@@ -175,4 +175,11 @@ mod tests {
         let b = CoreError::NotFound { resource: "x" }.to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn quota_exceeded_display_contains_used_and_limit_bytes() {
+        let e = CoreError::QuotaExceeded { used: 500, limit: 1000 };
+        let s = e.to_string();
+        assert!(s.contains("500") && s.contains("1000") && s.contains("bytes"));
+    }
 }

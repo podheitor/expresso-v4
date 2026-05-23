@@ -193,4 +193,10 @@ mod tests {
     fn matrix_unavailable_status_is_503() {
         assert_eq!(status(ChatError::MatrixUnavailable), 503);
     }
+
+    #[test]
+    fn bad_request_display_contains_message() {
+        let e = ChatError::BadRequest("empty body".into());
+        assert!(format!("{e}").contains("empty body"));
+    }
 }

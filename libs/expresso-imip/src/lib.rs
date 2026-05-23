@@ -502,4 +502,10 @@ mod tests {
     fn escape_text_newline_is_escaped_to_backslash_n() {
         assert_eq!(escape_text("line1\nline2"), "line1\\nline2");
     }
+
+    #[test]
+    fn method_cancel_as_str_is_uppercase() {
+        let s = Method::Cancel.as_str();
+        assert_eq!(s, s.to_ascii_uppercase());
+    }
 }

@@ -267,4 +267,9 @@ mod tests {
         let s = pct(25, 100);
         assert!(s.contains('%'));
     }
+
+    #[test]
+    fn mb_zero_returns_zero_string() {
+        assert_eq!(mb(0), "0");
+    }
 }

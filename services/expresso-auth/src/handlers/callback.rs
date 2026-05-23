@@ -333,4 +333,9 @@ mod tests {
     fn rejects_javascript_scheme_with_caps() {
         assert!(!is_safe_local_redirect("JavaScript:void(0)"));
     }
+
+    #[test]
+    fn accepts_path_with_query_param_and_hash() {
+        assert!(is_safe_local_redirect("/settings?tab=security#notifications"));
+    }
 }

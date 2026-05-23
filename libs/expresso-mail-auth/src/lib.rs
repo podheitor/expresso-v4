@@ -529,4 +529,11 @@ mod tests {
         let r = AuthResults { spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(), dmarc_policy: None, ..Default::default() };
         assert!(r.to_header("mx.example.com").ends_with("\r\n"));
     }
+
+    #[test]
+    fn auth_results_to_value_contains_hostname() {
+        let r = AuthResults { spf: "pass".into(), dkim: "pass".into(), dmarc: "pass".into(), dmarc_policy: None, ..Default::default() };
+        let v = r.to_value("mail.corp.example");
+        assert!(v.starts_with("mail.corp.example"));
+    }
 }

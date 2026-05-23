@@ -228,4 +228,10 @@ mod tests {
         assert!(iss.ends_with(realm));
         assert!(!iss.contains("{realm}"));
     }
+
+    #[test]
+    fn issuer_template_field_is_not_empty_after_construction() {
+        let m = MultiRealmValidator::new("http://kc/realms/{realm}", "aud").unwrap();
+        assert!(!m.issuer_template.is_empty());
+    }
 }

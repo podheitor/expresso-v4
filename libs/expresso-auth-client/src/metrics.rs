@@ -180,4 +180,11 @@ mod tests {
         let b = result_label(&AuthError::JwksFetch("x".into()));
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn result_label_expired_and_invalid_token_differ() {
+        let a = result_label(&AuthError::Expired);
+        let b = result_label(&AuthError::InvalidToken("x".into()));
+        assert_ne!(a, b);
+    }
 }

@@ -196,4 +196,9 @@ mod tests {
     fn forbidden_status_is_403() {
         assert_eq!(status(ContactsError::Forbidden), 403);
     }
+
+    #[test]
+    fn contact_not_found_status_is_404() {
+        assert_eq!(status(ContactsError::ContactNotFound(uuid::Uuid::nil())), 404);
+    }
 }

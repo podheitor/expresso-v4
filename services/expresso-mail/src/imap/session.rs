@@ -3950,4 +3950,10 @@ Attachment\r\n\
         assert!(list_matches("INBOX", "%"));
         assert!(!list_matches("INBOX.Sent", "%"));
     }
+
+    #[test]
+    fn list_matches_case_insensitive_exact() {
+        assert!(list_matches("inbox", "INBOX"));
+        assert!(list_matches("INBOX", "inbox"));
+    }
 }

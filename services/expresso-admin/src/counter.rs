@@ -473,4 +473,21 @@ mod tests {
         };
         assert_eq!(r.id, "unique-id-99");
     }
+
+    #[test]
+    fn counter_row_proposed_dtstart_is_not_empty_when_set() {
+        let r = CounterRow {
+            id: "id1".into(),
+            tenant_id: "t1".into(),
+            event_id: "e1".into(),
+            event_summary: "Stand-up".into(),
+            attendee_email: "a@b.com".into(),
+            proposed_dtstart: "2026-06-01T10:00:00Z".into(),
+            proposed_dtend: "2026-06-01T11:00:00Z".into(),
+            received_sequence: "1".into(),
+            comment: None,
+            created_at_fmt: "2026-06-01".into(),
+        };
+        assert!(!r.proposed_dtstart.is_empty());
+    }
 }

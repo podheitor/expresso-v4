@@ -200,4 +200,11 @@ mod tests {
         let e = CalendarError::Conflict("etag mismatch".into());
         assert!(format!("{e}").contains("conflict"));
     }
+
+    #[test]
+    fn alarm_not_found_display_contains_uuid() {
+        let id = uuid::Uuid::nil();
+        let e = CalendarError::AlarmNotFound(id);
+        assert!(format!("{e}").contains(&id.to_string()));
+    }
 }

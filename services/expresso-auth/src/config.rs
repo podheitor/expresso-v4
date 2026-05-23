@@ -227,4 +227,10 @@ mod tests {
         let c = cfg("https://kc/realms/main", "cid", "https://app/cb", None, None, None);
         assert_eq!(c.issuer, "https://kc/realms/main");
     }
+
+    #[test]
+    fn redirect_uri_starts_with_https() {
+        let c = cfg("i", "c", "https://app/cb", None, None, None);
+        assert!(c.redirect_uri.starts_with("https://"));
+    }
 }

@@ -274,4 +274,10 @@ mod tests {
         let m = enrich_metadata(&e);
         assert!(m.get("actor_email").is_none());
     }
+
+    #[test]
+    fn status_enum_399_is_success_boundary() {
+        assert_eq!(status_enum(Some(399)), "success");
+        assert_eq!(status_enum(Some(400)), "failure");
+    }
 }

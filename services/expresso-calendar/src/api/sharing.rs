@@ -330,4 +330,9 @@ mod tests {
     fn validate_priv_single_space_returns_error() {
         assert!(validate_priv(" ").is_err());
     }
+
+    #[test]
+    fn validate_priv_lowercase_admin_is_ok() {
+        assert!(validate_priv("admin").is_ok());
+    }
 }

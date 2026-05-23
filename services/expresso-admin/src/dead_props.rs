@@ -255,4 +255,10 @@ mod tests {
         let s = fmt_ts(ts);
         assert!(s.contains("07") || s.contains("2026-07"));
     }
+
+    #[test]
+    fn preview_exactly_120_chars_unchanged() {
+        let s: String = "a".repeat(120);
+        assert_eq!(preview(s.clone()), s);
+    }
 }

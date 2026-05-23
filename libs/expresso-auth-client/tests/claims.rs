@@ -215,3 +215,12 @@ fn from_raw_sub_is_preserved_in_context() {
 fn aud_claim_one_rejects_empty_string_when_value_is_nonempty() {
     assert!(!AudClaim::One("expresso-web".into()).contains(""));
 }
+
+#[test]
+fn aud_claim_many_contains_all_listed_values() {
+    let aud = AudClaim::Many(vec!["svc-a".into(), "svc-b".into(), "svc-c".into()]);
+    assert!(aud.contains("svc-a"));
+    assert!(aud.contains("svc-b"));
+    assert!(aud.contains("svc-c"));
+    assert!(!aud.contains("svc-d"));
+}

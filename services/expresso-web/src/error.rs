@@ -190,4 +190,10 @@ mod tests {
         assert!(matches!(WebError::Upstream("z".into()), WebError::Upstream(_)));
         assert!(!matches!(WebError::Upstream("z".into()), WebError::Internal(_)));
     }
+
+    #[test]
+    fn web_result_ok_is_ok() {
+        let r: WebResult<u32> = Ok(1);
+        assert!(r.is_ok());
+    }
 }
