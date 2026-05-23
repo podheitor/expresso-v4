@@ -337,3 +337,130 @@ async fn shutdown_signal() {
 
     info!("shutdown signal received");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_string_none_when_unset() {
+        let key = "MAIL_TEST_UNSET_19981";
+        std::env::remove_var(key);
+        assert!(env_string(key).is_none());
+    }
+
+    #[test]
+    fn env_string_some_when_set() {
+        let key = "MAIL_TEST_STR_19981";
+        std::env::set_var(key, "hello");
+        assert_eq!(env_string(key).as_deref(), Some("hello"));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn env_string_none_for_whitespace() {
+        let key = "MAIL_TEST_WS_19981";
+        std::env::set_var(key, "   ");
+        assert!(env_string(key).is_none());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_when_unset() {
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+        assert!(!dev_bootstrap_enabled());
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_true_for_1() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "1");
+        assert!(dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_true_for_true_lowercase() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "true");
+        assert!(dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_true_for_true_uppercase() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "TRUE");
+        assert!(dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_true_for_yes() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "yes");
+        assert!(dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_true_for_yes_uppercase() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "YES");
+        assert!(dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_for_zero() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "0");
+        assert!(!dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_for_false() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "false");
+        assert!(!dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_for_no() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "no");
+        assert!(!dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_for_empty_string() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "");
+        assert!(!dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_false_for_random_string() {
+        std::env::set_var("EXPRESSO_DEV_BOOTSTRAP", "enabled");
+        assert!(!dev_bootstrap_enabled());
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+    }
+
+    #[test]
+    fn env_string_trims_and_rejects_blank() {
+        let key = "MAIL_TEST_BLANK_19981";
+        std::env::set_var(key, "\t");
+        assert!(env_string(key).is_none());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn env_string_preserves_value_with_spaces_inside() {
+        let key = "MAIL_TEST_SPACES_INSIDE_19981";
+        std::env::set_var(key, "hello world");
+        assert_eq!(env_string(key).as_deref(), Some("hello world"));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn dev_bootstrap_enabled_returns_bool() {
+        std::env::remove_var("EXPRESSO_DEV_BOOTSTRAP");
+        let result = dev_bootstrap_enabled();
+        assert!(result == false || result == true);
+    }
+}

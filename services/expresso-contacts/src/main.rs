@@ -152,3 +152,129 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn env_string_none_when_unset() {
+        let key = "CONT_TEST_UNSET_19982";
+        std::env::remove_var(key);
+        assert!(env_string(key).is_none());
+    }
+
+    #[test]
+    fn env_string_some_when_set() {
+        let key = "CONT_TEST_STR_19982";
+        std::env::set_var(key, "value");
+        assert_eq!(env_string(key).as_deref(), Some("value"));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn env_string_none_for_whitespace() {
+        let key = "CONT_TEST_WS_19982";
+        std::env::set_var(key, "  ");
+        assert!(env_string(key).is_none());
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn env_u16_default_when_unset() {
+        let key = "CONT_TEST_U16_UNSET_19982";
+        std::env::remove_var(key);
+        assert_eq!(env_u16(key, 7777), 7777);
+    }
+
+    #[test]
+    fn env_u16_parsed_value() {
+        let key = "CONT_TEST_U16_19982";
+        std::env::set_var(key, "5050");
+        assert_eq!(env_u16(key, 0), 5050);
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn env_u32_default_when_unset() {
+        let key = "CONT_TEST_U32_UNSET_19982";
+        std::env::remove_var(key);
+        assert_eq!(env_u32(key, 10), 10);
+    }
+
+    #[test]
+    fn env_i32_default_when_unset() {
+        let key = "CONT_TEST_I32_UNSET_19982";
+        std::env::remove_var(key);
+        assert_eq!(env_i32(key, -1), -1);
+    }
+
+    #[test]
+    fn env_u64_default_when_unset() {
+        let key = "CONT_TEST_U64_UNSET_19982";
+        std::env::remove_var(key);
+        assert_eq!(env_u64(key, 5), 5);
+    }
+
+    #[test]
+    fn env_bool_default_when_unset() {
+        let key = "CONT_TEST_BOOL_UNSET_19982";
+        std::env::remove_var(key);
+        assert!(!env_bool(key, false));
+    }
+
+    #[test]
+    fn env_bool_true_when_set() {
+        let key = "CONT_TEST_BOOL_T_19982";
+        std::env::set_var(key, "true");
+        assert!(env_bool(key, false));
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn default_port_is_8003() {
+        assert_eq!(DEFAULT_PORT, 8003);
+    }
+
+    #[test]
+    fn default_host_is_all_interfaces() {
+        assert_eq!(DEFAULT_HOST, "0.0.0.0");
+    }
+
+    #[test]
+    fn resolve_addr_default_port_when_env_unset() {
+        std::env::remove_var("SERVER__HOST");
+        std::env::remove_var("SERVER__PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+    }
+
+    #[test]
+    fn resolve_database_config_none_when_url_missing() {
+        std::env::remove_var("DATABASE__URL");
+        assert!(resolve_database_config().is_none());
+    }
+
+    #[test]
+    fn resolve_database_config_some_when_url_present() {
+        std::env::set_var("DATABASE__URL", "postgres://localhost/conttest");
+        let cfg = resolve_database_config();
+        assert!(cfg.is_some());
+        assert_eq!(cfg.unwrap().url, "postgres://localhost/conttest");
+        std::env::remove_var("DATABASE__URL");
+    }
+
+    #[test]
+    fn resolve_telemetry_default_otlp_when_unset() {
+        std::env::remove_var("TELEMETRY__OTLP_ENDPOINT");
+        let t = resolve_telemetry();
+        assert_eq!(t.otlp_endpoint, DEFAULT_OTLP_ENDPOINT);
+    }
+
+    #[test]
+    fn resolve_telemetry_log_json_false_by_default() {
+        std::env::remove_var("TELEMETRY__LOG_JSON");
+        let t = resolve_telemetry();
+        assert!(!t.log_json);
+    }
+}
