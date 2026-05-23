@@ -45,11 +45,22 @@
       {% if messages.is_empty() %}
         <div class="empty-state">Nenhuma mensagem</div>
       {% else %}
+      <!-- Batch action bar -->
+      <div id="mail-batch-bar" style="display:none;padding:.3rem .75rem;background:var(--bg-raised);border-bottom:1px solid var(--border);display:none;align-items:center;gap:.5rem">
+        <span class="muted small" id="mail-sel-count">0 selecionadas</span>
+        <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchMailAction('trash')">🗑 Lixeira</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearMailSelection()" style="margin-left:auto">✕ Cancelar</button>
+      </div>
       <ul class="msg-rows">
         {% for msg in messages %}
-        <li>
+        <li class="msg-row-wrap" data-mid="{{ msg.id }}">
+          <input type="checkbox" class="mail-row-check" data-mid="{{ msg.id }}"
+                 onchange="updateMailSelection(event)" style="position:absolute;left:.4rem;top:50%;transform:translateY(-50%);z-index:2;display:none">
           <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
-             href="/mail/{{ msg.id }}?folder={{ selected }}">
+             href="/mail/{{ msg.id }}?folder={{ selected }}"
+             onclick="mailRowClick(event, '{{ msg.id }}')">
             <div class="msg-meta">
               <span class="msg-from" onclick="filterBySender('{{ msg.from_display() }}'); event.preventDefault();" style="cursor:pointer" title="Filtrar por este remetente">{{ msg.from_display() }}</span>
               <span class="msg-date">{{ msg.date_display() }}</span>
@@ -63,6 +74,15 @@
               <div class="msg-preview">{{ msg.preview_display() }}</div>
             {% endif %}
           </a>
+          <!-- Hover quick actions -->
+          <div class="mail-quick-actions">
+            <button class="btn btn-ghost btn-sm mail-qa-btn" title="Arquivar"
+                    onclick="quickMailAction(event,'{{ msg.id }}','archive')">📥</button>
+            <button class="btn btn-ghost btn-sm mail-qa-btn" title="Lixeira"
+                    onclick="quickMailAction(event,'{{ msg.id }}','trash')">🗑</button>
+            <button class="btn btn-ghost btn-sm mail-qa-btn" title="Marcar como lida"
+                    onclick="quickMailAction(event,'{{ msg.id }}','read')">✓</button>
+          </div>
         </li>
         {% endfor %}
       </ul>
@@ -394,5 +414,87 @@ function renderAllLabels() {
   });
 }
 renderAllLabels();
+
+// ── Mail quick actions & multi-select ─────────────────────────────────────────
+var _mailSelIds = [];
+var _mailLastCheckedIdx = -1;
+var _mailSelMode = false;
+
+function quickMailAction(e, mid, action) {
+  e.preventDefault(); e.stopPropagation();
+  doMailAction([mid], action);
+}
+
+function doMailAction(ids, action) {
+  var folder = (new URLSearchParams(window.location.search)).get('folder') || 'INBOX';
+  var promises = ids.map(function(mid) {
+    if (action === 'archive') {
+      return fetch('/mail/' + encodeURIComponent(mid) + '/move', {
+        method:'POST', credentials:'include',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'target_folder=Archive&from_folder=' + encodeURIComponent(folder),
+      });
+    } else if (action === 'trash') {
+      return fetch('/mail/' + encodeURIComponent(mid) + '/delete', {
+        method:'POST', credentials:'include',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'folder=' + encodeURIComponent(folder),
+      });
+    } else if (action === 'read') {
+      return fetch('/mail/' + encodeURIComponent(mid) + '/flag', {
+        method:'POST', credentials:'include',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'flag=%5CSeen&value=1',
+      });
+    }
+    return Promise.resolve();
+  });
+  Promise.all(promises).then(function(){ window.location.reload(); }).catch(function(){});
+}
+
+function updateMailSelection(e) {
+  var cb = e.target;
+  var allCbs = Array.from(document.querySelectorAll('.mail-row-check'));
+  var idx = allCbs.indexOf(cb);
+  if (e.shiftKey && _mailLastCheckedIdx >= 0 && idx !== _mailLastCheckedIdx) {
+    var lo = Math.min(_mailLastCheckedIdx, idx);
+    var hi = Math.max(_mailLastCheckedIdx, idx);
+    allCbs.slice(lo, hi + 1).forEach(function(c){ c.checked = cb.checked; });
+  }
+  _mailLastCheckedIdx = idx;
+  _mailSelIds = allCbs.filter(function(c){ return c.checked; }).map(function(c){ return c.dataset.mid; });
+  var bar = document.getElementById('mail-batch-bar');
+  var cnt = document.getElementById('mail-sel-count');
+  if (bar) bar.style.display = _mailSelIds.length ? 'flex' : 'none';
+  if (cnt) cnt.textContent = _mailSelIds.length + ' selecionada' + (_mailSelIds.length !== 1 ? 's' : '');
+}
+
+function clearMailSelection() {
+  document.querySelectorAll('.mail-row-check').forEach(function(cb){ cb.checked = false; });
+  _mailSelIds = [];
+  var bar = document.getElementById('mail-batch-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function batchMailAction(action) {
+  if (!_mailSelIds.length) return;
+  doMailAction(_mailSelIds, action);
+}
+
+function mailRowClick(e, mid) {
+  // If a checkbox in the row is clicked, stay; otherwise navigate normally
+  if (e.target.type === 'checkbox') return;
+}
+
+// Show checkboxes on row hover
+(function() {
+  document.querySelectorAll('.msg-row-wrap').forEach(function(wrap) {
+    var cb = wrap.querySelector('.mail-row-check');
+    wrap.addEventListener('mouseenter', function(){ if (cb) cb.style.display = ''; });
+    wrap.addEventListener('mouseleave', function(){
+      if (cb && !cb.checked && !_mailSelIds.length) cb.style.display = 'none';
+    });
+  });
+})();
 </script>
 {% endblock %}

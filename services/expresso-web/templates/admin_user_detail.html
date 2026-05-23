@@ -50,6 +50,34 @@
     </form>
   </div>
 
+  <!-- Quota & limits -->
+  <div class="card stack" style="grid-column:1/-1">
+    <h3>Quotas e limites</h3>
+    <form class="compose-form" method="post" action="/admin/users/{{ user.id }}/quota" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">
+      <label>
+        <span>Quota de e-mail (MB)</span>
+        <input type="number" name="mail_quota_mb" min="0" placeholder="ex: 5120" class="tasks-add-input">
+      </label>
+      <label>
+        <span>Quota de Drive (GB)</span>
+        <input type="number" name="drive_quota_gb" min="0" placeholder="ex: 15" class="tasks-add-input">
+      </label>
+      <label>
+        <span>Máx. destinatários/dia</span>
+        <input type="number" name="max_recipients_day" min="0" placeholder="ex: 200" class="tasks-add-input">
+      </label>
+      <label>
+        <span>Máx. tamanho de anexo (MB)</span>
+        <input type="number" name="max_attach_mb" min="0" placeholder="ex: 25" class="tasks-add-input">
+      </label>
+      <div style="grid-column:1/-1">
+        <button class="btn btn-primary btn-sm" type="submit">Salvar quotas</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem">
+
   <!-- Login history -->
   <div class="card stack">
     <h3>Histórico de login</h3>
@@ -70,6 +98,15 @@
       </tbody>
     </table>
     {% endif %}
+  </div>
+
+  <!-- Sessões ativas -->
+  <div class="card stack">
+    <h3>Sessões ativas</h3>
+    <p class="muted small">Gerencie sessões no console Keycloak ou via API de admin.</p>
+    <form method="post" action="/admin/users/{{ user.id }}/sessions/revoke" onsubmit="return confirm('Revogar todas as sessões deste usuário?')">
+      <button class="btn btn-ghost btn-sm" type="submit">⊘ Revogar todas as sessões</button>
+    </form>
   </div>
 </div>
 {% endblock %}

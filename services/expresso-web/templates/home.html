@@ -137,6 +137,7 @@
       <div id="home-tasks-preview" style="min-height:2.5rem">
         <p class="muted small">Carregando tarefas…</p>
       </div>
+      <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
       <div style="display:flex;gap:.4rem;margin-top:.5rem">
         <input type="text" id="home-task-quick-input" class="search-input-sm" placeholder="Nova tarefa rápida…"
                style="flex:1" onkeydown="if(event.key==='Enter')homeAddTask()">
@@ -220,6 +221,22 @@
   html += '</ul>';
   if (pending.length > 4) html += '<p class="muted small" style="margin-top:.25rem">+' + (pending.length-4) + ' mais</p>';
   el.innerHTML = html;
+  // Update tasks today count badge
+  var cntEl = document.getElementById('home-tasks-today-count');
+  if (cntEl) {
+    var overdue = pending.filter(function(t){ return t.due && t.due < today; }).length;
+    var parts = [];
+    if (todayTasks.length) parts.push(todayTasks.length + ' para hoje');
+    if (overdue) parts.push(overdue + ' atrasada' + (overdue!==1?'s':''));
+    cntEl.textContent = parts.join(' · ');
+  }
+  // Update appnav tasks badge
+  (function() {
+    var TASK_BADGE_KEY = 'expresso_tasks_today_count';
+    localStorage.setItem(TASK_BADGE_KEY, String(todayTasks.length + overdue));
+    var badge = document.querySelector('.appnav-item[href="/tasks"] .appnav-badge');
+    if (badge) { badge.textContent = todayTasks.length + overdue; badge.style.display = (todayTasks.length + overdue) ? '' : 'none'; }
+  })();
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 })();
 

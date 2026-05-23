@@ -79,7 +79,9 @@
           {% if m.is_scheduled() %}
             <span class="meet-schedule-badge meet-scheduled">📅 {{ m.scheduled_time() }}</span>
             <span class="meet-countdown muted small" id="cd-{{ m.id }}"></span>
+            <span class="meet-soon-badge" id="soon-{{ m.id }}" style="display:none">🔴 Em breve</span>
           {% endif %}
+          {% match m.duration_minutes %}{% when Some with (dur) %}<span class="muted small">⏱ {{ dur }} min</span>{% when None %}{% endmatch %}
           {% match m.created_at %}{% when Some with (d) %}<span class="muted small">Criada em {{ d }}</span>{% when None %}{% endmatch %}
         </div>
         <div style="display:flex;gap:.4rem;align-items:center">
@@ -186,6 +188,20 @@ function copyMeetLink(id) {
       '<a class="btn btn-primary btn-sm" href="/meet/' + id + '">Entrar</a>' +
       '</li>';
   }).join('');
+})();
+
+// ── "Em breve" badge for upcoming meetings ────────────────────────────────────
+(function checkMeetSoon() {
+  document.querySelectorAll('.meet-list-item[data-scheduled]').forEach(function(li) {
+    var s = li.getAttribute('data-scheduled') || '';
+    var id = li.getAttribute('data-meet-id') || '';
+    if (!s || !id) return;
+    var sched = new Date(s);
+    var diff = (sched - Date.now()) / 60000; // minutes
+    var badge = document.getElementById('soon-' + id);
+    if (badge) badge.style.display = (diff >= 0 && diff <= 30) ? '' : 'none';
+  });
+  setTimeout(checkMeetSoon, 60000);
 })();
 </script>
 {% endblock %}

@@ -121,6 +121,8 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/users",                     get(admin_users_page))
         .route("/admin/users/invite",              post(admin_users_invite))
         .route("/admin/users/:id",                 get(admin_user_detail_page))
+        .route("/admin/users/:id/quota",           post(admin_user_set_quota))
+        .route("/admin/users/:id/sessions/revoke", post(admin_user_revoke_sessions))
         .route("/admin/users/:id/role",            post(admin_users_set_role))
         .route("/admin/users/:id/suspend",         post(admin_users_suspend))
         .route("/admin/users/:id/activate",        post(admin_users_activate))
@@ -2989,6 +2991,40 @@ async fn admin_user_detail_page(
     ).await?.unwrap_or_default();
     let flash = extract_flash(&uri);
     Ok(askama_axum::IntoResponse::into_response(AdminUserDetailTpl { me, user, logins, flash }))
+}
+
+#[derive(Deserialize)]
+struct AdminUserQuotaForm {
+    #[serde(default)] mail_quota_mb:      Option<i64>,
+    #[serde(default)] drive_quota_gb:     Option<i64>,
+    #[serde(default)] max_recipients_day: Option<i64>,
+    #[serde(default)] max_attach_mb:      Option<i64>,
+}
+async fn admin_user_set_quota(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<AdminUserQuotaForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({
+        "mail_quota_mb": f.mail_quota_mb,
+        "drive_quota_gb": f.drive_quota_gb,
+        "max_recipients_day": f.max_recipients_day,
+        "max_attach_mb": f.max_attach_mb,
+    });
+    let _ = patch_json::<serde_json::Value>(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/quota"), &headers, Some((&t, &u)), &body).await;
+    Ok(redirect_to(&format!("/admin/users/{id}?flash=Quotas+salvas")).into_response())
+}
+async fn admin_user_revoke_sessions(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/sessions/revoke"), &headers, Some((&t, &u))).await;
+    Ok(redirect_to(&format!("/admin/users/{id}?flash=Sessões+revogadas")).into_response())
 }
 
 #[derive(Deserialize)]

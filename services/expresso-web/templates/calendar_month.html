@@ -48,7 +48,10 @@
       {% for week in weeks %}
       <tr>
         {% for cell in week %}
-        <td class="month-cell{% if !cell.in_month %} off-month{% endif %}{% if cell.is_today %} today{% endif %}">
+        <td class="month-cell{% if !cell.in_month %} off-month{% endif %}{% if cell.is_today %} today{% endif %}"
+            data-date="{{ cell.iso }}"
+            ondragover="calDragOver(event)" ondrop="calDrop(event,'{{ cell.iso }}','{{ selected.id }}')"
+            ondragleave="this.classList.remove('cal-drag-over')">
           <a class="day-add" href="#" onclick="openQuickEvent('{{ cell.iso }}', '{{ selected.id }}'); return false;" title="Criar evento">
             {{ cell.day }}
           </a>
@@ -56,7 +59,10 @@
           <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}{% if ev.is_all_day() %} event-chip-allday{% endif %}"
              href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
              style="{% if ev.is_all_day() %}{% else %}{{ selected.color_style() }}{% endif %}"
-             title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}{% if ev.is_all_day() %} (dia inteiro){% endif %}">
+             title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}{% if ev.is_all_day() %} (dia inteiro){% endif %}"
+             draggable="true"
+             ondragstart="calDragStart(event,'{{ ev.id }}','{{ cell.iso }}')"
+             onclick="if(event.defaultPrevented)event.stopPropagation()">
             {% if ev.is_recurring() %}<span class="ev-recur" title="Recorrente">↻</span>{% endif %}
             {% if ev.is_all_day() %}
               <span class="ev-allday-badge" title="Dia inteiro">◼</span>
@@ -217,6 +223,38 @@ function buildAgenda() {
     return '<li class="cal-agenda-day"><span class="cal-agenda-day-label' + (isToday?' cal-agenda-day-today':'') + '">' + label + '</span>' +
       '<div class="cal-agenda-events">' + evHtml + '</div></li>';
   }).join('');
+}
+
+// ── Drag-and-drop to reschedule ───────────────────────────────────────────────
+var _calDragEvId   = '';
+var _calDragSrcDate = '';
+
+function calDragStart(e, evId, srcDate) {
+  _calDragEvId    = evId;
+  _calDragSrcDate = srcDate;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', evId);
+}
+function calDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  var td = e.currentTarget;
+  document.querySelectorAll('.month-cell.cal-drag-over').forEach(function(el){ el.classList.remove('cal-drag-over'); });
+  td.classList.add('cal-drag-over');
+}
+function calDrop(e, targetDate, calId) {
+  e.preventDefault();
+  var td = e.currentTarget;
+  td.classList.remove('cal-drag-over');
+  if (!_calDragEvId || targetDate === _calDragSrcDate) return;
+  fetch('/calendar/' + encodeURIComponent(calId) + '/events/' + encodeURIComponent(_calDragEvId) + '/reschedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'include',
+    body: 'new_date=' + encodeURIComponent(targetDate),
+  }).then(function(r) {
+    if (r.ok || r.redirected) window.location.reload();
+  }).catch(function(){});
 }
 </script>
 {% endblock %}

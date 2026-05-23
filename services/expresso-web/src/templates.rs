@@ -667,6 +667,7 @@ pub struct MeetRoom {
     #[serde(default)] pub description:    Option<String>,
     #[serde(default)] pub recording_url:  Option<String>,
     #[serde(default)] pub participant_count: i64,
+    #[serde(default)] pub duration_minutes: Option<i64>,
 }
 impl MeetRoom {
     pub fn title(&self) -> &str { self.name.as_deref().unwrap_or("Reunião") }

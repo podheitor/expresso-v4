@@ -78,7 +78,7 @@
           <button class="btn btn-ghost btn-sm drive-fav-btn" data-id="{{ f.id }}"
                   onclick="toggleDriveFav('{{ f.id }}')" title="Favorito">⭐</button>
           {% if f.is_folder() == false %}
-            {% if f.is_previewable() %}<a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/preview" title="Visualizar">👁 Ver</a>{% endif %}
+            {% if f.is_previewable() %}<button class="btn btn-ghost btn-sm" onclick="openDrivePreview('{{ f.id }}','{{ f.name }}')" title="Visualizar">👁 Ver</button>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/share" title="Compartilhar">Compartilhar</a>
             <a class="btn btn-ghost btn-sm" href="/drive/{{ f.id }}/versions" title="Versões">Versões</a>
@@ -103,6 +103,20 @@
   <div class="drive-drop-overlay-box">
     <div style="font-size:2.5rem">📂</div>
     <p>Solte para enviar arquivos</p>
+  </div>
+</div>
+
+<!-- File preview modal -->
+<div class="modal-overlay" id="drive-preview-modal" style="display:none" onclick="if(event.target.id==='drive-preview-modal')closeDrivePreview()">
+  <div class="modal-box" style="max-width:90vw;max-height:90vh;width:auto;overflow:auto">
+    <div class="modal-header">
+      <span id="drive-preview-filename" style="font-size:.9rem"></span>
+      <div style="display:flex;gap:.4rem;margin-left:auto">
+        <a id="drive-preview-download" class="btn btn-ghost btn-sm" title="Download" download>↓ Download</a>
+        <button class="btn btn-ghost btn-sm" onclick="closeDrivePreview()">✕</button>
+      </div>
+    </div>
+    <div id="drive-preview-body" style="display:flex;align-items:center;justify-content:center;min-height:200px;padding:.5rem"></div>
   </div>
 </div>
 
@@ -358,6 +372,49 @@ function toggleDriveFavs() {
 }
 
 renderFavButtons();
+
+// ── File preview modal ────────────────────────────────────────────────────────
+var _imgExts = ['jpg','jpeg','png','gif','webp','svg','bmp','ico'];
+var _vidExts = ['mp4','webm','ogg'];
+var _audExts = ['mp3','ogg','wav','flac','aac'];
+var _pdfExts = ['pdf'];
+var _txtExts = ['txt','md','csv','json','xml','js','ts','css','html','htm','py','rs','go','sh'];
+
+function openDrivePreview(fileId, fileName) {
+  var url   = '/api/v1/drive/files/' + encodeURIComponent(fileId);
+  var dlBtn = document.getElementById('drive-preview-download');
+  var fnEl  = document.getElementById('drive-preview-filename');
+  var body  = document.getElementById('drive-preview-body');
+  if (dlBtn) { dlBtn.href = url; dlBtn.setAttribute('download', fileName); }
+  if (fnEl) fnEl.textContent = fileName;
+  var ext = (fileName.split('.').pop() || '').toLowerCase();
+  body.innerHTML = '<p class="muted small">Carregando…</p>';
+  document.getElementById('drive-preview-modal').style.display = 'flex';
+
+  if (_imgExts.indexOf(ext) >= 0) {
+    body.innerHTML = '<img src="' + url + '" alt="' + escDrv(fileName) + '" style="max-width:80vw;max-height:75vh;object-fit:contain">';
+  } else if (_vidExts.indexOf(ext) >= 0) {
+    body.innerHTML = '<video src="' + url + '" controls style="max-width:80vw;max-height:75vh"></video>';
+  } else if (_audExts.indexOf(ext) >= 0) {
+    body.innerHTML = '<audio src="' + url + '" controls style="width:360px"></audio>';
+  } else if (_pdfExts.indexOf(ext) >= 0) {
+    body.innerHTML = '<iframe src="' + url + '" style="width:80vw;height:75vh;border:none"></iframe>';
+  } else if (_txtExts.indexOf(ext) >= 0) {
+    fetch(url, { credentials: 'include' })
+      .then(function(r){ return r.text(); })
+      .then(function(text) {
+        body.innerHTML = '<pre style="max-width:80vw;max-height:75vh;overflow:auto;font-size:.8rem;background:var(--bg-raised);padding:.75rem;border-radius:var(--radius)">' + escDrv(text.slice(0, 50000)) + '</pre>';
+      }).catch(function(){ body.innerHTML = '<p class="muted small">Não foi possível carregar o arquivo.</p>'; });
+  } else {
+    body.innerHTML = '<div style="text-align:center;padding:2rem"><p class="muted">Prévia não disponível para este tipo de arquivo.</p>' +
+      '<a class="btn btn-primary" href="' + url + '" download="' + escDrv(fileName) + '" style="margin-top:1rem">↓ Baixar arquivo</a></div>';
+  }
+}
+function closeDrivePreview() {
+  document.getElementById('drive-preview-modal').style.display = 'none';
+  var body = document.getElementById('drive-preview-body');
+  if (body) body.innerHTML = '';
+}
 
 // ── Move-to-folder ────────────────────────────────────────────────────────────
 var _moveFileId = '';

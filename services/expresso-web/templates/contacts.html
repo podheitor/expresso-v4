@@ -35,6 +35,10 @@
             <input type="file" accept=".vcf,text/vcard" style="display:none" onchange="importVcf(this, '{{ bid }}')">
           </label>
           <button class="btn btn-ghost btn-sm" onclick="detectDuplicates('{{ bid }}')" title="Detectar e mesclar contatos duplicados">⊞ Mesclar dupl.</button>
+          <div class="view-switch" style="gap:0">
+            <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
+            <button class="btn btn-ghost btn-sm" id="contacts-view-cards" onclick="setContactsView('cards')">⊞</button>
+          </div>
           <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
         </div>
       {% when None %}{% endmatch %}
@@ -43,7 +47,27 @@
     {% if contacts.is_empty() %}
       <div class="empty-state">Catálogo vazio</div>
     {% else %}
-    <table class="data-table">
+    <!-- Card grid view (hidden by default) -->
+    <div id="contacts-cards-view" style="display:none">
+      <div class="contacts-card-grid">
+        {% for c in contacts %}
+        {% match selected_book %}{% when Some with (bid) %}
+        <div class="contact-card" data-name="{{ c.name_display() }}">
+          <div class="contact-card-avatar">{{ c.avatar_initial() }}</div>
+          <div class="contact-card-name">{{ c.name_display() }}</div>
+          {% if !c.email_display().is_empty() %}<div class="contact-card-email muted small">{{ c.email_display() }}</div>{% endif %}
+          {% if !c.phone_display().is_empty() %}<div class="contact-card-phone muted small">📞 {{ c.phone_display() }}</div>{% endif %}
+          {% if !c.org_display().is_empty() %}<div class="contact-card-org muted small">🏢 {{ c.org_display() }}</div>{% endif %}
+          <div class="contact-card-actions">
+            <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/{{ c.id }}/edit">Editar</a>
+            {% if !c.email_display().is_empty() %}<a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ c.email_display() }}">✉</a>{% endif %}
+          </div>
+        </div>
+        {% when None %}{% endmatch %}
+        {% endfor %}
+      </div>
+    </div>
+    <table class="data-table" id="contacts-table-view">
       <thead>
         <tr><th>Nome</th><th>Email</th><th>Telefone</th><th>Organização</th><th></th></tr>
       </thead>
@@ -147,8 +171,8 @@ function filterContacts(q) {
     var text = row.textContent.toLowerCase();
     row.style.display = (!lq || text.includes(lq)) ? '' : 'none';
   });
-  // rebuild separators
   buildContactSeparators();
+  filterContactCards(q);
 }
 
 function buildContactSeparators() {
@@ -169,6 +193,42 @@ function buildContactSeparators() {
     }
   });
 }
+
+// ── Contacts view toggle ──────────────────────────────────────────────────────
+var CONTACTS_VIEW_KEY = 'expresso_contacts_view';
+function setContactsView(v) {
+  localStorage.setItem(CONTACTS_VIEW_KEY, v);
+  var tableEl  = document.getElementById('contacts-table-view');
+  var cardsEl  = document.getElementById('contacts-cards-view');
+  var listBtn  = document.getElementById('contacts-view-list');
+  var cardsBtn = document.getElementById('contacts-view-cards');
+  if (!tableEl || !cardsEl) return;
+  if (v === 'cards') {
+    tableEl.style.display  = 'none';
+    cardsEl.style.display  = '';
+    if (listBtn)  listBtn.className  = 'btn btn-ghost btn-sm';
+    if (cardsBtn) cardsBtn.className = 'btn btn-primary btn-sm';
+    // Apply current search filter to cards
+    var q = (document.getElementById('contacts-search') || {}).value || '';
+    filterContactCards(q);
+  } else {
+    tableEl.style.display  = '';
+    cardsEl.style.display  = 'none';
+    if (listBtn)  listBtn.className  = 'btn btn-primary btn-sm';
+    if (cardsBtn) cardsBtn.className = 'btn btn-ghost btn-sm';
+  }
+}
+function filterContactCards(q) {
+  var lq = q.trim().toLowerCase();
+  document.querySelectorAll('.contact-card[data-name]').forEach(function(card) {
+    var text = card.textContent.toLowerCase();
+    card.style.display = (!lq || text.includes(lq)) ? '' : 'none';
+  });
+}
+(function initContactsView() {
+  var v = localStorage.getItem(CONTACTS_VIEW_KEY) || 'list';
+  setContactsView(v);
+})();
 
 // init on load — add data-name to rows
 (function() {

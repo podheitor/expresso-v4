@@ -95,6 +95,22 @@ if header :contains "Subject" "NEWSLETTER" {
         </form>
       </div>
 
+      <!-- Rule tester -->
+      <div class="card" style="margin-bottom:1rem">
+        <h3 style="margin-bottom:.75rem">Testar regra</h3>
+        <p class="muted small" style="margin-bottom:.5rem">Simule uma mensagem de entrada para ver se o script a filtraria.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+          <label><span class="muted small">Assunto</span>
+            <input type="text" id="test-subject" class="tasks-add-input" placeholder="Ex: [SPAM] Oferta imperdível">
+          </label>
+          <label><span class="muted small">Remetente (De)</span>
+            <input type="text" id="test-from" class="tasks-add-input" placeholder="Ex: noreply@newsletter.com">
+          </label>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="testSieveRule()">Testar</button>
+        <div id="test-result" style="margin-top:.6rem"></div>
+      </div>
+
       <details>
         <summary>Exemplos</summary>
         <pre style="margin-top:.75rem">require ["fileinto"];
@@ -145,5 +161,59 @@ function appendRule() {
   ta.scrollTop = ta.scrollHeight;
 }
 updateRbAction();
+
+// ── Sieve rule tester (client-side, simplified) ───────────────────────────────
+function testSieveRule() {
+  var subject = (document.getElementById('test-subject') || {}).value || '';
+  var from    = (document.getElementById('test-from')    || {}).value || '';
+  var script  = (document.querySelector('textarea[name="script"]') || {}).value || '';
+  var result  = document.getElementById('test-result');
+  if (!script.trim()) { result.innerHTML = '<p class="muted small">Escreva um script primeiro.</p>'; return; }
+
+  // Very simplified Sieve client-side interpreter — only header :contains and exists
+  var headers = { subject: subject.toLowerCase(), from: from.toLowerCase(), to: '', 'list-unsubscribe': '' };
+  var lines = script.split('\n');
+  var matched = false;
+  var matchedAction = '';
+  var matchedDest = '';
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim().toLowerCase();
+    // if header :contains "Field" "value"
+    var m = line.match(/^if\s+header\s+:contains\s+"([^"]+)"\s+"([^"]+)"/);
+    if (m) {
+      var hdr = m[1].toLowerCase(); var val = m[2].toLowerCase();
+      if (headers[hdr] && headers[hdr].includes(val)) {
+        matched = true;
+        // Look for action in next few lines
+        for (var j = i+1; j < Math.min(i+4, lines.length); j++) {
+          var al = lines[j].trim();
+          if (al.startsWith('fileinto')) { matchedAction = 'fileinto'; matchedDest = (al.match(/"([^"]+)"/) || [,'?'])[1]; }
+          else if (al.startsWith('discard')) { matchedAction = 'discard'; }
+          else if (al.startsWith('reject')) { matchedAction = 'reject'; }
+          else if (al.startsWith('redirect')) { matchedAction = 'redirect'; matchedDest = (al.match(/"([^"]+)"/) || [,'?'])[1]; }
+          if (matchedAction) break;
+        }
+        break;
+      }
+    }
+    // if exists "Field"
+    var me2 = line.match(/^if\s+exists\s+"([^"]+)"/);
+    if (me2) {
+      var hdr2 = me2[1].toLowerCase();
+      if (headers[hdr2] !== undefined && headers[hdr2] !== '') { matched = true; matchedAction = 'fileinto'; }
+    }
+  }
+
+  if (!matched) {
+    result.innerHTML = '<p style="color:var(--ok)">✓ Nenhuma regra seria acionada — mensagem chegaria à caixa normal.</p>';
+  } else {
+    var desc = matchedAction === 'fileinto' ? 'Mover para "' + matchedDest + '"' :
+               matchedAction === 'discard'  ? 'Descartar silenciosamente' :
+               matchedAction === 'reject'   ? 'Rejeitar com erro' :
+               matchedAction === 'redirect' ? 'Redirecionar para "' + matchedDest + '"' : matchedAction;
+    result.innerHTML = '<p style="color:var(--amber)">⚠ Regra seria acionada: <strong>' + desc + '</strong></p>';
+  }
+}
 </script>
 {% endblock %}

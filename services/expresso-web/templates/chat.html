@@ -420,15 +420,37 @@ function toggleChatSearch() {
 function filterMessages(q) {
   var msgs = document.querySelectorAll('.chat-msg');
   var q2 = q.trim().toLowerCase();
-  var shown = 0, hidden = 0;
+  var shown = 0;
   msgs.forEach(function(el) {
     var body = el.querySelector('.chat-msg-body');
-    var text = body ? body.textContent.toLowerCase() : '';
-    if (!q2 || text.includes(q2)) { el.style.display = ''; shown++; }
-    else { el.style.display = 'none'; hidden++; }
+    if (!body) { el.style.display = ''; return; }
+    // Restore original text if we previously highlighted
+    if (body.dataset.original) {
+      body.innerHTML = body.dataset.original;
+      delete body.dataset.original;
+    }
+    var text = body.textContent.toLowerCase();
+    if (!q2 || text.includes(q2)) {
+      el.style.display = '';
+      shown++;
+      if (q2 && body.textContent.toLowerCase().includes(q2)) {
+        body.dataset.original = body.innerHTML;
+        body.innerHTML = body.innerHTML.replace(
+          new RegExp('(' + q2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'),
+          '<mark class="chat-search-hl">$1</mark>'
+        );
+      }
+    } else {
+      el.style.display = 'none';
+    }
   });
   var res = document.getElementById('chat-search-result');
   if (res) res.textContent = q2 ? shown + ' resultado' + (shown !== 1 ? 's' : '') : '';
+  // Scroll to first match
+  if (q2) {
+    var first = document.querySelector('.chat-msg:not([style*="none"]) .chat-search-hl');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 // ── Reply ─────────────────────────────────────────────────────────────────────
@@ -453,8 +475,21 @@ function toggleReactionPicker(msgId) {
   if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
 }
 
+var REACT_LS_KEY = 'expresso_chat_reactions';
+function loadLocalReactions() { try { return JSON.parse(localStorage.getItem(REACT_LS_KEY) || '{}'); } catch(e) { return {}; } }
+function saveLocalReaction(msgId, emoji) {
+  var data = loadLocalReactions();
+  if (!data[msgId]) data[msgId] = {};
+  data[msgId][emoji] = (data[msgId][emoji] || 0) + 1;
+  localStorage.setItem(REACT_LS_KEY, JSON.stringify(data));
+  renderReactions(msgId, data[msgId]);
+}
+
 function addReaction(channelId, msgId, emoji) {
-  document.getElementById('rpicker-' + msgId).style.display = 'none';
+  var picker = document.getElementById('rpicker-' + msgId);
+  if (picker) picker.style.display = 'none';
+  // Optimistic local update
+  saveLocalReaction(msgId, emoji);
   fetch('/chat/channels/' + channelId + '/messages/' + msgId + '/react', {
     method: 'POST',
     headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -462,10 +497,22 @@ function addReaction(channelId, msgId, emoji) {
   }).then(function(r) {
     if (r.ok) return r.json();
   }).then(function(data) {
-    if (!data) return;
-    renderReactions(msgId, data.reactions || {});
-  });
+    if (!data || !data.reactions) return;
+    // Sync server truth back
+    var stored = loadLocalReactions();
+    stored[msgId] = data.reactions;
+    localStorage.setItem(REACT_LS_KEY, JSON.stringify(stored));
+    renderReactions(msgId, data.reactions);
+  }).catch(function(){});
 }
+
+// Init reactions from localStorage on page load
+(function initReactionsFromLocal() {
+  var data = loadLocalReactions();
+  Object.keys(data).forEach(function(msgId) {
+    renderReactions(msgId, data[msgId]);
+  });
+})();
 
 function renderReactions(msgId, reactions) {
   var el = document.getElementById('reactions-' + msgId);

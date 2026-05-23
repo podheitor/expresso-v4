@@ -7,7 +7,7 @@
     <a class="appnav-item{% if current == "drive"    %} active{% endif %}" href="/drive">Drive</a>
     <a class="appnav-item{% if current == "chat"     %} active{% endif %}" href="/chat">Chat</a>
     <a class="appnav-item{% if current == "meet"     %} active{% endif %}" href="/meet">Meet</a>
-    <a class="appnav-item{% if current == "tasks"    %} active{% endif %}" href="/tasks">Tarefas</a>
+    <a class="appnav-item{% if current == "tasks"    %} active{% endif %}" href="/tasks">Tarefas<span class="appnav-badge" id="tasks-appnav-badge" style="display:none"></span></a>
   </nav>
   <div class="topbar-search-wrap">
     <input type="search" id="topbar-search" class="topbar-search-input" placeholder="🔍 Buscar…"
@@ -168,6 +168,13 @@ window.pushNotification = function(icon, body, href) {
   var unread = notifs.filter(function(n){ return !n.read; }).length;
   var badge = document.getElementById('notif-badge');
   if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
+})();
+
+// ── Tasks badge from localStorage ────────────────────────────────────────────
+(function() {
+  var n = parseInt(localStorage.getItem('expresso_tasks_today_count') || '0', 10);
+  var badge = document.getElementById('tasks-appnav-badge');
+  if (badge) { badge.textContent = n || ''; badge.style.display = n > 0 ? '' : 'none'; }
 })();
 
 // ── Global keyboard shortcuts ────────────────────────────────────────────────
