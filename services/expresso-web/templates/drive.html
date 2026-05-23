@@ -42,9 +42,10 @@
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>
           {% if f.is_folder() %}
-            <a class="link" href="/drive?parent_id={{ f.id }}">{{ f.name }}</a>
+            <a class="link drive-name" href="/drive?parent_id={{ f.id }}"
+               ondblclick="startRename(event,'{{ f.id }}',this)">{{ f.name }}</a>
           {% else %}
-            <span>{{ f.name }}</span>
+            <span class="drive-name" ondblclick="startRename(event,'{{ f.id }}',this)">{{ f.name }}</span>
           {% endif %}
         </td>
         <td class="mono muted">{{ f.size_human() }}</td>
@@ -98,6 +99,37 @@
 </div>
 
 <script>
+// ── Inline rename on double-click ─────────────────────────────────────────────
+function startRename(e, fileId, el) {
+  e.preventDefault();
+  var prev = el.textContent.trim();
+  var inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = prev;
+  inp.className = 'drive-rename-input';
+  el.replaceWith(inp);
+  inp.focus();
+  inp.select();
+  function commit() {
+    var name = inp.value.trim();
+    if (!name || name === prev) { inp.replaceWith(el); return; }
+    fetch('/drive/' + encodeURIComponent(fileId) + '/rename', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      credentials: 'include',
+      body: 'name=' + encodeURIComponent(name),
+    }).then(function(r) {
+      el.textContent = name;
+      inp.replaceWith(el);
+    }).catch(function() { inp.replaceWith(el); });
+  }
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('keydown', function(ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') { inp.replaceWith(el); }
+  });
+}
+
 function showDriveNewFolder() {
   document.getElementById('drive-new-folder-modal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('drive-new-folder-name').focus(); }, 50);
