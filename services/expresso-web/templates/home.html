@@ -118,6 +118,19 @@
       </div>
     </div>
 
+    <!-- Tarefas -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">✅</span>
+        <a class="home-widget-title" href="/tasks">Tarefas</a>
+        <a class="btn btn-ghost btn-sm" href="/tasks">Ver todas</a>
+      </div>
+      <div id="home-tasks-preview" style="min-height:2.5rem">
+        <p class="muted small">Carregando tarefas…</p>
+      </div>
+      <a class="btn btn-primary btn-sm" href="/tasks" style="margin-top:.5rem">+ Nova tarefa</a>
+    </div>
+
     <!-- Links rápidos -->
     <div class="home-widget">
       <div class="home-widget-header">
@@ -130,10 +143,41 @@
         <a class="home-quick-item" href="/calendar">📅 Calendário</a>
         <a class="home-quick-item" href="/settings">⚙ Configurações</a>
         <a class="home-quick-item" href="/me">👤 Minha conta</a>
-        <a class="home-quick-item" href="/drive">💾 Drive</a>
+        <a class="home-quick-item" href="/tasks">✅ Tarefas</a>
       </div>
     </div>
 
   </div>
 </div>
+<script>
+(function() {
+  var key = 'expresso_tasks_{{ me.user_id }}';
+  var tasks = [];
+  try { tasks = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  var today = (function() {
+    var d = new Date(); var m = d.getMonth()+1; var day = d.getDate();
+    return d.getFullYear() + '-' + (m<10?'0':'')+m + '-' + (day<10?'0':'')+day;
+  })();
+  var pending = tasks.filter(function(t){ return !t.done; });
+  var todayTasks = pending.filter(function(t){ return t.due === today; });
+  var el = document.getElementById('home-tasks-preview');
+  if (!el) return;
+  if (!pending.length) {
+    el.innerHTML = '<p class="muted small">Nenhuma tarefa pendente. 🎉</p>';
+    return;
+  }
+  var show = todayTasks.length ? todayTasks : pending;
+  show = show.slice(0, 4);
+  var html = '<ul class="home-file-list">';
+  show.forEach(function(t) {
+    html += '<li class="home-file-item"><span>' + (t.priority==='high'?'🔴':t.priority==='low'?'⚪':'🔵') + '</span>' +
+      '<span class="home-file-name" style="cursor:default">' + escHtml(t.title) + '</span>' +
+      (t.due ? '<span class="muted small" style="font-size:.72rem">' + t.due + '</span>' : '') + '</li>';
+  });
+  html += '</ul>';
+  if (pending.length > 4) html += '<p class="muted small" style="margin-top:.25rem">+' + (pending.length-4) + ' mais</p>';
+  el.innerHTML = html;
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
+</script>
 {% endblock %}

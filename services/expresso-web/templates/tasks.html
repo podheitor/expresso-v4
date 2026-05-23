@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Tarefas · Expresso{% endblock %}
+{% block nav %}{% let current = "tasks" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page tasks-page">
+  <div class="page-header">
+    <h1>Tarefas</h1>
+    <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
+  </div>
+
+  <!-- Filtros / listas -->
+  <div class="tasks-layout">
+    <aside class="tasks-sidebar">
+      <nav class="folder-list">
+        <button class="folder-item active" id="filter-all"    onclick="setFilter('all')">
+          <span class="folder-icon">📋</span><span class="folder-name">Todas</span>
+          <span class="chat-unread-badge" id="count-all"></span>
+        </button>
+        <button class="folder-item" id="filter-today"  onclick="setFilter('today')">
+          <span class="folder-icon">📅</span><span class="folder-name">Hoje</span>
+          <span class="chat-unread-badge" id="count-today" style="background:var(--accent)"></span>
+        </button>
+        <button class="folder-item" id="filter-upcoming" onclick="setFilter('upcoming')">
+          <span class="folder-icon">⏭</span><span class="folder-name">Em breve</span>
+        </button>
+        <button class="folder-item" id="filter-done" onclick="setFilter('done')">
+          <span class="folder-icon">✅</span><span class="folder-name">Concluídas</span>
+        </button>
+      </nav>
+
+      <div style="padding:.75rem 1rem;border-top:1px solid var(--border);margin-top:.5rem">
+        <div class="tasks-progress-label muted small" id="progress-label"></div>
+        <div class="tasks-progress-bar">
+          <div class="tasks-progress-fill" id="progress-fill"></div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="tasks-main">
+      <!-- Add task inline -->
+      <div class="tasks-add-area" id="add-task-area" style="display:none">
+        <div class="tasks-add-form card">
+          <input type="text" class="tasks-add-input" id="new-task-title" placeholder="Nome da tarefa…" autofocus
+            onkeydown="if(event.key==='Enter')addTask();if(event.key==='Escape')hideAddTask()">
+          <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+            <input type="date" class="tasks-add-date" id="new-task-due" title="Data de vencimento">
+            <select class="tasks-add-priority" id="new-task-priority" title="Prioridade">
+              <option value="normal">Normal</option>
+              <option value="high">Alta</option>
+              <option value="low">Baixa</option>
+            </select>
+            <input type="text" class="tasks-add-tag" id="new-task-list" placeholder="Lista (ex: Trabalho)">
+          </div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem;justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" onclick="hideAddTask()">Cancelar</button>
+            <button class="btn btn-primary btn-sm" onclick="addTask()">Adicionar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Task list -->
+      <div id="task-list" class="tasks-list"></div>
+
+      <div class="chat-empty" id="tasks-empty" style="display:none">
+        <span class="chat-empty-icon">✅</span>
+        <p>Nenhuma tarefa aqui.<br>Clique em "+ Nova tarefa" para começar.</p>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal-overlay" id="task-edit-modal" style="display:none" onclick="closeModalOnOverlay(event,'task-edit-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Editar tarefa</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('task-edit-modal')">✕</button>
+    </div>
+    <div class="compose-form">
+      <label><span>Título</span>
+        <input type="text" id="edit-task-title" class="tasks-add-input">
+      </label>
+      <div class="form-row">
+        <label><span>Vencimento</span><input type="date" id="edit-task-due"></label>
+        <label><span>Prioridade</span>
+          <select id="edit-task-priority">
+            <option value="normal">Normal</option>
+            <option value="high">Alta</option>
+            <option value="low">Baixa</option>
+          </select>
+        </label>
+      </div>
+      <label><span>Lista</span><input type="text" id="edit-task-list" placeholder="ex: Pessoal"></label>
+      <label><span>Notas</span><textarea id="edit-task-notes" rows="3"></textarea></label>
+      <input type="hidden" id="edit-task-id">
+      <div class="form-actions">
+        <button class="btn btn-danger btn-sm" onclick="deleteTaskById(document.getElementById('edit-task-id').value)">Excluir</button>
+        <button class="btn btn-ghost" onclick="hideModal('task-edit-modal')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveEditTask()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Storage key per user ───────────────────────────────────────────────────────
+var STORAGE_KEY = 'expresso_tasks_{{ me.user_id }}';
+var currentFilter = 'all';
+
+function loadTasks() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveTasks(tasks) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function todayIso() {
+  var d = new Date(); var m = d.getMonth()+1; var day = d.getDate();
+  return d.getFullYear() + '-' + (m<10?'0':'')+m + '-' + (day<10?'0':'')+day;
+}
+
+function filterTasks(tasks) {
+  var today = todayIso();
+  if (currentFilter === 'today')    return tasks.filter(function(t){ return !t.done && t.due === today; });
+  if (currentFilter === 'upcoming') return tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
+  if (currentFilter === 'done')     return tasks.filter(function(t){ return t.done; });
+  return tasks.filter(function(t){ return !t.done; }); // 'all'
+}
+
+function renderAll() {
+  var tasks = loadTasks();
+  var filtered = filterTasks(tasks);
+  var list = document.getElementById('task-list');
+  var empty = document.getElementById('tasks-empty');
+
+  // counts
+  var today = todayIso();
+  var todayCount = tasks.filter(function(t){ return !t.done && t.due === today; }).length;
+  var allCount   = tasks.filter(function(t){ return !t.done; }).length;
+  document.getElementById('count-all').textContent   = allCount   > 0 ? allCount   : '';
+  document.getElementById('count-today').textContent = todayCount > 0 ? todayCount : '';
+
+  // progress
+  var total = tasks.length, done = tasks.filter(function(t){ return t.done; }).length;
+  var pct = total > 0 ? Math.round(done/total*100) : 0;
+  document.getElementById('progress-label').textContent = done + ' de ' + total + ' concluídas (' + pct + '%)';
+  document.getElementById('progress-fill').style.width = pct + '%';
+
+  if (!filtered.length) {
+    list.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // group by list name
+  var groups = {};
+  filtered.forEach(function(t) {
+    var g = t.list || 'Geral';
+    if (!groups[g]) groups[g] = [];
+    groups[g].push(t);
+  });
+
+  var html = '';
+  Object.keys(groups).sort().forEach(function(g) {
+    html += '<div class="tasks-group-header">' + escHtml(g) + '</div>';
+    groups[g].forEach(function(t) {
+      var overdue = t.due && t.due < todayIso() && !t.done;
+      var priClass = t.priority === 'high' ? 'task-pri-high' : t.priority === 'low' ? 'task-pri-low' : '';
+      html += '<div class="task-item' + (t.done ? ' task-done' : '') + '" data-id="' + escHtml(t.id) + '">' +
+        '<button class="task-checkbox' + (t.done ? ' task-checkbox-done' : '') +
+          '" onclick="toggleTask(\'' + escHtml(t.id) + '\')" title="' + (t.done ? 'Reabrir' : 'Concluir') + '">' +
+          (t.done ? '✓' : '') +
+        '</button>' +
+        '<div class="task-body" onclick="openEdit(\'' + escHtml(t.id) + '\')">' +
+          '<span class="task-title ' + priClass + '">' + escHtml(t.title) + '</span>' +
+          (t.due ? '<span class="task-due ' + (overdue ? 'task-overdue' : '') + '">' + escHtml(t.due) + '</span>' : '') +
+          (t.notes ? '<span class="task-notes-preview muted small">' + escHtml(t.notes.substring(0,60)) + '</span>' : '') +
+        '</div>' +
+      '</div>';
+    });
+  });
+  list.innerHTML = html;
+}
+
+// ── Add ───────────────────────────────────────────────────────────────────────
+function showAddTask() {
+  document.getElementById('add-task-area').style.display = 'block';
+  document.getElementById('new-task-title').focus();
+}
+function hideAddTask() {
+  document.getElementById('add-task-area').style.display = 'none';
+  document.getElementById('new-task-title').value = '';
+  document.getElementById('new-task-due').value = '';
+  document.getElementById('new-task-list').value = '';
+}
+function addTask() {
+  var title = document.getElementById('new-task-title').value.trim();
+  if (!title) return;
+  var tasks = loadTasks();
+  tasks.push({
+    id: genId(),
+    title: title,
+    due: document.getElementById('new-task-due').value || null,
+    priority: document.getElementById('new-task-priority').value,
+    list: document.getElementById('new-task-list').value.trim() || 'Geral',
+    notes: '',
+    done: false,
+    created: new Date().toISOString(),
+  });
+  saveTasks(tasks);
+  hideAddTask();
+  renderAll();
+}
+
+// ── Toggle done ───────────────────────────────────────────────────────────────
+function toggleTask(id) {
+  var tasks = loadTasks();
+  tasks = tasks.map(function(t){ return t.id === id ? Object.assign({}, t, {done: !t.done}) : t; });
+  saveTasks(tasks);
+  renderAll();
+}
+
+// ── Edit ──────────────────────────────────────────────────────────────────────
+function openEdit(id) {
+  var task = loadTasks().find(function(t){ return t.id === id; });
+  if (!task) return;
+  document.getElementById('edit-task-id').value    = task.id;
+  document.getElementById('edit-task-title').value = task.title;
+  document.getElementById('edit-task-due').value   = task.due || '';
+  document.getElementById('edit-task-priority').value = task.priority || 'normal';
+  document.getElementById('edit-task-list').value  = task.list || '';
+  document.getElementById('edit-task-notes').value = task.notes || '';
+  showModal('task-edit-modal');
+}
+function saveEditTask() {
+  var id = document.getElementById('edit-task-id').value;
+  var tasks = loadTasks().map(function(t){
+    if (t.id !== id) return t;
+    return Object.assign({}, t, {
+      title:    document.getElementById('edit-task-title').value.trim() || t.title,
+      due:      document.getElementById('edit-task-due').value || null,
+      priority: document.getElementById('edit-task-priority').value,
+      list:     document.getElementById('edit-task-list').value.trim() || 'Geral',
+      notes:    document.getElementById('edit-task-notes').value,
+    });
+  });
+  saveTasks(tasks);
+  hideModal('task-edit-modal');
+  renderAll();
+}
+function deleteTaskById(id) {
+  if (!confirm('Excluir esta tarefa?')) return;
+  saveTasks(loadTasks().filter(function(t){ return t.id !== id; }));
+  hideModal('task-edit-modal');
+  renderAll();
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function setFilter(f) {
+  currentFilter = f;
+  ['all','today','upcoming','done'].forEach(function(name) {
+    var el = document.getElementById('filter-' + name);
+    if (el) el.classList.toggle('active', name === f);
+  });
+  renderAll();
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function showModal(id) { document.getElementById(id).style.display = 'flex'; }
+function hideModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderAll();
+</script>
+{% endblock %}

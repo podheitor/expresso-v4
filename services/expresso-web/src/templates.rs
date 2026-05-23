@@ -703,6 +703,14 @@ pub struct MeetRoomTpl {
     pub is_moderator:  bool,
 }
 
+// ─── Tasks ───────────────────────────────────────────────────────────────────
+
+#[derive(Template)]
+#[template(path = "tasks.html")]
+pub struct TasksTpl {
+    pub me: Me,
+}
+
 #[derive(Template)]
 #[template(path = "meet_schedule.html")]
 pub struct MeetScheduleTpl {
