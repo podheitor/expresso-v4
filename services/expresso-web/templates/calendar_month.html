@@ -47,7 +47,7 @@
       <tr>
         {% for cell in week %}
         <td class="month-cell{% if !cell.in_month %} off-month{% endif %}{% if cell.is_today %} today{% endif %}">
-          <a class="day-add" href="/calendar/{{ selected.id }}/events/new?date={{ cell.iso }}" title="Criar evento">
+          <a class="day-add" href="#" onclick="openQuickEvent('{{ cell.iso }}', '{{ selected.id }}'); return false;" title="Criar evento">
             {{ cell.day }}
           </a>
           {% for ev in cell.events %}
@@ -63,4 +63,78 @@
     </tbody>
   </table>
 </div>
+
+<!-- Quick event modal -->
+<div class="modal-overlay" id="quick-event-modal" style="display:none" onclick="if(event.target.id==='quick-event-modal')closeQuickEvent()">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-header">
+      <h3>Novo evento rápido</h3>
+      <button class="btn btn-ghost btn-sm" onclick="closeQuickEvent()">✕</button>
+    </div>
+    <form class="compose-form" id="quick-event-form">
+      <label>
+        <span>Título</span>
+        <input type="text" id="qe-title" placeholder="Título do evento" required autofocus>
+      </label>
+      <div class="form-row">
+        <label><span>Data</span><input type="date" id="qe-date"></label>
+        <label><span>Hora início</span><input type="time" id="qe-time" value="09:00"></label>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeQuickEvent()">Cancelar</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="qe-full-link">Mais opções</button>
+        <button type="button" class="btn btn-primary" onclick="submitQuickEvent()">Criar</button>
+      </div>
+      <div id="qe-error" class="alert alert-error" style="display:none"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+var _qeCalId = '';
+function openQuickEvent(dateIso, calId) {
+  _qeCalId = calId;
+  document.getElementById('qe-date').value = dateIso;
+  document.getElementById('qe-title').value = '';
+  document.getElementById('qe-error').style.display = 'none';
+  var fl = document.getElementById('qe-full-link');
+  fl.onclick = function() { window.location.href = '/calendar/' + calId + '/events/new?date=' + dateIso; };
+  document.getElementById('quick-event-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('qe-title').focus(); }, 50);
+}
+function closeQuickEvent() {
+  document.getElementById('quick-event-modal').style.display = 'none';
+}
+function submitQuickEvent() {
+  var title = document.getElementById('qe-title').value.trim();
+  var date  = document.getElementById('qe-date').value;
+  var time  = document.getElementById('qe-time').value || '09:00';
+  if (!title) { showQeError('Informe o título.'); return; }
+  if (!date)  { showQeError('Informe a data.'); return; }
+  var dtstart = date + 'T' + time + ':00';
+  var parts = time.split(':');
+  var endH = String((parseInt(parts[0]) + 1) % 24).padStart(2,'0');
+  var dtend   = date + 'T' + endH + ':' + (parts[1] || '00') + ':00';
+  var body = 'summary=' + encodeURIComponent(title)
+           + '&dtstart=' + encodeURIComponent(dtstart)
+           + '&dtend='   + encodeURIComponent(dtend);
+  fetch('/calendar/' + _qeCalId + '/events/new', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    credentials: 'include',
+    body: body,
+  }).then(function(r) {
+    if (r.ok || r.redirected) { window.location.reload(); }
+    else { showQeError('Erro ao criar evento (' + r.status + ').'); }
+  }).catch(function() { showQeError('Erro de conexão.'); });
+}
+function showQeError(msg) {
+  var el = document.getElementById('qe-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeQuickEvent();
+});
+</script>
 {% endblock %}
