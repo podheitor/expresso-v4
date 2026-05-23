@@ -51,7 +51,8 @@
             {{ cell.day }}
           </a>
           {% for ev in cell.events %}
-          <a class="event-chip" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit" title="{{ ev.title() }}">
+          <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit" title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}">
+            {% if ev.is_recurring() %}<span class="ev-recur" title="Recorrente">↻</span>{% endif %}
             <span class="ev-time">{{ ev.time_label() }}</span>
             <span class="ev-title">{{ ev.title() }}</span>
           </a>

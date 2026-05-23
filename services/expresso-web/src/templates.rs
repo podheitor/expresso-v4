@@ -419,10 +419,12 @@ pub struct Event {
     #[serde(default)] pub dtend:           Option<String>,
     #[serde(default)] pub status:          Option<String>,
     #[serde(default)] pub organizer_email: Option<String>,
+    #[serde(default)] pub rrule:           Option<String>,
 }
 
 impl Event {
     pub fn title(&self) -> &str { self.summary.as_deref().unwrap_or("(sem título)") }
+    pub fn is_recurring(&self) -> bool { self.rrule.is_some() }
     /// HH:MM slice from RFC3339 dtstart → fallback "".
     pub fn time_label(&self) -> String {
         let Some(s) = &self.dtstart else { return String::new() };
