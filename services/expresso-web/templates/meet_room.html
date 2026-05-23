@@ -21,6 +21,7 @@
         <span class="muted small" style="display:none" id="part-count-label">👥 <span id="part-count">0</span></span>
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
+      <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
         {% when Some with (url) %}<a class="btn btn-ghost btn-sm" href="{{ url }}" target="_blank" title="Ver gravação">▶ Gravação</a>{% when None %}{% endmatch %}{% when None %}{% endmatch %}
@@ -200,6 +201,20 @@
         {% endif %}
       </ul>
     </aside>
+
+    <!-- Painel de chat da reunião -->
+    <aside class="meet-side-panel" id="panel-chat" style="display:none">
+      <div class="meet-side-panel-header">
+        <span>Chat da reunião</span>
+        <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')">✕</button>
+      </div>
+      <div class="meet-chat-messages" id="meet-chat-msgs"></div>
+      <div class="meet-chat-compose">
+        <input type="text" id="meet-chat-input" class="tasks-add-input" placeholder="Mensagem…"
+               onkeydown="if(event.key==='Enter')sendMeetChat()">
+        <button class="btn btn-primary btn-sm" onclick="sendMeetChat()">➤</button>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -254,5 +269,81 @@ function updateParticipantCount(delta) {
     el.textContent = (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
   }, 1000);
 })();
+
+// ── Meet chat panel ───────────────────────────────────────────────────────────
+var _meetChatLastId = '';
+var _meetChatChannelId = '';
+var _meetMyName = '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
+var _meetRoomId = '{{ room_id }}';
+
+// Try to find or create a channel named "meet-<room_id>"
+(function initMeetChat() {
+  fetch('/chat/channels', { method: 'POST', credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'name=meet-' + encodeURIComponent(_meetRoomId) + '&kind=private',
+  }).then(function(r) {
+    // Channel creation redirects to /chat/channels/:id — follow to get id
+    if (r.url && r.url.includes('/chat/channels/')) {
+      var parts = r.url.split('/chat/channels/');
+      _meetChatChannelId = parts[1] ? parts[1].split('/')[0].split('?')[0] : '';
+    }
+    if (!_meetChatChannelId) {
+      // Try listing channels to find one matching meet-<room>
+      fetch('/chat/channels?q=meet-' + encodeURIComponent(_meetRoomId), { credentials: 'include' })
+        .then(function(r2) { return r2.json(); })
+        .then(function(channels) {
+          var ch = (channels || []).find(function(c){ return c.name === 'meet-' + _meetRoomId; });
+          if (ch) { _meetChatChannelId = ch.id; pollMeetChat(); }
+        }).catch(function(){});
+    } else {
+      pollMeetChat();
+    }
+  }).catch(function(){});
+})();
+
+function pollMeetChat() {
+  if (!_meetChatChannelId) return;
+  var url = '/chat/channels/' + _meetChatChannelId + '/poll' +
+    (_meetChatLastId ? '?after=' + encodeURIComponent(_meetChatLastId) : '');
+  fetch(url, { credentials: 'include' })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      var msgs = (data && data.messages) || [];
+      msgs.forEach(function(m) {
+        _meetChatLastId = m.id;
+        appendMeetChatMsg(m.display_name || m.user_id, m.body, m.created_at);
+      });
+    }).catch(function(){});
+  setTimeout(pollMeetChat, 3000);
+}
+
+function appendMeetChatMsg(sender, body, ts) {
+  var el = document.getElementById('meet-chat-msgs');
+  if (!el) return;
+  var time = ts ? ts.substring(11, 16) : '';
+  var div = document.createElement('div');
+  div.className = 'meet-chat-msg';
+  div.innerHTML = '<span class="meet-chat-sender">' + escH(sender) + '</span>' +
+    '<span class="meet-chat-body">' + escH(body) + '</span>' +
+    '<span class="meet-chat-time muted small">' + escH(time) + '</span>';
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendMeetChat() {
+  var inp = document.getElementById('meet-chat-input');
+  var body = inp ? inp.value.trim() : '';
+  if (!body || !_meetChatChannelId) return;
+  fetch('/chat/channels/' + _meetChatChannelId + '/send', {
+    method: 'POST', credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'body=' + encodeURIComponent(body),
+  }).then(function() {
+    appendMeetChatMsg(_meetMyName, body, new Date().toISOString());
+    inp.value = '';
+  });
+}
+
+function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 </script>
 {% endblock %}
