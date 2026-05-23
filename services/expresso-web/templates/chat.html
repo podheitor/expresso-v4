@@ -79,6 +79,16 @@
             {% when Some with (d) %}<span class="muted small">{{ d }}</span>
             {% when None %}{% endmatch %}
         </div>
+        <div class="chat-header-actions">
+          <div class="chat-search-wrap" id="chat-search-wrap">
+            <button class="chat-action-btn" onclick="toggleChatSearch()" title="Buscar mensagens">🔍</button>
+            <input type="search" class="chat-search-input" id="chat-search-input"
+              placeholder="Buscar em #{{ ch.name }}…"
+              oninput="filterMessages(this.value)"
+              onkeydown="if(event.key==='Escape'){toggleChatSearch();}" style="display:none">
+          </div>
+          <span class="muted small" id="chat-search-result"></span>
+        </div>
       </header>
 
       <div class="chat-messages" id="chat-messages">
@@ -104,8 +114,18 @@
                     <div class="chat-reply-indicator muted small">↩ Respondendo</div>
                   {% when None %}{% endmatch %}
                 <div class="chat-msg-body">{{ msg.body }}</div>
+                <div class="chat-msg-reactions" id="reactions-{{ msg.id }}"></div>
                 <div class="chat-msg-actions">
                   <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
+                  <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
+                </div>
+                <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','❤')">❤</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','😂')">😂</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🎉')">🎉</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','🔥')">🔥</button>
+                  <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','✅')">✅</button>
                 </div>
               </div>
             </div>
@@ -299,6 +319,28 @@ function scrollToBottom() {
 scrollToBottom();
 setInterval(loadNewMessages, 3000);
 
+// ── Chat search ───────────────────────────────────────────────────────────────
+function toggleChatSearch() {
+  var inp = document.getElementById('chat-search-input');
+  if (!inp) return;
+  var visible = inp.style.display !== 'none';
+  inp.style.display = visible ? 'none' : 'inline-block';
+  if (!visible) { inp.focus(); } else { inp.value = ''; filterMessages(''); }
+}
+function filterMessages(q) {
+  var msgs = document.querySelectorAll('.chat-msg');
+  var q2 = q.trim().toLowerCase();
+  var shown = 0, hidden = 0;
+  msgs.forEach(function(el) {
+    var body = el.querySelector('.chat-msg-body');
+    var text = body ? body.textContent.toLowerCase() : '';
+    if (!q2 || text.includes(q2)) { el.style.display = ''; shown++; }
+    else { el.style.display = 'none'; hidden++; }
+  });
+  var res = document.getElementById('chat-search-result');
+  if (res) res.textContent = q2 ? shown + ' resultado' + (shown !== 1 ? 's' : '') : '';
+}
+
 // ── Reply ─────────────────────────────────────────────────────────────────────
 function setReply(msgId) {
   document.getElementById('chat-parent-id').value = msgId;
@@ -311,6 +353,54 @@ function clearReply() {
   document.getElementById('chat-parent-id').value = '';
   document.getElementById('chat-reply-banner').style.display = 'none';
 }
+
+// ── Reactions ─────────────────────────────────────────────────────────────────
+function toggleReactionPicker(msgId) {
+  document.querySelectorAll('.chat-reaction-picker').forEach(function(el) {
+    if (el.id !== 'rpicker-' + msgId) el.style.display = 'none';
+  });
+  var p = document.getElementById('rpicker-' + msgId);
+  if (p) p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+}
+
+function addReaction(channelId, msgId, emoji) {
+  document.getElementById('rpicker-' + msgId).style.display = 'none';
+  fetch('/chat/channels/' + channelId + '/messages/' + msgId + '/react', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'emoji=' + encodeURIComponent(emoji),
+  }).then(function(r) {
+    if (r.ok) return r.json();
+  }).then(function(data) {
+    if (!data) return;
+    renderReactions(msgId, data.reactions || {});
+  });
+}
+
+function renderReactions(msgId, reactions) {
+  var el = document.getElementById('reactions-' + msgId);
+  if (!el) return;
+  var html = '';
+  Object.keys(reactions).forEach(function(emoji) {
+    var count = reactions[emoji];
+    if (count > 0) {
+      html += '<button class="chat-reaction-chip" onclick="addReaction(\'' +
+        escHtml(currentChannelId()) + '\',\'' + escHtml(msgId) + '\',\'' + escHtml(emoji) + '\')">' +
+        escHtml(emoji) + ' ' + count + '</button>';
+    }
+  });
+  el.innerHTML = html;
+}
+
+function currentChannelId() {
+  {% match active_channel %}{% when Some with (ch) %}return '{{ ch.id }}';{% when None %}return '';{% endmatch %}
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.chat-reaction-picker') && !e.target.closest('.chat-action-btn')) {
+    document.querySelectorAll('.chat-reaction-picker').forEach(function(el) { el.style.display = 'none'; });
+  }
+});
 
 // ── Emoji picker ─────────────────────────────────────────────────────────────
 function toggleEmojiPicker() {

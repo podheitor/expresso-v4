@@ -22,7 +22,7 @@ use crate::{
         DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl, Event, MonthCell,
         CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl,
         ContactFormTpl, AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, ChatChannel,
-        ChatMessage, MeetTpl, MeetRoomTpl, MeetRoom, MeetScheduleTpl, MeetParticipant,
+        ChatMessage, MeetTpl, MeetRoomTpl, MeetRoom, MeetScheduleTpl, MeetParticipant, TasksTpl,
         SettingsTpl, MailSearchTpl, GalContact,
     },
     upstream::{get_json, get_bytes, post_body, post_json, patch_json, put_body, put_json, delete_at, post_empty},
@@ -88,14 +88,17 @@ pub fn router(state: AppState) -> Router {
         .route("/chat",                      get(chat_page))
         .route("/chat/channels",             post(chat_create_channel))
         .route("/chat/channels/:cid",        get(chat_channel_page))
-        .route("/chat/channels/:cid/send",   post(chat_send_message))
-        .route("/chat/channels/:cid/poll",   get(chat_poll_messages))
+        .route("/chat/channels/:cid/send",                       post(chat_send_message))
+        .route("/chat/channels/:cid/poll",                       get(chat_poll_messages))
+        .route("/chat/channels/:cid/messages/:mid/react",        post(chat_react_message))
         .route("/meet",           get(meet_page))
         .route("/meet/new",       get(meet_new_page).post(meet_create_action))
         .route("/meet/schedule",  get(meet_schedule_page).post(meet_schedule_action))
         .route("/meet/join",      get(meet_join_page))
         .route("/meet/:id",       get(meet_room_page))
         .route("/meet/:id/end",   post(meet_end_action))
+        // tasks
+        .route("/tasks", get(tasks_page))
         // settings
         .route("/settings",                  get(settings_page))
         .route("/settings/profile",          post(settings_profile_save))
@@ -2168,6 +2171,34 @@ async fn chat_poll_messages(
     Ok(axum::Json(ChatPollResp { messages }).into_response())
 }
 
+#[derive(Deserialize)]
+struct ChatReactForm { emoji: String }
+
+#[derive(serde::Serialize)]
+struct ChatReactResp { reactions: std::collections::HashMap<String, u32> }
+
+async fn chat_react_message(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((cid, mid)): Path<(String, String)>,
+    Form(f): Form<ChatReactForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let payload = serde_json::json!({ "emoji": f.emoji.trim() });
+    let url = format!("{}/api/v1/channels/{cid}/messages/{mid}/reactions",
+        st.backends.chat.trim_end_matches('/'));
+    let mut req = st.http.post(&url).json(&payload);
+    req = crate::upstream::fwd_cookie(req, &headers);
+    req = crate::upstream::inject_ctx(req, &t, &u);
+    let reactions: std::collections::HashMap<String, u32> = match req.send().await {
+        Ok(r) if r.status().is_success() => r.json().await.unwrap_or_default(),
+        _ => std::collections::HashMap::new(),
+    };
+    Ok(axum::Json(ChatReactResp { reactions }).into_response())
+}
+
 // ─── /meet ───────────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -2425,6 +2456,15 @@ fn uuid_v4() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
     format!("{:032x}", t)
+}
+
+// ─── /tasks ──────────────────────────────────────────────────────────────────
+
+async fn tasks_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(askama_axum::IntoResponse::into_response(TasksTpl { me }))
 }
 
 // ─── /settings ───────────────────────────────────────────────────────────────
