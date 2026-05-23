@@ -437,6 +437,32 @@ async fn mail_thread_page(
 #[derive(Deserialize)]
 struct DriveQuery { parent_id: Option<String> }
 
+/// Walk parent_id chain upward to build breadcrumb [(id, name), …] root-first.
+/// Stops after 10 hops to avoid runaway loops on bad data.
+async fn build_drive_breadcrumb(
+    st: &AppState,
+    headers: &HeaderMap,
+    tenant: &str,
+    user_id: &str,
+    start_id: Option<&str>,
+) -> Vec<(String, String)> {
+    let Some(mut current_id) = start_id.map(str::to_owned) else { return vec![] };
+    let mut crumbs: Vec<(String, String)> = Vec::new();
+    for _ in 0..10 {
+        let enc = utf8_percent_encode(&current_id, NON_ALPHANUMERIC).to_string();
+        let path = format!("/api/v1/drive/files/{enc}");
+        let Ok(Some(f)) = get_json::<DriveFile>(st, &st.backends.drive, &path, headers, Some((tenant, user_id))).await
+        else { break; };
+        crumbs.push((f.id.clone(), f.name.clone()));
+        match f.parent_id {
+            Some(pid) if !pid.is_empty() => current_id = pid,
+            _ => break,
+        }
+    }
+    crumbs.reverse();
+    crumbs
+}
+
 async fn drive_page(
     State(st): State<AppState>, headers: HeaderMap, uri: Uri, Query(q): Query<DriveQuery>,
 ) -> WebResult<Response> {
@@ -459,8 +485,13 @@ async fn drive_page(
         &st, &st.backends.drive, "/api/v1/drive/quota", &headers, Some((&t, &u)),
     ).await?;
 
+    // Build breadcrumb by fetching each ancestor folder's metadata.
+    let folder_ancestors = build_drive_breadcrumb(
+        &st, &headers, &t, &u, q.parent_id.as_deref(),
+    ).await;
+
     Ok(askama_axum::IntoResponse::into_response(DriveTpl {
-        me, parent_id: q.parent_id, files, quota,
+        me, parent_id: q.parent_id, files, quota, folder_ancestors,
     }))
 }
 
@@ -846,7 +877,9 @@ async fn drive_search_page(
         } else { (vec![], String::new()) }
     } else { (vec![], String::new()) };
     let quota = get_json::<DriveQuota>(&st, &st.backends.drive, "/api/v1/drive/quota", &headers, Some((&t, &u))).await?;
-    Ok(askama_axum::IntoResponse::into_response(DriveTpl { me, parent_id: None, files, quota }))
+    Ok(askama_axum::IntoResponse::into_response(DriveTpl {
+        me, parent_id: None, files, quota, folder_ancestors: vec![],
+    }))
 }
 
 #[derive(Deserialize)]

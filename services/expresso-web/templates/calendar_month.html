@@ -51,9 +51,15 @@
             {{ cell.day }}
           </a>
           {% for ev in cell.events %}
-          <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit" title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}">
+          <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}{% if ev.is_all_day() %} event-chip-allday{% endif %}"
+             href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
+             title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}{% if ev.is_all_day() %} (dia inteiro){% endif %}">
             {% if ev.is_recurring() %}<span class="ev-recur" title="Recorrente">↻</span>{% endif %}
-            <span class="ev-time">{{ ev.time_label() }}</span>
+            {% if ev.is_all_day() %}
+              <span class="ev-allday-badge" title="Dia inteiro">◼</span>
+            {% else %}
+              <span class="ev-time">{{ ev.time_label() }}</span>
+            {% endif %}
             <span class="ev-title">{{ ev.title() }}</span>
           </a>
           {% endfor %}

@@ -21,6 +21,7 @@
         <span class="muted small" style="display:none" id="part-count-label">👥 <span id="part-count">0</span></span>
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
+      <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
@@ -345,5 +346,102 @@ function sendMeetChat() {
 }
 
 function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Invite modal ──────────────────────────────────────────────────────────────
+function showInviteModal() {
+  document.getElementById('meet-invite-email').value = '';
+  document.getElementById('meet-invite-status').textContent = '';
+  document.getElementById('meet-invite-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('meet-invite-email').focus(); }, 50);
+}
+function hideInviteModal() {
+  document.getElementById('meet-invite-modal').style.display = 'none';
+}
+function sendMeetInvite() {
+  var email = document.getElementById('meet-invite-email').value.trim();
+  var status = document.getElementById('meet-invite-status');
+  if (!email) { status.textContent = 'Informe o e-mail.'; return; }
+  var roomLink = window.location.href;
+  fetch('/mail/compose', {
+    method: 'POST', credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'to=' + encodeURIComponent(email)
+      + '&subject=' + encodeURIComponent('Convite para reunião — {{ room_name }}')
+      + '&body_text=' + encodeURIComponent('Você foi convidado para uma reunião.\n\nEntre pelo link: ' + roomLink),
+  }).then(function(r) {
+    if (r.ok || r.redirected) {
+      status.style.color = 'var(--accent)';
+      status.textContent = 'Convite enviado para ' + email + '!';
+      setTimeout(hideInviteModal, 2000);
+    } else {
+      status.textContent = 'Erro ao enviar (' + r.status + ').';
+    }
+  }).catch(function() { status.textContent = 'Erro de conexão.'; });
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') hideInviteModal();
+});
+
+// GAL autocomplete for invite field
+(function() {
+  var inp = document.getElementById('meet-invite-email');
+  var list = document.getElementById('meet-invite-suggestions');
+  var timer;
+  if (!inp) return;
+  inp.addEventListener('input', function() {
+    clearTimeout(timer);
+    var q = inp.value.trim();
+    if (q.length < 2) { list.innerHTML = ''; return; }
+    timer = setTimeout(function() {
+      fetch('/api/gal/search?q=' + encodeURIComponent(q), {credentials:'include'})
+        .then(function(r){ return r.json(); })
+        .then(function(contacts) {
+          list.innerHTML = '';
+          contacts.slice(0, 6).forEach(function(c) {
+            var li = document.createElement('li');
+            li.className = 'autocomplete-item';
+            li.textContent = (c.display_name || '') + ' <' + (c.email || '') + '>';
+            li.addEventListener('mousedown', function(e) {
+              e.preventDefault();
+              inp.value = c.email || '';
+              list.innerHTML = '';
+            });
+            list.appendChild(li);
+          });
+        }).catch(function(){});
+    }, 200);
+  });
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.autocomplete-wrap')) list.innerHTML = '';
+  });
+})();
 </script>
+
+<!-- Invite modal -->
+<div class="modal-overlay" id="meet-invite-modal" style="display:none" onclick="if(event.target.id==='meet-invite-modal')hideInviteModal()">
+  <div class="modal-box" style="max-width:400px">
+    <div class="modal-header">
+      <h3>Convidar para reunião</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideInviteModal()">✕</button>
+    </div>
+    <div class="compose-form" style="gap:.75rem;display:flex;flex-direction:column">
+      <label>
+        <span>E-mail do convidado</span>
+        <div class="autocomplete-wrap">
+          <input type="email" id="meet-invite-email" placeholder="convidado@empresa.com" autocomplete="off"
+                 onkeydown="if(event.key==='Enter'){event.preventDefault();sendMeetInvite();}">
+          <ul class="autocomplete-list" id="meet-invite-suggestions"></ul>
+        </div>
+      </label>
+      <div class="muted small" style="word-break:break-all">
+        Link da sala: <strong>{{ room_name }}</strong>
+      </div>
+      <p id="meet-invite-status" class="muted small" style="color:var(--error,red)"></p>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="hideInviteModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="sendMeetInvite()">Enviar convite</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

@@ -231,10 +231,12 @@ fn human_size(n: i64) -> String {
 #[derive(Template)]
 #[template(path = "drive.html")]
 pub struct DriveTpl {
-    pub me:         Me,
-    pub parent_id:  Option<String>,
-    pub files:      Vec<DriveFile>,
-    pub quota:      Option<DriveQuota>,
+    pub me:               Me,
+    pub parent_id:        Option<String>,
+    pub files:            Vec<DriveFile>,
+    pub quota:            Option<DriveQuota>,
+    /// (id, name) pairs from root → current folder, empty when at root.
+    pub folder_ancestors: Vec<(String, String)>,
 }
 
 #[derive(Template)]
@@ -425,6 +427,10 @@ pub struct Event {
 impl Event {
     pub fn title(&self) -> &str { self.summary.as_deref().unwrap_or("(sem título)") }
     pub fn is_recurring(&self) -> bool { self.rrule.is_some() }
+    /// True when dtstart is a bare date (YYYY-MM-DD, no 'T').
+    pub fn is_all_day(&self) -> bool {
+        self.dtstart.as_deref().map(|s| !s.contains('T')).unwrap_or(false)
+    }
     /// HH:MM slice from RFC3339 dtstart → fallback "".
     pub fn time_label(&self) -> String {
         let Some(s) = &self.dtstart else { return String::new() };

@@ -1380,6 +1380,10 @@ textarea[name="script"] {
 }
 .task-item:hover { border-color: var(--accent); }
 .task-item.task-done { opacity: .55; }
+.task-item.task-dragging { opacity: .4; border-style: dashed; }
+.task-item.task-drop-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.task-drag-handle { cursor: grab; color: var(--text-muted); font-size: 1rem; user-select: none; flex-shrink: 0; padding-top: .1rem; }
+.task-drag-handle:active { cursor: grabbing; }
 
 .task-checkbox {
   width: 1.2rem;
@@ -1561,6 +1565,15 @@ textarea[name="script"] {
 /* ── Calendar recurring badge (sprint #20012) ──────────────────────────────── */
 .ev-recur { font-size:.7rem; margin-right:.15rem; opacity:.75; }
 .event-chip-recurring { border-left:2px solid var(--accent); }
+.event-chip-allday { background:var(--accent); color:#fff; font-weight:600; border-radius:var(--radius); }
+.event-chip-allday:hover { background: color-mix(in srgb, var(--accent) 80%, #000); }
+.ev-allday-badge { font-size:.6rem; margin-right:.15rem; opacity:.8; }
+
+/* ── Drive breadcrumb (sprint #20021) ────────────────────────────────────────── */
+.drive-breadcrumb { display:flex; align-items:center; gap:.35rem; font-size:.85rem; margin-bottom:.75rem; flex-wrap:wrap; }
+.drive-crumb { color:var(--accent); text-decoration:none; }
+.drive-crumb:hover { text-decoration:underline; }
+.drive-crumb-sep { color:var(--text-muted); }
 
 /* ── Meet chat panel (sprint #20011) ────────────────────────────────────────── */
 .meet-chat-messages { flex:1; overflow-y:auto; padding:.5rem .75rem; display:flex; flex-direction:column; gap:.4rem; }

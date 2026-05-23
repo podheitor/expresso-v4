@@ -3,9 +3,18 @@
 {% block nav %}{% let current = "drive" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page">
+  <!-- Breadcrumb -->
+  <nav class="drive-breadcrumb" aria-label="Localização">
+    <a class="drive-crumb" href="/drive">Meu Drive</a>
+    {% for (cid, cname) in folder_ancestors %}
+      <span class="drive-crumb-sep">›</span>
+      <a class="drive-crumb" href="/drive?parent_id={{ cid }}">{{ cname }}</a>
+    {% endfor %}
+  </nav>
+
   <div class="page-header">
     <div>
-      <h1>Meu Drive</h1>
+      <h1>{% if folder_ancestors.is_empty() %}Meu Drive{% else %}{% let last = folder_ancestors.last().unwrap() %}{{ last.1 }}{% endif %}</h1>
       {% match quota %}{% when Some with (q) %}
         <div style="margin-top:.4rem">
           <div class="quota-bar" title="{{ q.used_human() }} / {{ q.max_human() }}">
@@ -82,11 +91,6 @@
   </table>
   {% endif %}
 
-  {% match parent_id %}
-  {% when Some with (_pid) %}
-    <p style="margin-top:1rem"><a class="link-sm" href="/drive">← Raiz</a></p>
-  {% when None %}
-  {% endmatch %}
 </div>
 
 <!-- New folder modal -->
