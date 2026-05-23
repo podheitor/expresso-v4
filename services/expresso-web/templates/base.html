@@ -11,5 +11,38 @@
 <body>
   {% block nav %}{% endblock %}
   {% block body %}{% endblock %}
+  <!-- Atalhos de teclado globais (? para ajuda) -->
+  <div id="shortcut-help" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);align-items:center;justify-content:center" onclick="this.style.display='none'">
+    <div style="background:var(--bg-card,var(--bg));border-radius:var(--radius);padding:1.5rem 2rem;max-width:420px;width:90%;box-shadow:0 8px 40px rgba(0,0,0,.4)">
+      <h3 style="margin-top:0">Atalhos de teclado</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <tr><td class="mono" style="padding:.2rem .5rem">G M</td><td>Ir para Mail</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G C</td><td>Ir para Chat</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G A</td><td>Ir para Agenda</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G D</td><td>Ir para Drive</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G K</td><td>Ir para Contatos</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G T</td><td>Ir para Tarefas</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">G H</td><td>Ir para Início</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">?</td><td>Mostrar esta ajuda</td></tr>
+      </table>
+      <p class="muted small" style="margin-bottom:0">Clique em qualquer lugar para fechar.</p>
+    </div>
+  </div>
+  <script>
+  (function() {
+    var _g = false;
+    document.addEventListener('keydown', function(e) {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === '?') { document.getElementById('shortcut-help').style.display = 'flex'; return; }
+      if (e.key === 'g' || e.key === 'G') { _g = true; setTimeout(function(){ _g = false; }, 1500); return; }
+      if (_g) {
+        _g = false;
+        var nav = { m: '/mail', c: '/chat', a: '/calendar', d: '/drive', k: '/contacts', t: '/tasks', h: '/' };
+        var k = e.key.toLowerCase();
+        if (nav[k]) { window.location.href = nav[k]; }
+      }
+    });
+  })();
+  </script>
 </body>
 </html>
