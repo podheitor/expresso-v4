@@ -385,4 +385,15 @@ mod tests {
     fn max_comment_bytes_less_than_one_mib() {
         assert!(MAX_COMMENT_BYTES < 1024 * 1024);
     }
+
+    #[test]
+    fn create_comment_body_whitespace_only_is_allowed_by_serde() {
+        let b: CreateCommentBody = serde_json::from_str(r#"{"body":"   "}"#).unwrap();
+        assert_eq!(b.body, "   ");
+    }
+
+    #[test]
+    fn max_comment_bytes_is_positive() {
+        assert!(MAX_COMMENT_BYTES > 0);
+    }
 }

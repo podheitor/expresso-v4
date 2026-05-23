@@ -418,4 +418,10 @@ mod tests {
         let (name, _) = result.unwrap();
         assert!(name.is_empty());
     }
+
+    #[test]
+    fn parse_header_content_type_name_preserved() {
+        let (name, _) = parse_header_line("Content-Type: text/plain").unwrap();
+        assert_eq!(name, "Content-Type");
+    }
 }

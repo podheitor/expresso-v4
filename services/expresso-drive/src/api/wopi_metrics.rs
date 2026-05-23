@@ -220,4 +220,9 @@ mod tests {
     fn ops_list_does_not_contain_empty_string() {
         assert!(!OPS.contains(&""));
     }
+
+    #[test]
+    fn outcomes_list_has_at_least_two_entries() {
+        assert!(OUTCOMES.len() >= 2);
+    }
 }

@@ -199,4 +199,16 @@ mod tests {
         let e = DriveError::Conflict("stale lock".into());
         assert!(format!("{e}").contains("stale lock"));
     }
+
+    #[test]
+    fn quota_exceeded_display_is_nonempty() {
+        let e = DriveError::QuotaExceeded;
+        assert!(!format!("{e}").is_empty());
+    }
+
+    #[test]
+    fn bad_request_display_contains_reason() {
+        let e = DriveError::BadRequest("file too large".into());
+        assert!(format!("{e}").contains("file too large"));
+    }
 }

@@ -313,4 +313,10 @@ mod tests {
     fn default_ttl_is_positive_i64() {
         assert!(DEFAULT_TTL_SECONDS > 0_i64);
     }
+
+    #[test]
+    fn create_body_expiry_one_second_allowed_by_deser() {
+        let b: CreateBody = serde_json::from_str(r#"{"expires_in_seconds":1}"#).unwrap();
+        assert_eq!(b.expires_in_seconds, Some(1));
+    }
 }

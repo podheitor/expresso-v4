@@ -642,4 +642,10 @@ mod extra_tests {
         let s = percent_encode_filename("my file.txt");
         assert!(s.contains("%20"));
     }
+
+    #[test]
+    fn sanitize_header_token_tab_is_preserved() {
+        let result = sanitize_header_token("text/plain\t; charset=utf-8", "application/octet-stream");
+        assert!(result.contains('\t'));
+    }
 }

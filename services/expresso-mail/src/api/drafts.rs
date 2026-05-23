@@ -395,4 +395,10 @@ mod tests {
         let r = req("from@example.com", None, None, None);
         assert!(r.cc.is_none());
     }
+
+    #[test]
+    fn draft_request_bcc_none_by_default() {
+        let r = req("from@example.com", None, None, None);
+        assert!(r.bcc.is_none());
+    }
 }

@@ -1609,4 +1609,10 @@ mod tests {
         let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"invoices"}"#).unwrap();
         assert!(!b.new_tag.is_empty());
     }
+
+    #[test]
+    fn merge_tag_body_into_field_preserved() {
+        let b: MergeTagBody = serde_json::from_str(r#"{"into":"destination-tag"}"#).unwrap();
+        assert_eq!(b.into, "destination-tag");
+    }
 }

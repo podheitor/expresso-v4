@@ -307,4 +307,10 @@ mod tests {
         let b = PresetBody { name: "inbox-unread".into(), flags: vec!["\\Seen".into()] };
         assert_eq!(b.name, "inbox-unread");
     }
+
+    #[test]
+    fn preset_body_flags_count_matches_input() {
+        let b = PresetBody { name: "starred".into(), flags: vec!["\\Flagged".into(), "\\Seen".into()] };
+        assert_eq!(b.flags.len(), 2);
+    }
 }

@@ -267,4 +267,10 @@ mod tests {
         assert_eq!(command_label("A001"), "OTHER");
         assert_eq!(command_label("B999"), "OTHER");
     }
+
+    #[test]
+    fn examine_command_maps_correctly() {
+        assert_eq!(command_label("EXAMINE"), "EXAMINE");
+        assert_eq!(command_label("examine"), "EXAMINE");
+    }
 }

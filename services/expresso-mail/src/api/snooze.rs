@@ -481,4 +481,11 @@ mod tests {
         };
         assert!(r.woken_at.is_none());
     }
+
+    #[test]
+    fn snooze_body_deserializes_from_json() {
+        let json = r#"{"snooze_until":"2027-03-15T08:00:00Z"}"#;
+        let body: SnoozeBody = serde_json::from_str(json).unwrap();
+        assert_eq!(body.snooze_until.year(), 2027);
+    }
 }

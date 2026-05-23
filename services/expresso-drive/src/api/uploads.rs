@@ -539,4 +539,9 @@ mod tests {
     fn max_filename_bytes_equals_max_mime_bytes() {
         assert_eq!(MAX_FILENAME_BYTES, MAX_MIME_BYTES);
     }
+
+    #[test]
+    fn tus_extensions_contains_creation() {
+        assert!(TUS_EXTENSIONS.contains("creation"));
+    }
 }

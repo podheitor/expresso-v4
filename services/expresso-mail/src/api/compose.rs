@@ -1095,4 +1095,9 @@ mod tests {
     fn max_body_bytes_is_one_mib() {
         assert_eq!(MAX_BODY_BYTES, 1024 * 1024);
     }
+
+    #[test]
+    fn max_recipients_per_message_equals_100() {
+        assert_eq!(MAX_RECIPIENTS_PER_MESSAGE, 100);
+    }
 }

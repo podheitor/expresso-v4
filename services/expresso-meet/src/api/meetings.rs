@@ -1488,6 +1488,11 @@ mod tests {
     fn max_room_name_bytes_less_than_max_title_bytes() {
         assert!(MAX_ROOM_NAME_BYTES < MAX_TITLE_BYTES);
     }
+
+    #[test]
+    fn max_invite_len_is_at_least_10() {
+        assert!(MAX_INVITE_LEN >= 10);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

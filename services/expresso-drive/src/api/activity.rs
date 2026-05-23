@@ -342,4 +342,15 @@ mod tests {
     fn page_size_fits_i32() {
         assert!(PAGE_SIZE <= i32::MAX as i64);
     }
+
+    #[test]
+    fn activity_query_limit_one_is_valid() {
+        let q: ActivityQuery = serde_json::from_str(r#"{"limit":1}"#).unwrap();
+        assert_eq!(q.limit, Some(1));
+    }
+
+    #[test]
+    fn page_size_constant_fits_in_usize() {
+        assert!(PAGE_SIZE > 0);
+    }
 }

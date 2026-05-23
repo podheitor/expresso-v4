@@ -198,4 +198,10 @@ mod tests {
     fn forbidden_and_not_participant_have_same_status() {
         assert_eq!(status(MeetError::Forbidden), status(MeetError::NotParticipant));
     }
+
+    #[test]
+    fn bad_request_display_is_nonempty() {
+        let e = MeetError::BadRequest("empty title".into());
+        assert!(!format!("{e}").is_empty());
+    }
 }

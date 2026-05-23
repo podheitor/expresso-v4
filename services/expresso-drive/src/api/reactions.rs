@@ -319,4 +319,10 @@ mod tests {
         let b: ReactionBody = serde_json::from_str(r#"{"emoji":"👍"}"#).unwrap();
         assert!(!b.emoji.is_empty());
     }
+
+    #[test]
+    fn reaction_body_text_emoji_preserved() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"+1"}"#).unwrap();
+        assert_eq!(b.emoji, "+1");
+    }
 }

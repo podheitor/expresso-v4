@@ -608,4 +608,11 @@ mod tests {
     fn method_label_request_is_uppercase() {
         assert_eq!(method_label(Method::Request), "REQUEST");
     }
+
+    #[test]
+    fn envelope_method_cancel_round_trips_to_method() {
+        let m = EnvelopeMethod::Cancel;
+        let method: Method = m.into();
+        assert_eq!(method_label(method), "CANCEL");
+    }
 }

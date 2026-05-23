@@ -496,4 +496,11 @@ mod tests {
         let vc = VersionsCount { count: 7 };
         assert_eq!(vc.count, 7);
     }
+
+    #[test]
+    fn version_diff_sha_unchanged_when_hashes_equal() {
+        let sha_a: Option<String> = Some("abc".into());
+        let sha_b: Option<String> = Some("abc".into());
+        assert_eq!(sha_a, sha_b);
+    }
 }

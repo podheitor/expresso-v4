@@ -201,6 +201,17 @@ mod tests {
         }).unwrap();
         assert!(tok.join_url.starts_with("https://meet.expresso.local/r1?jwt="));
     }
+
+    #[test]
+    fn issued_token_expires_at_epoch_is_positive() {
+        let j = Jitsi::new(fixture_cfg());
+        let tok = j.mint(&IssueRequest {
+            room: "r2", user_id: Uuid::nil(),
+            display_name: "X", email: "x@x",
+            moderator: false, allow_recording: false,
+        }).unwrap();
+        assert!(tok.expires_at_epoch > 0);
+    }
 }
 
 #[cfg(test)]

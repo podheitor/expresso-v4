@@ -1585,4 +1585,17 @@ mod tests {
     fn folder_name_inbox_accepted() {
         assert!(validate_folder_name("INBOX").is_ok());
     }
+
+    #[test]
+    fn folder_dto_special_use_is_optional() {
+        let dto = FolderDto {
+            id: uuid::Uuid::nil(),
+            name: "INBOX".into(),
+            special_use: None,
+            message_count: 0,
+            unseen_count: 0,
+            subscribed: true,
+        };
+        assert!(dto.special_use.is_none());
+    }
 }

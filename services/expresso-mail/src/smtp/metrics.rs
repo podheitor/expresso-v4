@@ -211,4 +211,9 @@ mod tests {
     fn rset_command_maps_to_rset() {
         assert_eq!(command_label("RSET"), "RSET");
     }
+
+    #[test]
+    fn data_command_label_is_nonempty() {
+        assert!(!command_label("DATA").is_empty());
+    }
 }

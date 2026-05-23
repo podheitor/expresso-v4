@@ -208,4 +208,10 @@ mod tests {
         let e = MailError::Conflict("uid clash".into());
         assert!(format!("{e}").contains("uid clash"));
     }
+
+    #[test]
+    fn not_found_display_is_nonempty() {
+        let e = MailError::NotFound;
+        assert!(!format!("{e}").is_empty());
+    }
 }
