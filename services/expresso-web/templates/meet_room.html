@@ -18,9 +18,9 @@
     <script src="https://{{ jitsi_domain }}/external_api.js"></script>
     <script>
     (function(){
-      var domain = {{ jitsi_domain|json }};
-      var room   = {{ room_name|json }};
-      var jwt    = {{ jitsi_jwt|json }};
+      var domain = '{{ jitsi_domain }}';
+      var room   = '{{ room_name }}';
+      var jwt    = '{{ jitsi_jwt }}';
       var opts = {
         roomName: room,
         parentNode: document.getElementById('jitsi-container'),
