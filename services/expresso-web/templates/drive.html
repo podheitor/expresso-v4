@@ -19,6 +19,11 @@
     <div class="page-header-actions">
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
+      <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
+        <span class="muted small" id="drive-sel-count">0 selecionados</span>
+        <button class="btn btn-ghost btn-sm" onclick="batchTrash()" title="Mover selecionados para lixeira">🗑 Lixeira</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearDriveSelection()">✕ Cancelar</button>
+      </div>
       <form class="upload-form" method="post"
             action="/drive/upload{% match parent_id %}{% when Some with (p) %}?parent_id={{ p }}{% when None %}{% endmatch %}"
             enctype="multipart/form-data">
@@ -35,6 +40,7 @@
   <table class="data-table" id="drive-table">
     <thead>
       <tr>
+        <th style="width:1.5rem"><input type="checkbox" id="drive-select-all" onchange="toggleSelectAll(this.checked)" title="Selecionar todos"></th>
         <th></th>
         <th class="sortable" onclick="driveSort('name')" title="Ordenar por nome">Nome <span class="sort-arrow" id="sort-name"></span></th>
         <th class="sortable" onclick="driveSort('size')" title="Ordenar por tamanho">Tamanho <span class="sort-arrow" id="sort-size"></span></th>
@@ -44,7 +50,8 @@
     </thead>
     <tbody>
       {% for f in files %}
-      <tr>
+      <tr data-file-id="{{ f.id }}">
+        <td><input type="checkbox" class="drive-file-check" data-id="{{ f.id }}" onchange="updateDriveSelection()"></td>
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>
           {% if f.is_folder() %}
@@ -105,6 +112,35 @@
 </div>
 
 <script>
+// ── Multi-select ──────────────────────────────────────────────────────────────
+function toggleSelectAll(checked) {
+  document.querySelectorAll('.drive-file-check').forEach(function(cb){ cb.checked = checked; });
+  updateDriveSelection();
+}
+function updateDriveSelection() {
+  var selected = Array.from(document.querySelectorAll('.drive-file-check:checked'));
+  var bar = document.getElementById('drive-batch-bar');
+  var cnt = document.getElementById('drive-sel-count');
+  if (bar) bar.style.display = selected.length ? 'flex' : 'none';
+  if (cnt) cnt.textContent = selected.length + ' selecionado' + (selected.length !== 1 ? 's' : '');
+}
+function clearDriveSelection() {
+  document.querySelectorAll('.drive-file-check').forEach(function(cb){ cb.checked = false; });
+  var all = document.getElementById('drive-select-all');
+  if (all) all.checked = false;
+  updateDriveSelection();
+}
+function batchTrash() {
+  var ids = Array.from(document.querySelectorAll('.drive-file-check:checked')).map(function(cb){ return cb.dataset.id; });
+  if (!ids.length) return;
+  if (!confirm('Mover ' + ids.length + ' arquivo(s) para a lixeira?')) return;
+  Promise.all(ids.map(function(id) {
+    return fetch('/drive/' + encodeURIComponent(id) + '/trash', {
+      method: 'POST', credentials: 'include',
+    });
+  })).then(function() { window.location.reload(); });
+}
+
 // ── Inline rename on double-click ─────────────────────────────────────────────
 function startRename(e, fileId, el) {
   e.preventDefault();
