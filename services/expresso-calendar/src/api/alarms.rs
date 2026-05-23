@@ -555,4 +555,10 @@ mod tests {
         let q: CountQuery = serde_json::from_str(json).unwrap();
         assert_eq!(q.delivered, Some(false));
     }
+
+    #[test]
+    fn count_query_no_delivered_field_is_none() {
+        let q: CountQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(q.delivered.is_none());
+    }
 }

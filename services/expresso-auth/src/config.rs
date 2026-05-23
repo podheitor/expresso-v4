@@ -215,4 +215,10 @@ mod tests {
         let c = cfg("https://kc/r", "my-client", "https://app/cb", None, None, None);
         assert!(!c.client_id.is_empty());
     }
+
+    #[test]
+    fn state_ttl_equals_ten_minutes_in_secs() {
+        let c = cfg("https://kc/r", "cid", "https://app/cb", None, None, None);
+        assert_eq!(c.state_ttl.as_secs(), 600);
+    }
 }

@@ -266,4 +266,9 @@ mod tests {
     fn refresh_token_cookie_name_starts_with_expresso() {
         assert!(REFRESH_TOKEN_COOKIE.starts_with("expresso"));
     }
+
+    #[test]
+    fn refresh_token_cookie_name_ends_with_rt() {
+        assert!(REFRESH_TOKEN_COOKIE.ends_with("rt"));
+    }
 }

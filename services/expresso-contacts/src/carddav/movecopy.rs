@@ -220,4 +220,9 @@ mod tests {
     fn strip_origin_https_path_with_encoded_chars_preserved() {
         assert_eq!(strip_origin("https://host/path%20with%20spaces"), "/path%20with%20spaces");
     }
+
+    #[test]
+    fn strip_origin_http_path_with_multiple_segments() {
+        assert_eq!(strip_origin("http://host/a/b/c"), "/a/b/c");
+    }
 }

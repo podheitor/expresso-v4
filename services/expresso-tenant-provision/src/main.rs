@@ -530,4 +530,10 @@ mod tests {
     fn realm_roles_count_is_nonzero() {
         assert!(!REALM_ROLES.is_empty());
     }
+
+    #[test]
+    fn generated_secret_length_is_64() {
+        let s = generate_secret();
+        assert_eq!(s.len(), 64);
+    }
 }

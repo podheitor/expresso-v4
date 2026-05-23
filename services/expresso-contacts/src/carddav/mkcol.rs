@@ -236,4 +236,11 @@ mod tests {
         let b = r#"<displayname>say &quot;hi&quot;</displayname>"#;
         assert_eq!(extract_prop(b, "displayname").as_deref(), Some(r#"say "hi""#));
     }
+
+    #[test]
+    fn extract_prop_description_and_displayname_independent() {
+        let b = "<displayname>alpha</displayname><description>beta</description>";
+        assert_eq!(extract_prop(b, "displayname").as_deref(), Some("alpha"));
+        assert_eq!(extract_prop(b, "description").as_deref(), Some("beta"));
+    }
 }

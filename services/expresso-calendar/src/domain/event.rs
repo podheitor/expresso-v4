@@ -1263,4 +1263,11 @@ mod tests {
         let q: EventQuery = serde_json::from_str(json).unwrap();
         assert!(q.from.is_some());
     }
+
+    #[test]
+    fn event_query_to_field_roundtrips_via_serde() {
+        let json = r#"{"to":"2026-12-31T23:59:59Z"}"#;
+        let q: EventQuery = serde_json::from_str(json).unwrap();
+        assert!(q.to.is_some());
+    }
 }

@@ -428,4 +428,9 @@ END:VCALENDAR\r\n";
         let ev = parse_vevent(raw).unwrap();
         assert_eq!(ev.summary.as_deref(), Some("Hello World"));
     }
+
+    #[test]
+    fn compute_etag_short_input_has_fixed_length() {
+        assert_eq!(compute_etag("x").len(), compute_etag("hello world").len());
+    }
 }

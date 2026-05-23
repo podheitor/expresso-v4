@@ -529,4 +529,9 @@ mod tests {
     fn tus_version_constant_is_100() {
         assert_eq!(TUS_VERSION, "1.0.0");
     }
+
+    #[test]
+    fn tus_supported_constant_matches_version() {
+        assert_eq!(TUS_SUPPORTED, TUS_VERSION);
+    }
 }

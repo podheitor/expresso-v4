@@ -344,4 +344,10 @@ mod tests {
         let e = Event::EventUpdated { tenant_id: Uuid::nil(), event_id: Uuid::nil(), summary: None, sequence: 0 };
         assert_ne!(e.kind_str(), "event_created");
     }
+
+    #[test]
+    fn event_cancelled_kind_str_ne_event_updated() {
+        let e = Event::EventCancelled { tenant_id: Uuid::nil(), event_id: Uuid::nil() };
+        assert_ne!(e.kind_str(), "event_updated");
+    }
 }

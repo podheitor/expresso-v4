@@ -359,4 +359,10 @@ mod extra_tests {
         let cfg = fixture_cfg();
         assert!(!cfg.app_id.is_empty());
     }
+
+    #[test]
+    fn jitsi_config_secret_is_nonempty() {
+        let cfg = fixture_cfg();
+        assert!(!cfg.secret.is_empty());
+    }
 }

@@ -429,4 +429,9 @@ mod tests {
     fn xml_prolog_contains_utf8_encoding() {
         assert!(XML_PROLOG.contains("utf-8"));
     }
+
+    #[test]
+    fn escape_less_than_is_lt_entity() {
+        assert_eq!(escape("<tag>"), "&lt;tag&gt;");
+    }
 }

@@ -332,4 +332,9 @@ mod tests {
         };
         assert_eq!(e.file_id, fid);
     }
+
+    #[test]
+    fn page_size_constant_is_fifty() {
+        assert_eq!(PAGE_SIZE, 50);
+    }
 }

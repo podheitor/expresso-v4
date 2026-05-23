@@ -852,4 +852,10 @@ mod tests {
         let f = sample_file();
         assert!(f.sha256.is_none());
     }
+
+    #[test]
+    fn drive_file_kind_is_file_in_sample() {
+        let f = sample_file();
+        assert_eq!(f.kind, "file");
+    }
 }

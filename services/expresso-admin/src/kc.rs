@@ -476,4 +476,9 @@ mod tests {
     fn token_max_ttl_is_nonzero() {
         assert!(TOKEN_MAX_TTL.as_secs() > 0);
     }
+
+    #[test]
+    fn token_refresh_skew_is_30_secs_exact() {
+        assert_eq!(TOKEN_REFRESH_SKEW.as_secs(), 30);
+    }
 }

@@ -608,4 +608,10 @@ mod tests {
         let raw: i64 = 1;
         assert_eq!(raw.clamp(1, 200), 1);
     }
+
+    #[test]
+    fn counter_list_limit_none_defaults_to_50_via_unwrap() {
+        let q: CounterListQuery = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(q.limit.unwrap_or(50), 50);
+    }
 }

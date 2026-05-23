@@ -184,4 +184,11 @@ mod tests {
         assert!(v.get("id").is_some());
         assert!(v.get("email").is_some());
     }
+
+    #[test]
+    fn user_out_email_is_string_field() {
+        let out = UserOut { id: uuid::Uuid::nil(), email: "string@field.io".into() };
+        let s = serde_json::to_string(&out).unwrap();
+        assert!(s.contains("string@field.io"));
+    }
 }

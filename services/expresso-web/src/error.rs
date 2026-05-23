@@ -178,4 +178,10 @@ mod tests {
         assert!(matches!(WebError::Upstream("x".into()), WebError::Upstream(_)));
         assert!(!matches!(WebError::Upstream("x".into()), WebError::Internal(_)));
     }
+
+    #[test]
+    fn internal_error_is_not_upstream_variant() {
+        assert!(matches!(WebError::Internal("y".into()), WebError::Internal(_)));
+        assert!(!matches!(WebError::Internal("y".into()), WebError::Upstream(_)));
+    }
 }

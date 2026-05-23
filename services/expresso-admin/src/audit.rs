@@ -637,4 +637,10 @@ mod tests {
         let out = csv_escape(",");
         assert!(out.starts_with('"') && out.ends_with('"'));
     }
+
+    #[test]
+    fn tab_at_start_is_formula_prefix_neutralized() {
+        let out = csv_escape("\tformula");
+        assert!(out.starts_with('"'));
+    }
 }

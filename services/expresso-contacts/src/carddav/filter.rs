@@ -474,4 +474,9 @@ mod tests {
     fn combine_allof_empty_slice_is_true() {
         assert!(combine(Op::AllOf, &[]));
     }
+
+    #[test]
+    fn combine_anyof_empty_slice_is_false() {
+        assert!(!combine(Op::AnyOf, &[]));
+    }
 }

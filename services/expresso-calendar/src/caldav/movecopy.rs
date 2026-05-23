@@ -255,4 +255,9 @@ mod tests {
             "/caldav/u/abc-123/events/",
         );
     }
+
+    #[test]
+    fn strip_origin_ftp_scheme_passes_through() {
+        assert_eq!(strip_origin("ftp://files.example.com/pub/file.txt"), "/pub/file.txt");
+    }
 }

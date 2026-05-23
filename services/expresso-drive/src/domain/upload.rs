@@ -283,4 +283,10 @@ mod tests {
         let s = session_with_expiry(Duration::hours(2));
         assert!(s.parent_id.is_none());
     }
+
+    #[test]
+    fn session_name_is_nonempty() {
+        let s = session_with_expiry(Duration::hours(1));
+        assert!(!s.name.is_empty());
+    }
 }

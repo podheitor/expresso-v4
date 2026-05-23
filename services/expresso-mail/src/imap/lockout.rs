@@ -272,4 +272,15 @@ mod tests {
         assert!(l.is_locked_out("alice@x.com"));
         assert!(!l.is_locked_out("bob@x.com"));
     }
+
+    #[test]
+    fn clear_failures_after_lockout_then_single_failure_not_locked() {
+        let l = LoginLockout::new(2, Duration::from_secs(60), Duration::from_secs(60));
+        l.record_failure("z@x.com");
+        l.record_failure("z@x.com");
+        assert!(l.is_locked_out("z@x.com"));
+        l.clear_failures("z@x.com");
+        l.record_failure("z@x.com");
+        assert!(!l.is_locked_out("z@x.com"));
+    }
 }

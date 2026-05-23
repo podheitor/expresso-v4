@@ -167,4 +167,10 @@ mod tests {
         ];
         for l in labels { assert!(!l.is_empty()); }
     }
+
+    #[test]
+    fn result_label_expired_is_static_str() {
+        let label: &'static str = result_label(&AuthError::Expired);
+        assert_eq!(label, "expired");
+    }
 }

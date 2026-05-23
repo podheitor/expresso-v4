@@ -303,4 +303,9 @@ mod tests {
     fn default_redis_pool_size_is_ten() {
         assert_eq!(default_redis_pool_size(), 10);
     }
+
+    #[test]
+    fn default_smtp_port_is_25() {
+        assert_eq!(default_smtp_port(), 25);
+    }
 }

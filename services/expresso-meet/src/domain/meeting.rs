@@ -526,4 +526,9 @@ mod tests {
     fn participant_role_participant_is_not_moderator() {
         assert_ne!(ParticipantRole::Participant, ParticipantRole::Moderator);
     }
+
+    #[test]
+    fn participant_role_debug_is_nonempty() {
+        assert!(!format!("{:?}", ParticipantRole::Moderator).is_empty());
+    }
 }

@@ -405,4 +405,9 @@ mod tests {
     fn parse_header_all_uppercase_name_no_colon_returns_none() {
         assert!(parse_header_line("NOCOLONHERE").is_none());
     }
+
+    #[test]
+    fn parse_header_numeric_name_with_colon_returns_some() {
+        assert!(parse_header_line("123: value").is_some());
+    }
 }

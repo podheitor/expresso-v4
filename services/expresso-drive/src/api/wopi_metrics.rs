@@ -210,4 +210,9 @@ mod tests {
     fn outcomes_list_does_not_contain_empty_string() {
         assert!(!OUTCOMES.contains(&""));
     }
+
+    #[test]
+    fn ops_list_contains_put_file() {
+        assert!(OPS.contains(&"put_file"));
+    }
 }

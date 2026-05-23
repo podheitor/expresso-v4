@@ -483,4 +483,9 @@ mod tests {
     fn services_const_all_entries_have_nonempty_roles() {
         assert!(SERVICES.iter().all(|s| !s.role.is_empty()));
     }
+
+    #[test]
+    fn services_const_all_entries_have_nonzero_ports() {
+        assert!(SERVICES.iter().all(|s| s.port > 0));
+    }
 }

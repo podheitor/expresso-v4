@@ -288,4 +288,13 @@ mod tests {
         let ip: std::net::IpAddr = "127.0.0.1".parse().unwrap();
         assert!(rl.check(ip));
     }
+
+    #[test]
+    fn ipv4_and_ipv6_loopback_tracked_independently() {
+        let rl = RateLimiter::new(Duration::from_secs(60), 1);
+        let v4: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+        let v6: std::net::IpAddr = "::1".parse().unwrap();
+        assert!(rl.check(v4));
+        assert!(rl.check(v6));
+    }
 }

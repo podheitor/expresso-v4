@@ -182,4 +182,10 @@ mod tests {
         let e = ChatError::Matrix("timeout".into());
         assert!(format!("{e}").contains("timeout"));
     }
+
+    #[test]
+    fn forbidden_display_is_forbidden() {
+        let e = ChatError::Forbidden;
+        assert!(format!("{e}").contains("forbidden"));
+    }
 }

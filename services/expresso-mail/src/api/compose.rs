@@ -1085,4 +1085,9 @@ mod tests {
     fn max_recipients_is_positive() {
         assert!(MAX_RECIPIENTS_PER_MESSAGE > 0);
     }
+
+    #[test]
+    fn max_subject_bytes_is_less_than_one_kib() {
+        assert!(MAX_SUBJECT_BYTES < 1024);
+    }
 }

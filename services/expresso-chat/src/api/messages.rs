@@ -225,4 +225,9 @@ mod tests {
         let result: Result<SendBody, _> = serde_json::from_str(r#"{}"#);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn default_list_limit_is_less_than_or_equal_to_max() {
+        assert!(DEFAULT_LIST_LIMIT <= MAX_LIST_LIMIT);
+    }
 }

@@ -139,4 +139,10 @@ mod tests {
         let b = ExpressstorageError::Internal(anyhow::anyhow!("error_b")).to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn internal_error_display_is_nonempty_for_whitespace_message() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("   "));
+        assert!(!e.to_string().is_empty());
+    }
 }

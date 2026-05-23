@@ -303,4 +303,9 @@ mod tests {
     fn default_ttl_is_seven_days_in_seconds() {
         assert_eq!(DEFAULT_TTL_SECONDS, 7 * 24 * 3600);
     }
+
+    #[test]
+    fn max_ttl_is_greater_than_default_ttl() {
+        assert!(MAX_TTL_SECONDS > DEFAULT_TTL_SECONDS);
+    }
 }

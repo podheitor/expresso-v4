@@ -565,4 +565,9 @@ mod slug_tests {
     fn statuses_const_contains_suspended() {
         assert!(STATUSES.contains(&"suspended"));
     }
+
+    #[test]
+    fn statuses_const_contains_cancelled() {
+        assert!(STATUSES.contains(&"cancelled"));
+    }
 }

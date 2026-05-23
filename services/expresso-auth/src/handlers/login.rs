@@ -214,4 +214,10 @@ mod tests {
         let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/123"}"#).unwrap();
         assert_eq!(q.redirect_uri.as_deref(), Some("/123"));
     }
+
+    #[test]
+    fn login_query_redirect_uri_slash_inbox_stored() {
+        let q: LoginQuery = serde_json::from_str(r#"{"redirect_uri":"/inbox"}"#).unwrap();
+        assert_eq!(q.redirect_uri.as_deref(), Some("/inbox"));
+    }
 }

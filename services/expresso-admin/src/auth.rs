@@ -377,4 +377,9 @@ mod tests {
     fn is_public_path_static_js_is_public() {
         assert!(is_public_path("/static/bundle.js"));
     }
+
+    #[test]
+    fn is_super_admin_false_for_single_admin_role() {
+        assert!(!is_super_admin(&["admin".into()]));
+    }
 }

@@ -398,4 +398,9 @@ mod tests {
     fn is_live_prop_rejects_empty_namespace() {
         assert!(!is_live_prop("", "displayname"));
     }
+
+    #[test]
+    fn is_live_prop_rejects_empty_local_name() {
+        assert!(!is_live_prop("DAV:", ""));
+    }
 }

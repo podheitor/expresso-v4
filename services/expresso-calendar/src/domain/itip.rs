@@ -564,4 +564,16 @@ END:VCALENDAR\r\n";
         };
         assert_eq!(a.partstat.as_deref(), Some("ACCEPTED"));
     }
+
+    #[test]
+    fn attendee_email_not_empty_after_construction() {
+        let a = Attendee {
+            email:    "org@example.com".into(),
+            cn:       None,
+            role:     None,
+            partstat: None,
+            rsvp:     None,
+        };
+        assert!(!a.email.is_empty());
+    }
 }

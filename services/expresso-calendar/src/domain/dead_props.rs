@@ -342,4 +342,14 @@ mod tests {
         };
         assert!(!p.local_name.is_empty());
     }
+
+    #[test]
+    fn dead_prop_namespace_not_empty_after_construction() {
+        let p = DeadProp {
+            namespace: "http://example.com/ns".into(),
+            local_name: "priority".into(),
+            xml_value: "1".into(),
+        };
+        assert!(!p.namespace.is_empty());
+    }
 }

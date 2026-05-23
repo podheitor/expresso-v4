@@ -294,4 +294,9 @@ mod tests {
             Some("blue".into()),
         );
     }
+
+    #[test]
+    fn extract_prop_returns_none_for_different_tag() {
+        assert_eq!(extract_prop("<displayname>My Cal</displayname>", "calendar-color"), None);
+    }
 }

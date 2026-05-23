@@ -295,4 +295,9 @@ mod tests {
     fn filter_action_discard_is_not_keep() {
         assert!(!matches!(FilterAction::Discard, FilterAction::Keep { .. }));
     }
+
+    #[test]
+    fn redirect_action_is_not_keep() {
+        assert!(!matches!(FilterAction::Redirect { address: "a@b.com".into() }, FilterAction::Keep { .. }));
+    }
 }

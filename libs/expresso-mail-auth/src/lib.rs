@@ -517,4 +517,10 @@ mod tests {
         let r = AuthResults::default();
         assert!(r.spf_envelope_from.is_none());
     }
+
+    #[test]
+    fn auth_results_default_dkim_spf_fields_are_empty_strings() {
+        let r = AuthResults::default();
+        assert!(r.dkim.is_empty() && r.spf.is_empty());
+    }
 }

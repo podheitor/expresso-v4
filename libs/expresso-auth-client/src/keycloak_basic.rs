@@ -378,4 +378,11 @@ mod tests {
         let e = KcBasicError::Upstream("http 500".into());
         assert!(e.to_string().contains("http 500"));
     }
+
+    #[test]
+    fn kc_basic_error_invalid_credentials_and_unreachable_are_distinct() {
+        let a = KcBasicError::InvalidCredentials.to_string();
+        let b = KcBasicError::Unreachable("x".into()).to_string();
+        assert_ne!(a, b);
+    }
 }

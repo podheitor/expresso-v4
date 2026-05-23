@@ -295,4 +295,10 @@ mod tests {
         let b = PresetBody { name: name.clone(), flags: vec![] };
         assert_eq!(b.name.len(), 100);
     }
+
+    #[test]
+    fn preset_body_empty_flags_has_zero_length() {
+        let b = PresetBody { name: "My preset".into(), flags: vec![] };
+        assert_eq!(b.flags.len(), 0);
+    }
 }

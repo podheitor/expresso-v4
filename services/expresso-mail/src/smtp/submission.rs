@@ -690,4 +690,10 @@ mod tests {
     fn max_msg_bytes_is_fifty_mib() {
         assert_eq!(MAX_MSG_BYTES, 50 * 1024 * 1024);
     }
+
+    #[test]
+    fn decode_plain_empty_base64_returns_err() {
+        let result = decode_plain("");
+        assert!(result.is_err());
+    }
 }

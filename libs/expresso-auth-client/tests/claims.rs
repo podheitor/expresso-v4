@@ -202,3 +202,11 @@ fn from_raw_govbr_confiabilidades_defaults_empty_when_none() {
     let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
     assert!(ctx.govbr_confiabilidades.is_empty());
 }
+
+#[test]
+fn from_raw_sub_is_preserved_in_context() {
+    let sub = uuid::Uuid::new_v4().to_string();
+    let r = base(&sub, None);
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert_eq!(ctx.sub, sub);
+}

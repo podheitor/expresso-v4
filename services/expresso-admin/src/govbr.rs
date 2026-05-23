@@ -410,4 +410,15 @@ mod tests {
         };
         assert_eq!(b.assurance.as_deref(), Some("bronze"));
     }
+
+    #[test]
+    fn upsert_body_assurance_ouro_is_nonempty() {
+        let b = UpsertBody {
+            cpf_hash: "hash".into(),
+            tenant_id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            assurance: Some("ouro".into()),
+        };
+        assert!(!b.assurance.as_deref().unwrap_or("").is_empty());
+    }
 }

@@ -153,4 +153,11 @@ mod tests {
         let e = RpError::Config("key_not_found".into());
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn discovery_error_status_is_503() {
+        let e = RpError::Discovery("timeout".into());
+        let resp = e.into_response();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
 }

@@ -566,4 +566,10 @@ mod tests {
         let n: NewCalendar = serde_json::from_str(json).unwrap();
         assert_eq!(n.is_default, false);
     }
+
+    #[test]
+    fn update_calendar_all_fields_none_is_no_change() {
+        let u = UpdateCalendar { name: None, description: None, color: None, timezone: None, is_default: None };
+        assert!(u.name.is_none() && u.description.is_none() && u.color.is_none());
+    }
 }

@@ -216,4 +216,9 @@ mod tests {
         let r: ForgotReq = serde_json::from_str(json).unwrap();
         assert!(r.email.contains('@'));
     }
+
+    #[test]
+    fn action_lifespan_secs_is_3600_value() {
+        assert_eq!(ACTION_LIFESPAN_SECS, 3600u32);
+    }
 }

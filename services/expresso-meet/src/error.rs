@@ -188,4 +188,9 @@ mod tests {
     fn not_participant_status_is_403() {
         assert_eq!(status(MeetError::NotParticipant), 403);
     }
+
+    #[test]
+    fn conflict_and_not_found_have_different_statuses() {
+        assert_ne!(status(MeetError::Conflict("x".into())), status(MeetError::NotFound));
+    }
 }

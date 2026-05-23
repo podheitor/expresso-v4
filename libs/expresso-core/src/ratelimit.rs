@@ -302,4 +302,10 @@ mod tests {
         assert_eq!(c2.rps, 7);
         assert_eq!(c2.burst, 42);
     }
+
+    #[test]
+    fn rate_limit_config_burst_is_at_least_rps() {
+        let cfg = RateLimitConfig { rps: 5, burst: 10 };
+        assert!(cfg.burst >= cfg.rps);
+    }
 }

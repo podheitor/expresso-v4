@@ -25627,4 +25627,16 @@ mod tests {
         };
         assert!(!n.kind.is_empty());
     }
+
+    #[test]
+    fn notification_folder_is_none_when_not_set() {
+        let n = Notification {
+            kind: "mail.new".into(),
+            account_id: uuid::Uuid::nil(),
+            tenant_id: uuid::Uuid::nil(),
+            folder: None,
+            message_id: None,
+        };
+        assert!(n.folder.is_none());
+    }
 }

@@ -240,4 +240,9 @@ mod tests {
     fn percent_decode_uppercase_hex_decoded() {
         assert_eq!(percent_decode("%41"), "A");
     }
+
+    #[test]
+    fn percent_decode_tilde_unchanged() {
+        assert_eq!(percent_decode("~user"), "~user");
+    }
 }

@@ -187,4 +187,10 @@ mod tests {
         let e = DriveError::BadRequest("missing field".into());
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn unauthorized_display_is_nonempty() {
+        let e = DriveError::Unauthorized;
+        assert!(!e.to_string().is_empty());
+    }
 }

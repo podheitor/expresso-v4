@@ -449,4 +449,11 @@ mod tests {
         let s = fmt_opt_ts(None);
         assert_eq!(s, "—");
     }
+
+    #[test]
+    fn fmt_opt_ts_some_does_not_equal_em_dash() {
+        use time::OffsetDateTime;
+        let s = fmt_opt_ts(Some(OffsetDateTime::UNIX_EPOCH));
+        assert_ne!(s, "—");
+    }
 }

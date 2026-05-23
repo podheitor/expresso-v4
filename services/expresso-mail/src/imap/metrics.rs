@@ -255,4 +255,10 @@ mod tests {
         assert_eq!(command_label("UNSUBSCRIBE"), "UNSUBSCRIBE");
         assert_eq!(command_label("unsubscribe"), "UNSUBSCRIBE");
     }
+
+    #[test]
+    fn capability_command_maps_correctly() {
+        assert_eq!(command_label("CAPABILITY"), "CAPABILITY");
+        assert_eq!(command_label("capability"), "CAPABILITY");
+    }
 }

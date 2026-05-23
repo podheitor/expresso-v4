@@ -196,4 +196,11 @@ mod extra_tests {
     fn is_editable_mime_image_jpeg_is_false() {
         assert!(!is_editable_mime(Some("image/jpeg")));
     }
+
+    #[test]
+    fn sign_token_output_length_is_consistent() {
+        let t1 = sign_token("file1", "secret");
+        let t2 = sign_token("file1", "secret");
+        assert_eq!(t1.len(), t2.len());
+    }
 }

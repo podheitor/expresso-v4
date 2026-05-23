@@ -256,4 +256,10 @@ mod tests {
     fn build_url_query_string_in_path_preserved() {
         assert_eq!(build_url("http://svc", "/search?q=foo&limit=5"), "http://svc/search?q=foo&limit=5");
     }
+
+    #[test]
+    fn build_url_scheme_is_preserved_for_https() {
+        let url = build_url("https://api.example.com", "/v1/status");
+        assert!(url.starts_with("https://"));
+    }
 }

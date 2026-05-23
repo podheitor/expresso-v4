@@ -340,4 +340,11 @@ mod tests {
     fn validate_priv_rejects_viewer() {
         assert!(validate_priv("VIEWER").is_err());
     }
+
+    #[test]
+    fn acl_entry_privilege_is_string_type() {
+        let json = r#"{"grantee_id":"00000000-0000-0000-0000-000000000000","privilege":"admin"}"#;
+        let req: ShareRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.privilege, "admin");
+    }
 }

@@ -197,4 +197,10 @@ mod tests {
         let r = TenantResolver::parse("CORP.EXAMPLE.COM:corp-realm");
         assert_eq!(r.resolve("corp.example.com"), Some("corp-realm"));
     }
+
+    #[test]
+    fn parse_single_entry_len_is_one() {
+        let r = TenantResolver::parse("host.example.com:tenantrealm");
+        assert_eq!(r.len(), 1);
+    }
 }

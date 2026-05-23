@@ -1597,4 +1597,10 @@ mod tests {
         let b: RenameTagBody = serde_json::from_str(r#"{"new_tag":"reviewed"}"#).unwrap();
         assert_eq!(b.new_tag, "reviewed");
     }
+
+    #[test]
+    fn add_tag_body_numeric_tag_preserved() {
+        let b: AddTagBody = serde_json::from_str(r#"{"tag":"2024"}"#).unwrap();
+        assert_eq!(b.tag, "2024");
+    }
 }

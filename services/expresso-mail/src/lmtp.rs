@@ -332,4 +332,9 @@ mod tests {
     fn max_rcpts_is_positive() {
         assert!(super::MAX_RCPTS > 0);
     }
+
+    #[test]
+    fn max_msg_bytes_exceeds_max_rcpts() {
+        assert!(super::MAX_MSG_BYTES > super::MAX_RCPTS as u64);
+    }
 }

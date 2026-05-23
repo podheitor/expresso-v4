@@ -140,4 +140,10 @@ mod tests {
         let b = ExpressmailParserError::Internal(anyhow::anyhow!("msg_b")).to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn internal_error_display_is_nonempty_for_whitespace_message() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("   "));
+        assert!(!e.to_string().is_empty());
+    }
 }

@@ -310,4 +310,10 @@ mod tests {
         let v = build_vcard("u6", "Frank", None, None, None, Some("ACME Corp"));
         assert!(v.contains("ACME Corp"));
     }
+
+    #[test]
+    fn build_vcard_contains_version_field() {
+        let v = build_vcard("u7", "Grace", None, None, None, None);
+        assert!(v.contains("VERSION:"));
+    }
 }

@@ -285,4 +285,14 @@ mod tests {
             addressbook_id: Uuid::nil(),
         });
     }
+
+    #[test]
+    fn addressbook_created_kind_str_is_addressbook_created() {
+        let ev = ContactsEvent::AddressbookCreated {
+            tenant_id:      Uuid::nil(),
+            addressbook_id: Uuid::nil(),
+            name:           None,
+        };
+        assert_eq!(ev.kind_str(), "addressbook.created");
+    }
 }

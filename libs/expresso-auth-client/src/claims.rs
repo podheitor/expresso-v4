@@ -389,4 +389,13 @@ mod tests {
         let c = AuthContext::from_raw(raw, "aud").unwrap();
         assert_eq!(c.display_name, "Full Name");
     }
+
+    #[test]
+    fn from_raw_preferred_username_used_when_name_absent() {
+        let mut raw = ctx();
+        raw.name = None;
+        raw.preferred_username = Some("alice_u".into());
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert_eq!(c.display_name, "alice_u");
+    }
 }

@@ -283,4 +283,10 @@ mod tests {
         let now = std::time::Instant::now();
         assert!(p.expires_at > now);
     }
+
+    #[test]
+    fn pending_login_redirect_uri_is_https() {
+        let p = make_pending(60);
+        assert!(p.redirect_uri.starts_with("https://"));
+    }
 }

@@ -285,6 +285,11 @@ mod tests {
         };
         assert!(p.is_strict());
     }
+
+    #[test]
+    fn rls_posture_role_value_is_nonempty_in_ok() {
+        assert!(!ok().role.is_empty());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

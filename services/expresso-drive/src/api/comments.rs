@@ -375,4 +375,9 @@ mod tests {
         };
         assert_eq!(c.tenant_id, tid);
     }
+
+    #[test]
+    fn max_comment_bytes_is_four_kib_exact() {
+        assert_eq!(MAX_COMMENT_BYTES, 4 * 1024);
+    }
 }

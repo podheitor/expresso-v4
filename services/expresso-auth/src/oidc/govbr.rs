@@ -241,4 +241,9 @@ mod tests {
     fn govbr_default_scopes_contains_profile() {
         assert!(GOVBR_DEFAULT_SCOPES.contains("profile"));
     }
+
+    #[test]
+    fn govbr_default_scopes_contains_email() {
+        assert!(GOVBR_DEFAULT_SCOPES.contains("email"));
+    }
 }

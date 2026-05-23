@@ -466,4 +466,10 @@ mod tests {
     fn max_vacation_body_bytes_is_larger_than_max_vacation_subject_bytes() {
         assert!(MAX_VACATION_BODY_BYTES > MAX_VACATION_SUBJECT_BYTES);
     }
+
+    #[test]
+    fn vacation_default_starts_at_is_none() {
+        let v = Vacation::default();
+        assert!(v.starts_at.is_none());
+    }
 }

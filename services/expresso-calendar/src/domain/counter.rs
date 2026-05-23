@@ -456,4 +456,18 @@ mod tests {
         };
         assert!(p.resolved_by.is_none());
     }
+
+    #[test]
+    fn counter_proposal_received_sequence_some_preserved() {
+        use time::macros::datetime;
+        let p = CounterProposal {
+            id: Uuid::nil(), event_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            attendee_email: "x@y.com".into(),
+            proposed_dtstart: None, proposed_dtend: None, comment: None,
+            status: "pending".into(), received_sequence: Some(3),
+            created_at: datetime!(2026-05-22 00:00:00 UTC),
+            resolved_at: None, resolved_by: None,
+        };
+        assert_eq!(p.received_sequence, Some(3));
+    }
 }

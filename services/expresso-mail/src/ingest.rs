@@ -1051,4 +1051,10 @@ mod extra_tests {
         assert!(!result.starts_with('<'));
         assert!(!result.ends_with('>'));
     }
+
+    #[test]
+    fn make_preview_single_word_returns_word() {
+        let preview = make_preview("hello");
+        assert_eq!(preview, Some("hello".to_string()));
+    }
 }

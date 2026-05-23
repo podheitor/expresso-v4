@@ -185,4 +185,10 @@ mod tests {
         let e = ContactsError::InvalidVCard("bad input".into());
         assert!(e.to_string().contains("bad input"));
     }
+
+    #[test]
+    fn not_supported_display_is_nonempty() {
+        let e = ContactsError::NotSupported("LOCK".into());
+        assert!(!e.to_string().is_empty());
+    }
 }

@@ -432,4 +432,10 @@ mod tests {
         let c = sample();
         assert_eq!(c.organization.as_deref(), Some("Acme Inc."));
     }
+
+    #[test]
+    fn contact_vcard_raw_starts_with_begin() {
+        let c = sample();
+        assert!(c.vcard_raw.starts_with("BEGIN:VCARD"));
+    }
 }

@@ -323,4 +323,9 @@ mod tests {
     fn rejects_ftp_scheme() {
         assert!(!is_safe_local_redirect("ftp://files.example.com/"));
     }
+
+    #[test]
+    fn accepts_path_with_deep_nesting() {
+        assert!(is_safe_local_redirect("/a/b/c/d/e/f"));
+    }
 }

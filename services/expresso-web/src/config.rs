@@ -324,4 +324,15 @@ mod tests {
         };
         assert!(!w.drive_url.is_empty());
     }
+
+    #[test]
+    fn wopi_token_ttl_zero_is_zero() {
+        let w = WopiConfig {
+            collabora_url: "https://collabora.example.com".into(),
+            drive_url: "https://drive.example.com".into(),
+            secret: "s3cr3t".into(),
+            token_ttl_secs: 0,
+        };
+        assert_eq!(w.token_ttl_secs, 0);
+    }
 }

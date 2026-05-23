@@ -351,4 +351,10 @@ mod tests {
         let ics = "BEGIN:VCALENDAR\r\nMETHOD:ADD\r\nEND:VCALENDAR\r\n";
         assert_eq!(extract_method(ics).as_deref(), Some("ADD"));
     }
+
+    #[test]
+    fn extract_method_counter_returns_counter() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:COUNTER\r\nEND:VCALENDAR\r\n";
+        assert_eq!(extract_method(ics).as_deref(), Some("COUNTER"));
+    }
 }

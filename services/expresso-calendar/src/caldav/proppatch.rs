@@ -425,4 +425,9 @@ mod tests {
     fn is_live_prop_dav_ns_displayname_is_live() {
         assert!(is_live_prop("DAV:", "displayname"));
     }
+
+    #[test]
+    fn is_live_prop_caldav_calendar_description_is_live() {
+        assert!(is_live_prop("urn:ietf:params:xml:ns:caldav", "calendar-description"));
+    }
 }

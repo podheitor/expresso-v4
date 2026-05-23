@@ -306,4 +306,11 @@ mod tests {
         let t = serde_json::to_string(&ChannelKind::Team).unwrap();
         assert_ne!(p, t);
     }
+
+    #[test]
+    fn member_role_guest_ne_owner() {
+        let g = serde_json::to_string(&MemberRole::Guest).unwrap();
+        let o = serde_json::to_string(&MemberRole::Owner).unwrap();
+        assert_ne!(g, o);
+    }
 }

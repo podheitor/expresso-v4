@@ -261,4 +261,10 @@ mod tests {
         let m = enrich_metadata(&e);
         assert_eq!(m["target_type"], json!("drive_file"));
     }
+
+    #[test]
+    fn audit_entry_action_is_string_not_empty() {
+        let e = AuditEntry::new("calendar.created");
+        assert!(!e.action.is_empty());
+    }
 }

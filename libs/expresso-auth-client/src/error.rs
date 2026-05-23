@@ -162,4 +162,10 @@ mod tests {
         let b = AuthError::JwksFetch("x".into()).to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn missing_claim_display_contains_claim_name() {
+        let e = AuthError::MissingClaim("sub");
+        assert!(e.to_string().contains("sub"));
+    }
 }

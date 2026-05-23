@@ -484,4 +484,10 @@ mod tests {
         let b: CreateVersionBody = serde_json::from_str("{}").unwrap();
         assert!(b.size_bytes.is_none());
     }
+
+    #[test]
+    fn create_version_body_sha256_none_when_absent() {
+        let b: CreateVersionBody = serde_json::from_str("{}").unwrap();
+        assert!(b.sha256.is_none());
+    }
 }

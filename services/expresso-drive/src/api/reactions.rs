@@ -307,4 +307,10 @@ mod tests {
         };
         assert_eq!(r.file_id, fid);
     }
+
+    #[test]
+    fn reaction_body_deser_multiple_emoji_chars() {
+        let b: ReactionBody = serde_json::from_str(r#"{"emoji":"🎉🎊"}"#).unwrap();
+        assert_eq!(b.emoji, "🎉🎊");
+    }
 }

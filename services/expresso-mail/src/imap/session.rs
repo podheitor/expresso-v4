@@ -3938,4 +3938,10 @@ Attachment\r\n\
         assert!(list_matches("INBOX", "INBOX"));
         assert!(!list_matches("INBOX", "Trash"));
     }
+
+    #[test]
+    fn list_matches_star_ignores_case_differently_than_exact() {
+        assert!(list_matches("INBOX.Sent", "*"));
+        assert!(!list_matches("INBOX.Sent", "INBOX"));
+    }
 }

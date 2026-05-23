@@ -201,4 +201,9 @@ mod tests {
     fn expn_command_maps_to_other() {
         assert_eq!(command_label("EXPN"), "OTHER");
     }
+
+    #[test]
+    fn help_command_maps_to_other() {
+        assert_eq!(command_label("HELP"), "OTHER");
+    }
 }

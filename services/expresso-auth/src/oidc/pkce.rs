@@ -169,4 +169,11 @@ mod tests {
         let v = generate_verifier();
         assert!(!v.contains('/'));
     }
+
+    #[test]
+    fn challenge_is_nonempty() {
+        let v = generate_verifier();
+        let c = challenge_s256(&v);
+        assert!(!c.is_empty());
+    }
 }

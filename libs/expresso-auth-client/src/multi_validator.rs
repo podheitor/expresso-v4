@@ -212,4 +212,11 @@ mod tests {
         let iss = m.issuer_for(realm);
         assert!(iss.ends_with(realm));
     }
+
+    #[test]
+    fn issuer_for_does_not_contain_placeholder_after_substitution() {
+        let m = MultiRealmValidator::new("https://kc/realms/{realm}", "aud").unwrap();
+        let iss = m.issuer_for("myrealm");
+        assert!(!iss.contains("{realm}"));
+    }
 }

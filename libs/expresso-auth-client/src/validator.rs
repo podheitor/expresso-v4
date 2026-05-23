@@ -374,4 +374,10 @@ mod tests {
         let c = OidcConfig::new("https://kc/realms/r", "first,second,third");
         assert_eq!(c.primary_audience(), "first");
     }
+
+    #[test]
+    fn oidc_config_jwks_min_refresh_is_not_zero() {
+        let c = OidcConfig::new("https://kc/realms/r", "aud");
+        assert!(c.jwks_min_refresh.as_secs() > 0);
+    }
 }

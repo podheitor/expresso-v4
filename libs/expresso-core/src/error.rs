@@ -162,4 +162,10 @@ mod tests {
         let e = CoreError::NotFound { resource: "contact" };
         assert!(e.to_string().starts_with("not found:"));
     }
+
+    #[test]
+    fn quota_exceeded_display_contains_limit_value() {
+        let e = CoreError::QuotaExceeded { used: 100, limit: 200 };
+        assert!(e.to_string().contains("200"));
+    }
 }

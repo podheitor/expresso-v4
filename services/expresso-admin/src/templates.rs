@@ -395,4 +395,11 @@ mod tests {
         let r: KcRealm = serde_json::from_str(json).unwrap();
         assert_eq!(r.password_policy, "");
     }
+
+    #[test]
+    fn kc_realm_name_preserved_on_deser() {
+        let json = r#"{"realm":"tenant-xyz"}"#;
+        let r: KcRealm = serde_json::from_str(json).unwrap();
+        assert_eq!(r.realm, "tenant-xyz");
+    }
 }

@@ -1522,4 +1522,10 @@ mod tests {
         };
         assert!(!doc.document_id.is_empty());
     }
+
+    #[test]
+    fn bucket_day_and_bucket_month_differ_for_same_ts() {
+        let ts = 1_700_000_000_i64;
+        assert_ne!(bucket_day(ts), bucket_month(ts));
+    }
 }

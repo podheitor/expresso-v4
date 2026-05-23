@@ -377,4 +377,11 @@ mod tests {
         let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
         assert_eq!(t.access_token, "bearer-xyz");
     }
+
+    #[test]
+    fn impersonation_tokens_access_token_nonempty() {
+        let json = r#"{"access_token":"tok"}"#;
+        let t: ImpersonationTokens = serde_json::from_str(json).unwrap();
+        assert!(!t.access_token.is_empty());
+    }
 }

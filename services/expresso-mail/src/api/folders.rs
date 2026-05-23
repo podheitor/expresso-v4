@@ -1575,4 +1575,9 @@ mod tests {
     fn folder_name_slash_accepted() {
         assert!(validate_folder_name("parent/child").is_ok());
     }
+
+    #[test]
+    fn folder_name_cyrillic_is_accepted() {
+        assert!(validate_folder_name("Рабочий").is_ok());
+    }
 }

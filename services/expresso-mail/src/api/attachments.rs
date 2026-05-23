@@ -630,4 +630,10 @@ mod extra_tests {
         let s = percent_encode_filename("what?.txt");
         assert!(!s.contains('?'));
     }
+
+    #[test]
+    fn percent_encode_filename_at_sign_encoded() {
+        let s = percent_encode_filename("user@host.txt");
+        assert!(!s.contains('@'));
+    }
 }

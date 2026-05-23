@@ -1478,6 +1478,11 @@ mod tests {
     fn max_email_bytes_is_254() {
         assert_eq!(MAX_EMAIL_BYTES, 254);
     }
+
+    #[test]
+    fn max_room_name_bytes_less_than_max_title_bytes() {
+        assert!(MAX_ROOM_NAME_BYTES < MAX_TITLE_BYTES);
+    }
 }
 
 // ── Breakout rooms ────────────────────────────────────────────────────────────

@@ -167,4 +167,9 @@ mod tests {
     fn realm_placeholder_ends_with_close_brace() {
         assert!(REALM_PLACEHOLDER.ends_with('}'));
     }
+
+    #[test]
+    fn realm_placeholder_contains_realm_word() {
+        assert!(REALM_PLACEHOLDER.contains("realm"));
+    }
 }

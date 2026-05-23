@@ -188,4 +188,10 @@ mod tests {
         let e = CalendarError::CalendarNotFound("work".into());
         assert!(format!("{e}").contains("work"));
     }
+
+    #[test]
+    fn invalid_ical_display_starts_with_invalid() {
+        let e = CalendarError::InvalidICal("missing UID".into());
+        assert!(format!("{e}").contains("invalid"));
+    }
 }

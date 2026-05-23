@@ -433,4 +433,10 @@ mod tests {
         let a = sample();
         assert_eq!(a.description.as_deref(), Some("Main addressbook"));
     }
+
+    #[test]
+    fn new_addressbook_is_default_defaults_to_false() {
+        let n: NewAddressbook = serde_json::from_str(r#"{"name":"books"}"#).unwrap();
+        assert!(!n.is_default);
+    }
 }

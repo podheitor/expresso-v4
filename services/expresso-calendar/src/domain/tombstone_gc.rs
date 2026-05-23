@@ -161,4 +161,9 @@ mod tests {
         let hours = DEFAULT_RETENTION_DAYS as u64 * 24;
         assert!(hours > DEFAULT_INTERVAL_HOURS);
     }
+
+    #[test]
+    fn default_interval_hours_is_nonzero() {
+        assert!(DEFAULT_INTERVAL_HOURS > 0);
+    }
 }

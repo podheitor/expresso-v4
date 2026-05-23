@@ -196,4 +196,10 @@ mod tests {
         let e = MailError::InvalidMessage("bad mime structure".into());
         assert!(!format!("{e}").is_empty());
     }
+
+    #[test]
+    fn folder_not_found_display_contains_folder_name() {
+        let e = MailError::FolderNotFound { folder: "Archive".into() };
+        assert!(format!("{e}").contains("Archive"));
+    }
 }

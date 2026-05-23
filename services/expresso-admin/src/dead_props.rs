@@ -240,4 +240,11 @@ mod tests {
         assert_eq!(out, s);
         assert!(!out.contains('…'));
     }
+
+    #[test]
+    fn preview_200_chars_ends_with_ellipsis() {
+        let s = "c".repeat(200);
+        let out = preview(s);
+        assert!(out.ends_with('…'));
+    }
 }

@@ -340,4 +340,12 @@ mod tests {
         };
         assert!(p.xml_value.contains('<') && p.xml_value.contains('>'));
     }
+
+    #[test]
+    fn dead_prop_clone_is_independent_of_original() {
+        let p = DeadProp { namespace: "NS:".into(), local_name: "x".into(), xml_value: "v".into() };
+        let mut q = p.clone();
+        q.xml_value = "changed".into();
+        assert_eq!(p.xml_value, "v");
+    }
 }

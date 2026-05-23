@@ -432,4 +432,16 @@ mod tests {
         };
         assert!(lock.expires_at > lock.acquired_at);
     }
+
+    #[test]
+    fn fresh_lock_locked_by_matches_user_id() {
+        let uid = Uuid::new_v4();
+        let l = WopiLock {
+            file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            lock_token: "tok".into(), locked_by: uid,
+            acquired_at: time::OffsetDateTime::now_utc(),
+            expires_at:  time::OffsetDateTime::now_utc() + time::Duration::minutes(30),
+        };
+        assert_eq!(l.locked_by, uid);
+    }
 }

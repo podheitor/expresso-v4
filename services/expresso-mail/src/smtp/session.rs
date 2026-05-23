@@ -527,4 +527,9 @@ mod extra_tests {
     fn size_param_missing_returns_none() {
         assert_eq!(extract_size_param("<a@b> BODY=7BIT"), None);
     }
+
+    #[test]
+    fn extract_angle_empty_input_returns_empty_string() {
+        assert_eq!(extract_angle(""), "");
+    }
 }

@@ -428,4 +428,17 @@ mod tests {
         };
         assert!(v.version_no > 0);
     }
+
+    #[test]
+    fn file_version_sha256_none_when_not_set() {
+        use time::macros::datetime;
+        let v = FileVersion {
+            id: Uuid::nil(), file_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            version_no: 1, storage_key: "blobs/v1".into(), size_bytes: 512,
+            sha256: None, mime_type: None,
+            created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+        };
+        assert!(v.sha256.is_none());
+    }
 }

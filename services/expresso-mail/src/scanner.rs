@@ -316,4 +316,10 @@ mod tests {
         let r = ScanResult { spam_score: None, spam_action: None, virus: None };
         assert!(r.is_clean());
     }
+
+    #[test]
+    fn scan_result_spam_score_zero_is_clean() {
+        let r = ScanResult { spam_score: Some(0.0), spam_action: None, virus: None };
+        assert!(r.is_clean());
+    }
 }

@@ -1763,4 +1763,10 @@ mod tests {
         let v = split_addrs("");
         assert!(v.is_empty());
     }
+
+    #[test]
+    fn split_addrs_whitespace_only_returns_empty() {
+        let v = split_addrs("   ");
+        assert!(v.is_empty());
+    }
 }

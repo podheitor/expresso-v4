@@ -301,4 +301,11 @@ mod tests {
         push_member(&mut out, user, ab, "uid-abc", "etag-x");
         assert!(out.contains("200 OK"));
     }
+
+    #[test]
+    fn token_roundtrip_with_large_value() {
+        let v = 9_999_999_i64;
+        let token = format!("{}{}", TOKEN_PREFIX, v);
+        assert_eq!(parse_token_value(&token), Some(v));
+    }
 }

@@ -385,4 +385,17 @@ mod tests {
         };
         assert!(!s.permission.is_empty());
     }
+
+    #[test]
+    fn share_revoked_at_none_when_not_revoked() {
+        use time::macros::datetime;
+        let s = Share {
+            id: Uuid::nil(), tenant_id: Uuid::nil(), file_id: Uuid::nil(),
+            permission: "read".into(), created_by: Uuid::nil(),
+            created_at: datetime!(2026-01-01 00:00:00 UTC),
+            expires_at: datetime!(2026-12-31 00:00:00 UTC),
+            revoked_at: None,
+        };
+        assert!(s.revoked_at.is_none());
+    }
 }

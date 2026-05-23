@@ -254,4 +254,11 @@ mod tests {
         let s = pct(25, 100);
         assert!(s.contains("25"));
     }
+
+    #[test]
+    fn mb_one_byte_is_less_than_one_mb() {
+        let s = mb(1);
+        let v: f64 = s.parse().unwrap_or(f64::NAN);
+        assert!(v < 1.0);
+    }
 }

@@ -351,4 +351,10 @@ mod tests {
         let q: StatsByTenantQuery = serde_json::from_str(r#"{"limit":50}"#).unwrap();
         assert_eq!(q.limit, Some(50));
     }
+
+    #[test]
+    fn event_density_query_bucket_day_is_some() {
+        let q: EventDensityQuery = serde_json::from_str(r#"{"bucket":"day"}"#).unwrap();
+        assert_eq!(q.bucket.as_deref(), Some("day"));
+    }
 }

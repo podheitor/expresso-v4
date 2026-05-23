@@ -651,4 +651,10 @@ mod tests {
         let s = human_size(-1);
         assert!(!s.is_empty());
     }
+
+    #[test]
+    fn human_size_max_i64_does_not_panic() {
+        let s = human_size(i64::MAX);
+        assert!(!s.is_empty());
+    }
 }

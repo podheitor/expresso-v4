@@ -199,4 +199,10 @@ mod tests {
         let tag = "42".to_string();
         assert_eq!(tag.parse::<u64>().unwrap(), 42);
     }
+
+    #[test]
+    fn tag_string_len_one_is_valid_rust_string() {
+        let tag = "x".to_string();
+        assert_eq!(tag.len(), 1);
+    }
 }

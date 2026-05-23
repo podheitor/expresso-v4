@@ -288,4 +288,9 @@ mod tests {
     fn super_role_constant_contains_super() {
         assert!(SUPER_ROLE.contains("super"));
     }
+
+    #[test]
+    fn super_role_constant_contains_admin() {
+        assert!(SUPER_ROLE.contains("admin"));
+    }
 }

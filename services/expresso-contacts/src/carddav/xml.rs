@@ -371,4 +371,9 @@ mod tests {
         let r = PropRequest::all();
         assert!(r.displayname);
     }
+
+    #[test]
+    fn xml_prolog_contains_utf8_encoding() {
+        assert!(XML_PROLOG.contains("utf-8"));
+    }
 }

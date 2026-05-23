@@ -350,4 +350,13 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(v["attendees"].as_array().unwrap().len(), 2);
     }
+
+    #[test]
+    fn envelope_cancel_uid_matches_event() {
+        let ev = sample_event(ICAL_WITH_ATTENDEES);
+        let uid = ev.uid.clone();
+        let bytes = build_envelope_bytes(&ev, "CANCEL").unwrap().unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(v["invite"]["uid"].as_str().unwrap(), uid);
+    }
 }

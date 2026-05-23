@@ -468,4 +468,10 @@ mod tests {
         let row = to_dav_row(id, Uuid::nil(), "T".into(), "e@x.com".into(), "N".into(), None, None, false, 0);
         assert_eq!(row.id, "00000000-0000-0000-0000-000000000000");
     }
+
+    #[test]
+    fn to_dav_row_nonzero_ctag_preserved() {
+        let row = to_dav_row(Uuid::nil(), Uuid::nil(), "T".into(), "e@x.com".into(), "Cal".into(), None, None, false, 99);
+        assert_eq!(row.ctag, 99);
+    }
 }
