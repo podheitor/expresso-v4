@@ -463,7 +463,8 @@ select option { background: var(--bg-raised); }
 .detail-header h2 { font-size: 1.1rem; margin-bottom: .4rem; }
 .detail-from { font-size: .9rem; margin-top: .4rem; }
 .detail-date { font-size: .82rem; margin-top: .2rem; }
-.detail-body { flex: 1; }
+.detail-body-toolbar { display:flex; justify-content:flex-end; padding:.25rem .75rem; border-bottom:1px solid var(--border); }
+.detail-body { flex: 1; overflow-y:auto; }
 .body-text {
   font-family: var(--font-mono);
   font-size: .85rem;
@@ -612,6 +613,7 @@ select option { background: var(--bg-raised); }
 
 /* Calendar switch nav */
 .calendar-switch { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.cal-dot { width:.6rem; height:.6rem; border-radius:50%; display:inline-block; flex-shrink:0; }
 
 /* ── CONTACTS ───────────────────────────────────────────────────────────────── */
 .contacts-books {
@@ -1314,9 +1316,15 @@ textarea[name="script"] {
 .mail-label-tag { font-size:.8em; line-height:1; }
 .rule-builder { display:flex; flex-direction:column; gap:.25rem; }
 .rule-builder-row { display:flex; align-items:center; gap:.4rem; flex-wrap:wrap; }
+.contact-alpha-sep td { padding:.25rem .5rem !important; background:var(--bg); border-bottom:1px solid var(--border); }
+.contact-alpha-label { font-size:.75rem; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.06em; }
 .settings-avatar-row { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; }
 .settings-avatar { width:4rem; height:4rem; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:700; overflow:hidden; flex-shrink:0; }
 .settings-avatar-btn { cursor:pointer; }
+.color-picker-row { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-top:.5rem; }
+.color-swatches { display:flex; gap:.4rem; flex-wrap:wrap; }
+.color-swatch { width:1.6rem; height:1.6rem; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:transform .1s; }
+.color-swatch:hover { transform:scale(1.2); border-color:var(--text-muted); }
 .detail-attachments { margin:.5rem 0; display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
 .attach-list { display:flex; flex-wrap:wrap; gap:.4rem; }
 .attach-item { display:inline-flex; align-items:center; gap:.25rem; padding:.2rem .55rem; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius-sm); font-size:.78rem; color:var(--accent); text-decoration:none; }
@@ -1426,6 +1434,11 @@ textarea[name="script"] {
 }
 .task-item:hover { border-color: var(--accent); }
 .task-item.task-done { opacity: .55; }
+.task-inline-subs { padding:.4rem .75rem .5rem 2.5rem; border-top:1px solid var(--border); background:var(--bg); }
+.task-inline-sub-list { list-style:none; padding:0; margin:0 0 .35rem; display:flex; flex-direction:column; gap:.2rem; }
+.task-inline-sub-item { display:flex; align-items:center; font-size:.83rem; }
+.task-done-sub { text-decoration:line-through; opacity:.55; }
+.task-inline-add-sub { margin-top:.25rem; }
 .task-item.task-dragging { opacity: .4; border-style: dashed; }
 .task-item.task-drop-over { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
 .task-drag-handle { cursor: grab; color: var(--text-muted); font-size: 1rem; user-select: none; flex-shrink: 0; padding-top: .1rem; }
@@ -1528,8 +1541,13 @@ textarea[name="script"] {
 .drive-preview-image-wrap { display:flex; align-items:center; justify-content:center; flex:1; padding:1.5rem; }
 .drive-preview-image { max-width:100%; max-height:80vh; object-fit:contain; border-radius:var(--radius); box-shadow:0 2px 16px rgba(0,0,0,.25); }
 .drive-preview-iframe { width:100%; flex:1; border:none; min-height:70vh; }
-.drive-preview-text-wrap { flex:1; overflow:auto; padding:1rem; }
-.drive-preview-text { font-family: var(--font-mono, 'Fira Mono', monospace); font-size:.82rem; white-space:pre-wrap; word-break:break-all; line-height:1.5; margin:0; color:var(--text); }
+.drive-preview-text-wrap { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.drive-preview-text-toolbar { display:flex; align-items:center; gap:.5rem; padding:.4rem .75rem; border-bottom:1px solid var(--border); background:var(--bg-surface); }
+.drive-preview-code-wrap { flex:1; overflow:auto; padding:0; }
+.drive-preview-text { font-family: var(--font-mono, 'Fira Mono', monospace); font-size:.82rem; white-space:pre-wrap; word-break:break-all; line-height:1.5; margin:0; padding:1rem; color:var(--text); }
+.drive-preview-lines { font-family:var(--font-mono,'Fira Mono',monospace); font-size:.82rem; line-height:1.5; margin:0; padding:.5rem 0; list-style-type:decimal; padding-left:3.5rem; }
+.drive-preview-lines li { white-space:pre-wrap; word-break:break-all; padding:.0rem .75rem; }
+.drive-preview-lines li:hover { background:var(--bg-raised); }
 .drive-preview-meta { padding:.5rem 1rem; }
 
 /* ── Compose attachments drag & drop (sprint #19994) ──────────────────────── */

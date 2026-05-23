@@ -665,39 +665,62 @@ handleChatSend = function(e, form) {
     });
 };
 
-// ── Typing indicator (client-side only, simulates peer typing on poll) ───────
+// ── Typing indicator — multi-user ─────────────────────────────────────────────
 var _typingTimer = null;
 var _typingActive = false;
+var _typingPeers = {}; // uid → { name, ts }
+var _MY_UID = '{{ me.user_id }}';
+var _MY_NAME = '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
+{% match active_channel %}{% when Some with (ch) %}var _TYPING_CH = '{{ ch.id }}';{% when None %}var _TYPING_CH = '';{% endmatch %}
+
 function chatTyping() {
   var inp = document.getElementById('chat-compose-input');
   if (!inp || !inp.value.trim()) return;
   if (!_typingActive) {
     _typingActive = true;
-    // broadcast typing via localStorage so same-browser tabs notice
-    try { localStorage.setItem('expresso_typing', JSON.stringify({ uid: '{{ me.user_id }}', name: '{{ me.display_name.as_deref().unwrap_or(&me.email) }}', ts: Date.now() })); } catch(e) {}
+    var payload = JSON.stringify({ uid: _MY_UID, name: _MY_NAME, ts: Date.now(), ch: _TYPING_CH });
+    try { localStorage.setItem('expresso_typing_' + _TYPING_CH, payload); } catch(ex) {}
+    if (_TYPING_CH) {
+      fetch('/chat/channels/' + encodeURIComponent(_TYPING_CH) + '/typing', {
+        method: 'POST', credentials: 'include',
+      }).catch(function(){});
+    }
   }
   clearTimeout(_typingTimer);
   _typingTimer = setTimeout(function() {
     _typingActive = false;
-    try { localStorage.removeItem('expresso_typing'); } catch(e) {}
+    try { localStorage.removeItem('expresso_typing_' + _TYPING_CH); } catch(ex) {}
   }, 3000);
 }
-// Listen for other tabs / future WebSocket upgrade point
-window.addEventListener('storage', function(e) {
-  if (e.key !== 'expresso_typing') return;
+
+function updateTypingUI() {
+  var now = Date.now();
+  Object.keys(_typingPeers).forEach(function(uid) {
+    if (now - _typingPeers[uid].ts > 4000) delete _typingPeers[uid];
+  });
+  var names = Object.values(_typingPeers).map(function(p){ return p.name; });
   var ind = document.getElementById('chat-typing-indicator');
   var lbl = document.getElementById('chat-typing-label');
   if (!ind || !lbl) return;
-  if (!e.newValue) { ind.style.display = 'none'; return; }
+  if (!names.length) { ind.style.display = 'none'; return; }
+  var text = names.length === 1 ? names[0] + ' está digitando…'
+    : names.length === 2 ? names[0] + ' e ' + names[1] + ' estão digitando…'
+    : names.length + ' pessoas estão digitando…';
+  lbl.textContent = text;
+  ind.style.display = 'flex';
+}
+
+window.addEventListener('storage', function(e) {
+  if (!_TYPING_CH || e.key !== 'expresso_typing_' + _TYPING_CH) return;
+  if (!e.newValue) { updateTypingUI(); return; }
   try {
     var d = JSON.parse(e.newValue);
-    if (d.uid === '{{ me.user_id }}') return; // own tab
-    if (Date.now() - d.ts > 4000) { ind.style.display = 'none'; return; }
-    lbl.textContent = (d.name || 'Alguém') + ' está digitando…';
-    ind.style.display = 'flex';
+    if (d.uid === _MY_UID) return;
+    _typingPeers[d.uid] = { name: d.name || 'Alguém', ts: d.ts };
+    updateTypingUI();
     clearTimeout(window._typingHideTimer);
-    window._typingHideTimer = setTimeout(function() { ind.style.display = 'none'; }, 3500);
-  } catch(e2) {}
+    window._typingHideTimer = setTimeout(updateTypingUI, 4000);
+  } catch(ex) {}
 });
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
@@ -721,6 +744,23 @@ function escHtml(s) {
       previewEl.textContent = txt || '…';
     }
   });
+})();
+
+// ── Tab title with unread badge ───────────────────────────────────────────────
+(function() {
+  var total = 0;
+  document.querySelectorAll('.chat-unread-badge').forEach(function(el) {
+    var n = parseInt(el.textContent, 10);
+    if (!isNaN(n)) total += n;
+  });
+  if (total > 0) {
+    document.title = '(' + total + ') Chat · Expresso';
+  }
+  // update on poll new messages
+  window._updateChatTabTitle = function(delta) {
+    total = Math.max(0, total + delta);
+    document.title = total > 0 ? '(' + total + ') Chat · Expresso' : 'Chat · Expresso';
+  };
 })();
 
 // ── Presence ─────────────────────────────────────────────────────────────────

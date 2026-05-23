@@ -27,6 +27,7 @@
     <nav class="calendar-switch">
       <span class="muted small">Agendas:</span>
       {% for c in calendars %}
+        <span class="cal-dot" style="background:{{ c.dot_color() }}" title="{{ c.name }}"></span>
         {% if c.id == selected.id %}
           <strong style="font-size:.875rem">{{ c.name }}</strong>
         {% else %}
@@ -53,6 +54,7 @@
           {% for ev in cell.events %}
           <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}{% if ev.is_all_day() %} event-chip-allday{% endif %}"
              href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"
+             style="{% if ev.is_all_day() %}{% else %}{{ selected.color_style() }}{% endif %}"
              title="{{ ev.title() }}{% if ev.is_recurring() %} (recorrente){% endif %}{% if ev.is_all_day() %} (dia inteiro){% endif %}">
             {% if ev.is_recurring() %}<span class="ev-recur" title="Recorrente">↻</span>{% endif %}
             {% if ev.is_all_day() %}

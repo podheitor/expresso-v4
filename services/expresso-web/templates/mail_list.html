@@ -145,10 +145,26 @@
           </div>
           {% endif %}
         </header>
-        <article class="detail-body">
+        <div class="detail-body-toolbar">
+          {% match d.body_html %}
+            {% when Some with (_) %}
+              <button class="btn btn-ghost btn-sm" id="toggle-html-btn" onclick="toggleMailBodyView()">Texto simples</button>
+            {% when None %}{% endmatch %}
+        </div>
+        <article class="detail-body" id="detail-body">
           {% match d.body_html %}
             {% when Some with (h) %}
-              <iframe class="body-html-frame" srcdoc="{{ h }}" sandbox="allow-same-origin" onload="this.style.height=this.contentDocument.body.scrollHeight+'px'"></iframe>
+              <div id="mail-body-html">
+                <iframe class="body-html-frame" id="mail-html-iframe"
+                        srcdoc="{{ h }}"
+                        sandbox="allow-same-origin"
+                        referrerpolicy="no-referrer"
+                        onload="resizeMailIframe(this)"></iframe>
+              </div>
+              {% match d.body_text %}
+                {% when Some with (t) %}
+                  <pre class="body-text" id="mail-body-text" style="display:none">{{ t }}</pre>
+                {% when None %}{% endmatch %}
             {% when None %}
               {% match d.body_text %}
                 {% when Some with (t) %}<pre class="body-text">{{ t }}</pre>
@@ -285,6 +301,67 @@ function nextWeekAt(h, m) { var d = new Date(); d.setDate(d.getDate()+7-d.getDay
   });
   saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
 })();
+
+// ── Keyboard shortcuts (j/k navigate, r reply, e archive) ────────────────────
+(function() {
+  var rows = null;
+  var idx = -1;
+  function getRows() { return Array.from(document.querySelectorAll('.msg-row')); }
+  function currentIdx() {
+    var sel = document.querySelector('.msg-row.selected');
+    if (!sel) return -1;
+    return getRows().indexOf(sel);
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      var r = getRows(); var i = currentIdx();
+      var next = r[Math.min(i + 1, r.length - 1)];
+      if (next) next.click();
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      var r = getRows(); var i = currentIdx();
+      var prev = r[Math.max(i - 1, 0)];
+      if (prev) prev.click();
+    } else if (e.key === 'r') {
+      var reply = document.querySelector('.detail-actions a[href*="reply_to"]');
+      if (reply) window.location.href = reply.href;
+    } else if (e.key === 'e') {
+      var archive = document.querySelector('.dropdown-item[href*="archive"],.dropdown-item[data-action="archive"]');
+      if (archive) archive.click();
+    } else if (e.key === 'c') {
+      window.location.href = '/mail/compose';
+    }
+  });
+})();
+
+// ── Mail body view toggle ─────────────────────────────────────────────────────
+function resizeMailIframe(frame) {
+  try {
+    // inject base styles for readability
+    var doc = frame.contentDocument;
+    if (doc && !doc.getElementById('_expresso_base')) {
+      var style = doc.createElement('style');
+      style.id = '_expresso_base';
+      style.textContent = 'body{font-family:system-ui,sans-serif;font-size:14px;line-height:1.6;color:#333;padding:8px;margin:0;word-break:break-word;}a{color:#0ea5e9;}img{max-width:100%;height:auto;}';
+      (doc.head || doc.documentElement).appendChild(style);
+    }
+    frame.style.height = 'auto';
+    frame.style.height = Math.min(doc.body.scrollHeight + 16, 800) + 'px';
+  } catch(e) {}
+}
+var _mailHtmlMode = true;
+function toggleMailBodyView() {
+  var htmlEl = document.getElementById('mail-body-html');
+  var textEl = document.getElementById('mail-body-text');
+  var btn    = document.getElementById('toggle-html-btn');
+  if (!htmlEl) return;
+  _mailHtmlMode = !_mailHtmlMode;
+  htmlEl.style.display = _mailHtmlMode ? '' : 'none';
+  if (textEl) textEl.style.display = _mailHtmlMode ? 'none' : '';
+  if (btn) btn.textContent = _mailHtmlMode ? 'Texto simples' : 'Ver HTML';
+}
 
 // ── Mail labels ───────────────────────────────────────────────────────────────
 var LABELS_KEY = 'expresso_mail_labels_{{ me.user_id }}';

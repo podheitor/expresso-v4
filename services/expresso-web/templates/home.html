@@ -114,14 +114,17 @@
       <div class="home-widget-header">
         <span class="home-widget-icon">🎥</span>
         <a class="home-widget-title" href="/meet">Meet</a>
-      </div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap;padding:.5rem 0">
-        <form method="post" action="/meet/new" style="display:contents">
-          <button class="btn btn-primary btn-sm" type="submit">Iniciar agora</button>
-        </form>
         <a class="btn btn-ghost btn-sm" href="/meet/schedule">📅 Agendar</a>
-        <a class="btn btn-ghost btn-sm" href="/meet">Histórico</a>
       </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;padding:.25rem 0 .5rem">
+        <form method="post" action="/meet/new" style="display:contents">
+          <button class="btn btn-primary btn-sm" type="submit">▶ Iniciar agora</button>
+        </form>
+        <a class="btn btn-ghost btn-sm" href="/meet">Ver histórico</a>
+      </div>
+      <ul class="home-file-list" id="home-meet-today">
+        <li class="muted small home-widget-empty">Carregando reuniões…</li>
+      </ul>
     </div>
 
     <!-- Tarefas -->
@@ -214,6 +217,34 @@
   if (pending.length > 4) html += '<p class="muted small" style="margin-top:.25rem">+' + (pending.length-4) + ' mais</p>';
   el.innerHTML = html;
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+})();
+
+// ── Meet today ────────────────────────────────────────────────────────────────
+(function loadMeetToday() {
+  var ul = document.getElementById('home-meet-today');
+  if (!ul) return;
+  fetch('/api/v1/meetings?date=' + todayIso2(), {credentials:'include'})
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(meetings) {
+      if (!meetings || !meetings.length) {
+        ul.innerHTML = '<li class="muted small home-widget-empty">Nenhuma reunião hoje.</li>';
+        return;
+      }
+      ul.innerHTML = meetings.slice(0,4).map(function(m) {
+        return '<li class="home-file-item">' +
+          '<span>🎥</span>' +
+          '<a class="home-file-name link" href="/meet/' + encodeURIComponent(m.room_id || m.id) + '">' + escHtml2(m.title || 'Reunião') + '</a>' +
+          '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + (m.scheduled_at ? m.scheduled_at.slice(11,16) : '') + '</span>' +
+          '</li>';
+      }).join('');
+    }).catch(function() {
+      ul.innerHTML = '<li class="muted small home-widget-empty">Nenhuma reunião hoje.</li>';
+    });
+  function todayIso2() {
+    var d = new Date(); var m = d.getMonth()+1; var day = d.getDate();
+    return d.getFullYear() + '-' + (m<10?'0':'')+m + '-' + (day<10?'0':'')+day;
+  }
+  function escHtml2(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 })();
 
 // ── Activity feed ─────────────────────────────────────────────────────────────

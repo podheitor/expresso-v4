@@ -101,12 +101,42 @@ function importVcf(input, bookId) {
 }
 
 function filterContacts(q) {
-  var rows = document.querySelectorAll('.data-table tbody tr');
+  var rows = document.querySelectorAll('.data-table tbody tr[data-name]');
   var lq = q.toLowerCase().trim();
   rows.forEach(function(row) {
     var text = row.textContent.toLowerCase();
     row.style.display = (!lq || text.includes(lq)) ? '' : 'none';
   });
+  // rebuild separators
+  buildContactSeparators();
 }
+
+function buildContactSeparators() {
+  var tbody = document.querySelector('.data-table tbody');
+  if (!tbody) return;
+  // remove old separators
+  tbody.querySelectorAll('tr.contact-alpha-sep').forEach(function(el){ el.remove(); });
+  var rows = Array.from(tbody.querySelectorAll('tr[data-name]')).filter(function(r){ return r.style.display !== 'none'; });
+  var lastLetter = '';
+  rows.forEach(function(row) {
+    var letter = (row.dataset.name || '?').charAt(0).toUpperCase();
+    if (letter !== lastLetter) {
+      lastLetter = letter;
+      var sep = document.createElement('tr');
+      sep.className = 'contact-alpha-sep';
+      sep.innerHTML = '<td colspan="5"><span class="contact-alpha-label">' + letter + '</span></td>';
+      tbody.insertBefore(sep, row);
+    }
+  });
+}
+
+// init on load — add data-name to rows
+(function() {
+  document.querySelectorAll('.data-table tbody tr').forEach(function(row) {
+    var nameCell = row.querySelector('td:first-child');
+    if (nameCell) row.dataset.name = nameCell.textContent.trim();
+  });
+  buildContactSeparators();
+})();
 </script>
 {% endblock %}

@@ -201,11 +201,14 @@ function renderAll() {
           '" onclick="toggleTask(\'' + escHtml(t.id) + '\')" title="' + (t.done ? 'Reabrir' : 'Concluir') + '">' +
           (t.done ? '✓' : '') +
         '</button>' +
-        '<div class="task-body" onclick="openEdit(\'' + escHtml(t.id) + '\')">' +
+        '<div class="task-body" ondblclick="openEdit(\'' + escHtml(t.id) + '\')" onclick="expandInlineSubtasks(\'' + escHtml(t.id) + '\')">' +
           '<span class="task-title ' + priClass + '">' + escHtml(t.title) + '</span>' +
           (t.due ? '<span class="task-due ' + (overdue ? 'task-overdue' : '') + '">' + escHtml(t.due) + '</span>' : '') +
           (t.notes ? '<span class="task-notes-preview muted small">' + escHtml(t.notes.substring(0,60)) + '</span>' : '') +
           renderSubtaskBar(t) +
+        '</div>' +
+        '<div class="task-inline-subs" id="inline-subs-' + escHtml(t.id) + '" style="display:none">' +
+          renderInlineSubtasks(t) +
         '</div>' +
       '</div>';
     });
@@ -342,6 +345,54 @@ function hideModal(id) { document.getElementById(id).style.display = 'none'; }
 function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Inline subtasks ───────────────────────────────────────────────────────────
+function renderInlineSubtasks(task) {
+  var subs = task.subtasks || [];
+  var html = '<ul class="task-inline-sub-list">';
+  subs.forEach(function(s, i) {
+    html += '<li class="task-inline-sub-item">' +
+      '<input type="checkbox"' + (s.done ? ' checked' : '') +
+        ' onchange="toggleInlineSub(\'' + escHtml(task.id) + '\',' + i + ',this.checked)" style="margin-right:.35rem">' +
+      '<span class="' + (s.done ? 'task-done-sub' : '') + '">' + escHtml(s.title) + '</span></li>';
+  });
+  html += '</ul>';
+  html += '<div class="task-inline-add-sub">' +
+    '<input type="text" class="tasks-add-input" placeholder="+ Nova subtarefa…" style="font-size:.8rem"' +
+    ' onkeydown="if(event.key===\'Enter\'){addInlineSub(\'' + escHtml(task.id) + '\',this);}">' +
+    '</div>';
+  return html;
+}
+function expandInlineSubtasks(id) {
+  var el = document.getElementById('inline-subs-' + id);
+  if (!el) return;
+  if (el.style.display === 'none') { el.style.display = ''; }
+  // else keep open — double-click → openEdit
+}
+function toggleInlineSub(taskId, idx, checked) {
+  var tasks = loadTasks();
+  tasks = tasks.map(function(t) {
+    if (t.id !== taskId) return t;
+    var subs = (t.subtasks || []).slice();
+    if (subs[idx]) subs[idx] = Object.assign({}, subs[idx], { done: checked });
+    return Object.assign({}, t, { subtasks: subs });
+  });
+  saveTasks(tasks);
+  renderAll();
+}
+function addInlineSub(taskId, inp) {
+  var title = inp.value.trim();
+  if (!title) return;
+  var tasks = loadTasks();
+  tasks = tasks.map(function(t) {
+    if (t.id !== taskId) return t;
+    var subs = (t.subtasks || []).slice();
+    subs.push({ id: genId(), title: title, done: false });
+    return Object.assign({}, t, { subtasks: subs });
+  });
+  saveTasks(tasks);
+  renderAll();
 }
 
 // ── Drag-to-reorder ───────────────────────────────────────────────────────────

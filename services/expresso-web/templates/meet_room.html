@@ -298,16 +298,23 @@ function removeLiveParticipant(name) {
   if (el) el.remove();
 }
 
-// elapsed timer
+// ── Elapsed timer ─────────────────────────────────────────────────────────────
 (function() {
   var start = Date.now();
   var el = document.getElementById('meet-duration');
+  if (!el) return;
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   setInterval(function() {
-    var s = Math.floor((Date.now() - start) / 1000);
-    var m = Math.floor(s / 60); s = s % 60;
-    var h = Math.floor(m / 60); m = m % 60;
+    var totalSec = Math.floor((Date.now() - start) / 1000);
+    var s = totalSec % 60;
+    var totalMin = Math.floor(totalSec / 60);
+    var m = totalMin % 60;
+    var h = Math.floor(totalMin / 60);
     el.textContent = (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(s);
+    // warn after 50 minutes
+    if (totalMin >= 50 && totalMin < 60) { el.style.color = 'var(--warn,#f59e0b)'; }
+    else if (totalMin >= 60) { el.style.color = 'var(--error,#ef4444)'; }
+    else { el.style.color = ''; }
   }, 1000);
 })();
 

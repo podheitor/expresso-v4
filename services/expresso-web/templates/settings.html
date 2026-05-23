@@ -60,6 +60,25 @@
           </div>
         </form>
 
+        <!-- Accent color picker -->
+        <div class="subcard stack" style="margin-top:1rem">
+          <h3>Cor de destaque</h3>
+          <p class="muted small">Personaliza a cor principal da interface (salva localmente).</p>
+          <div class="color-picker-row">
+            <input type="color" id="accent-color-picker" value="#14b8a6" oninput="applyAccentColor(this.value)" style="width:3rem;height:2.2rem;cursor:pointer;border:none;border-radius:var(--radius-sm);padding:.1rem">
+            <div class="color-swatches">
+              <button type="button" class="color-swatch" style="background:#14b8a6" onclick="applyAccentColor('#14b8a6')" title="Teal (padrão)"></button>
+              <button type="button" class="color-swatch" style="background:#6366f1" onclick="applyAccentColor('#6366f1')" title="Indigo"></button>
+              <button type="button" class="color-swatch" style="background:#ec4899" onclick="applyAccentColor('#ec4899')" title="Rosa"></button>
+              <button type="button" class="color-swatch" style="background:#f59e0b" onclick="applyAccentColor('#f59e0b')" title="Âmbar"></button>
+              <button type="button" class="color-swatch" style="background:#22c55e" onclick="applyAccentColor('#22c55e')" title="Verde"></button>
+              <button type="button" class="color-swatch" style="background:#ef4444" onclick="applyAccentColor('#ef4444')" title="Vermelho"></button>
+              <button type="button" class="color-swatch" style="background:#3b82f6" onclick="applyAccentColor('#3b82f6')" title="Azul"></button>
+            </div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="resetAccentColor()">Restaurar padrão</button>
+          </div>
+        </div>
+
         <div class="subcard stack" style="margin-top:1rem">
           <h3>Sessão atual</h3>
           <dl class="kv">
@@ -289,6 +308,29 @@
   </div>
 </div>
 <script>
+// ── Accent color ──────────────────────────────────────────────────────────────
+var ACCENT_KEY = 'expresso_accent_color';
+function applyAccentColor(color) {
+  document.documentElement.style.setProperty('--accent', color);
+  localStorage.setItem(ACCENT_KEY, color);
+  var picker = document.getElementById('accent-color-picker');
+  if (picker) picker.value = color;
+}
+function resetAccentColor() {
+  localStorage.removeItem(ACCENT_KEY);
+  document.documentElement.style.removeProperty('--accent');
+  var picker = document.getElementById('accent-color-picker');
+  if (picker) picker.value = '#14b8a6';
+}
+(function initAccent() {
+  var saved = localStorage.getItem(ACCENT_KEY);
+  if (saved) {
+    document.documentElement.style.setProperty('--accent', saved);
+    var picker = document.getElementById('accent-color-picker');
+    if (picker) picker.value = saved;
+  }
+})();
+
 function previewAvatar(input) {
   var file = input.files && input.files[0];
   if (!file) return;

@@ -23,16 +23,27 @@
         <tr><td class="mono" style="padding:.2rem .5rem">G K</td><td>Ir para Contatos</td></tr>
         <tr><td class="mono" style="padding:.2rem .5rem">G T</td><td>Ir para Tarefas</td></tr>
         <tr><td class="mono" style="padding:.2rem .5rem">G H</td><td>Ir para Início</td></tr>
+        <tr><td class="mono" style="padding:.2rem .5rem">/</td><td>Busca global</td></tr>
         <tr><td class="mono" style="padding:.2rem .5rem">?</td><td>Mostrar esta ajuda</td></tr>
       </table>
       <p class="muted small" style="margin-bottom:0">Clique em qualquer lugar para fechar.</p>
     </div>
   </div>
   <script>
+  // Apply saved accent color
+  (function() {
+    var c = localStorage.getItem('expresso_accent_color');
+    if (c) document.documentElement.style.setProperty('--accent', c);
+  })();
   (function() {
     var _g = false;
     document.addEventListener('keydown', function(e) {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.key === '/') {
+        var search = document.getElementById('topbar-search');
+        if (search) { e.preventDefault(); search.focus(); search.select(); }
+        return;
+      }
       if (e.key === '?') { document.getElementById('shortcut-help').style.display = 'flex'; return; }
       if (e.key === 'g' || e.key === 'G') { _g = true; setTimeout(function(){ _g = false; }, 1500); return; }
       if (_g) {

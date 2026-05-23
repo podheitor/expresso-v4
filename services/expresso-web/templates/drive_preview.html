@@ -24,16 +24,50 @@
       <iframe class="drive-preview-iframe" src="{{ download_url }}" title="{{ file.name }}"></iframe>
     {% else %}
       <div class="drive-preview-text-wrap">
-        <pre id="drive-preview-text" class="drive-preview-text">Carregando…</pre>
+        <div class="drive-preview-text-toolbar">
+          <span class="muted small" id="drive-text-stats"></span>
+          <button class="btn btn-ghost btn-sm" onclick="copyPreviewText()">📋 Copiar</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleLineNumbers()">🔢 Linhas</button>
+        </div>
+        <div class="drive-preview-code-wrap" id="drive-code-wrap">
+          <ol class="drive-preview-lines" id="drive-preview-lines" style="display:none"></ol>
+          <pre id="drive-preview-text" class="drive-preview-text">Carregando…</pre>
+        </div>
       </div>
       <script>
+      var _previewText = '';
+      var _lineNumsOn = false;
       fetch('{{ download_url }}', { credentials: 'include' })
         .then(function(r){ return r.text(); })
         .then(function(t){
+          _previewText = t;
           var el = document.getElementById('drive-preview-text');
           el.textContent = t;
+          var lines = t.split('\n');
+          var stats = document.getElementById('drive-text-stats');
+          if (stats) stats.textContent = lines.length + ' linhas · ' + t.length + ' caracteres';
+          var ol = document.getElementById('drive-preview-lines');
+          if (ol) {
+            ol.innerHTML = lines.map(function(l) {
+              return '<li><code>' + escPre(l) + '</code></li>';
+            }).join('');
+          }
         })
         .catch(function(){ document.getElementById('drive-preview-text').textContent = '(erro ao carregar)'; });
+
+      function escPre(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+      function copyPreviewText() {
+        navigator.clipboard.writeText(_previewText).then(function() {
+          var btn = event.target;
+          btn.textContent = '✓ Copiado!';
+          setTimeout(function(){ btn.textContent = '📋 Copiar'; }, 2000);
+        }).catch(function(){});
+      }
+      function toggleLineNumbers() {
+        _lineNumsOn = !_lineNumsOn;
+        document.getElementById('drive-preview-text').style.display = _lineNumsOn ? 'none' : '';
+        document.getElementById('drive-preview-lines').style.display = _lineNumsOn ? '' : 'none';
+      }
       </script>
     {% endif %}
   </div>

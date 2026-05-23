@@ -55,6 +55,17 @@
     </div>
   </div>
 
+  <!-- Reuniões de hoje -->
+  <div class="card stack" style="margin-top:1.5rem" id="meet-today-card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>Hoje</h2>
+      <span class="muted small" id="meet-today-date"></span>
+    </div>
+    <ul class="meet-list" id="meet-today-list">
+      <li class="muted small" style="padding:.5rem 0">Carregando…</li>
+    </ul>
+  </div>
+
   <!-- Próximas reuniões -->
   {% if !upcoming.is_empty() %}
   <div class="card stack" style="margin-top:1.5rem">
@@ -142,6 +153,39 @@ function copyMeetLink(id) {
   }
   tick();
   setInterval(tick, 1000);
+})();
+
+// ── Meet today widget ─────────────────────────────────────────────────────────
+(function() {
+  var now = new Date();
+  var today = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  var dateEl = document.getElementById('meet-today-date');
+  if (dateEl) dateEl.textContent = now.toLocaleDateString('pt-BR', {weekday:'long', day:'numeric', month:'long'});
+
+  var ul = document.getElementById('meet-today-list');
+  if (!ul) return;
+
+  // Pull from already-rendered upcoming list
+  var items = Array.from(document.querySelectorAll('.meet-list-item[data-scheduled]')).filter(function(li) {
+    var s = li.getAttribute('data-scheduled') || '';
+    return s.startsWith(today);
+  });
+
+  if (!items.length) {
+    ul.innerHTML = '<li class="muted small" style="padding:.5rem 0">Nenhuma reunião agendada para hoje.</li>';
+    return;
+  }
+  ul.innerHTML = items.map(function(li) {
+    var name = (li.querySelector('.meet-list-name') || {}).textContent || 'Reunião';
+    var id   = li.getAttribute('data-meet-id') || '';
+    var s    = li.getAttribute('data-scheduled') || '';
+    var time = s.length >= 16 ? s.slice(11,16) : '';
+    return '<li class="meet-list-item">' +
+      '<div class="meet-list-info"><span class="meet-list-name">' + name + '</span>' +
+      (time ? '<span class="muted small">🕐 ' + time + '</span>' : '') + '</div>' +
+      '<a class="btn btn-primary btn-sm" href="/meet/' + id + '">Entrar</a>' +
+      '</li>';
+  }).join('');
 })();
 </script>
 {% endblock %}

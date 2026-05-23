@@ -175,7 +175,19 @@ impl DriveFile {
         else { format!("{:.1} GB", b/(1024.0*1024.0*1024.0)) }
     }
     pub fn icon(&self) -> &'static str {
-        if self.is_folder() { "📁" } else { "📄" }
+        if self.is_folder() { return "📁"; }
+        let mime = self.mime_type.as_deref().unwrap_or("");
+        let ext  = self.name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        if mime.starts_with("image/") || matches!(ext.as_str(), "jpg"|"jpeg"|"png"|"gif"|"webp"|"svg"|"ico") { return "🖼"; }
+        if mime == "application/pdf" || ext == "pdf" { return "📕"; }
+        if mime.starts_with("video/") || matches!(ext.as_str(), "mp4"|"mkv"|"mov"|"avi"|"webm") { return "🎬"; }
+        if mime.starts_with("audio/") || matches!(ext.as_str(), "mp3"|"ogg"|"flac"|"wav"|"aac") { return "🎵"; }
+        if mime.contains("zip") || mime.contains("tar") || mime.contains("gzip") || matches!(ext.as_str(), "zip"|"tar"|"gz"|"bz2"|"7z"|"rar") { return "🗜"; }
+        if mime.contains("spreadsheet") || matches!(ext.as_str(), "xls"|"xlsx"|"ods"|"csv") { return "📊"; }
+        if mime.contains("presentation") || matches!(ext.as_str(), "ppt"|"pptx"|"odp") { return "📽"; }
+        if mime.contains("word") || mime.contains("document") || matches!(ext.as_str(), "doc"|"docx"|"odt"|"rtf") { return "📝"; }
+        if mime.starts_with("text/") || matches!(ext.as_str(), "txt"|"md"|"rst"|"json"|"yaml"|"toml"|"xml"|"html"|"css"|"js"|"ts"|"rs"|"py"|"go"|"sh") { return "📄"; }
+        "📦"
     }
     pub fn is_editable(&self) -> bool {
         !self.is_folder() && crate::wopi::is_editable_mime(self.mime_type.as_deref())
@@ -255,6 +267,19 @@ pub struct Calendar {
     #[serde(default)] pub description: Option<String>,
     #[serde(default)] pub color:       Option<String>,
     #[serde(default)] pub is_default:  bool,
+}
+
+impl Calendar {
+    /// CSS inline color style, or empty string if no color set.
+    pub fn color_style(&self) -> String {
+        match &self.color {
+            Some(c) if !c.is_empty() => format!("background:{};color:#fff;", c),
+            _ => String::new(),
+        }
+    }
+    pub fn dot_color(&self) -> &str {
+        self.color.as_deref().unwrap_or("var(--accent)")
+    }
 }
 
 #[derive(Template)]
