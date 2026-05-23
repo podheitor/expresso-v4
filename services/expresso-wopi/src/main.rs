@@ -51,3 +51,113 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_addr_default_port_when_env_unset() {
+        std::env::remove_var("PORT");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+    }
+
+    #[test]
+    fn resolve_addr_custom_port() {
+        std::env::set_var("PORT", "9008");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 9008);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn resolve_addr_default_host_is_all_interfaces() {
+        std::env::remove_var("HOST");
+        std::env::remove_var("PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.ip().to_string(), "0.0.0.0");
+    }
+
+    #[test]
+    fn resolve_addr_invalid_port_uses_default() {
+        std::env::set_var("PORT", "not_a_port");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), DEFAULT_PORT);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn default_port_is_8008() {
+        assert_eq!(DEFAULT_PORT, 8008);
+    }
+
+    #[test]
+    fn service_name_is_expresso_wopi() {
+        assert_eq!(SERVICE, "expresso-wopi");
+    }
+
+    #[test]
+    fn resolve_addr_loopback_host() {
+        std::env::set_var("HOST", "127.0.0.1");
+        std::env::remove_var("PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        std::env::remove_var("HOST");
+    }
+
+    #[test]
+    fn resolve_addr_returns_ok() {
+        std::env::remove_var("PORT");
+        std::env::remove_var("HOST");
+        assert!(resolve_addr().is_ok());
+    }
+
+    #[test]
+    fn resolve_addr_port_65535() {
+        std::env::set_var("PORT", "65535");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 65535);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn resolve_addr_host_env_overrides_default() {
+        std::env::set_var("HOST", "192.168.1.1");
+        std::env::remove_var("PORT");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.ip().to_string(), "192.168.1.1");
+        std::env::remove_var("HOST");
+    }
+
+    #[test]
+    fn resolve_addr_port_8080() {
+        std::env::set_var("PORT", "8080");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 8080);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn resolve_addr_port_8008_explicit() {
+        std::env::set_var("PORT", "8008");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 8008);
+        std::env::remove_var("PORT");
+    }
+
+    #[test]
+    fn resolve_addr_port_1() {
+        std::env::set_var("PORT", "1");
+        std::env::remove_var("HOST");
+        let addr = resolve_addr().unwrap();
+        assert_eq!(addr.port(), 1);
+        std::env::remove_var("PORT");
+    }
+}
