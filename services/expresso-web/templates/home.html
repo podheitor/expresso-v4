@@ -147,6 +147,18 @@
       </div>
     </div>
 
+    <!-- Atividade recente -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">🕓</span>
+        <span class="home-widget-title">Atividade recente</span>
+        <button class="btn btn-ghost btn-sm" onclick="clearActivity()">Limpar</button>
+      </div>
+      <ul class="home-file-list" id="home-activity-list">
+        <li class="muted small home-widget-empty">Nenhuma atividade registrada ainda.</li>
+      </ul>
+    </div>
+
   </div>
 </div>
 <script>
@@ -179,5 +191,37 @@
   el.innerHTML = html;
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 })();
+
+// ── Activity feed ─────────────────────────────────────────────────────────────
+(function() {
+  var ACT_KEY = 'expresso_activity_{{ me.user_id }}';
+  function loadActivity() { try { return JSON.parse(localStorage.getItem(ACT_KEY) || '[]'); } catch(e) { return []; } }
+  function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  var list = loadActivity().slice(0, 8);
+  var ul = document.getElementById('home-activity-list');
+  if (!ul) return;
+  if (!list.length) return;
+  ul.innerHTML = '';
+  list.forEach(function(a) {
+    var time = a.ts ? new Date(a.ts).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}) : '';
+    ul.innerHTML += '<li class="home-file-item"><span>' + escH(a.icon || '•') + '</span>' +
+      '<span class="home-file-name">' + escH(a.label) + '</span>' +
+      '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + time + '</span></li>';
+  });
+  window.clearActivity = function() {
+    localStorage.removeItem(ACT_KEY);
+    ul.innerHTML = '<li class="muted small home-widget-empty">Nenhuma atividade.</li>';
+  };
+})();
+
+// ── Activity logger (called from other pages via shared helper) ───────────────
+window.logExpressoActivity = function(icon, label) {
+  var key = 'expresso_activity_{{ me.user_id }}';
+  try {
+    var list = JSON.parse(localStorage.getItem(key) || '[]');
+    list.unshift({ icon: icon, label: label, ts: new Date().toISOString() });
+    localStorage.setItem(key, JSON.stringify(list.slice(0, 20)));
+  } catch(e) {}
+};
 </script>
 {% endblock %}
