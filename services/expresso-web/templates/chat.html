@@ -135,6 +135,10 @@
 
       <!-- Área de composição -->
       <div class="chat-compose-area">
+        <div class="chat-typing-indicator" id="chat-typing-indicator" style="display:none">
+          <span class="chat-typing-dots"><span></span><span></span><span></span></span>
+          <span id="chat-typing-label" class="muted small"></span>
+        </div>
         <div id="chat-reply-banner" class="chat-reply-banner" style="display:none">
           <span id="chat-reply-text"></span>
           <button class="btn btn-ghost btn-sm" onclick="clearReply()">✕</button>
@@ -170,7 +174,7 @@
             <textarea class="chat-compose-input" name="body" id="chat-compose-input"
               placeholder="Mensagem em #{{ ch.name }}…" rows="1"
               onkeydown="chatKeydown(event, this.form)"
-              oninput="autoResize(this)"></textarea>
+              oninput="autoResize(this); chatTyping()"></textarea>
             <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
           </div>
         </form>
@@ -419,6 +423,41 @@ document.addEventListener('click', function(e) {
     var p = document.getElementById('chat-emoji-picker');
     if (p) p.style.display = 'none';
   }
+});
+
+// ── Typing indicator (client-side only, simulates peer typing on poll) ───────
+var _typingTimer = null;
+var _typingActive = false;
+function chatTyping() {
+  var inp = document.getElementById('chat-compose-input');
+  if (!inp || !inp.value.trim()) return;
+  if (!_typingActive) {
+    _typingActive = true;
+    // broadcast typing via localStorage so same-browser tabs notice
+    try { localStorage.setItem('expresso_typing', JSON.stringify({ uid: '{{ me.user_id }}', name: '{{ me.display_name.as_deref().unwrap_or(&me.email) }}', ts: Date.now() })); } catch(e) {}
+  }
+  clearTimeout(_typingTimer);
+  _typingTimer = setTimeout(function() {
+    _typingActive = false;
+    try { localStorage.removeItem('expresso_typing'); } catch(e) {}
+  }, 3000);
+}
+// Listen for other tabs / future WebSocket upgrade point
+window.addEventListener('storage', function(e) {
+  if (e.key !== 'expresso_typing') return;
+  var ind = document.getElementById('chat-typing-indicator');
+  var lbl = document.getElementById('chat-typing-label');
+  if (!ind || !lbl) return;
+  if (!e.newValue) { ind.style.display = 'none'; return; }
+  try {
+    var d = JSON.parse(e.newValue);
+    if (d.uid === '{{ me.user_id }}') return; // own tab
+    if (Date.now() - d.ts > 4000) { ind.style.display = 'none'; return; }
+    lbl.textContent = (d.name || 'Alguém') + ' está digitando…';
+    ind.style.display = 'flex';
+    clearTimeout(window._typingHideTimer);
+    window._typingHideTimer = setTimeout(function() { ind.style.display = 'none'; }, 3500);
+  } catch(e2) {}
 });
 
 // ── Modal helpers ─────────────────────────────────────────────────────────────
