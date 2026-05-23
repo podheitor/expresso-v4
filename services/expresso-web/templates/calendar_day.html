@@ -69,6 +69,11 @@
     </div>
     {% endfor %}
 
+    <!-- Now indicator -->
+    <div id="cal-now-line" style="position:absolute;left:56px;right:0;height:2px;background:#ef4444;z-index:10;display:none;pointer-events:none">
+      <div style="position:absolute;left:-6px;top:-4px;width:10px;height:10px;border-radius:50%;background:#ef4444"></div>
+    </div>
+
     <!-- Events overlay -->
     <div class="cal-day-events-layer" id="cal-day-events-layer">
       {% for ev in events %}{% if !ev.is_all_day() %}
@@ -182,6 +187,37 @@ function renderMiniCal() {
     notice.textContent = BR_HOLIDAYS[todayMmdd] ? '🎉 ' + BR_HOLIDAYS[todayMmdd] : '';
   }
 }
+
+// ── Now indicator ─────────────────────────────────────────────────────────────
+(function positionNowLine() {
+  var dateIso = '{{ date_iso }}';
+  var today = new Date().toISOString().slice(0, 10);
+  if (dateIso !== today) return;
+  var line = document.getElementById('cal-now-line');
+  var grid = document.getElementById('cal-day-grid');
+  if (!line || !grid) return;
+  function update() {
+    var now = new Date();
+    var mins = now.getHours() * 60 + now.getMinutes();
+    var totalMins = 24 * 60;
+    var gridH = grid.getBoundingClientRect().height;
+    if (!gridH) gridH = grid.offsetHeight;
+    var pct = mins / totalMins;
+    line.style.top = Math.round(pct * gridH) + 'px';
+    line.style.display = '';
+  }
+  update();
+  setInterval(update, 60000);
+  // Scroll to now on load
+  setTimeout(function() {
+    var now = new Date();
+    var mins = now.getHours() * 60 + now.getMinutes();
+    var gridH = (grid.getBoundingClientRect().height || grid.offsetHeight);
+    var scrollY = Math.round((mins / (24 * 60)) * gridH) - 200;
+    var container = grid.closest('.cal-day-grid') || grid.parentElement;
+    if (container) container.scrollTop = Math.max(0, scrollY);
+  }, 100);
+})();
 
 function quickNewEvent(dateIso, h, m, calId) {
   var hh  = String(h).padStart(2,'0');

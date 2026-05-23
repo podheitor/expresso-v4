@@ -31,6 +31,17 @@
         <a class="link-sm" href="/mail">← Voltar</a>
         <h1 class="folder-title">🧵 {{ subject }}</h1>
         <span class="muted small">{{ messages.len() }} mensagens</span>
+        <div style="display:flex;gap:.4rem;margin-left:auto">
+          <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
+          <div style="position:relative">
+            <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
+            <div class="dropdown-menu">
+              {% for f in folders %}
+              <button class="dropdown-item" onclick="moveThread('{{ f.name }}')">{{ f.icon() }} {{ f.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
 
       {% if messages.is_empty() %}
@@ -175,5 +186,34 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
     }
   });
 })();
+
+// ── Thread batch actions ──────────────────────────────────────────────────────
+var _threadMsgIds = (function() {
+  return Array.from(document.querySelectorAll('.thread-msg-item[id^="tmsg-"]')).map(function(el){ return el.id.replace('tmsg-',''); });
+})();
+function archiveThread() {
+  if (!_threadMsgIds.length) return;
+  if (!confirm('Arquivar ' + _threadMsgIds.length + ' mensagem(ns)?')) return;
+  var promises = _threadMsgIds.map(function(id) {
+    return fetch('/mail/' + encodeURIComponent(id) + '/move', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'target_folder=Archive&from_folder=INBOX',
+    });
+  });
+  Promise.all(promises).then(function(){ window.location.href = '/mail'; }).catch(function(){});
+}
+function moveThread(folder) {
+  if (!_threadMsgIds.length) return;
+  document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
+  var promises = _threadMsgIds.map(function(id) {
+    return fetch('/mail/' + encodeURIComponent(id) + '/move', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'target_folder=' + encodeURIComponent(folder) + '&from_folder=INBOX',
+    });
+  });
+  Promise.all(promises).then(function(){ window.location.href = '/mail'; }).catch(function(){});
+}
 </script>
 {% endblock %}

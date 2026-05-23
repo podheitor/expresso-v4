@@ -17,6 +17,7 @@
   </script>
 </head>
 <body>
+  <div id="maintenance-banner" style="display:none;padding:.35rem .75rem;font-size:.82rem;color:#fff;text-align:center"></div>
   {% block nav %}{% endblock %}
   {% block body %}{% endblock %}
   <!-- Atalhos de teclado globais (? para ajuda) -->
@@ -42,6 +43,32 @@
   (function() {
     var c = localStorage.getItem('expresso_accent_color');
     if (c) document.documentElement.style.setProperty('--accent', c);
+  })();
+  // Auto theme schedule
+  (function() {
+    try {
+      var cfg = JSON.parse(localStorage.getItem('expresso_theme_schedule') || '{}');
+      if (!cfg.enabled) return;
+      var now = new Date(); var cur = now.getHours()*60+now.getMinutes();
+      function toM(t){ var p=(t||'00:00').split(':'); return parseInt(p[0],10)*60+parseInt(p[1]||0,10); }
+      var dm = toM(cfg.dark_at), lm = toM(cfg.light_at);
+      var dark = dm > lm ? (cur >= dm || cur < lm) : (cur >= dm && cur < lm);
+      var t = dark ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    } catch(e) {}
+  })();
+  // Maintenance banner
+  (function() {
+    try {
+      var cfg = JSON.parse(localStorage.getItem('expresso_maintenance') || '{}');
+      if (!cfg.enabled || !cfg.message) return;
+      var banner = document.getElementById('maintenance-banner');
+      if (!banner) return;
+      var colors = { info: '#3b82f6', warn: '#f59e0b', error: '#ef4444' };
+      banner.style.background = colors[cfg.level] || colors.info;
+      banner.innerHTML = '📢 ' + String(cfg.message).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+      banner.style.display = '';
+    } catch(e) {}
   })();
   // Theme toggle API (callable from any page)
   window.toggleTheme = function() {

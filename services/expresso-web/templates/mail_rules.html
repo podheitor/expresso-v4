@@ -35,27 +35,22 @@
         <div class="alert alert-ok" role="status">Regras salvas com sucesso.</div>
       {% endif %}
 
-      <!-- Visual rule builder -->
+      <!-- Visual rule builder (multi-condition) -->
       <div class="card" style="margin-bottom:1rem">
         <h3 style="margin-bottom:.75rem">Construtor visual de regra</h3>
         <div class="rule-builder">
-          <div class="rule-builder-row">
-            <span class="muted small" style="width:3rem">Se</span>
-            <select id="rb-field" style="flex:1">
-              <option value="Subject">Assunto</option>
-              <option value="From">Remetente</option>
-              <option value="To">Destinatário</option>
-              <option value="List-Unsubscribe">É newsletter</option>
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem">
+            <span class="muted small">Combinar</span>
+            <select id="rb-combinator" class="input-sm" style="width:80px">
+              <option value="allof">todas</option>
+              <option value="anyof">qualquer</option>
             </select>
-            <select id="rb-op" style="flex:1">
-              <option value=":contains">contém</option>
-              <option value=":is">é exatamente</option>
-              <option value=":matches">padrão (glob)</option>
-            </select>
-            <input type="text" id="rb-value" placeholder="texto a buscar" style="flex:2" class="tasks-add-input">
+            <span class="muted small">as condições:</span>
           </div>
-          <div class="rule-builder-row" style="margin-top:.5rem">
-            <span class="muted small" style="width:3rem">Então</span>
+          <div id="rb-conditions"></div>
+          <button type="button" class="btn btn-ghost btn-sm" style="margin-top:.4rem" onclick="rbAddCondition()">+ Condição</button>
+          <div class="rule-builder-row" style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+            <span class="muted small" style="width:3.5rem;flex-shrink:0">Então</span>
             <select id="rb-action" onchange="updateRbAction()" style="flex:1">
               <option value="fileinto">Mover para pasta</option>
               <option value="discard">Descartar</option>
@@ -66,7 +61,7 @@
           </div>
           <div style="display:flex;gap:.5rem;margin-top:.75rem">
             <button type="button" class="btn btn-primary btn-sm" onclick="appendRule()">+ Adicionar ao script</button>
-            <span class="muted small" style="align-self:center">A regra será inserida no script abaixo</span>
+            <span class="muted small" style="align-self:center">Inserida no script abaixo</span>
           </div>
         </div>
       </div>
@@ -131,6 +126,44 @@ if header :contains "Subject" "[SPAM]" {
   </main>
 </div>
 <script>
+// ── Multi-condition rule builder ──────────────────────────────────────────────
+var _rbConditions = [];
+function rbAddCondition() {
+  var id = Date.now();
+  _rbConditions.push({ id: id });
+  renderRbConditions();
+}
+function rbRemoveCondition(id) {
+  _rbConditions = _rbConditions.filter(function(c){ return c.id !== id; });
+  renderRbConditions();
+}
+function renderRbConditions() {
+  var container = document.getElementById('rb-conditions');
+  if (!container) return;
+  if (!_rbConditions.length) {
+    container.innerHTML = '<p class="muted small" style="font-style:italic">Nenhuma condição. Clique em "+ Condição".</p>';
+    return;
+  }
+  container.innerHTML = _rbConditions.map(function(c, i) {
+    return '<div class="rule-builder-row" style="margin-bottom:.35rem;gap:.35rem" id="rbrow-' + c.id + '">' +
+      '<span class="muted small" style="width:2.5rem;flex-shrink:0">' + (i===0?'Se':'E/Ou') + '</span>' +
+      '<select class="input-sm rb-field" style="flex:1">' +
+        '<option value="Subject">Assunto</option>' +
+        '<option value="From">Remetente</option>' +
+        '<option value="To">Destinatário</option>' +
+        '<option value="List-Unsubscribe">É newsletter</option>' +
+        '<option value="X-Spam-Flag">Marcado como spam</option>' +
+      '</select>' +
+      '<select class="input-sm rb-op" style="flex:1">' +
+        '<option value=":contains">contém</option>' +
+        '<option value=":is">é exatamente</option>' +
+        '<option value=":matches">padrão (glob)</option>' +
+      '</select>' +
+      '<input type="text" class="input-sm rb-val" placeholder="valor" style="flex:2">' +
+      '<button type="button" class="btn btn-ghost btn-sm" onclick="rbRemoveCondition(' + c.id + ')">✕</button>' +
+    '</div>';
+  }).join('');
+}
 function updateRbAction() {
   var action = document.getElementById('rb-action').value;
   var valInp = document.getElementById('rb-action-val');
@@ -139,19 +172,29 @@ function updateRbAction() {
   else { valInp.style.display = 'none'; }
 }
 function appendRule() {
-  var field  = document.getElementById('rb-field').value;
-  var op     = document.getElementById('rb-op').value;
-  var val    = document.getElementById('rb-value').value.trim();
-  var action = document.getElementById('rb-action').value;
-  var aval   = document.getElementById('rb-action-val').value.trim();
-  if (!val && action !== 'discard' && action !== 'reject') { alert('Informe o texto a buscar.'); return; }
+  var combinator = document.getElementById('rb-combinator').value;
+  var condEls    = document.querySelectorAll('#rb-conditions .rule-builder-row');
+  var action     = document.getElementById('rb-action').value;
+  var aval       = document.getElementById('rb-action-val').value.trim();
+  if (!condEls.length) { alert('Adicione pelo menos uma condição.'); return; }
+  var conds = [];
+  condEls.forEach(function(row) {
+    var field = row.querySelector('.rb-field').value;
+    var op    = row.querySelector('.rb-op').value;
+    var val   = row.querySelector('.rb-val').value.trim();
+    if (field === 'List-Unsubscribe' || field === 'X-Spam-Flag') {
+      conds.push('exists "' + field + '"');
+    } else if (val) {
+      conds.push('header ' + op + ' "' + field + '" "' + val + '"');
+    }
+  });
+  if (!conds.length) { alert('Informe o valor em pelo menos uma condição.'); return; }
   var needs = action === 'fileinto' ? '["fileinto"]' : action === 'redirect' ? '["copy"]' : '[]';
-  var cond = 'header ' + op + ' "' + field + '" "' + val + '"';
-  if (field === 'List-Unsubscribe') { cond = 'exists "List-Unsubscribe"'; }
+  var condStr = conds.length === 1 ? conds[0] : combinator + ' (\n    ' + conds.join(',\n    ') + '\n  )';
   var actionLine = action === 'fileinto' ? 'fileinto "' + aval + '";'
     : action === 'redirect' ? 'redirect "' + aval + '";'
     : action + ';';
-  var rule = '\nif ' + cond + ' {\n    ' + actionLine + '\n    stop;\n}';
+  var rule = '\nif ' + condStr + ' {\n    ' + actionLine + '\n    stop;\n}';
   var ta = document.querySelector('textarea[name="script"]');
   if (!ta) return;
   if (!ta.value.includes('require') && needs !== '[]') {
@@ -161,6 +204,7 @@ function appendRule() {
   ta.scrollTop = ta.scrollHeight;
 }
 updateRbAction();
+rbAddCondition();
 
 // ── Sieve rule tester (client-side, simplified) ───────────────────────────────
 function testSieveRule() {

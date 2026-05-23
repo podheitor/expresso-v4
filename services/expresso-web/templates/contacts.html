@@ -29,7 +29,8 @@
         <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
           <input type="search" id="contacts-search" class="tasks-add-input" placeholder="🔍 Filtrar contatos…"
                  oninput="filterContacts(this.value)" style="width:220px;font-size:.85rem">
-          <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/export.vcf" title="Exportar todos como vCard">↓ Exportar .vcf</a>
+          <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/export.vcf" title="Exportar todos como vCard">↓ .vcf</a>
+          <button class="btn btn-ghost btn-sm" onclick="exportContactsCsv()" title="Exportar como CSV">↓ .csv</button>
           <label class="btn btn-ghost btn-sm" title="Importar arquivo .vcf">
             ↑ Importar .vcf
             <input type="file" accept=".vcf,text/vcard" style="display:none" onchange="importVcf(this, '{{ bid }}')">
@@ -212,6 +213,28 @@ function confirmVcfImport() {
     if (r.ok || r.redirected) { window.location.reload(); }
     else { alert('Erro ao importar (' + r.status + ').'); }
   }).catch(function() { alert('Erro de conexão.'); });
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────────
+function exportContactsCsv() {
+  var rows = Array.from(document.querySelectorAll('.data-table tbody tr[data-name]'));
+  if (!rows.length) { alert('Nenhum contato para exportar.'); return; }
+  var lines = ['Nome,Email,Telefone,Empresa,Notas'];
+  rows.forEach(function(row) {
+    var cells = row.querySelectorAll('td');
+    var name  = cells[0] ? cells[0].textContent.trim() : '';
+    var email = cells[1] ? cells[1].textContent.trim() : '';
+    var phone = cells[2] ? cells[2].textContent.trim() : '';
+    var org   = cells[3] ? cells[3].textContent.trim() : '';
+    function csvQ(s) { return '"' + String(s).replace(/"/g,'""') + '"'; }
+    lines.push([csvQ(name), csvQ(email), csvQ(phone), csvQ(org), '""'].join(','));
+  });
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'contatos.csv'; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
 }
 
 // ── CSV import ────────────────────────────────────────────────────────────────

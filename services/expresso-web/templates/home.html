@@ -82,11 +82,16 @@
           {% for f in drive_files %}
           <li class="home-file-item">
             <span>{{ f.icon() }}</span>
-            <a class="home-file-name" href="/drive/{{ f.id }}">{{ f.name }}</a>
+            <a class="home-file-name" href="/drive/{{ f.id }}"
+               onclick="homeDriveRecent('{{ f.id }}','{{ f.name }}','{{ f.icon() }}')">{{ f.name }}</a>
           </li>
           {% endfor %}
         </ul>
       {% endif %}
+      <div id="home-drive-recents" style="margin-top:.4rem;display:none">
+        <div class="muted small" style="font-weight:600;margin-bottom:.2rem">Abertos recentemente</div>
+        <ul class="home-file-list" id="home-drive-recents-list"></ul>
+      </div>
     </div>
 
     <!-- Chat -->
@@ -330,6 +335,44 @@
 })();
 
 // ── Activity logger (called from other pages via shared helper) ───────────────
+// ── Drive recents ─────────────────────────────────────────────────────────────
+var DRIVE_RECENT_KEY = 'expresso_drive_recent_{{ me.user_id }}';
+function homeDriveRecent(id, name, icon) {
+  try {
+    var list = JSON.parse(localStorage.getItem(DRIVE_RECENT_KEY) || '[]');
+    list = list.filter(function(f){ return f.id !== id; });
+    list.unshift({ id: id, name: name, icon: icon, ts: Date.now() });
+    localStorage.setItem(DRIVE_RECENT_KEY, JSON.stringify(list.slice(0, 8)));
+  } catch(e) {}
+}
+(function initDriveRecents() {
+  try {
+    var list = JSON.parse(localStorage.getItem(DRIVE_RECENT_KEY) || '[]');
+    if (!list.length) return;
+    var ul = document.getElementById('home-drive-recents-list');
+    var wrap = document.getElementById('home-drive-recents');
+    if (!ul || !wrap) return;
+    function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    ul.innerHTML = list.slice(0, 4).map(function(f) {
+      return '<li class="home-file-item">' +
+        '<span>' + esc(f.icon || '📄') + '</span>' +
+        '<a class="home-file-name link" href="/drive/' + encodeURIComponent(f.id) + '" ' +
+          'onclick="homeDriveRecent(\'' + esc(f.id) + '\',\'' + esc(f.name) + '\',\'' + esc(f.icon||'📄') + '\')">' +
+          esc(f.name) + '</a>' +
+        '<span class="muted small" style="font-size:.68rem;margin-left:auto">' + timeAgo(f.ts) + '</span>' +
+      '</li>';
+    }).join('');
+    wrap.style.display = '';
+  } catch(e) {}
+})();
+function timeAgo(ts) {
+  var diff = (Date.now() - ts) / 60000;
+  if (diff < 2) return 'agora';
+  if (diff < 60) return Math.round(diff) + ' min';
+  if (diff < 1440) return Math.round(diff/60) + 'h';
+  return Math.round(diff/1440) + 'd';
+}
+
 // ── Toggle task done from home widget ─────────────────────────────────────────
 function homeToggleTask(id) {
   var key = 'expresso_tasks_{{ me.user_id }}';

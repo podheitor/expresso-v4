@@ -64,7 +64,7 @@
         <!-- Theme switcher -->
         <div class="subcard stack" style="margin-top:1rem">
           <h3>Tema</h3>
-          <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+          <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem">
             <button class="settings-theme-card" id="theme-card-dark" onclick="setSettingsTheme('dark')">
               <div class="settings-theme-preview settings-theme-preview-dark"></div>
               <span class="small">Escuro</span>
@@ -73,6 +73,19 @@
               <div class="settings-theme-preview settings-theme-preview-light"></div>
               <span class="small">Claro</span>
             </button>
+          </div>
+          <div style="border-top:1px solid var(--border);padding-top:.6rem">
+            <label class="checkbox-row" style="margin-bottom:.4rem">
+              <input type="checkbox" id="theme-auto" onchange="saveThemeSchedule()"> Alternar tema automaticamente por horário
+            </label>
+            <div id="theme-schedule-times" style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:center">
+              <label style="font-size:.85rem">
+                Escuro a partir das: <input type="time" id="theme-dark-at" value="20:00" onchange="saveThemeSchedule()" class="input-sm" style="width:90px">
+              </label>
+              <label style="font-size:.85rem">
+                Claro a partir das: <input type="time" id="theme-light-at" value="07:00" onchange="saveThemeSchedule()" class="input-sm" style="width:90px">
+              </label>
+            </div>
           </div>
         </div>
 
@@ -619,6 +632,41 @@ function saveNotifPrefs() {
       var el = document.getElementById('pref-notif-' + k);
       if (el) el.checked = !!prefs[k];
     });
+  } catch(e) {}
+})();
+
+// ── Auto theme by schedule ────────────────────────────────────────────────────
+var THEME_SCHED_KEY = 'expresso_theme_schedule';
+function saveThemeSchedule() {
+  var enabled = document.getElementById('theme-auto').checked;
+  var darkAt  = document.getElementById('theme-dark-at').value;
+  var lightAt = document.getElementById('theme-light-at').value;
+  var cfg = { enabled: enabled, dark_at: darkAt, light_at: lightAt };
+  localStorage.setItem(THEME_SCHED_KEY, JSON.stringify(cfg));
+  applyThemeSchedule(cfg);
+}
+function applyThemeSchedule(cfg) {
+  if (!cfg || !cfg.enabled) return;
+  var now = new Date();
+  var cur = now.getHours() * 60 + now.getMinutes();
+  function toMins(t) { var p = (t||'00:00').split(':'); return parseInt(p[0],10)*60+parseInt(p[1]||0,10); }
+  var darkM = toMins(cfg.dark_at);
+  var lightM = toMins(cfg.light_at);
+  var shouldBeDark;
+  if (darkM > lightM) { shouldBeDark = cur >= darkM || cur < lightM; }
+  else { shouldBeDark = cur >= darkM && cur < lightM; }
+  var t = shouldBeDark ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('expresso_theme', t);
+}
+(function initThemeSchedule() {
+  var el = document.getElementById('theme-auto');
+  if (!el) return;
+  try {
+    var cfg = JSON.parse(localStorage.getItem(THEME_SCHED_KEY) || '{}');
+    el.checked = !!cfg.enabled;
+    if (cfg.dark_at) document.getElementById('theme-dark-at').value = cfg.dark_at;
+    if (cfg.light_at) document.getElementById('theme-light-at').value = cfg.light_at;
   } catch(e) {}
 })();
 

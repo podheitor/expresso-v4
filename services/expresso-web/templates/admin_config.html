@@ -83,6 +83,29 @@
     </div>
   </form>
 
+  <!-- Maintenance banner -->
+  <div class="card stack" style="max-width:600px;margin-top:1.5rem">
+    <h2>Banner de manutenção</h2>
+    <p class="muted small" style="margin-bottom:.5rem">Exibe um aviso no topo de todas as páginas para usuários finais.</p>
+    <label class="checkbox-row" style="margin-bottom:.5rem">
+      <input type="checkbox" id="maint-enabled" onchange="saveMaintBanner()"> Ativar banner de manutenção
+    </label>
+    <label>
+      <span class="muted small">Mensagem</span>
+      <input type="text" id="maint-message" class="tasks-add-input" placeholder="Ex: Manutenção programada domingo 02h–04h"
+        oninput="saveMaintBanner()" style="width:100%">
+    </label>
+    <label>
+      <span class="muted small">Nível</span>
+      <select id="maint-level" class="input-sm" onchange="saveMaintBanner()">
+        <option value="info">Informação (azul)</option>
+        <option value="warn">Atenção (amarelo)</option>
+        <option value="error">Urgente (vermelho)</option>
+      </select>
+    </label>
+    <div id="maint-preview" style="margin-top:.5rem"></div>
+  </div>
+
   <!-- Domain quota overrides -->
   <div class="card stack" style="max-width:600px;margin-top:1.5rem">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
@@ -151,5 +174,40 @@ function saveDomainQuotas() {
   }).catch(function(){ alert('Erro de rede.'); });
 }
 function escCfg(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Maintenance banner ────────────────────────────────────────────────────────
+var MAINT_KEY = 'expresso_admin_maintenance';
+(function initMaintBanner() {
+  var el = document.getElementById('maint-enabled');
+  var msgEl = document.getElementById('maint-message');
+  var lvlEl = document.getElementById('maint-level');
+  if (!el) return;
+  try {
+    var cfg = JSON.parse(localStorage.getItem(MAINT_KEY) || '{}');
+    el.checked = !!cfg.enabled;
+    if (msgEl && cfg.message) msgEl.value = cfg.message;
+    if (lvlEl && cfg.level) lvlEl.value = cfg.level;
+    updateMaintPreview(cfg);
+  } catch(e) {}
+})();
+function saveMaintBanner() {
+  var enabled = document.getElementById('maint-enabled').checked;
+  var message = document.getElementById('maint-message').value.trim();
+  var level   = document.getElementById('maint-level').value;
+  var cfg = { enabled: enabled, message: message, level: level };
+  localStorage.setItem(MAINT_KEY, JSON.stringify(cfg));
+  // Also write to shared key so base.html can read it
+  localStorage.setItem('expresso_maintenance', JSON.stringify(cfg));
+  updateMaintPreview(cfg);
+}
+function updateMaintPreview(cfg) {
+  var el = document.getElementById('maint-preview');
+  if (!el) return;
+  if (!cfg.enabled || !cfg.message) { el.innerHTML = ''; return; }
+  var colors = { info: '#3b82f6', warn: '#f59e0b', error: '#ef4444' };
+  var bg = colors[cfg.level] || colors.info;
+  el.innerHTML = '<div style="background:' + bg + ';color:#fff;padding:.4rem .75rem;border-radius:var(--radius);font-size:.82rem;display:flex;gap:.5rem;align-items:center">' +
+    '📢 ' + escCfg(cfg.message) + '</div>';
+}
 </script>
 {% endblock %}

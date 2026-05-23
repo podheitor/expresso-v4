@@ -122,6 +122,11 @@
           </div>
         {% else %}
           {% for msg in messages %}
+            {% if loop.index == messages.len().saturating_sub(ch.unread_count as usize) && ch.unread_count > 0 && !loop.last %}
+            <div class="chat-unread-divider" id="chat-first-unread">
+              <span>{{ ch.unread_count }} {% if ch.unread_count != 1 %}novas mensagens{% else %}nova mensagem{% endif %}</span>
+            </div>
+            {% endif %}
             <div class="chat-msg {% if msg.is_own(&me.user_id) %}chat-msg-own{% endif %}" data-msg-id="{{ msg.id }}">
               <div class="chat-msg-avatar" title="{{ msg.sender() }}">
                 {{ msg.sender().chars().next().unwrap_or('?').to_uppercase() }}
@@ -201,6 +206,16 @@
               📎
               <input type="file" id="chat-file-input" style="display:none" multiple onchange="handleChatFileSelect(this.files)">
             </label>
+          <div style="position:relative">
+            <button type="button" class="chat-action-btn" onclick="toggleGifPicker()" title="GIF">GIF</button>
+            <div id="chat-gif-picker" style="display:none;position:absolute;bottom:2.5rem;left:0;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:.5rem;width:280px;z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.18)">
+              <input type="text" class="input-sm" id="gif-search-input" placeholder="🔍 Buscar GIFs…" style="width:100%;margin-bottom:.4rem"
+                oninput="searchGifs(this.value)" autocomplete="off">
+              <div id="gif-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:.3rem;max-height:180px;overflow-y:auto">
+                <span class="muted small" style="grid-column:span 2;text-align:center">Digite para buscar GIFs</span>
+              </div>
+            </div>
+          </div>
           <div class="chat-emoji-wrap">
               <button type="button" class="chat-action-btn chat-emoji-btn" onclick="toggleEmojiPicker()" title="Emoji">😊</button>
               <div class="chat-emoji-picker" id="chat-emoji-picker" style="display:none">
@@ -343,11 +358,18 @@ function handleChatSend(e, form) {
 {% match active_channel %}
 {% when Some with (ch) %}
 (function markChannelRead() {
+  // Scroll to first unread divider if present, else scroll to bottom
+  var firstUnread = document.getElementById('chat-first-unread');
+  var msgs = document.getElementById('chat-messages');
+  if (firstUnread && msgs) {
+    setTimeout(function() { firstUnread.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+  } else if (msgs) {
+    msgs.scrollTop = msgs.scrollHeight;
+  }
   var CHAT_UNREAD_KEY = 'expresso_chat_unread';
   fetch('/chat/channels/{{ ch.id }}/mark-read', {
     method: 'POST', credentials: 'include',
   }).catch(function(){});
-  // Clear local unread count for this channel
   try {
     var data = JSON.parse(localStorage.getItem(CHAT_UNREAD_KEY) || '{}');
     data['{{ ch.id }}'] = 0;
@@ -596,6 +618,49 @@ function insertEmoji(e) {
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.chat-emoji-wrap')) {
     var p = document.getElementById('chat-emoji-picker');
+    if (p) p.style.display = 'none';
+  }
+});
+
+// ── GIF picker ───────────────────────────────────────────────────────────────
+var _gifTimer = null;
+function toggleGifPicker() {
+  var p = document.getElementById('chat-gif-picker');
+  var isOpen = p.style.display !== 'none';
+  p.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) { document.getElementById('gif-search-input').focus(); }
+}
+function searchGifs(q) {
+  clearTimeout(_gifTimer);
+  if (!q.trim()) { document.getElementById('gif-grid').innerHTML = '<span class="muted small" style="grid-column:span 2;text-align:center">Digite para buscar GIFs</span>'; return; }
+  _gifTimer = setTimeout(function() {
+    // Uses the Giphy public beta key — replace with tenant key via config
+    var url = '/api/v1/gifs/search?q=' + encodeURIComponent(q) + '&limit=6';
+    fetch(url, { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d) {
+        var grid = document.getElementById('gif-grid');
+        if (!d || !d.data || !d.data.length) { grid.innerHTML = '<span class="muted small" style="grid-column:span 2;text-align:center">Nenhum GIF encontrado.</span>'; return; }
+        grid.innerHTML = d.data.slice(0, 6).map(function(gif) {
+          var preview = gif.images && gif.images.fixed_height_small && gif.images.fixed_height_small.url;
+          var full = gif.images && gif.images.original && gif.images.original.url;
+          if (!preview || !full) return '';
+          return '<img src="' + preview + '" style="width:100%;border-radius:4px;cursor:pointer" ' +
+            'onclick="insertGif(\'' + full.replace(/'/g,"\\'") + '\')" loading="lazy" title="Inserir GIF">';
+        }).join('');
+      }).catch(function() {
+        document.getElementById('gif-grid').innerHTML = '<span class="muted small" style="color:#ef4444;grid-column:span 2">Erro ao buscar GIFs.</span>';
+      });
+  }, 400);
+}
+function insertGif(url) {
+  var inp = document.getElementById('chat-compose-input');
+  if (inp) { inp.value = (inp.value ? inp.value + ' ' : '') + url; inp.focus(); autoResize(inp); }
+  document.getElementById('chat-gif-picker').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#chat-gif-picker') && !e.target.closest('[onclick="toggleGifPicker()"]')) {
+    var p = document.getElementById('chat-gif-picker');
     if (p) p.style.display = 'none';
   }
 });

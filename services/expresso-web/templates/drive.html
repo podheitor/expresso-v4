@@ -332,7 +332,29 @@ function hideDriveNewFolder() {
   document.getElementById('drive-new-folder-modal').style.display = 'none';
 }
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') hideDriveNewFolder();
+  if (e.key === 'Escape') { hideDriveNewFolder(); closeMoveModal(); closeDrivePreview(); closeShareModal(); return; }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); showDriveNewFolder(); }
+  else if (e.key === 'u' || e.key === 'U') {
+    e.preventDefault();
+    var fi = document.querySelector('.upload-form input[type="file"]');
+    if (fi) fi.click();
+  }
+  else if (e.key === '/') {
+    e.preventDefault();
+    var si = document.getElementById('drive-search-input');
+    if (si) { si.focus(); si.select(); }
+  }
+  else if (e.key === 'Delete' || e.key === 'Backspace') {
+    var sel = document.querySelectorAll('.drive-row-check:checked');
+    if (sel.length && confirm('Apagar ' + sel.length + ' arquivo(s) selecionado(s)?')) {
+      sel.forEach(function(cb) {
+        var fid = cb.closest('tr') && cb.closest('tr').dataset.fileId;
+        if (fid) fetch('/drive/' + encodeURIComponent(fid) + '/delete', { method: 'POST', credentials: 'include' }).catch(function(){});
+      });
+      setTimeout(function(){ window.location.reload(); }, 400);
+    }
+  }
 });
 
 // ── Global drag-to-upload ────────────────────────────────────────────────────
