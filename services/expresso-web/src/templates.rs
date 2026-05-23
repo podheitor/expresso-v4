@@ -144,15 +144,6 @@ pub struct MailThreadTpl {
     pub subject:   String,
 }
 
-#[derive(Template)]
-#[template(path = "mail_rules.html")]
-pub struct MailRulesTpl {
-    pub me:      Me,
-    pub enabled: bool,
-    pub script:  String,
-    pub saved:   bool,
-    pub error:   Option<String>,
-}
 
 
 // ─── Drive ───────────────────────────────────────────────────────────────────
@@ -536,6 +527,25 @@ pub struct ChatTpl {
 #[template(path = "meet.html")]
 pub struct MeetTpl {
     pub me: Me,
+}
+
+#[derive(Template)]
+#[template(path = "settings.html")]
+pub struct SettingsTpl {
+    pub me:                Me,
+    pub tab:               String,
+    pub flash:             Option<String>,
+    pub logout_url:        String,
+    pub kc_account:        String,
+    pub signature_enabled: Option<bool>,
+    pub signature_body:    Option<String>,
+    pub autoreply_enabled: Option<bool>,
+    pub autoreply_subject: Option<String>,
+    pub autoreply_body:    Option<String>,
+    pub autoreply_start:   Option<String>,
+    pub autoreply_end:     Option<String>,
+    pub sieve_script:      Option<String>,
+    pub sieve_error:       Option<String>,
 }
 
 #[cfg(test)]

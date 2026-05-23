@@ -10,6 +10,7 @@
   </nav>
   <div class="useract">
     <button class="theme-toggle" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">☀</button>
+    <a class="appnav-item{% if current == "settings" %} active{% endif %}" href="/settings" title="Configurações" aria-label="Configurações">⚙</a>
     <a class="appnav-item useract-user" href="/me">{{ me.email }}</a>
   </div>
 </header>

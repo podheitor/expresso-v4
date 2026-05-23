@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Configurações · Expresso{% endblock %}
+{% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
+{% block body %}
+<div class="page settings-page">
+  <div class="page-header">
+    <h1>Configurações</h1>
+  </div>
+
+  <div class="settings-layout">
+    <nav class="settings-nav">
+      <a class="settings-nav-item{% if tab == "profile" %} active{% endif %}" href="/settings?tab=profile">Perfil</a>
+      <a class="settings-nav-item{% if tab == "signature" %} active{% endif %}" href="/settings?tab=signature">Assinatura de e-mail</a>
+      <a class="settings-nav-item{% if tab == "autoreply" %} active{% endif %}" href="/settings?tab=autoreply">Resposta automática</a>
+      <a class="settings-nav-item{% if tab == "notifications" %} active{% endif %}" href="/settings?tab=notifications">Notificações</a>
+      <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
+      <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
+    </nav>
+
+    <div class="settings-content">
+
+      {% if tab == "profile" %}
+      <div class="card stack">
+        <h2>Perfil</h2>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        <form class="compose-form" method="post" action="/settings/profile">
+          <label>
+            <span>Nome de exibição</span>
+            <input type="text" name="display_name" value="{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{% endmatch %}" placeholder="Seu nome completo">
+          </label>
+          <label>
+            <span>E-mail</span>
+            <input type="email" value="{{ me.email }}" disabled>
+          </label>
+          <label>
+            <span>Idioma</span>
+            <select name="locale">
+              <option value="pt-BR" selected>Português (Brasil)</option>
+              <option value="en-US">English (US)</option>
+            </select>
+          </label>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar</button>
+          </div>
+        </form>
+
+        <div class="subcard stack" style="margin-top:1rem">
+          <h3>Sessão atual</h3>
+          <dl class="kv">
+            <dt>User ID</dt>  <dd class="mono small">{{ me.user_id }}</dd>
+            <dt>Tenant</dt>   <dd class="mono small">{{ me.tenant_id }}</dd>
+            <dt>Roles</dt>    <dd class="small">{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
+            <dt>Expira em</dt><dd class="mono small">{{ me.expires_at }}</dd>
+          </dl>
+          <div class="row">
+            <a class="btn btn-ghost btn-sm" href="{{ logout_url }}">Sair da conta</a>
+          </div>
+        </div>
+      </div>
+
+      {% else if tab == "signature" %}
+      <div class="card stack">
+        <h2>Assinatura de e-mail</h2>
+        <p class="muted small">Adicionada automaticamente ao final de todas as mensagens enviadas.</p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        <form class="compose-form" method="post" action="/settings/signature">
+          <label>
+            <span>Ativar assinatura</span>
+            <input type="checkbox" name="enabled" value="1"{% match signature_enabled %}{% when Some with (e) %}{% if *e %} checked{% endif %}{% when None %}{% endmatch %}>
+          </label>
+          <label>
+            <span>Assinatura (texto simples)</span>
+            <textarea name="body" rows="8" placeholder="-- &#10;Seu Nome&#10;Cargo · Empresa&#10;+55 11 9xxxx-xxxx">{% match signature_body %}{% when Some with (b) %}{{ b }}{% when None %}{% endmatch %}</textarea>
+          </label>
+          <div class="settings-preview">
+            <span class="small muted">Pré-visualização:</span>
+            <pre class="signature-preview" id="sig-preview">{% match signature_body %}{% when Some with (b) %}{{ b }}{% when None %}-- &#10;(sem assinatura){% endmatch %}</pre>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar assinatura</button>
+          </div>
+        </form>
+      </div>
+      <script>
+        var ta = document.querySelector('[name="body"]');
+        var pre = document.getElementById('sig-preview');
+        if(ta && pre){ ta.addEventListener('input', function(){ pre.textContent = ta.value || '(sem assinatura)'; }); }
+      </script>
+
+      {% else if tab == "autoreply" %}
+      <div class="card stack">
+        <h2>Resposta automática (Out of office)</h2>
+        <p class="muted small">Enviada automaticamente para quem enviar e-mail durante sua ausência.</p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        <form class="compose-form" method="post" action="/settings/autoreply">
+          <label>
+            <span>Ativar resposta automática</span>
+            <input type="checkbox" name="enabled" value="1"{% match autoreply_enabled %}{% when Some with (e) %}{% if *e %} checked{% endif %}{% when None %}{% endmatch %}>
+          </label>
+          <label>
+            <span>Assunto</span>
+            <input type="text" name="subject" value="{% match autoreply_subject %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}" placeholder="Estou em férias até...">
+          </label>
+          <label>
+            <span>Mensagem</span>
+            <textarea name="body" rows="6" placeholder="Obrigado por entrar em contato. Retornarei em...">{% match autoreply_body %}{% when Some with (b) %}{{ b }}{% when None %}{% endmatch %}</textarea>
+          </label>
+          <div class="form-row">
+            <label style="flex:1">
+              <span>Início</span>
+              <input type="date" name="start_date" value="{% match autoreply_start %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
+            </label>
+            <label style="flex:1">
+              <span>Fim</span>
+              <input type="date" name="end_date" value="{% match autoreply_end %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
+            </label>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar</button>
+          </div>
+        </form>
+      </div>
+
+      {% else if tab == "notifications" %}
+      <div class="card stack">
+        <h2>Notificações</h2>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        <form class="compose-form" method="post" action="/settings/notifications">
+          <div class="subcard stack">
+            <h3>E-mail</h3>
+            <label class="checkbox-row">
+              <input type="checkbox" name="notify_new_mail" value="1" checked>
+              <span>Notificar ao receber novo e-mail</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="notify_calendar" value="1" checked>
+              <span>Convites de calendário</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" name="notify_shared" value="1">
+              <span>Arquivos e agendas compartilhadas comigo</span>
+            </label>
+          </div>
+          <div class="subcard stack">
+            <h3>Browser (push)</h3>
+            <label class="checkbox-row">
+              <input type="checkbox" name="browser_push" value="1">
+              <span>Notificações push no navegador</span>
+            </label>
+            <p class="muted small">Requer permissão concedida ao site.</p>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Salvar</button>
+          </div>
+        </form>
+      </div>
+
+      {% else if tab == "security" %}
+      <div class="card stack">
+        <h2>Segurança da conta</h2>
+        <div class="subcard stack">
+          <h3>Autenticação multifator</h3>
+          <dl class="kv">
+            <dt>TOTP</dt>
+            <dd>{% match me.mfa %}{% when Some with (m) %}{% if m.totp %}<span class="ok">Habilitado</span>{% else %}<span class="muted">Não habilitado</span>{% endif %}{% when None %}<span class="muted">—</span>{% endmatch %}</dd>
+            <dt>WebAuthn</dt>
+            <dd>{% match me.mfa %}{% when Some with (m) %}{% if m.webauthn %}<span class="ok">Ativo nesta sessão</span>{% else %}<span class="muted">Não ativo</span>{% endif %}{% when None %}<span class="muted">—</span>{% endmatch %}</dd>
+            <dt>AMR</dt>
+            <dd class="mono small">{% match me.mfa %}{% when Some with (m) %}{% if m.amr.is_empty() %}—{% else %}{{ m.amr|join(", ") }}{% endif %}{% when None %}—{% endmatch %}</dd>
+          </dl>
+          {% if kc_account.is_empty() %}
+          <p class="muted small">Console de segurança não configurado.</p>
+          {% else %}
+          <a class="btn btn-primary btn-sm" href="{{ kc_account }}" target="_blank" rel="noopener">Gerenciar credenciais (Keycloak)</a>
+          {% endif %}
+        </div>
+        <div class="subcard stack">
+          <h3>Sessões ativas</h3>
+          <p class="muted small">Gerencie dispositivos conectados no console de segurança do Keycloak.</p>
+          <div class="row">
+            <a class="btn btn-ghost btn-sm" href="{{ logout_url }}">Sair desta sessão</a>
+          </div>
+        </div>
+      </div>
+
+      {% else if tab == "filters" %}
+      <div class="card stack">
+        <h2>Filtros de e-mail (Sieve)</h2>
+        <p class="muted small">Regras que se aplicam a todas as mensagens recebidas.</p>
+        {% match flash %}{% when Some with (f) %}<div class="alert alert-ok">{{ f }}</div>{% when None %}{% endmatch %}
+        {% match sieve_error %}
+        {% when Some with (e) %}
+          <div class="alert alert-warn">Serviço de filtros indisponível: {{ e }}</div>
+        {% when None %}
+          <form class="compose-form" method="post" action="/settings/filters">
+            <label>
+              <span>Script Sieve</span>
+              <textarea name="script" rows="16" class="mono" placeholder="require [&quot;fileinto&quot;];">{% match sieve_script %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}</textarea>
+            </label>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Salvar filtros</button>
+            </div>
+          </form>
+        {% endmatch %}
+      </div>
+
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}

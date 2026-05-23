@@ -16,9 +16,9 @@ use crate::{
     error::WebResult,
     templates::{
         AddressBook, Calendar, Contact, DriveFile, DriveQuota, Folder, LoginTpl, DriveShareTpl, DriveVersionsTpl, MailComposeTpl, MailListTpl, Me, MeTpl, HomeTpl, ShareRow, VersionRow,
-        MailRulesTpl, MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
+        MailThreadTpl, MessageDetail, MessageListItem, SecurityTpl, DriveTpl, DriveTrashTpl, DriveEditTpl, CalendarTpl, ContactsTpl,
         Event, MonthCell, CalendarMonthTpl, CalendarWeekTpl, CalendarDayTpl, DayColumn, EventFormTpl, ContactFormTpl,
-        AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl,
+        AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, MeetTpl, SettingsTpl,
     },
     upstream::{get_json, post_body, put_body, put_json, delete_at},
 };
@@ -68,6 +68,14 @@ pub fn router(state: AppState) -> Router {
         .route("/contacts/:book_id/share/:grantee_id/revoke", post(addrbook_share_revoke))
         .route("/chat",  get(chat_page))
         .route("/meet",  get(meet_page))
+        .route("/meet/new",  get(meet_new_page))
+        .route("/meet/join", get(meet_join_page))
+        .route("/settings",                  get(settings_page))
+        .route("/settings/profile",          post(settings_profile_save))
+        .route("/settings/signature",        post(settings_signature_save))
+        .route("/settings/autoreply",        post(settings_autoreply_save))
+        .route("/settings/notifications",    post(settings_notifications_save))
+        .route("/settings/filters",          post(settings_filters_save))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -207,66 +215,22 @@ async fn mail_detail_page(
     }))
 }
 
-// ─── /mail/rules ─────────────────────────────────────────────────────────────
+// ─── /mail/rules (legacy redirect) ───────────────────────────────────────────
 
-#[derive(serde::Deserialize, serde::Serialize, Default)]
-struct SieveRules {
-    #[serde(default)] enabled: bool,
-    #[serde(default)] script:  String,
+async fn mail_rules_page(
+    State(_st): State<AppState>, _headers: HeaderMap, _uri: Uri,
+) -> WebResult<Response> {
+    Ok(Redirect::to("/settings?tab=filters").into_response())
 }
 
 #[derive(Deserialize)]
-struct SieveRulesForm {
-    #[serde(default)] enabled: Option<String>,
-    #[serde(default)] script:  String,
-}
-
-async fn mail_rules_page(
-    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
-) -> WebResult<Response> {
-    let Some(me) = require_me(&st, &headers).await? else {
-        return Ok(login_redirect(&uri).into_response());
-    };
-    let (t, u) = ctx_of(&me);
-    let rules = get_json::<SieveRules>(
-        &st, &st.backends.mail, "/api/v1/mail/sieve", &headers, Some((&t, &u)),
-    ).await?.unwrap_or_default();
-
-    Ok(MailRulesTpl {
-        me, enabled: rules.enabled, script: rules.script,
-        saved: false, error: None,
-    }.into_response())
-}
+struct SieveRulesForm { #[serde(default)] _script: String }
 
 async fn mail_rules_save(
-    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
-    Form(f): Form<SieveRulesForm>,
+    State(_st): State<AppState>, _headers: HeaderMap, _uri: Uri,
+    Form(_f): Form<SieveRulesForm>,
 ) -> WebResult<Response> {
-    let Some(me) = require_me(&st, &headers).await? else {
-        return Ok(login_redirect(&uri).into_response());
-    };
-    let (t, u) = ctx_of(&me);
-    let payload = SieveRules {
-        enabled: f.enabled.is_some(),
-        script:  f.script,
-    };
-    let status = put_json(
-        &st, &st.backends.mail, "/api/v1/mail/sieve",
-        &headers, Some((&t, &u)), &payload,
-    ).await?;
-
-    if (200..300).contains(&status) {
-        Ok(MailRulesTpl {
-            me, enabled: payload.enabled, script: payload.script,
-            saved: true, error: None,
-        }.into_response())
-    } else {
-        Ok(MailRulesTpl {
-            me, enabled: payload.enabled, script: payload.script,
-            saved: false,
-            error: Some(format!("Falha ao salvar (HTTP {status}) — verifique a sintaxe Sieve.")),
-        }.into_response())
-    }
+    Ok(Redirect::to("/settings?tab=filters").into_response())
 }
 
 async fn mail_thread_page(
@@ -1639,6 +1603,152 @@ async fn meet_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> 
         return Ok(login_redirect(&uri).into_response());
     };
     Ok(askama_axum::IntoResponse::into_response(MeetTpl { me }))
+}
+
+async fn meet_new_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(Redirect::to("/meet").into_response())
+}
+
+async fn meet_join_page(State(st): State<AppState>, headers: HeaderMap, uri: Uri) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(Redirect::to("/meet").into_response())
+}
+
+// ─── /settings ───────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct SettingsQuery { tab: Option<String>, flash: Option<String> }
+
+#[derive(Deserialize)]
+struct ProfileForm { display_name: Option<String>, locale: Option<String> }
+
+#[derive(Deserialize)]
+struct SignatureForm { enabled: Option<String>, body: Option<String> }
+
+#[derive(Deserialize)]
+struct AutoreplyForm {
+    enabled:    Option<String>,
+    subject:    Option<String>,
+    body:       Option<String>,
+    start_date: Option<String>,
+    end_date:   Option<String>,
+}
+
+#[derive(Deserialize)]
+struct NotificationsForm {
+    notify_new_mail: Option<String>,
+    notify_calendar: Option<String>,
+    notify_shared:   Option<String>,
+    browser_push:    Option<String>,
+}
+
+#[derive(Deserialize)]
+struct FiltersForm { script: Option<String> }
+
+async fn settings_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Query(q): Query<SettingsQuery>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let tab = q.tab.unwrap_or_else(|| "profile".into());
+
+    let (sieve_script, sieve_error) = if tab == "filters" {
+        match get_json::<serde_json::Value>(
+            &st, &st.backends.mail, "/api/v1/mail/sieve", &headers, Some((&t, &u)),
+        ).await {
+            Ok(Some(v)) => (v.get("script").and_then(|s| s.as_str()).map(String::from), None),
+            Ok(None)    => (None, None),
+            Err(e)      => (None, Some(format!("{e}"))),
+        }
+    } else {
+        (None, None)
+    };
+
+    Ok(askama_axum::IntoResponse::into_response(SettingsTpl {
+        tab,
+        flash:             q.flash,
+        logout_url:        st.public.auth_logout_path.clone(),
+        kc_account:        st.public.kc_account.clone(),
+        signature_enabled: None,
+        signature_body:    None,
+        autoreply_enabled: None,
+        autoreply_subject: None,
+        autoreply_body:    None,
+        autoreply_start:   None,
+        autoreply_end:     None,
+        sieve_script,
+        sieve_error,
+        me,
+    }))
+}
+
+async fn settings_profile_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(_f): Form<ProfileForm>,
+) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(Redirect::to("/settings?tab=profile&flash=Perfil+atualizado").into_response())
+}
+
+async fn settings_signature_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<SignatureForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let script_body = f.body.unwrap_or_default();
+    let enabled = f.enabled.as_deref() == Some("1");
+    let payload = serde_json::json!({
+        "signature": { "enabled": enabled, "body": script_body }
+    });
+    let _ = put_json(&st, &st.backends.mail, "/api/v1/mail/settings", &headers, Some((&t, &u)), &payload).await;
+    Ok(Redirect::to("/settings?tab=signature&flash=Assinatura+salva").into_response())
+}
+
+async fn settings_autoreply_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(_f): Form<AutoreplyForm>,
+) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(Redirect::to("/settings?tab=autoreply&flash=Resposta+automática+salva").into_response())
+}
+
+async fn settings_notifications_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(_f): Form<NotificationsForm>,
+) -> WebResult<Response> {
+    let Some(_me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    Ok(Redirect::to("/settings?tab=notifications&flash=Notificações+salvas").into_response())
+}
+
+async fn settings_filters_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<FiltersForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let script = f.script.unwrap_or_default();
+    let payload = serde_json::json!({ "script": script, "enabled": true });
+    let _ = put_json(&st, &st.backends.mail, "/api/v1/mail/sieve", &headers, Some((&t, &u)), &payload).await;
+    Ok(Redirect::to("/settings?tab=filters&flash=Filtros+salvos").into_response())
 }
 
 #[cfg(test)]
