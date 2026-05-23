@@ -22,25 +22,88 @@
     <a class="btn btn-ghost" href="{{ day_link }}">Dia</a>
   </nav>
 
-  <div class="week-grid">
-    {% for d in days %}
-    <section class="week-col{% if d.is_today %} today{% endif %}">
-      <header class="week-col-head">
-        <span class="week-col-label">{{ d.label }}</span>
-      </header>
-      <div class="week-col-events">
-        {% for ev in d.events %}
-        <a class="event-chip" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
-          <span class="ev-time">{{ ev.time_label() }}</span>
-          <span class="ev-title">{{ ev.title() }}</span>
-        </a>
-        {% endfor %}
-        {% if d.events.is_empty() %}
-        <p class="muted small">—</p>
-        {% endif %}
+  <div class="cal-week-layout">
+    <!-- Mini-calendário lateral -->
+    <aside class="cal-mini-sidebar">
+      <div class="cal-mini-nav">
+        <button class="btn btn-ghost btn-sm" id="mini-prev" onclick="miniNav(-1)">◀</button>
+        <span class="cal-mini-title" id="mini-title"></span>
+        <button class="btn btn-ghost btn-sm" id="mini-next" onclick="miniNav(1)">▶</button>
       </div>
-    </section>
-    {% endfor %}
+      <table class="cal-mini-grid" id="cal-mini-grid">
+        <thead><tr id="cal-mini-head"></tr></thead>
+        <tbody id="cal-mini-body"></tbody>
+      </table>
+    </aside>
+
+    <div class="week-grid">
+      {% for d in days %}
+      <section class="week-col{% if d.is_today %} today{% endif %}">
+        <header class="week-col-head">
+          <span class="week-col-label">{{ d.label }}</span>
+        </header>
+        <div class="week-col-events">
+          {% for ev in d.events %}
+          <a class="event-chip" href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit">
+            <span class="ev-time">{{ ev.time_label() }}</span>
+            <span class="ev-title">{{ ev.title() }}</span>
+          </a>
+          {% endfor %}
+          {% if d.events.is_empty() %}
+          <p class="muted small">—</p>
+          {% endif %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
   </div>
 </div>
+
+<script>
+var _miniYear, _miniMonth;
+(function() {
+  var now = new Date();
+  _miniYear = now.getFullYear();
+  _miniMonth = now.getMonth();
+  renderMini();
+})();
+function miniNav(delta) {
+  _miniMonth += delta;
+  if (_miniMonth > 11) { _miniMonth = 0; _miniYear++; }
+  if (_miniMonth < 0)  { _miniMonth = 11; _miniYear--; }
+  renderMini();
+}
+function renderMini() {
+  var days = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  var head = document.getElementById('cal-mini-head');
+  head.innerHTML = days.map(function(d){ return '<th>' + d + '</th>'; }).join('');
+  var title = document.getElementById('mini-title');
+  var months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  title.textContent = months[_miniMonth] + ' ' + _miniYear;
+  var body = document.getElementById('cal-mini-body');
+  body.innerHTML = '';
+  var first = new Date(_miniYear, _miniMonth, 1).getDay();
+  var total = new Date(_miniYear, _miniMonth+1, 0).getDate();
+  var today = new Date(); var ty = today.getFullYear(), tm = today.getMonth(), td = today.getDate();
+  var day = 1 - first; var calId = '{{ selected.id }}';
+  for (var week = 0; week < 6; week++) {
+    var tr = '<tr>';
+    for (var w = 0; w < 7; w++, day++) {
+      if (day < 1 || day > total) { tr += '<td></td>'; continue; }
+      var iso = _miniYear + '-' + String(_miniMonth+1).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+      var cls = (day===td && _miniMonth===tm && _miniYear===ty) ? 'mini-today' : '';
+      tr += '<td><a class="mini-day ' + cls + '" href="/calendar/' + calId + '/events/new?date=' + iso +
+        '" onclick="return miniDayClick(event,\'' + iso + '\')">' + day + '</a></td>';
+    }
+    tr += '</tr>';
+    body.innerHTML += tr;
+    if (day > total) break;
+  }
+}
+function miniDayClick(e, iso) {
+  e.preventDefault();
+  window.location.href = '/calendar/{{ selected.id }}/day?date=' + iso;
+  return false;
+}
+</script>
 {% endblock %}
