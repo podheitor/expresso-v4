@@ -3962,4 +3962,9 @@ Attachment\r\n\
         assert!(list_matches("", ""));
         assert!(!list_matches("INBOX", ""));
     }
+
+    #[test]
+    fn list_matches_star_matches_empty_string() {
+        assert!(list_matches("", "*"));
+    }
 }

@@ -323,4 +323,9 @@ mod tests {
     fn default_lmtp_port_is_24() {
         assert_eq!(default_lmtp_port(), 24);
     }
+
+    #[test]
+    fn default_relay_port_is_587() {
+        assert_eq!(default_relay_port(), 587);
+    }
 }

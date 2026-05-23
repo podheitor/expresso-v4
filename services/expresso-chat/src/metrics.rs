@@ -166,4 +166,9 @@ mod tests {
     fn matrix_error_label_contains_no_spaces() {
         assert!(!MATRIX_ERROR.contains(' '));
     }
+
+    #[test]
+    fn namespace_does_not_contain_hyphen() {
+        assert!(!NAMESPACE.contains('-'));
+    }
 }

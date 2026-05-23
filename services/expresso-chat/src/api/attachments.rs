@@ -232,4 +232,9 @@ mod tests {
     fn kind_display_video() {
         assert_eq!(format!("{}", AttachmentKind::Video), "video");
     }
+
+    #[test]
+    fn kind_display_file() {
+        assert_eq!(format!("{}", AttachmentKind::File), "file");
+    }
 }

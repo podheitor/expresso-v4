@@ -189,4 +189,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains('0'));
     }
+
+    #[test]
+    fn tenant_not_set_and_quota_exceeded_are_distinct_messages() {
+        let a = CoreError::TenantNotSet.to_string();
+        let b = CoreError::QuotaExceeded { used: 1, limit: 2 }.to_string();
+        assert_ne!(a, b);
+    }
 }

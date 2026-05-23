@@ -205,4 +205,9 @@ mod tests {
     fn strip_extension_dot_at_start_returns_whole() {
         assert_eq!(strip_extension(".hidden"), ".hidden");
     }
+
+    #[test]
+    fn validate_name_with_backslash_fails() {
+        assert!(matches!(validate_rename_target("path\\file"), Err(RenameError::InvalidName(_))));
+    }
 }

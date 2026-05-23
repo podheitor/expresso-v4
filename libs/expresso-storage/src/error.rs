@@ -165,4 +165,10 @@ mod tests {
         let e = ExpressstorageError::Internal(anyhow::anyhow!("s3 read error"));
         assert!(e.to_string().contains(": s3 read error"));
     }
+
+    #[test]
+    fn display_format_is_prefix_colon_space_cause() {
+        let e = ExpressstorageError::Internal(anyhow::anyhow!("object store unavailable"));
+        assert_eq!(e.to_string(), "internal error: object store unavailable");
+    }
 }

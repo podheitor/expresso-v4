@@ -215,4 +215,14 @@ mod tests {
         assert_ne!(strs[1], strs[2]);
         assert_ne!(strs[0], strs[2]);
     }
+
+    #[test]
+    fn setup_response_otpauth_uri_preserved() {
+        let r = MfaSetupResponse {
+            secret: "S".into(),
+            otpauth_uri: "otpauth://totp/Expresso:user?secret=S".into(),
+            status: MfaStatus::Pending,
+        };
+        assert!(r.otpauth_uri.starts_with("otpauth://"));
+    }
 }

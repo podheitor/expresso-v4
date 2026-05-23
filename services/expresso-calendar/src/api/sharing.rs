@@ -340,4 +340,10 @@ mod tests {
     fn validate_priv_delete_value_returns_error() {
         assert!(validate_priv("DELETE").is_err());
     }
+
+    #[test]
+    fn validate_priv_result_has_no_leading_whitespace() {
+        let result = validate_priv("  read  ").unwrap();
+        assert_eq!(result, result.trim());
+    }
 }

@@ -206,4 +206,9 @@ mod tests {
     fn from_str_unsubscribed() {
         assert_eq!(BounceKind::from_str("unsubscribed"), Some(BounceKind::Unsubscribed));
     }
+
+    #[test]
+    fn overall_bounce_rate_all_bounce() {
+        assert!((overall_bounce_rate(500, 500) - 100.0).abs() < 1e-9);
+    }
 }

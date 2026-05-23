@@ -228,4 +228,9 @@ mod tests {
         };
         assert!(r.iat.is_none());
     }
+
+    #[test]
+    fn token_type_bearer_and_mac_are_distinct() {
+        assert_ne!(TOKEN_TYPE_BEARER, TOKEN_TYPE_MAC);
+    }
 }

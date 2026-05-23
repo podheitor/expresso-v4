@@ -209,4 +209,10 @@ mod tests {
         let s = format!("{:?}", e);
         assert!(s.contains("detail"));
     }
+
+    #[test]
+    fn not_found_display_starts_with_not_found() {
+        let e = StatsError::NotFound("x".into());
+        assert!(e.to_string().starts_with("not found:"));
+    }
 }

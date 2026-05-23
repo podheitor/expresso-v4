@@ -166,4 +166,9 @@ mod tests {
     fn metric_name_starts_with_namespace_underscore() {
         assert!(metric_name("x").starts_with(&format!("{}_", namespace())));
     }
+
+    #[test]
+    fn namespace_is_lowercase() {
+        assert_eq!(namespace(), namespace().to_lowercase());
+    }
 }

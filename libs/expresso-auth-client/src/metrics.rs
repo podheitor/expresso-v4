@@ -194,4 +194,11 @@ mod tests {
         let b = result_label(&AuthError::MalformedClaim("sub", "bad".into()));
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn result_label_invalid_token_and_malformed_claim_differ() {
+        let a = result_label(&AuthError::InvalidToken("bad".into()));
+        let b = result_label(&AuthError::MalformedClaim("sub", "bad".into()));
+        assert_ne!(a, b);
+    }
 }

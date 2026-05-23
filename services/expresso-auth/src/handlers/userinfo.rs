@@ -322,4 +322,16 @@ mod tests {
         };
         assert_eq!(u.roles.len(), 0);
     }
+
+    #[test]
+    fn userinfo_debug_format_contains_roles_key() {
+        let u = UserInfo {
+            sub: "s".into(),
+            email: "e".into(),
+            name: "n".into(),
+            tenant_id: Uuid::nil(),
+            roles: vec!["editor".into()],
+        };
+        assert!(format!("{u:?}").contains("roles"));
+    }
 }

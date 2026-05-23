@@ -343,4 +343,9 @@ mod tests {
     fn rejects_path_with_carriage_return_only() {
         assert!(!is_safe_local_redirect("/path\rfoo"));
     }
+
+    #[test]
+    fn accepts_path_with_percent_encoded_slash() {
+        assert!(is_safe_local_redirect("/mail/folder%2Fname"));
+    }
 }

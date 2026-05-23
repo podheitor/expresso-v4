@@ -172,4 +172,9 @@ mod tests {
     fn event_quota_exceeded_label_is_nonempty() {
         assert!(!EVENT_QUOTA_EXCEEDED.is_empty());
     }
+
+    #[test]
+    fn namespace_does_not_contain_hyphen() {
+        assert!(!NAMESPACE.contains('-'));
+    }
 }

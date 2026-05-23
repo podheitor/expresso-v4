@@ -239,4 +239,10 @@ mod tests {
         let c = cfg("https://issuer.example.com", "cid", "https://app.example.com/cb", None, None, None);
         assert_ne!(c.issuer, c.redirect_uri);
     }
+
+    #[test]
+    fn http_timeout_as_millis_is_5000() {
+        let c = cfg("i", "c", "r", None, None, None);
+        assert_eq!(c.http_timeout.as_millis(), 5000);
+    }
 }

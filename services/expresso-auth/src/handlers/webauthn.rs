@@ -236,4 +236,15 @@ mod tests {
             AuthenticatorAttachment::CrossPlatform.as_str(),
         );
     }
+
+    #[test]
+    fn credential_user_id_accessible() {
+        let uid = Uuid::new_v4();
+        let c = WebAuthnCredential {
+            id: Uuid::nil(), user_id: uid,
+            credential_id: "cid".into(), name: "Key".into(),
+            attachment: None, sign_count: 0,
+        };
+        assert_eq!(c.user_id, uid);
+    }
 }

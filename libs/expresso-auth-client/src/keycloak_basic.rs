@@ -424,4 +424,20 @@ mod tests {
         };
         assert_eq!(cfg.max_failures, 10);
     }
+
+    #[test]
+    fn kc_basic_config_lockout_duration_is_five_minutes() {
+        let cfg = KcBasicConfig {
+            url: "http://x".into(),
+            realm: "r".into(),
+            client_id: "c".into(),
+            client_secret: None,
+            cache_ttl: Duration::from_secs(60),
+            http_timeout: Duration::from_secs(5),
+            max_failures: 10,
+            failure_window: Duration::from_secs(60),
+            lockout_duration: Duration::from_secs(300),
+        };
+        assert_eq!(cfg.lockout_duration, Duration::from_secs(300));
+    }
 }

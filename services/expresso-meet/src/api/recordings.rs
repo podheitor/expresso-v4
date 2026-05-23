@@ -236,4 +236,14 @@ mod tests {
         let back: RecordingStatus = serde_json::from_str(&s).unwrap();
         assert_eq!(back, RecordingStatus::Processing);
     }
+
+    #[test]
+    fn recording_duration_s_preserved() {
+        let r = Recording {
+            id: Uuid::nil(), meeting_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            name: "R".into(), status: RecordingStatus::Ready,
+            size_bytes: None, duration_s: Some(120), storage_key: None,
+        };
+        assert_eq!(r.duration_s, Some(120));
+    }
 }

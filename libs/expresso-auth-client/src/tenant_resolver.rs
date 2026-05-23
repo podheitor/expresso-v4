@@ -222,4 +222,10 @@ mod tests {
         let r = TenantResolver::parse("MAIL.CORP.COM:corp-mail");
         assert_eq!(r.resolve("mail.corp.com:465"), Some("corp-mail"));
     }
+
+    #[test]
+    fn parse_with_spaces_around_delimiter_strips_whitespace() {
+        let r = TenantResolver::parse("  host.example.com : myrealm  ");
+        assert_eq!(r.resolve("host.example.com"), Some("myrealm"));
+    }
 }

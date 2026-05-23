@@ -197,4 +197,9 @@ mod tests {
     fn clamp_limit_at_one() {
         assert_eq!(clamp_suggest_limit(1), 1);
     }
+
+    #[test]
+    fn suggest_kind_debug_contains_variant_name() {
+        assert!(format!("{:?}", SuggestKind::Recipient).contains("Recipient"));
+    }
 }

@@ -196,4 +196,10 @@ mod tests {
         let e = MigrateError::ApiFailure { status: 599, body: "timeout".into() };
         assert!(is_retryable(&e));
     }
+
+    #[test]
+    fn api_failure_display_contains_api_failure_prefix() {
+        let e = MigrateError::ApiFailure { status: 500, body: "err".into() };
+        assert!(e.to_string().contains("api failure 500"));
+    }
 }

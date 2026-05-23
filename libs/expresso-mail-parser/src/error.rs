@@ -166,4 +166,10 @@ mod tests {
         let e = ExpressmailParserError::Internal(anyhow::anyhow!("cause text"));
         assert!(e.to_string().contains(": cause text"));
     }
+
+    #[test]
+    fn display_format_is_prefix_colon_space_cause() {
+        let e = ExpressmailParserError::Internal(anyhow::anyhow!("rfc2047 decode error"));
+        assert_eq!(e.to_string(), "internal error: rfc2047 decode error");
+    }
 }

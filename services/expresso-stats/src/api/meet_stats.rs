@@ -197,4 +197,9 @@ mod tests {
     fn secs_to_minutes_half_hour() {
         assert!((secs_to_minutes(1800) - 30.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn avg_duration_one_meeting_full_hour() {
+        assert!((avg_duration_secs(3600, 1) - 3600.0).abs() < 1e-9);
+    }
 }

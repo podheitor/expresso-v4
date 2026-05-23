@@ -245,4 +245,9 @@ mod tests {
     fn max_message_body_bytes_is_less_than_one_mib() {
         assert!(MAX_MESSAGE_BODY_BYTES < 1024 * 1024);
     }
+
+    #[test]
+    fn validate_message_body_single_char_accepted() {
+        assert!(validate_message_body("x").is_ok());
+    }
 }

@@ -204,4 +204,10 @@ mod tests {
     fn challenge_method_s256_and_plain_have_distinct_str() {
         assert_ne!(ChallengeMethod::S256.as_str(), ChallengeMethod::Plain.as_str());
     }
+
+    #[test]
+    fn verifier_exactly_at_min_boundary_is_valid() {
+        let v = "x".repeat(PKCE_VERIFIER_MIN_LEN);
+        assert!(verifier_is_valid_length(&v));
+    }
 }

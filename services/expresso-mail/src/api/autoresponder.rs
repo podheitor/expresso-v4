@@ -230,4 +230,10 @@ mod tests {
         s.enabled = true;
         assert_ne!(s, AutoresponderSettings::default());
     }
+
+    #[test]
+    fn max_subject_less_than_max_body() {
+        assert!(MAX_SUBJECT_BYTES < MAX_BODY_BYTES * 10);
+        assert!(MAX_BODY_BYTES > MAX_SUBJECT_BYTES);
+    }
 }

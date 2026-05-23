@@ -199,4 +199,9 @@ mod tests {
     fn plain_port_differs_from_tls_only_port() {
         assert_ne!(ImapConfig::plain_port(), ImapConfig::tls_only_port());
     }
+
+    #[test]
+    fn default_idle_timeout_is_thirty_minutes() {
+        assert_eq!(ImapConfig::default().idle_timeout_secs, 30 * 60);
+    }
 }

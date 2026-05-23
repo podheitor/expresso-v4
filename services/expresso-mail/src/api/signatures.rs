@@ -233,4 +233,15 @@ mod tests {
     fn max_signature_name_bytes_positive() {
         assert!(MAX_SIGNATURE_NAME_BYTES > 0);
     }
+
+    #[test]
+    fn signature_serde_json_contains_content_key() {
+        let sig = Signature {
+            id: Uuid::nil(), user_id: Uuid::nil(), tenant_id: Uuid::nil(),
+            name: "S".into(), content: "my content".into(),
+            format: SignatureFormat::Plain, is_default: false,
+        };
+        let s = serde_json::to_string(&sig).unwrap();
+        assert!(s.contains("content"));
+    }
 }

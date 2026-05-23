@@ -188,4 +188,10 @@ mod tests {
         let b = AuthError::KidNotFound(None).to_string();
         assert_ne!(a, b);
     }
+
+    #[test]
+    fn missing_bearer_message_contains_bearer_word() {
+        let s = AuthError::MissingBearer.to_string();
+        assert!(s.contains("missing") || s.contains("bearer") || s.contains("header"));
+    }
 }

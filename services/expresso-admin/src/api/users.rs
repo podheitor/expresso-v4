@@ -244,4 +244,9 @@ mod tests {
     fn status_display_disabled() {
         assert_eq!(format!("{}", UserStatus::Disabled), "disabled");
     }
+
+    #[test]
+    fn status_display_pending() {
+        assert_eq!(format!("{}", UserStatus::Pending), "pending");
+    }
 }

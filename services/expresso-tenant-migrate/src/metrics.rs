@@ -169,4 +169,9 @@ mod tests {
     fn label_realm_and_label_reason_differ() {
         assert_ne!(LABEL_REALM, LABEL_REASON);
     }
+
+    #[test]
+    fn reason_conflict_is_not_api_error() {
+        assert_ne!(REASON_CONFLICT, REASON_API_ERROR);
+    }
 }

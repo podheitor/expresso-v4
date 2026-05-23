@@ -171,4 +171,9 @@ mod tests {
         let result = metric_name("latency");
         assert_eq!(result, format!("{NAMESPACE}_latency"));
     }
+
+    #[test]
+    fn namespace_does_not_contain_hyphen() {
+        assert!(!NAMESPACE.contains('-'));
+    }
 }

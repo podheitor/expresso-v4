@@ -237,4 +237,9 @@ mod tests {
     fn busy_status_display_out_of_office() {
         assert_eq!(format!("{}", BusyStatus::OutOfOffice), "out_of_office");
     }
+
+    #[test]
+    fn max_user_ids_per_query_is_fifty() {
+        assert_eq!(MAX_USER_IDS_PER_QUERY, 50);
+    }
 }

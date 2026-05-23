@@ -188,4 +188,9 @@ mod tests {
     fn clamp_days_middle_value_unchanged() {
         assert_eq!(clamp_days(180), 180);
     }
+
+    #[test]
+    fn metric_debug_contains_variant_name() {
+        assert!(format!("{:?}", CalendarMetric::ActiveCalendars).contains("ActiveCalendars"));
+    }
 }

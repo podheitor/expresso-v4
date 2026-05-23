@@ -222,4 +222,9 @@ mod tests {
         let dr = DateRange { after_secs: Some(500), before_secs: None };
         assert_eq!(dr.span_secs(), None);
     }
+
+    #[test]
+    fn filter_field_debug_contains_variant_name() {
+        assert!(format!("{:?}", FilterField::ToAddr).contains("ToAddr"));
+    }
 }

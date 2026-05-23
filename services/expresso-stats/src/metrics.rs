@@ -217,4 +217,11 @@ mod tests {
         let back: Granularity = serde_json::from_str(&s).unwrap();
         assert_eq!(back, Granularity::Week);
     }
+
+    #[test]
+    fn granularity_serde_roundtrip_month() {
+        let s = serde_json::to_string(&Granularity::Month).unwrap();
+        let back: Granularity = serde_json::from_str(&s).unwrap();
+        assert_eq!(back, Granularity::Month);
+    }
 }

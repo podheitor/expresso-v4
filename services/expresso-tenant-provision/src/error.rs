@@ -215,4 +215,10 @@ mod tests {
         let e = ProvisionError::RoleCreateFailed { role: "admin".into(), reason: "dup".into() };
         assert!(!is_idempotent_safe(&e));
     }
+
+    #[test]
+    fn realm_already_exists_display_contains_already_exists() {
+        let e = ProvisionError::RealmAlreadyExists("r".into());
+        assert!(e.to_string().contains("already exists"));
+    }
 }

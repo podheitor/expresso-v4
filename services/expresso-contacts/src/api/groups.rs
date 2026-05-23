@@ -161,4 +161,9 @@ mod tests {
     fn validate_group_name_newline_only_rejected() {
         assert!(validate_group_name("\n").is_err());
     }
+
+    #[test]
+    fn validate_group_name_numbers_accepted() {
+        assert!(validate_group_name("Group42").is_ok());
+    }
 }

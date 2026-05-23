@@ -211,4 +211,9 @@ mod tests {
     fn submission_port_differs_from_mx_port() {
         assert_ne!(SmtpConfig::submission_port(), SmtpConfig::mx_port());
     }
+
+    #[test]
+    fn smtps_port_differs_from_mx_port() {
+        assert_ne!(SmtpConfig::smtps_port(), SmtpConfig::mx_port());
+    }
 }

@@ -513,4 +513,9 @@ mod tests {
     fn escape_text_cr_is_dropped() {
         assert_eq!(escape_text("line\rend"), "lineend");
     }
+
+    #[test]
+    fn method_request_and_cancel_as_str_differ() {
+        assert_ne!(Method::Request.as_str(), Method::Cancel.as_str());
+    }
 }

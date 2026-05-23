@@ -309,4 +309,16 @@ mod tests {
         let result = tmpl.replace("{host}", "example.com");
         assert!(!result.contains("{host}"));
     }
+
+    #[test]
+    fn pending_login_code_verifier_value_preserved() {
+        let p = PendingLogin {
+            code_verifier:       "my-verifier-abc".into(),
+            post_login_redirect: None,
+            redirect_uri:        "https://app/cb".into(),
+            realm:               None,
+            expires_at:          std::time::Instant::now() + std::time::Duration::from_secs(60),
+        };
+        assert_eq!(p.code_verifier, "my-verifier-abc");
+    }
 }

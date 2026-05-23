@@ -218,4 +218,11 @@ mod tests {
     fn rsvp_display_needs_action() {
         assert_eq!(format!("{}", RsvpStatus::NeedsAction), "needs-action");
     }
+
+    #[test]
+    fn attendee_user_id_accessible() {
+        let uid = Uuid::new_v4();
+        let a = Attendee { user_id: uid, email: "a@b.com".into(), status: RsvpStatus::Accepted };
+        assert_eq!(a.user_id, uid);
+    }
 }

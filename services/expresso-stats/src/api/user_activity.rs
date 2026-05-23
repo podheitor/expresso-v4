@@ -224,4 +224,11 @@ mod tests {
         let back: ActivityType = serde_json::from_str(&json).unwrap();
         assert_eq!(back, ActivityType::FileDownload);
     }
+
+    #[test]
+    fn activity_type_serde_roundtrip_email_sent() {
+        let json = serde_json::to_string(&ActivityType::EmailSent).unwrap();
+        let back: ActivityType = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, ActivityType::EmailSent);
+    }
 }

@@ -231,4 +231,9 @@ mod tests {
         };
         assert_eq!(sub.id, id);
     }
+
+    #[test]
+    fn max_subscriptions_per_user_is_ten() {
+        assert_eq!(MAX_SUBSCRIPTIONS_PER_USER, 10);
+    }
 }

@@ -201,4 +201,9 @@ mod tests {
     fn all_capabilities_does_not_contain_sasl_ir() {
         assert!(!all_capabilities().contains(&ImapCapability::SaslIr));
     }
+
+    #[test]
+    fn all_capabilities_count_is_fourteen() {
+        assert_eq!(all_capabilities().len(), 14);
+    }
 }

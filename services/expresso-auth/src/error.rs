@@ -178,4 +178,11 @@ mod tests {
         let e = RpError::StateNotFound;
         assert!(!e.to_string().is_empty());
     }
+
+    #[test]
+    fn token_exchange_and_discovery_are_distinct_statuses() {
+        let a = status(RpError::TokenExchange("x".into()));
+        let b = status(RpError::Discovery("x".into()));
+        assert_ne!(a, b);
+    }
 }

@@ -229,3 +229,13 @@ fn aud_claim_many_contains_all_listed_values() {
 fn aud_claim_one_case_sensitive_does_not_match_uppercase() {
     assert!(!AudClaim::One("expresso-web".into()).contains("Expresso-Web"));
 }
+
+#[test]
+fn roles_not_leaked_from_unrelated_client() {
+    let r = base(
+        "c7ee7d76-2113-40bd-9f8c-a28cd6ca395f",
+        Some("40894092-7ec5-4693-94f0-afb1c7fb51c4"),
+    );
+    let ctx = AuthContext::from_raw(r, "expresso-web").unwrap();
+    assert!(!ctx.has_role("leaked"));
+}

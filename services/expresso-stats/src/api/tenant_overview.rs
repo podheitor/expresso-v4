@@ -223,4 +223,9 @@ mod tests {
             storage_used_bytes: two_gib, emails_sent: 0, meetings_held: 0, drive_files: 0 };
         assert!((o.storage_gib() - 2.0).abs() < 1e-6);
     }
+
+    #[test]
+    fn metric_debug_contains_variant_name() {
+        assert!(format!("{:?}", OverviewMetric::EmailsSent).contains("EmailsSent"));
+    }
 }

@@ -206,4 +206,10 @@ mod tests {
         assert!(e.usage_ratio() > 0.0);
         assert!(e.usage_ratio() < 0.001);
     }
+
+    #[test]
+    fn is_exhausted_false_when_used_is_zero() {
+        let e = entry(0, 100);
+        assert!(!e.is_exhausted());
+    }
 }

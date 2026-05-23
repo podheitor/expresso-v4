@@ -432,4 +432,27 @@ mod tests {
         assert!(!aud.contains("web"));
         assert!(aud.contains("api"));
     }
+
+    #[test]
+    fn from_raw_govbr_confiabilidades_preserved_when_set() {
+        let uid = uuid::Uuid::new_v4();
+        let tid = uuid::Uuid::new_v4();
+        let raw = RawClaims {
+            sub: uid.to_string(),
+            iss: format!("https://kc/realms/{tid}"),
+            aud: AudClaim::Empty,
+            exp: 0,
+            email: None, preferred_username: None, name: None,
+            tenant_id: None,
+            realm_access: None,
+            resource_access: HashMap::new(),
+            acr: None,
+            amr: None,
+            govbr_cpf_hash: None,
+            govbr_confiabilidades: Some(vec!["biometria".into(), "cadastro-basico".into()]),
+        };
+        let c = AuthContext::from_raw(raw, "aud").unwrap();
+        assert_eq!(c.govbr_confiabilidades.len(), 2);
+        assert!(c.govbr_confiabilidades.contains(&"biometria".to_string()));
+    }
 }

@@ -369,4 +369,19 @@ mod tests {
         };
         assert!(!w.is_enabled());
     }
+
+    #[test]
+    fn backends_five_distinct_fields() {
+        let b = Backends {
+            auth:     "http://a:1".into(),
+            mail:     "http://b:2".into(),
+            calendar: "http://c:3".into(),
+            contacts: "http://d:4".into(),
+            drive:    "http://e:5".into(),
+        };
+        let all = [&b.auth, &b.mail, &b.calendar, &b.contacts, &b.drive];
+        let mut unique = all.to_vec();
+        unique.dedup();
+        assert_eq!(unique.len(), 5);
+    }
 }

@@ -202,4 +202,10 @@ mod tests {
         let r: WebResult<u32> = Err(WebError::Internal("crash".into()));
         assert!(r.is_err());
     }
+
+    #[test]
+    fn internal_display_does_not_start_with_upstream() {
+        let e = WebError::Internal("x".into());
+        assert!(!e.to_string().starts_with("upstream"));
+    }
 }

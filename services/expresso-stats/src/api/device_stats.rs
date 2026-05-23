@@ -210,4 +210,11 @@ mod tests {
         let back: Platform = serde_json::from_str(&json).unwrap();
         assert_eq!(back, Platform::Unknown);
     }
+
+    #[test]
+    fn platform_serde_roundtrip_tablet() {
+        let json = serde_json::to_string(&Platform::Tablet).unwrap();
+        let back: Platform = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, Platform::Tablet);
+    }
 }

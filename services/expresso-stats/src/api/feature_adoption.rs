@@ -218,4 +218,10 @@ mod tests {
     fn all_features_contains_notes() {
         assert!(Feature::all().contains(&Feature::Notes));
     }
+
+    #[test]
+    fn adoption_pct_quarter() {
+        let row = FeatureAdoptionRow { feature: "drive".into(), active_users: 25, total_users: 100 };
+        assert!((row.adoption_pct() - 25.0).abs() < 1e-9);
+    }
 }

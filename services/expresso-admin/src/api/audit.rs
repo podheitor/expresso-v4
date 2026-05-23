@@ -191,4 +191,9 @@ mod tests {
         let back: AuditPreset = serde_json::from_str(&s).unwrap();
         assert_eq!(back, AuditPreset::D30);
     }
+
+    #[test]
+    fn preset_display_d7() {
+        assert_eq!(format!("{}", AuditPreset::D7), "7d");
+    }
 }

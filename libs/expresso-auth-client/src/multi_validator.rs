@@ -241,4 +241,11 @@ mod tests {
         assert!(!m.issuer_for("corp").contains("my-aud"));
         assert_eq!(m.audience(), "my-aud");
     }
+
+    #[test]
+    fn issuer_for_uppercase_realm_is_preserved_as_is() {
+        let m = MultiRealmValidator::new("https://kc/realms/{realm}", "aud").unwrap();
+        let iss = m.issuer_for("ACME");
+        assert!(iss.contains("ACME"));
+    }
 }

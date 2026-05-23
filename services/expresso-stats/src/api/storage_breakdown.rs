@@ -213,4 +213,10 @@ mod tests {
         let back: StorageCategory = serde_json::from_str(&json).unwrap();
         assert_eq!(back, StorageCategory::Contacts);
     }
+
+    #[test]
+    fn format_bytes_exactly_1_mib_contains_mib_unit() {
+        let s = format_bytes(1024 * 1024);
+        assert!(s.contains("MiB"));
+    }
 }

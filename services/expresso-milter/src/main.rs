@@ -430,4 +430,10 @@ mod tests {
         let result = parse_header_line(":");
         assert!(result.is_some());
     }
+
+    #[test]
+    fn parse_header_numeric_value_preserved() {
+        let (_, v) = parse_header_line("Content-Length: 42").unwrap();
+        assert_eq!(v, "42");
+    }
 }

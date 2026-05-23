@@ -211,4 +211,9 @@ mod tests {
         assert_eq!(addr.len(), MAX_ALIAS_BYTES);
         assert!(is_valid_alias(&addr));
     }
+
+    #[test]
+    fn invalid_alias_at_sign_only() {
+        assert!(!is_valid_alias("@"));
+    }
 }

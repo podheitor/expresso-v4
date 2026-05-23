@@ -224,4 +224,11 @@ mod tests {
         let w = XwrvWeights { w_recency: 0.4, w_frequency: 0.4, w_volume: 0.2 };
         assert!(w.is_valid());
     }
+
+    #[test]
+    fn compute_score_mixed_default_weights() {
+        let w = XwrvWeights::default();
+        let i = XwrvInput { recency: 0.0, frequency: 0.0, volume: 1.0 };
+        assert!((compute_score(&i, &w) - DEFAULT_W_VOLUME).abs() < 1e-9);
+    }
 }

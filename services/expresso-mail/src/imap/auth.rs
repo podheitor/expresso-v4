@@ -188,4 +188,9 @@ mod tests {
     fn from_str_login_lowercase() {
         assert_eq!(AuthMechanism::from_str("login"), Some(AuthMechanism::Login));
     }
+
+    #[test]
+    fn xoauth2_not_supported() {
+        assert!(!AuthMechanism::XOAuth2.is_supported());
+    }
 }

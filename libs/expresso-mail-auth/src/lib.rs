@@ -545,4 +545,15 @@ mod tests {
         };
         assert!(!r.to_value("mx.example.com").contains("(p="));
     }
+
+    #[test]
+    fn auth_results_to_value_contains_semicolon_separated_results() {
+        let r = AuthResults {
+            spf: "pass".into(), dkim: "none".into(), dmarc: "none".into(),
+            dmarc_policy: None, ..Default::default()
+        };
+        let v = r.to_value("mx.example.com");
+        assert!(v.contains("; spf=pass"));
+        assert!(v.contains("; dkim=none"));
+    }
 }

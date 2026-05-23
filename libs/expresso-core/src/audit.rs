@@ -286,4 +286,11 @@ mod tests {
         let e = AuditEntry::new("user.password_changed");
         assert!(e.action.contains('.'));
     }
+
+    #[test]
+    fn enrich_metadata_omits_actor_roles_when_empty() {
+        let e = AuditEntry::new("test.action");
+        let m = enrich_metadata(&e);
+        assert!(m.get("actor_roles").is_none());
+    }
 }

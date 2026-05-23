@@ -170,4 +170,9 @@ mod tests {
     fn namespace_does_not_contain_hyphen() {
         assert!(!NAMESPACE.contains('-'));
     }
+
+    #[test]
+    fn metric_name_length_is_greater_than_namespace_length() {
+        assert!(metric_name("x").len() > NAMESPACE.len());
+    }
 }

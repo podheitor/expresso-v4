@@ -579,4 +579,9 @@ mod tests {
     fn max_import_vcf_bytes_is_nonzero() {
         assert!(MAX_IMPORT_VCF_BYTES > 0);
     }
+
+    #[test]
+    fn validate_vcard_single_char_accepted() {
+        assert!(validate_vcard("x", MAX_CONTACT_VCARD_BYTES).is_ok());
+    }
 }

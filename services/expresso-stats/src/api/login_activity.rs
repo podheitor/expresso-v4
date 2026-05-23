@@ -214,4 +214,9 @@ mod tests {
     fn failure_rate_single_failure_in_one() {
         assert!((failure_rate(1, 1) - 1.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn login_outcome_blocked_ne_success() {
+        assert_ne!(LoginOutcome::Blocked, LoginOutcome::Success);
+    }
 }

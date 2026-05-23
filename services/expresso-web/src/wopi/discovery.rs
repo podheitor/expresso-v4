@@ -176,4 +176,9 @@ mod tests {
     fn ext_to_mime_doc_maps_to_msword() {
         assert_eq!(ext_to_mime("doc"), Some("application/msword"));
     }
+
+    #[test]
+    fn is_view_action_unknown_name_returns_false() {
+        assert!(!is_view_action("unknown"));
+    }
 }

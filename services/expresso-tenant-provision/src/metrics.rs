@@ -176,4 +176,9 @@ mod tests {
     fn step_client_and_step_user_differ() {
         assert_ne!(STEP_CLIENT, STEP_USER);
     }
+
+    #[test]
+    fn users_created_contains_users() {
+        assert!(METRIC_USERS_CREATED.contains("users"));
+    }
 }

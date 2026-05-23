@@ -183,4 +183,10 @@ mod tests {
     fn validate_token_ttl_exactly_min_is_ok() {
         assert_eq!(validate_token_ttl(MIN_TOKEN_TTL_SECS), None);
     }
+
+    #[test]
+    fn split_token_third_segment_is_user_id() {
+        let segs = split_token(FAKE_TOKEN).unwrap();
+        assert_eq!(segs[2], "user1");
+    }
 }

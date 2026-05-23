@@ -216,4 +216,10 @@ mod tests {
         assert!(e.is_permanent());
         assert!(!e.is_transient());
     }
+
+    #[test]
+    fn auth_required_is_permanent() {
+        assert!(SmtpError::AuthRequired.is_permanent());
+        assert!(!SmtpError::AuthRequired.is_transient());
+    }
 }

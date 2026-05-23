@@ -187,4 +187,9 @@ mod tests {
             assert_eq!(Frequency::from_str(f.as_str()), Some(f));
         }
     }
+
+    #[test]
+    fn frequency_as_str_secondly_and_minutely_distinct() {
+        assert_ne!(Frequency::Secondly.as_str(), Frequency::Minutely.as_str());
+    }
 }

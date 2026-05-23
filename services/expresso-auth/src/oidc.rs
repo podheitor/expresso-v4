@@ -159,4 +159,9 @@ mod tests {
         let result = build_scope(&["openid", "profile", "email", "offline_access"]);
         assert_eq!(result.chars().filter(|&c| c == ' ').count(), 3);
     }
+
+    #[test]
+    fn is_https_url_requires_double_slash() {
+        assert!(!is_https_url("https:example.com"));
+    }
 }

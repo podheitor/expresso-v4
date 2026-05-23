@@ -179,4 +179,9 @@ mod tests {
     fn upstream_drive_and_upstream_mail_differ() {
         assert_ne!(UPSTREAM_DRIVE, UPSTREAM_MAIL);
     }
+
+    #[test]
+    fn http_requests_metric_contains_http() {
+        assert!(METRIC_HTTP_REQUESTS.contains("http"));
+    }
 }

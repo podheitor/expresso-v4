@@ -206,4 +206,10 @@ mod tests {
     fn sanitize_removes_pipe_character() {
         assert!(!sanitize_file_name("fi|le").contains('|'));
     }
+
+    #[test]
+    fn check_file_info_user_friendly_name_equals_user_id() {
+        let info = CheckFileInfoResponse::new("f.odt", 0, "alice", true);
+        assert_eq!(info.user_friendly_name, info.user_id);
+    }
 }

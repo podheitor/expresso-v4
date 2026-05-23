@@ -206,4 +206,11 @@ mod tests {
         let back: LockOperation = serde_json::from_str(&json).unwrap();
         assert_eq!(back, LockOperation::RefreshLock);
     }
+
+    #[test]
+    fn lock_operation_serde_roundtrip_get_lock() {
+        let json = serde_json::to_string(&LockOperation::GetLock).unwrap();
+        let back: LockOperation = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, LockOperation::GetLock);
+    }
 }

@@ -189,4 +189,9 @@ mod tests {
     fn clamp_days_max_boundary_preserved() {
         assert_eq!(clamp_days(MAX_DAYS), MAX_DAYS);
     }
+
+    #[test]
+    fn metric_debug_contains_variant_name() {
+        assert!(format!("{:?}", ChatMetric::NewRooms).contains("NewRooms"));
+    }
 }

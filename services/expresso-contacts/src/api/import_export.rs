@@ -201,4 +201,9 @@ mod tests {
         let r = ImportResult { imported: 7, skipped: 3, errors: vec![] };
         assert_eq!(r.skipped, 3);
     }
+
+    #[test]
+    fn vcard_version_two_variants_have_distinct_str() {
+        assert_ne!(VCardVersion::V3.as_str(), VCardVersion::V4.as_str());
+    }
 }

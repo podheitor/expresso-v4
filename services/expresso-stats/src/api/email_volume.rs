@@ -208,4 +208,9 @@ mod tests {
         let p = EmailVolumeParams { tenant_id: "t1".into(), granularity: None, since_days: Some(1) };
         assert!(validate_email_volume_params(&p).is_none());
     }
+
+    #[test]
+    fn granularity_week_ne_month() {
+        assert_ne!(Granularity::Week, Granularity::Month);
+    }
 }

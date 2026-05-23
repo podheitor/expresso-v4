@@ -200,4 +200,9 @@ mod tests {
     fn retention_rate_three_quarters() {
         assert!((retention_rate(75, 100) - 75.0).abs() < 1e-9);
     }
+
+    #[test]
+    fn granularity_debug_contains_variant_name() {
+        assert!(format!("{:?}", ActiveUserGranularity::Monthly).contains("Monthly"));
+    }
 }

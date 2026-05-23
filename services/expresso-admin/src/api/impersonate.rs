@@ -238,4 +238,9 @@ mod tests {
         };
         assert_eq!(r.tenant_id, tid);
     }
+
+    #[test]
+    fn scope_full_and_read_only_have_distinct_str() {
+        assert_ne!(ImpersonateScope::Full.as_str(), ImpersonateScope::ReadOnly.as_str());
+    }
 }

@@ -166,4 +166,10 @@ mod tests {
         let topic = "t".repeat(MAX_TOPIC_LEN - 1);
         assert!(validate_topic(&topic).is_ok());
     }
+
+    #[test]
+    fn validate_room_name_exactly_min_len_accepted() {
+        let name = "a".repeat(MIN_ROOM_NAME_LEN);
+        assert!(validate_room_name(&name).is_ok());
+    }
 }

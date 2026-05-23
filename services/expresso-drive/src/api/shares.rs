@@ -324,4 +324,9 @@ mod tests {
     fn max_ttl_is_not_equal_to_default_ttl() {
         assert_ne!(MAX_TTL_SECONDS, DEFAULT_TTL_SECONDS);
     }
+
+    #[test]
+    fn default_ttl_divides_evenly_into_max_ttl() {
+        assert_eq!(MAX_TTL_SECONDS % (24 * 3600), 0);
+    }
 }

@@ -401,4 +401,10 @@ mod tests {
         let auds = c.audiences();
         assert_eq!(auds, vec!["client-a"]);
     }
+
+    #[test]
+    fn oidc_config_issuer_and_audience_are_different_strings() {
+        let c = OidcConfig::new("https://kc/realms/r", "my-app");
+        assert_ne!(c.issuer.as_str(), c.audience.as_str());
+    }
 }

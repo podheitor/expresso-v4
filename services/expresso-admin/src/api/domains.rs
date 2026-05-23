@@ -219,4 +219,9 @@ mod tests {
         let back: DomainStatus = serde_json::from_str(&s).unwrap();
         assert_eq!(back, DomainStatus::Failed);
     }
+
+    #[test]
+    fn valid_domain_deep_subdomain() {
+        assert!(is_valid_domain("a.b.c.example.com"));
+    }
 }

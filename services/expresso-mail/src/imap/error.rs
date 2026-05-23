@@ -204,4 +204,9 @@ mod tests {
     fn permission_denied_is_client_error() {
         assert!(ImapError::PermissionDenied.is_client_error());
     }
+
+    #[test]
+    fn mailbox_already_exists_is_client_error() {
+        assert!(ImapError::MailboxAlreadyExists("Drafts".into()).is_client_error());
+    }
 }

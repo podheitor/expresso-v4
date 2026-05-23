@@ -170,4 +170,11 @@ mod tests {
         let s = e.to_string();
         assert!(s.contains(": msg"));
     }
+
+    #[test]
+    fn internal_error_display_format_is_prefix_colon_space_cause() {
+        let e = ExpresscryptoError::Internal(anyhow::anyhow!("ecdh failed"));
+        let s = e.to_string();
+        assert_eq!(s, "internal error: ecdh failed");
+    }
 }

@@ -168,4 +168,11 @@ mod tests {
         let cookie = clear_at_cookie();
         assert!(cookie.starts_with("expresso_at="));
     }
+
+    #[test]
+    fn build_at_cookie_token_appears_before_first_semicolon() {
+        let cookie = build_at_cookie("secrettoken", 3600, false);
+        let before_semi = cookie.split(';').next().unwrap_or("");
+        assert!(before_semi.contains("secrettoken"));
+    }
 }

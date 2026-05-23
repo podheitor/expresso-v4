@@ -330,4 +330,10 @@ mod tests {
         let cfg = RateLimitConfig { rps: 99, burst: 200 };
         assert!(format!("{cfg:?}").contains("99"));
     }
+
+    #[test]
+    fn rate_limit_config_debug_contains_burst_value() {
+        let cfg = RateLimitConfig { rps: 10, burst: 77 };
+        assert!(format!("{cfg:?}").contains("77"));
+    }
 }

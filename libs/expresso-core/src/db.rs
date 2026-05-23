@@ -313,6 +313,15 @@ mod tests {
         assert_eq!(p.tables_unforced.len(), 2);
         assert!(!p.is_strict());
     }
+
+    #[test]
+    fn rls_posture_tables_missing_count_reflects_pushes() {
+        let mut p = ok();
+        p.tables_missing.push("users".into());
+        p.tables_missing.push("sessions".into());
+        assert_eq!(p.tables_missing.len(), 2);
+        assert!(!p.is_strict());
+    }
 }
 
 /// Run pending sqlx migrations from the `./migrations` directory.

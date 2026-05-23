@@ -586,4 +586,9 @@ mod slug_tests {
     fn plans_const_does_not_contain_free() {
         assert!(!PLANS.contains(&"free"));
     }
+
+    #[test]
+    fn valid_slug_rejects_slash() {
+        assert!(!valid_slug("my/tenant"));
+    }
 }

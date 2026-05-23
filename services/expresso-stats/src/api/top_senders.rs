@@ -208,4 +208,10 @@ mod tests {
     fn validate_top_n_one_is_ok() {
         assert!(validate_top_senders_params(&make_params("t1", Some(1), None)).is_none());
     }
+
+    #[test]
+    fn domain_from_addr_at_only_returns_empty_domain() {
+        let result = TopSenderEntry::domain_from_addr("user@");
+        assert_eq!(result, "");
+    }
 }
