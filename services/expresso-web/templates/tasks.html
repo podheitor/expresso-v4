@@ -92,6 +92,15 @@
       </div>
       <label><span>Lista</span><input type="text" id="edit-task-list" placeholder="ex: Pessoal"></label>
       <label><span>Notas</span><textarea id="edit-task-notes" rows="3"></textarea></label>
+      <div>
+        <span class="small" style="font-weight:600">Subtarefas</span>
+        <ul class="subtask-list" id="edit-subtask-list"></ul>
+        <div style="display:flex;gap:.4rem;margin-top:.25rem">
+          <input type="text" id="new-subtask-input" class="tasks-add-input" placeholder="Nova subtarefa…" style="flex:1"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addSubtask();}">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addSubtask()">+</button>
+        </div>
+      </div>
       <input type="hidden" id="edit-task-id">
       <div class="form-actions">
         <button class="btn btn-danger btn-sm" onclick="deleteTaskById(document.getElementById('edit-task-id').value)">Excluir</button>
@@ -180,6 +189,7 @@ function renderAll() {
           '<span class="task-title ' + priClass + '">' + escHtml(t.title) + '</span>' +
           (t.due ? '<span class="task-due ' + (overdue ? 'task-overdue' : '') + '">' + escHtml(t.due) + '</span>' : '') +
           (t.notes ? '<span class="task-notes-preview muted small">' + escHtml(t.notes.substring(0,60)) + '</span>' : '') +
+          renderSubtaskBar(t) +
         '</div>' +
       '</div>';
     });
@@ -235,8 +245,46 @@ function openEdit(id) {
   document.getElementById('edit-task-priority').value = task.priority || 'normal';
   document.getElementById('edit-task-list').value  = task.list || '';
   document.getElementById('edit-task-notes').value = task.notes || '';
+  renderSubtaskEditor(task.subtasks || []);
   showModal('task-edit-modal');
 }
+
+// ── Subtasks ──────────────────────────────────────────────────────────────────
+var _editSubtasks = [];
+function renderSubtaskEditor(subs) {
+  _editSubtasks = subs.map(function(s){ return Object.assign({}, s); });
+  var ul = document.getElementById('edit-subtask-list');
+  if (!ul) return;
+  ul.innerHTML = '';
+  _editSubtasks.forEach(function(s, i) {
+    ul.innerHTML += '<li class="subtask-item">' +
+      '<input type="checkbox"' + (s.done ? ' checked' : '') + ' onchange="_editSubtasks[' + i + '].done=this.checked">' +
+      '<span class="subtask-label">' + escHtml(s.title) + '</span>' +
+      '<button type="button" class="chat-action-btn" onclick="removeSubtask(' + i + ')">✕</button></li>';
+  });
+  document.getElementById('new-subtask-input').value = '';
+}
+function addSubtask() {
+  var inp = document.getElementById('new-subtask-input');
+  var title = inp.value.trim();
+  if (!title) return;
+  _editSubtasks.push({ id: genId(), title: title, done: false });
+  renderSubtaskEditor(_editSubtasks);
+}
+function removeSubtask(idx) {
+  _editSubtasks.splice(idx, 1);
+  renderSubtaskEditor(_editSubtasks);
+}
+function renderSubtaskBar(task) {
+  var subs = task.subtasks || [];
+  if (!subs.length) return '';
+  var done = subs.filter(function(s){ return s.done; }).length;
+  var pct = Math.round(done / subs.length * 100);
+  return '<div class="subtask-bar-wrap">' +
+    '<div class="subtask-bar"><div class="subtask-bar-fill" style="width:' + pct + '%"></div></div>' +
+    '<span class="muted small" style="font-size:.7rem">' + done + '/' + subs.length + '</span></div>';
+}
+
 function saveEditTask() {
   var id = document.getElementById('edit-task-id').value;
   var tasks = loadTasks().map(function(t){
@@ -247,6 +295,7 @@ function saveEditTask() {
       priority: document.getElementById('edit-task-priority').value,
       list:     document.getElementById('edit-task-list').value.trim() || 'Geral',
       notes:    document.getElementById('edit-task-notes').value,
+      subtasks: _editSubtasks,
     });
   });
   saveTasks(tasks);

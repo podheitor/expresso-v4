@@ -1539,3 +1539,21 @@ textarea[name="script"] {
 .chat-pinned { display:flex; align-items:center; gap:.5rem; padding:.35rem .75rem; background:color-mix(in srgb,var(--accent) 10%,transparent); border-bottom:1px solid var(--border); font-size:.82rem; }
 .chat-pinned-icon { font-size:.9rem; }
 .chat-pinned-body { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── Tasks subtasks (sprint #20013) ─────────────────────────────────────────── */
+.subtask-list { list-style:none; padding:0; margin:.25rem 0; display:flex; flex-direction:column; gap:.2rem; }
+.subtask-item { display:flex; align-items:center; gap:.4rem; font-size:.82rem; }
+.subtask-label { flex:1; }
+.subtask-bar-wrap { display:flex; align-items:center; gap:.3rem; margin-top:.15rem; }
+.subtask-bar { flex:1; height:.25rem; background:var(--border); border-radius:1rem; overflow:hidden; }
+.subtask-bar-fill { height:100%; background:var(--accent); border-radius:1rem; transition:width .3s; }
+
+/* ── Chat @mention list (sprint #20009) ─────────────────────────────────────── */
+.mention-list { position:absolute; bottom:100%; left:0; right:0; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); list-style:none; padding:.25rem 0; margin:0; z-index:20; max-height:10rem; overflow-y:auto; }
+.mention-item { padding:.3rem .75rem; cursor:pointer; font-size:.85rem; }
+.mention-item:hover, .mention-item.active { background:color-mix(in srgb,var(--accent) 12%,transparent); }
+
+/* ── Drive sortable columns (sprint #20010) ─────────────────────────────────── */
+.sortable { cursor:pointer; user-select:none; }
+.sortable:hover { color:var(--accent); }
+.sort-arrow { font-size:.7rem; margin-left:.2rem; }
