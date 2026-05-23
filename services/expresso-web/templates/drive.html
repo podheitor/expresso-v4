@@ -18,6 +18,7 @@
     </div>
     <div class="page-header-actions">
       <a class="btn btn-ghost" href="/drive/trash">Lixeira</a>
+      <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <form class="upload-form" method="post"
             action="/drive/upload{% match parent_id %}{% when Some with (p) %}?parent_id={{ p }}{% when None %}{% endmatch %}"
             enctype="multipart/form-data">
@@ -73,4 +74,39 @@
   {% when None %}
   {% endmatch %}
 </div>
+
+<!-- New folder modal -->
+<div class="modal-overlay" id="drive-new-folder-modal" style="display:none" onclick="if(event.target.id==='drive-new-folder-modal')hideDriveNewFolder()">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-header">
+      <h3>Nova pasta</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideDriveNewFolder()">✕</button>
+    </div>
+    <form class="compose-form" method="post" action="/drive/new-folder">
+      {% match parent_id %}
+        {% when Some with (p) %}<input type="hidden" name="parent_id" value="{{ p }}">{% when None %}{% endmatch %}
+      <label>
+        <span>Nome da pasta</span>
+        <input type="text" name="name" id="drive-new-folder-name" placeholder="ex: Projetos 2026" required autofocus>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideDriveNewFolder()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function showDriveNewFolder() {
+  document.getElementById('drive-new-folder-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('drive-new-folder-name').focus(); }, 50);
+}
+function hideDriveNewFolder() {
+  document.getElementById('drive-new-folder-modal').style.display = 'none';
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') hideDriveNewFolder();
+});
+</script>
 {% endblock %}
