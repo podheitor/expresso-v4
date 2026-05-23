@@ -36,25 +36,53 @@
       {% if messages.is_empty() %}
         <div class="empty-state">Thread vazia</div>
       {% else %}
-      <ul class="msg-rows">
+      <div class="thread-list">
         {% for msg in messages %}
-        <li>
-          <a class="msg-row{% if msg.is_unread() %} unread{% endif %}"
-             href="/mail/{{ msg.id }}">
-            <div class="msg-meta">
-              <span class="msg-from">{{ msg.from_display() }}</span>
-              <span class="msg-date">{{ msg.date_display() }}</span>
+        <div class="thread-msg{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
+          <div class="thread-msg-header" onclick="toggleThreadMsg('{{ msg.id }}')">
+            <div class="thread-msg-avatar">{{ msg.from_display().chars().next().unwrap_or('?').to_uppercase() }}</div>
+            <div class="thread-msg-meta">
+              <span class="thread-msg-from">{{ msg.from_display() }}</span>
+              <span class="muted small">{{ msg.date_display() }}</span>
             </div>
-            <div class="msg-subject">{{ msg.subject_display() }}</div>
+            {% if msg.is_unread() %}<span class="chat-unread-badge" style="margin-left:auto">Não lida</span>{% endif %}
+            <div class="thread-msg-actions" onclick="event.stopPropagation()">
+              <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ msg.id }}">↩</a>
+              <span class="thread-collapse-icon" id="icon-{{ msg.id }}">▾</span>
+            </div>
+          </div>
+          <div class="thread-msg-body" id="body-{{ msg.id }}">
+            <a class="btn btn-ghost btn-sm" href="/mail/{{ msg.id }}" style="margin-bottom:.5rem;display:inline-block">Abrir completo</a>
             {% if !msg.preview_display().is_empty() %}
-              <div class="msg-preview">{{ msg.preview_display() }}</div>
+              <p class="muted small">{{ msg.preview_display() }}</p>
             {% endif %}
-          </a>
-        </li>
+          </div>
+        </div>
         {% endfor %}
-      </ul>
+      </div>
       {% endif %}
     </section>
   </main>
 </div>
+<script>
+function toggleThreadMsg(id) {
+  var body = document.getElementById('body-' + id);
+  var icon = document.getElementById('icon-' + id);
+  var open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  if (icon) icon.textContent = open ? '▸' : '▾';
+}
+// collapse all except last on load
+(function() {
+  var bodies = document.querySelectorAll('.thread-msg-body');
+  bodies.forEach(function(b, i) {
+    if (i < bodies.length - 1) {
+      b.style.display = 'none';
+      var id = b.id.replace('body-', '');
+      var icon = document.getElementById('icon-' + id);
+      if (icon) icon.textContent = '▸';
+    }
+  });
+})();
+</script>
 {% endblock %}

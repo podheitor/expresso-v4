@@ -125,12 +125,20 @@
                   {% when Some with (pid) %}
                     <div class="chat-reply-indicator muted small">↩ Respondendo</div>
                   {% when None %}{% endmatch %}
-                <div class="chat-msg-body">{{ msg.body }}</div>
+                <div class="chat-msg-body" id="msgbody-{{ msg.id }}">{{ msg.body }}</div>
+                <div class="chat-msg-edit-area" id="msgedit-{{ msg.id }}" style="display:none">
+                  <textarea class="chat-compose-input" id="msgedit-ta-{{ msg.id }}" rows="2" style="width:100%">{{ msg.body }}</textarea>
+                  <div style="display:flex;gap:.4rem;margin-top:.25rem">
+                    <button class="btn btn-primary btn-sm" onclick="saveEditMsg('{{ ch.id }}','{{ msg.id }}')">Salvar</button>
+                    <button class="btn btn-ghost btn-sm" onclick="cancelEditMsg('{{ msg.id }}')">Cancelar</button>
+                  </div>
+                </div>
                 <div class="chat-msg-reactions" id="reactions-{{ msg.id }}"></div>
                 <div class="chat-msg-actions">
                   <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
+                  {% if msg.is_own(&me.user_id) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
                   <button type="button" onclick="addReaction('{{ ch.id }}','{{ msg.id }}','👍')">👍</button>
@@ -673,6 +681,34 @@ function closeModalOnOverlay(e, id) { if (e.target.id === id) hideModal(id); }
 // ── HTML escape ───────────────────────────────────────────────────────────────
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Edit message ─────────────────────────────────────────────────────────────
+function startEditMsg(id) {
+  document.getElementById('msgbody-' + id).style.display = 'none';
+  var ea = document.getElementById('msgedit-' + id);
+  if (ea) ea.style.display = '';
+  var ta = document.getElementById('msgedit-ta-' + id);
+  if (ta) { ta.focus(); ta.select(); }
+}
+function cancelEditMsg(id) {
+  var ea = document.getElementById('msgedit-' + id);
+  if (ea) ea.style.display = 'none';
+  document.getElementById('msgbody-' + id).style.display = '';
+}
+function saveEditMsg(cid, id) {
+  var ta = document.getElementById('msgedit-ta-' + id);
+  var body = ta ? ta.value.trim() : '';
+  if (!body) return;
+  fetch('/chat/channels/' + encodeURIComponent(cid) + '/messages/' + encodeURIComponent(id), {
+    method: 'PATCH', credentials: 'include',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'body=' + encodeURIComponent(body),
+  }).then(function() {
+    var bodyEl = document.getElementById('msgbody-' + id);
+    if (bodyEl) bodyEl.textContent = body;
+    cancelEditMsg(id);
+  });
 }
 </script>
 {% endblock %}
