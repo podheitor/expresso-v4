@@ -35,6 +35,7 @@
         <h1 class="folder-title">{{ selected }}</h1>
         <div class="toolbar-actions">
           <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
+          <button class="btn btn-ghost btn-sm" id="sender-filter-btn" onclick="clearSenderFilter()" style="display:none" title="Limpar filtro de remetente">✕ <span id="sender-filter-label"></span></button>
           <form method="get" action="/mail/search" class="toolbar-search">
             <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
           </form>
@@ -50,7 +51,7 @@
           <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
              href="/mail/{{ msg.id }}?folder={{ selected }}">
             <div class="msg-meta">
-              <span class="msg-from">{{ msg.from_display() }}</span>
+              <span class="msg-from" onclick="filterBySender('{{ msg.from_display() }}'); event.preventDefault();" style="cursor:pointer" title="Filtrar por este remetente">{{ msg.from_display() }}</span>
               <span class="msg-date">{{ msg.date_display() }}</span>
             </div>
             <div class="msg-subject">
@@ -160,6 +161,25 @@ document.addEventListener('click', function(e){
     document.querySelectorAll('.dropdown-menu.open').forEach(function(m){ m.classList.remove('open'); });
   }
 });
+
+// ── Sender filter ─────────────────────────────────────────────────────────────
+function filterBySender(sender) {
+  var rows = document.querySelectorAll('.msg-row');
+  rows.forEach(function(row) {
+    var from = row.querySelector('.msg-from');
+    var match = from && from.textContent.includes(sender);
+    row.parentElement.style.display = match ? '' : 'none';
+  });
+  var btn = document.getElementById('sender-filter-btn');
+  var lbl = document.getElementById('sender-filter-label');
+  if (btn) { btn.style.display = 'inline-flex'; }
+  if (lbl) { lbl.textContent = sender.substring(0, 20) + (sender.length > 20 ? '…' : ''); }
+}
+function clearSenderFilter() {
+  document.querySelectorAll('.msg-rows li').forEach(function(li){ li.style.display = ''; });
+  var btn = document.getElementById('sender-filter-btn');
+  if (btn) btn.style.display = 'none';
+}
 
 // ── Mark all as read ──────────────────────────────────────────────────────────
 function markAllRead() {
