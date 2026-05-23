@@ -21,6 +21,7 @@
       <strong class="btn btn-primary" aria-current="page">Mês</strong>
       <a class="btn btn-ghost" href="/calendar/{{ selected.id }}/week">Semana</a>
       <a class="btn btn-ghost" href="/calendar/{{ selected.id }}/day">Dia</a>
+      <button class="btn btn-ghost" onclick="toggleAgendaView()" id="agenda-view-btn" title="Agenda">Lista</button>
     </nav>
 
     {% if calendars.len() > 1 %}
@@ -71,6 +72,14 @@
       {% endfor %}
     </tbody>
   </table>
+
+  <!-- Agenda view (hidden by default, toggled by JS) -->
+  <div id="cal-agenda-view" style="display:none;margin-top:1.5rem">
+    <h2 style="margin-bottom:.75rem">Próximos eventos</h2>
+    <ul class="cal-agenda-list" id="cal-agenda-list">
+      <li class="muted small">Carregando…</li>
+    </ul>
+  </div>
 </div>
 
 <!-- Quick event modal -->
@@ -145,5 +154,69 @@ function showQeError(msg) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeQuickEvent();
 });
+
+// ── Agenda view ───────────────────────────────────────────────────────────────
+var _agendaOpen = false;
+function toggleAgendaView() {
+  _agendaOpen = !_agendaOpen;
+  var grid = document.querySelector('.month-grid');
+  var agenda = document.getElementById('cal-agenda-view');
+  var btn = document.getElementById('agenda-view-btn');
+  if (grid) grid.style.display = _agendaOpen ? 'none' : '';
+  if (agenda) agenda.style.display = _agendaOpen ? '' : 'none';
+  if (btn) btn.textContent = _agendaOpen ? 'Calendário' : 'Lista';
+  if (_agendaOpen) buildAgenda();
+}
+
+function buildAgenda() {
+  var ul = document.getElementById('cal-agenda-list');
+  if (!ul) return;
+  var DAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  var MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  var today = new Date();
+  today.setHours(0,0,0,0);
+  // Collect events from month cells
+  var events = [];
+  document.querySelectorAll('.month-cell').forEach(function(td) {
+    var dayLink = td.querySelector('.day-add');
+    if (!dayLink) return;
+    var onclick = dayLink.getAttribute('onclick') || '';
+    var m = onclick.match(/openQuickEvent\('([^']+)'/);
+    var iso = m ? m[1] : '';
+    if (!iso) return;
+    var chips = td.querySelectorAll('.event-chip');
+    chips.forEach(function(chip) {
+      var title = chip.querySelector('.ev-title');
+      var time = chip.querySelector('.ev-time');
+      events.push({ iso: iso, title: title ? title.textContent.trim() : '', time: time ? time.textContent.trim() : '', href: chip.getAttribute('href') || '#' });
+    });
+  });
+  // Filter future and sort
+  events = events.filter(function(e) { return e.iso >= today.toISOString().slice(0,10); });
+  events.sort(function(a,b){ return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
+  if (!events.length) {
+    ul.innerHTML = '<li class="muted small">Nenhum evento no período.</li>';
+    return;
+  }
+  // Group by day
+  var byDay = {};
+  var dayOrder = [];
+  events.forEach(function(e) {
+    if (!byDay[e.iso]) { byDay[e.iso] = []; dayOrder.push(e.iso); }
+    byDay[e.iso].push(e);
+  });
+  ul.innerHTML = dayOrder.slice(0, 30).map(function(iso) {
+    var d = new Date(iso + 'T12:00:00');
+    var isToday = iso === today.toISOString().slice(0,10);
+    var label = (isToday ? 'Hoje' : DAYS[d.getDay()]) + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()];
+    var evHtml = byDay[iso].map(function(e) {
+      return '<a class="cal-agenda-event" href="' + e.href + '">' +
+        '<span class="cal-agenda-time">' + (e.time || 'Dia todo') + '</span>' +
+        '<span>' + e.title + '</span></a>';
+    }).join('');
+    return '<li class="cal-agenda-day"><span class="cal-agenda-day-label' + (isToday?' cal-agenda-day-today':'') + '">' + label + '</span>' +
+      '<div class="cal-agenda-events">' + evHtml + '</div></li>';
+  }).join('');
+}
 </script>
 {% endblock %}

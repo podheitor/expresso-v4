@@ -37,7 +37,23 @@
         <button class="folder-item" id="filter-pri-low" onclick="setFilter('pri-low')">
           <span class="folder-icon">⚪</span><span class="folder-name">Baixa</span>
         </button>
+        <div style="height:.5rem;border-top:1px solid var(--border);margin:.4rem 0"></div>
+        <div class="chat-section-label" style="padding:.2rem 1rem;font-size:.72rem">Prazo</div>
+        <button class="folder-item" id="filter-overdue" onclick="setFilter('overdue')">
+          <span class="folder-icon">🔔</span><span class="folder-name">Atrasadas</span>
+          <span class="chat-unread-badge" id="count-overdue" style="background:#ef4444"></span>
+        </button>
+        <button class="folder-item" id="filter-week" onclick="setFilter('week')">
+          <span class="folder-icon">📆</span><span class="folder-name">Esta semana</span>
+        </button>
+        <button class="folder-item" id="filter-no-due" onclick="setFilter('no-due')">
+          <span class="folder-icon">∞</span><span class="folder-name">Sem prazo</span>
+        </button>
       </nav>
+
+      <div style="padding:.5rem .75rem;border-top:1px solid var(--border)">
+        <button class="btn btn-ghost btn-sm" onclick="exportTasksCsv()" style="width:100%;font-size:.78rem">⬇ Exportar CSV</button>
+      </div>
 
       <div style="padding:.75rem 1rem;border-top:1px solid var(--border);margin-top:.5rem">
         <div class="tasks-progress-label muted small" id="progress-label"></div>
@@ -145,13 +161,32 @@ function todayIso() {
 
 function filterTasks(tasks) {
   var today = todayIso();
+  var weekEnd = (function() {
+    var d = new Date(); d.setDate(d.getDate() + (7 - d.getDay())); return d.toISOString().slice(0,10);
+  })();
   if (currentFilter === 'today')      return tasks.filter(function(t){ return !t.done && t.due === today; });
   if (currentFilter === 'upcoming')   return tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
   if (currentFilter === 'done')       return tasks.filter(function(t){ return t.done; });
   if (currentFilter === 'pri-high')   return tasks.filter(function(t){ return !t.done && t.priority === 'high'; });
   if (currentFilter === 'pri-normal') return tasks.filter(function(t){ return !t.done && (!t.priority || t.priority === 'normal'); });
   if (currentFilter === 'pri-low')    return tasks.filter(function(t){ return !t.done && t.priority === 'low'; });
+  if (currentFilter === 'overdue')    return tasks.filter(function(t){ return !t.done && t.due && t.due < today; });
+  if (currentFilter === 'week')       return tasks.filter(function(t){ return !t.done && t.due && t.due >= today && t.due <= weekEnd; });
+  if (currentFilter === 'no-due')     return tasks.filter(function(t){ return !t.done && !t.due; });
   return tasks.filter(function(t){ return !t.done; }); // 'all'
+}
+
+function exportTasksCsv() {
+  var tasks = loadTasks();
+  var csv = 'ID,Título,Lista,Prioridade,Prazo,Concluída\n';
+  tasks.forEach(function(t) {
+    csv += [t.id||'',t.title||'',t.list||'Geral',t.priority||'normal',t.due||'',t.done?'Sim':'Não']
+      .map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(',') + '\n';
+  });
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'tarefas-' + todayIso() + '.csv';
+  a.click();
 }
 
 function renderAll() {
@@ -162,10 +197,13 @@ function renderAll() {
 
   // counts
   var today = todayIso();
-  var todayCount = tasks.filter(function(t){ return !t.done && t.due === today; }).length;
-  var allCount   = tasks.filter(function(t){ return !t.done; }).length;
-  document.getElementById('count-all').textContent   = allCount   > 0 ? allCount   : '';
-  document.getElementById('count-today').textContent = todayCount > 0 ? todayCount : '';
+  var todayCount   = tasks.filter(function(t){ return !t.done && t.due === today; }).length;
+  var allCount     = tasks.filter(function(t){ return !t.done; }).length;
+  var overdueCount = tasks.filter(function(t){ return !t.done && t.due && t.due < today; }).length;
+  document.getElementById('count-all').textContent     = allCount   > 0 ? allCount   : '';
+  document.getElementById('count-today').textContent   = todayCount > 0 ? todayCount : '';
+  var ovEl = document.getElementById('count-overdue');
+  if (ovEl) ovEl.textContent = overdueCount > 0 ? overdueCount : '';
 
   // progress
   var total = tasks.length, done = tasks.filter(function(t){ return t.done; }).length;

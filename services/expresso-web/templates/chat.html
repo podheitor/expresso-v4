@@ -153,6 +153,7 @@
                 <div class="chat-msg-reactions" id="reactions-{{ msg.id }}"></div>
                 <div class="chat-msg-actions">
                   <button class="chat-action-btn" onclick="setReply('{{ msg.id }}')" title="Responder">↩</button>
+                  <button class="chat-action-btn" onclick="openThread('{{ msg.id }}','{{ msg.sender() }}','{{ ch.id }}')" title="Ver thread">💬 Thread</button>
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
                   {% if msg.is_own(&me.user_id) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
@@ -246,6 +247,23 @@
       </div>
     {% endmatch %}
   </main>
+
+  <!-- Thread sidebar -->
+  <aside class="chat-thread-sidebar" id="chat-thread-sidebar" style="display:none">
+    <header class="chat-thread-header">
+      <span class="chat-thread-title">Thread</span>
+      <button class="btn btn-ghost btn-sm" onclick="closeThread()">✕</button>
+    </header>
+    <div class="chat-thread-parent" id="chat-thread-parent"></div>
+    <div class="chat-thread-messages" id="chat-thread-messages">
+      <p class="muted small" style="padding:.5rem">Carregando respostas…</p>
+    </div>
+    <div class="chat-thread-compose">
+      <textarea class="chat-compose-input" id="chat-thread-input" placeholder="Responder na thread…"
+                rows="2" onkeydown="threadKeydown(event)"></textarea>
+      <button class="btn btn-primary btn-sm" onclick="sendThreadReply()">Enviar</button>
+    </div>
+  </aside>
 </div>
 
 <!-- Modal: Nova mensagem direta -->
@@ -366,6 +384,17 @@ function loadNewMessages() {
             '</div>' +
           '</div>';
         container.appendChild(div);
+        // Push global notification for messages from others
+        {% match active_channel %}{% when Some with (ch) %}
+        if (msg.user_id !== '{{ me.user_id }}') {
+          var sender = msg.display_name || msg.user_id;
+          var preview = (msg.body || '').slice(0, 60);
+          if (window.pushNotification) {
+            window.pushNotification('💬', sender + ' em #{{ ch.name }}: ' + preview, '/chat/channels/{{ ch.id }}');
+          }
+          if (window._updateChatTabTitle) window._updateChatTabTitle(1);
+        }
+        {% when None %}{% endmatch %}
       });
       scrollToBottom();
     });
@@ -838,6 +867,88 @@ function saveEditMsg(cid, id) {
     if (bodyEl) bodyEl.textContent = body;
     cancelEditMsg(id);
   });
+}
+
+// ── Thread sidebar ────────────────────────────────────────────────────────────
+var _threadMsgId = null;
+var _threadChId  = null;
+
+function openThread(msgId, sender, chId) {
+  _threadMsgId = msgId;
+  _threadChId  = chId;
+  var sidebar = document.getElementById('chat-thread-sidebar');
+  if (!sidebar) return;
+  sidebar.style.display = 'flex';
+  // Show parent message excerpt
+  var parentEl = document.getElementById('chat-thread-parent');
+  var bodyEl   = document.getElementById('msgbody-' + msgId);
+  if (parentEl && bodyEl) {
+    parentEl.innerHTML = '<div class="chat-thread-parent-msg">' +
+      '<span class="chat-msg-sender">' + escHtml(sender) + '</span>' +
+      '<div class="chat-msg-body">' + escHtml(bodyEl.textContent || '') + '</div>' +
+      '</div>';
+  }
+  // Load thread replies
+  var msgsEl = document.getElementById('chat-thread-messages');
+  if (!msgsEl) return;
+  msgsEl.innerHTML = '<p class="muted small" style="padding:.5rem">Carregando…</p>';
+  fetch('/chat/channels/' + encodeURIComponent(chId) + '/poll?parent_id=' + encodeURIComponent(msgId), {
+    credentials: 'include',
+  }).then(function(r){ return r.ok ? r.json() : {messages:[]}; })
+    .then(function(data) {
+      var msgs = (data.messages || []).filter(function(m){ return m.parent_id === msgId; });
+      if (!msgs.length) {
+        msgsEl.innerHTML = '<p class="muted small" style="padding:.5rem">Nenhuma resposta ainda.</p>';
+        return;
+      }
+      msgsEl.innerHTML = msgs.map(function(m) {
+        var initial = ((m.display_name || m.user_id || '?')[0]).toUpperCase();
+        var time = (m.created_at || '').slice(11, 16);
+        return '<div class="chat-msg">' +
+          '<div class="chat-msg-avatar">' + escHtml(initial) + '</div>' +
+          '<div class="chat-msg-bubble">' +
+            '<div class="chat-msg-meta">' +
+              '<span class="chat-msg-sender">' + escHtml(m.display_name || m.user_id) + '</span>' +
+              '<span class="chat-msg-time">' + time + '</span>' +
+            '</div>' +
+            '<div class="chat-msg-body">' + escHtml(m.body) + '</div>' +
+          '</div></div>';
+      }).join('');
+    }).catch(function() {
+      msgsEl.innerHTML = '<p class="muted small" style="padding:.5rem">Erro ao carregar.</p>';
+    });
+  var inp = document.getElementById('chat-thread-input');
+  if (inp) inp.focus();
+}
+
+function closeThread() {
+  var sidebar = document.getElementById('chat-thread-sidebar');
+  if (sidebar) sidebar.style.display = 'none';
+  _threadMsgId = null;
+  _threadChId  = null;
+}
+
+function sendThreadReply() {
+  if (!_threadMsgId || !_threadChId) return;
+  var inp = document.getElementById('chat-thread-input');
+  var body = inp ? inp.value.trim() : '';
+  if (!body) return;
+  var fd = new FormData();
+  fd.append('body', body);
+  fd.append('parent_id', _threadMsgId);
+  fetch('/chat/channels/' + encodeURIComponent(_threadChId) + '/send', {
+    method: 'POST', credentials: 'include', body: fd,
+  }).then(function() {
+    if (inp) inp.value = '';
+    openThread(_threadMsgId, '', _threadChId);
+  });
+}
+
+function threadKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendThreadReply();
+  }
 }
 </script>
 {% endblock %}

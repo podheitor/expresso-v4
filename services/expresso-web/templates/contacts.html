@@ -85,19 +85,44 @@
 function importVcf(input, bookId) {
   var file = input.files && input.files[0];
   if (!file) return;
+  // Show progress toast
+  var toast = document.createElement('div');
+  toast.className = 'snooze-toast';
+  toast.innerHTML = '<div class="snooze-toast-header"><span>⏳ Importando contatos…</span></div>' +
+    '<div class="snooze-toast-body">' + escHtml(file.name) + ' (' + Math.round(file.size/1024) + ' KB)</div>' +
+    '<progress id="import-progress" max="100" value="0" style="width:100%;margin-top:.5rem"></progress>';
+  document.body.appendChild(toast);
   var reader = new FileReader();
+  reader.onprogress = function(ev) {
+    if (ev.lengthComputable) {
+      var pct = Math.round(ev.loaded / ev.total * 50);
+      var prog = document.getElementById('import-progress');
+      if (prog) prog.value = pct;
+    }
+  };
   reader.onload = function(e) {
+    var prog = document.getElementById('import-progress');
+    if (prog) prog.value = 70;
     fetch('/contacts/' + encodeURIComponent(bookId) + '/import', {
       method: 'POST',
       headers: { 'Content-Type': 'text/vcard' },
       credentials: 'include',
       body: e.target.result,
     }).then(function(r) {
+      if (prog) prog.value = 100;
+      setTimeout(function() { toast.remove(); }, 800);
       if (r.ok || r.redirected) { window.location.reload(); }
-      else { alert('Erro ao importar (' + r.status + ').'); }
-    }).catch(function() { alert('Erro de conexão.'); });
+      else {
+        toast.innerHTML += '<p class="muted small" style="color:#ef4444">Erro ao importar (' + r.status + ').</p>';
+        setTimeout(function(){ toast.remove(); }, 4000);
+      }
+    }).catch(function() {
+      toast.innerHTML += '<p class="muted small" style="color:#ef4444">Erro de conexão.</p>';
+      setTimeout(function(){ toast.remove(); }, 4000);
+    });
   };
   reader.readAsText(file);
+  function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 }
 
 function filterContacts(q) {

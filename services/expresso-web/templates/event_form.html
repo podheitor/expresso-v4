@@ -60,13 +60,33 @@
       </label>
 
       {% if !attendee_pills.is_empty() %}
-      <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.5rem">
         {% for a in attendee_pills %}
         <span class="pill {{ a.css() }}" title="PARTSTAT: {{ a.partstat }}">
           {{ a.email }} · {{ a.label() }}
         </span>
         {% endfor %}
       </div>
+
+      {% match event_id %}{% when Some with (eid) %}
+      <div class="card stack" style="padding:.75rem 1rem;margin-bottom:.5rem">
+        <p class="small muted" style="margin-bottom:.5rem">Sua resposta ao convite:</p>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <form method="post" action="/calendar/{{ calendar.id }}/events/{{ eid }}/rsvp" style="display:contents">
+            <input type="hidden" name="partstat" value="ACCEPTED">
+            <button class="btn btn-primary btn-sm" type="submit">✓ Aceitar</button>
+          </form>
+          <form method="post" action="/calendar/{{ calendar.id }}/events/{{ eid }}/rsvp" style="display:contents">
+            <input type="hidden" name="partstat" value="TENTATIVE">
+            <button class="btn btn-ghost btn-sm" type="submit">? Talvez</button>
+          </form>
+          <form method="post" action="/calendar/{{ calendar.id }}/events/{{ eid }}/rsvp" style="display:contents">
+            <input type="hidden" name="partstat" value="DECLINED">
+            <button class="btn btn-ghost btn-sm" type="submit">✕ Recusar</button>
+          </form>
+        </div>
+      </div>
+      {% when None %}{% endmatch %}
       {% endif %}
 
       <div class="form-actions" style="justify-content:flex-end">

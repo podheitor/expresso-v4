@@ -1,0 +1,89 @@
+{% extends "admin_base.html" %}
+{% block title %}Tenants · Admin · Expresso{% endblock %}
+{% block nav_tenants %} active{% endblock %}
+{% block flash %}
+  {% match flash %}
+    {% when Some with (msg) %}<div class="alert alert-success" style="margin-bottom:1rem">{{ msg }}</div>
+    {% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Tenants</h1>
+    <button class="btn btn-primary btn-sm" onclick="showModal('admin-tenant-modal')">+ Novo tenant</button>
+  </div>
+
+  <div class="card" style="margin-top:.75rem;overflow:auto">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nome</th>
+          <th>Domínio</th>
+          <th>Usuários</th>
+          <th>Cota (GB)</th>
+          <th>Status</th>
+          <th>Criado em</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if tenants.is_empty() %}
+          <tr><td colspan="8" class="muted" style="text-align:center;padding:2rem">Nenhum tenant.</td></tr>
+        {% else %}
+          {% for t in tenants %}
+          <tr>
+            <td class="mono small">{{ t.id }}</td>
+            <td><strong>{{ t.name }}</strong></td>
+            <td class="mono small">{% match t.domain %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+            <td class="muted small">{{ t.user_count }}</td>
+            <td class="muted small">{% match t.quota_gb %}{% when Some with (q) %}{{ q }}{% when None %}—{% endmatch %}</td>
+            <td>
+              {% if t.active %}
+                <span class="admin-status-badge admin-status-active">Ativo</span>
+              {% else %}
+                <span class="admin-status-badge admin-status-suspended">Inativo</span>
+              {% endif %}
+            </td>
+            <td class="small muted">{% match t.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+            <td>
+              <div class="admin-row-actions">
+                <a class="btn btn-ghost btn-sm" href="/admin/tenants/{{ t.id }}">Detalhes</a>
+                <form method="post" action="/admin/tenants/{{ t.id }}/toggle" style="display:contents">
+                  <button class="btn btn-ghost btn-sm" type="submit">{% if t.active %}Desativar{% else %}Ativar{% endif %}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: novo tenant -->
+<div class="modal-overlay" id="admin-tenant-modal" style="display:none"
+     onclick="closeModalOnOverlay(event,'admin-tenant-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Novo tenant</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('admin-tenant-modal')">✕</button>
+    </div>
+    <form class="compose-form" method="post" action="/admin/tenants">
+      <label><span>Nome</span><input type="text" name="name" required placeholder="Empresa XYZ"></label>
+      <label><span>Domínio</span><input type="text" name="domain" placeholder="empresa.com"></label>
+      <label><span>Cota (GB)</span><input type="number" name="quota_gb" min="1" value="50"></label>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideModal('admin-tenant-modal')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+function showModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'flex'; }
+function hideModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'none'; }
+function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) hideModal(id); }
+</script>
+{% endblock %}

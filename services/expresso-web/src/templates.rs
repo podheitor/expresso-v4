@@ -824,6 +824,100 @@ pub struct SettingsTpl {
     pub sieve_error:       Option<String>,
 }
 
+// ─── Admin panel ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct AdminUser {
+    pub id:           String,
+    pub email:        String,
+    #[serde(default)] pub display_name: Option<String>,
+    #[serde(default)] pub role:         String,
+    #[serde(default)] pub status:       String,
+    #[serde(default)] pub tenant_id:    String,
+    #[serde(default)] pub created_at:   Option<String>,
+}
+impl AdminUser {
+    pub fn initial(&self) -> char {
+        let name = self.display_name.as_deref().unwrap_or(&self.email);
+        name.chars().next().unwrap_or('?').to_uppercase().next().unwrap_or('?')
+    }
+}
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct AdminTenant {
+    pub id:         String,
+    pub name:       String,
+    #[serde(default)] pub domain:     Option<String>,
+    #[serde(default)] pub user_count: i64,
+    #[serde(default)] pub quota_gb:   Option<i64>,
+    #[serde(default)] pub active:     bool,
+    #[serde(default)] pub created_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, serde::Serialize)]
+pub struct AuditEvent {
+    pub ts:         String,
+    pub user_email: String,
+    pub action:     String,
+    #[serde(default)] pub resource_id: Option<String>,
+    #[serde(default)] pub ip:          Option<String>,
+    #[serde(default)] pub detail:      Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AdminConfig {
+    pub platform_name:       String,
+    pub logo_url:            String,
+    pub accent_color:        String,
+    pub mail_domain:         String,
+    pub mail_quota_mb:       i64,
+    pub allow_external_relay: bool,
+    pub jitsi_domain:        String,
+    pub jitsi_recording:     bool,
+    pub drive_quota_gb:      i64,
+    pub blocked_extensions:  String,
+    pub require_mfa:         bool,
+    pub session_hours:       i64,
+    pub allowed_cidrs:       String,
+}
+
+#[derive(Template)]
+#[template(path = "admin_users.html")]
+pub struct AdminUsersTpl {
+    pub me:    Me,
+    pub users: Vec<AdminUser>,
+    pub flash: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "admin_tenants.html")]
+pub struct AdminTenantsTpl {
+    pub me:      Me,
+    pub tenants: Vec<AdminTenant>,
+    pub flash:   Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "admin_monitoring.html")]
+pub struct AdminMonitoringTpl {
+    pub me: Me,
+}
+
+#[derive(Template)]
+#[template(path = "admin_audit.html")]
+pub struct AdminAuditTpl {
+    pub me:     Me,
+    pub events: Vec<AuditEvent>,
+}
+
+#[derive(Template)]
+#[template(path = "admin_config.html")]
+pub struct AdminConfigTpl {
+    pub me:     Me,
+    pub config: AdminConfig,
+    pub flash:  Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

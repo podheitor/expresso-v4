@@ -1,0 +1,86 @@
+{% extends "admin_base.html" %}
+{% block title %}Configuração · Admin · Expresso{% endblock %}
+{% block nav_config %} active{% endblock %}
+{% block flash %}
+  {% match flash %}
+    {% when Some with (msg) %}<div class="alert alert-success" style="margin-bottom:1rem">{{ msg }}</div>
+    {% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Configuração global</h1>
+  </div>
+
+  <form class="compose-form" method="post" action="/admin/config" style="max-width:600px">
+    <div class="card stack" style="margin-bottom:1rem">
+      <h2>Aparência</h2>
+      <label><span>Nome da plataforma</span>
+        <input type="text" name="platform_name" value="{{ config.platform_name }}" placeholder="Expresso">
+      </label>
+      <label><span>URL do logo</span>
+        <input type="url" name="logo_url" value="{{ config.logo_url }}" placeholder="https://…/logo.svg">
+      </label>
+      <label><span>Cor de destaque padrão</span>
+        <input type="color" name="accent_color" value="{{ config.accent_color }}">
+      </label>
+    </div>
+
+    <div class="card stack" style="margin-bottom:1rem">
+      <h2>Email</h2>
+      <label><span>Domínio padrão de email</span>
+        <input type="text" name="mail_domain" value="{{ config.mail_domain }}" placeholder="empresa.com">
+      </label>
+      <label><span>Cota padrão por usuário (MB)</span>
+        <input type="number" name="mail_quota_mb" value="{{ config.mail_quota_mb }}" min="100">
+      </label>
+      <label style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" name="allow_external_relay" {% if config.allow_external_relay %}checked{% endif %}>
+        <span>Permitir relay para domínios externos</span>
+      </label>
+    </div>
+
+    <div class="card stack" style="margin-bottom:1rem">
+      <h2>Meet / Jitsi</h2>
+      <label><span>Domínio Jitsi</span>
+        <input type="text" name="jitsi_domain" value="{{ config.jitsi_domain }}" placeholder="meet.jitsi.exemplo.com">
+      </label>
+      <label><span>Segredo JWT do Jitsi</span>
+        <input type="password" name="jitsi_secret" placeholder="(manter atual)">
+      </label>
+      <label style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" name="jitsi_recording" {% if config.jitsi_recording %}checked{% endif %}>
+        <span>Habilitar gravação de reuniões</span>
+      </label>
+    </div>
+
+    <div class="card stack" style="margin-bottom:1rem">
+      <h2>Drive</h2>
+      <label><span>Cota padrão por usuário (GB)</span>
+        <input type="number" name="drive_quota_gb" value="{{ config.drive_quota_gb }}" min="1">
+      </label>
+      <label><span>Tipos de arquivo bloqueados (separados por vírgula)</span>
+        <input type="text" name="blocked_extensions" value="{{ config.blocked_extensions }}" placeholder="exe,bat,ps1">
+      </label>
+    </div>
+
+    <div class="card stack" style="margin-bottom:1rem">
+      <h2>Segurança</h2>
+      <label style="display:flex;align-items:center;gap:.5rem">
+        <input type="checkbox" name="require_mfa" {% if config.require_mfa %}checked{% endif %}>
+        <span>Exigir MFA para todos os usuários</span>
+      </label>
+      <label><span>Duração de sessão (horas)</span>
+        <input type="number" name="session_hours" value="{{ config.session_hours }}" min="1" max="720">
+      </label>
+      <label><span>IPs permitidos (CIDR, um por linha)</span>
+        <textarea name="allowed_cidrs" rows="3" placeholder="0.0.0.0/0">{{ config.allowed_cidrs }}</textarea>
+      </label>
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Salvar configurações</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

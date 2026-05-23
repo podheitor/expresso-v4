@@ -1,0 +1,192 @@
+{% extends "admin_base.html" %}
+{% block title %}Usuários · Admin · Expresso{% endblock %}
+{% block nav_users %} active{% endblock %}
+{% block flash %}
+  {% match flash %}
+    {% when Some with (msg) %}<div class="alert alert-success" style="margin-bottom:1rem">{{ msg }}</div>
+    {% when None %}{% endmatch %}
+{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Usuários</h1>
+    <div class="admin-header-actions">
+      <button class="btn btn-primary btn-sm" onclick="showModal('admin-user-modal')">+ Convidar usuário</button>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="admin-filters">
+    <input type="search" id="admin-user-search" placeholder="Filtrar por nome ou email…"
+           oninput="filterAdminUsers(this.value)" class="search-input-sm" style="width:20rem">
+    <select id="admin-user-role-filter" onchange="filterAdminUsers(document.getElementById('admin-user-search').value)"
+            class="search-input-sm">
+      <option value="">Todos os papéis</option>
+      <option value="admin">Admin</option>
+      <option value="user">Usuário</option>
+    </select>
+    <select id="admin-user-status-filter" onchange="filterAdminUsers(document.getElementById('admin-user-search').value)"
+            class="search-input-sm">
+      <option value="">Todos os status</option>
+      <option value="active">Ativo</option>
+      <option value="suspended">Suspenso</option>
+    </select>
+  </div>
+
+  <!-- Tabela -->
+  <div class="card" style="margin-top:.75rem;overflow:auto">
+    <table class="admin-table" id="admin-users-table">
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>Email</th>
+          <th>Papel</th>
+          <th>Tenant</th>
+          <th>Status</th>
+          <th>Criado em</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody id="admin-users-tbody">
+        {% if users.is_empty() %}
+          <tr><td colspan="7" class="muted" style="text-align:center;padding:2rem">Nenhum usuário encontrado.</td></tr>
+        {% else %}
+          {% for u in users %}
+          <tr class="admin-user-row"
+              data-name="{{ u.display_name.as_deref().unwrap_or(&u.email) }}"
+              data-email="{{ u.email }}"
+              data-role="{{ u.role }}"
+              data-status="{{ u.status }}">
+            <td>
+              <div class="admin-user-cell">
+                <span class="admin-avatar">{{ u.initial() }}</span>
+                <span>{% match u.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ u.email }}{% endmatch %}</span>
+              </div>
+            </td>
+            <td class="mono small">{{ u.email }}</td>
+            <td><span class="admin-role-badge admin-role-{{ u.role }}">{{ u.role }}</span></td>
+            <td class="small muted">{{ u.tenant_id }}</td>
+            <td>
+              {% if u.status == "suspended" %}
+                <span class="admin-status-badge admin-status-suspended">Suspenso</span>
+              {% else %}
+                <span class="admin-status-badge admin-status-active">Ativo</span>
+              {% endif %}
+            </td>
+            <td class="small muted">{% match u.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+            <td>
+              <div class="admin-row-actions">
+                <button class="btn btn-ghost btn-sm" onclick="editAdminUser('{{ u.id }}','{{ u.email }}','{{ u.role }}')">Editar</button>
+                {% if u.status != "suspended" %}
+                  <form method="post" action="/admin/users/{{ u.id }}/suspend" style="display:contents">
+                    <button class="btn btn-ghost btn-sm" type="submit"
+                            onclick="return confirm('Suspender {{ u.email }}?')">Suspender</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="/admin/users/{{ u.id }}/activate" style="display:contents">
+                    <button class="btn btn-ghost btn-sm" type="submit">Reativar</button>
+                  </form>
+                {% endif %}
+                <form method="post" action="/admin/users/{{ u.id }}/reset-password" style="display:contents">
+                  <button class="btn btn-ghost btn-sm" type="submit"
+                          onclick="return confirm('Enviar email de redefinição para {{ u.email }}?')">Reset senha</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="admin-table-footer muted small">
+    Total: <strong id="admin-user-count">{{ users|length }}</strong> usuário{% if users|length != 1 %}s{% endif %}
+  </div>
+</div>
+
+<!-- Modal: convidar usuário -->
+<div class="modal-overlay" id="admin-user-modal" style="display:none"
+     onclick="closeModalOnOverlay(event,'admin-user-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="admin-user-modal-title">Convidar usuário</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('admin-user-modal')">✕</button>
+    </div>
+    <form class="compose-form" id="admin-user-form" method="post" action="/admin/users/invite">
+      <input type="hidden" id="admin-user-id" name="user_id" value="">
+      <label><span>Email</span>
+        <input type="email" id="admin-user-email-input" name="email" required placeholder="usuario@empresa.com">
+      </label>
+      <label><span>Nome</span>
+        <input type="text" name="display_name" id="admin-user-name-input" placeholder="Nome completo">
+      </label>
+      <label><span>Papel</span>
+        <select name="role" id="admin-user-role-input">
+          <option value="user">Usuário</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideModal('admin-user-modal')">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="admin-user-submit-btn">Convidar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: editar usuário -->
+<div class="modal-overlay" id="admin-edit-modal" style="display:none"
+     onclick="closeModalOnOverlay(event,'admin-edit-modal')">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3>Editar papel</h3>
+      <button class="btn btn-ghost btn-sm" onclick="hideModal('admin-edit-modal')">✕</button>
+    </div>
+    <form class="compose-form" id="admin-edit-form" method="post">
+      <p class="muted small" id="admin-edit-email-label"></p>
+      <label><span>Papel</span>
+        <select name="role" id="admin-edit-role">
+          <option value="user">Usuário</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" onclick="hideModal('admin-edit-modal')">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function filterAdminUsers(q) {
+  var role = document.getElementById('admin-user-role-filter').value;
+  var status = document.getElementById('admin-user-status-filter').value;
+  var rows = document.querySelectorAll('.admin-user-row');
+  var visible = 0;
+  rows.forEach(function(r) {
+    var nameMatch = !q || r.dataset.name.toLowerCase().includes(q.toLowerCase()) || r.dataset.email.toLowerCase().includes(q.toLowerCase());
+    var roleMatch = !role || r.dataset.role === role;
+    var statusMatch = !status || r.dataset.status === status;
+    var show = nameMatch && roleMatch && statusMatch;
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var cnt = document.getElementById('admin-user-count');
+  if (cnt) cnt.textContent = visible;
+}
+
+function editAdminUser(id, email, role) {
+  document.getElementById('admin-edit-form').action = '/admin/users/' + id + '/role';
+  document.getElementById('admin-edit-email-label').textContent = email;
+  var sel = document.getElementById('admin-edit-role');
+  for (var i = 0; i < sel.options.length; i++) { if (sel.options[i].value === role) { sel.selectedIndex = i; break; } }
+  showModal('admin-edit-modal');
+}
+
+function showModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'flex'; }
+function hideModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'none'; }
+function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) hideModal(id); }
+</script>
+{% endblock %}

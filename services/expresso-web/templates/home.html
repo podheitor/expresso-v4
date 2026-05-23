@@ -137,7 +137,11 @@
       <div id="home-tasks-preview" style="min-height:2.5rem">
         <p class="muted small">Carregando tarefas…</p>
       </div>
-      <a class="btn btn-primary btn-sm" href="/tasks" style="margin-top:.5rem">+ Nova tarefa</a>
+      <div style="display:flex;gap:.4rem;margin-top:.5rem">
+        <input type="text" id="home-task-quick-input" class="search-input-sm" placeholder="Nova tarefa rápida…"
+               style="flex:1" onkeydown="if(event.key==='Enter')homeAddTask()">
+        <button class="btn btn-primary btn-sm" onclick="homeAddTask()">+</button>
+      </div>
     </div>
 
     <!-- Links rápidos -->
@@ -269,7 +273,45 @@
   };
 })();
 
+// ── Meet upcoming alert ────────────────────────────────────────────────────────
+(function checkMeetSoon() {
+  fetch('/api/v1/meetings?upcoming=1', {credentials:'include'})
+    .then(function(r){ return r.ok ? r.json() : []; })
+    .then(function(meetings) {
+      if (!Array.isArray(meetings)) return;
+      var now = Date.now();
+      meetings.forEach(function(m) {
+        if (!m.scheduled_at) return;
+        var diff = new Date(m.scheduled_at).getTime() - now;
+        if (diff > 0 && diff <= 10 * 60 * 1000) {
+          var mins = Math.round(diff / 60000);
+          if (window.pushNotification) {
+            window.pushNotification('🎥', (m.title || 'Reunião') + ' começa em ' + mins + ' min', '/meet/' + m.id);
+          }
+        }
+      });
+    }).catch(function(){});
+})();
+
 // ── Activity logger (called from other pages via shared helper) ───────────────
+// ── Quick add task from home ──────────────────────────────────────────────────
+function homeAddTask() {
+  var inp = document.getElementById('home-task-quick-input');
+  var title = inp ? inp.value.trim() : '';
+  if (!title) return;
+  var key = 'expresso_tasks_{{ me.user_id }}';
+  var tasks = [];
+  try { tasks = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+  var id = 'ht-' + Date.now();
+  tasks.unshift({ id: id, title: title, done: false, priority: 'normal', due: '', list: 'Geral', created: new Date().toISOString() });
+  localStorage.setItem(key, JSON.stringify(tasks));
+  if (inp) inp.value = '';
+  // Refresh preview
+  var el = document.getElementById('home-tasks-preview');
+  if (el) el.innerHTML = '<p class="muted small" style="color:var(--accent)">✓ Adicionada: ' + title.slice(0,40) + '</p>';
+  setTimeout(function() { window.location.reload(); }, 1200);
+}
+
 window.logExpressoActivity = function(icon, label) {
   var key = 'expresso_activity_{{ me.user_id }}';
   try {

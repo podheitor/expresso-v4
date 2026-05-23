@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Admin · Expresso{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <header class="admin-sidebar-header">
+        <a class="brand" href="/">Expresso</a>
+        <span class="admin-badge">Admin</span>
+      </header>
+      <nav class="admin-nav">
+        <a class="admin-nav-item{% block nav_users %}{% endblock %}" href="/admin/users">👥 Usuários</a>
+        <a class="admin-nav-item{% block nav_tenants %}{% endblock %}" href="/admin/tenants">🏢 Tenants</a>
+        <a class="admin-nav-item{% block nav_monitoring %}{% endblock %}" href="/admin/monitoring">📊 Monitoramento</a>
+        <a class="admin-nav-item{% block nav_audit %}{% endblock %}" href="/admin/audit">📋 Auditoria</a>
+        <a class="admin-nav-item{% block nav_config %}{% endblock %}" href="/admin/config">⚙ Configuração</a>
+      </nav>
+      <footer class="admin-sidebar-footer">
+        <a class="link-sm" href="/">← Voltar ao app</a>
+      </footer>
+    </aside>
+    <main class="admin-main">
+      {% block flash %}{% endblock %}
+      {% block body %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

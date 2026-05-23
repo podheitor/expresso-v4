@@ -17,6 +17,24 @@
   </div>
   <div class="useract">
     <button class="theme-toggle" id="themeToggle" title="Alternar tema" aria-label="Alternar tema claro/escuro">☀</button>
+    <div class="notif-bell-wrap" style="position:relative">
+      <button class="appnav-item" id="notif-bell" title="Notificações" aria-label="Notificações"
+              onclick="toggleNotifPanel()" style="position:relative;padding:.3rem .45rem">
+        🔔<span class="notif-badge" id="notif-badge" style="display:none"></span>
+      </button>
+      <div class="notif-panel" id="notif-panel" style="display:none">
+        <div class="notif-panel-header">Notificações</div>
+        <ul class="notif-list" id="notif-list">
+          <li class="notif-item muted small">Nenhuma notificação.</li>
+        </ul>
+        <div class="notif-panel-footer">
+          <button class="btn btn-ghost btn-sm" onclick="clearNotifs()">Limpar tudo</button>
+        </div>
+      </div>
+    </div>
+    {% if me.roles.iter().any(|r| r == "admin" || r == "superadmin") %}
+      <a class="appnav-item appnav-admin" href="/admin" title="Painel Admin">⚙ Admin</a>
+    {% endif %}
     <a class="appnav-item{% if current == "settings" %} active{% endif %}" href="/settings" title="Configurações" aria-label="Configurações">⚙</a>
     <a class="appnav-item useract-user" href="/me">{{ me.email }}</a>
   </div>
@@ -85,5 +103,70 @@ document.addEventListener('click', function(e) {
     var r = document.getElementById('topbar-search-results');
     if (r) r.style.display = 'none';
   }
+  if (!e.target.closest('.notif-bell-wrap')) {
+    var p = document.getElementById('notif-panel');
+    if (p) p.style.display = 'none';
+  }
 });
+
+// ── Notification bell ─────────────────────────────────────────────────────────
+var NOTIF_KEY = 'expresso_notifs';
+function loadNotifs() { try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]'); } catch(e) { return []; } }
+function saveNotifs(n) { localStorage.setItem(NOTIF_KEY, JSON.stringify(n)); }
+
+function toggleNotifPanel() {
+  var p = document.getElementById('notif-panel');
+  if (!p) return;
+  var open = p.style.display !== 'none';
+  p.style.display = open ? 'none' : '';
+  if (!open) renderNotifList();
+}
+
+function renderNotifList() {
+  var list = document.getElementById('notif-list');
+  if (!list) return;
+  var notifs = loadNotifs().slice(0, 20);
+  var badge = document.getElementById('notif-badge');
+  var unread = notifs.filter(function(n){ return !n.read; }).length;
+  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
+  if (!notifs.length) { list.innerHTML = '<li class="notif-item muted small">Nenhuma notificação.</li>'; return; }
+  list.innerHTML = notifs.map(function(n, i) {
+    return '<li class="notif-item' + (n.read ? '' : ' notif-unread') + '" onclick="markNotifRead(' + i + ')">' +
+      '<span class="notif-icon">' + escHtml(n.icon || '🔔') + '</span>' +
+      '<div class="notif-content">' +
+        '<span class="notif-body">' + escHtml(n.body || '') + '</span>' +
+        '<span class="notif-time muted small">' + (n.ts ? new Date(n.ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : '') + '</span>' +
+      '</div>' +
+    '</li>';
+  }).join('');
+  notifs.forEach(function(n){ n.read = true; });
+  saveNotifs(notifs);
+}
+
+function markNotifRead(idx) {
+  var notifs = loadNotifs();
+  if (notifs[idx]) notifs[idx].read = true;
+  saveNotifs(notifs);
+  renderNotifList();
+}
+
+function clearNotifs() { saveNotifs([]); renderNotifList(); }
+
+// Push a notification from anywhere
+window.pushNotification = function(icon, body, href) {
+  var notifs = loadNotifs();
+  notifs.unshift({ icon: icon, body: body, href: href || null, ts: new Date().toISOString(), read: false });
+  saveNotifs(notifs.slice(0, 50));
+  var badge = document.getElementById('notif-badge');
+  var unread = notifs.filter(function(n){ return !n.read; }).length;
+  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
+};
+
+// Init badge on page load
+(function() {
+  var notifs = loadNotifs();
+  var unread = notifs.filter(function(n){ return !n.read; }).length;
+  var badge = document.getElementById('notif-badge');
+  if (badge) { badge.textContent = unread > 0 ? unread : ''; badge.style.display = unread > 0 ? '' : 'none'; }
+})();
 </script>

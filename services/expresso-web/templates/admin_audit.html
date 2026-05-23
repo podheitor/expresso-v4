@@ -1,0 +1,99 @@
+{% extends "admin_base.html" %}
+{% block title %}Auditoria · Admin · Expresso{% endblock %}
+{% block nav_audit %} active{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Log de auditoria</h1>
+    <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ Exportar CSV</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="admin-filters">
+    <input type="search" id="audit-search" placeholder="Buscar por usuário, ação ou recurso…"
+           oninput="filterAudit(this.value)" class="search-input-sm" style="width:22rem">
+    <select id="audit-action-filter" onchange="filterAudit(document.getElementById('audit-search').value)"
+            class="search-input-sm">
+      <option value="">Todas as ações</option>
+      <option value="login">Login</option>
+      <option value="logout">Logout</option>
+      <option value="mail.send">Mail enviado</option>
+      <option value="mail.delete">Mail apagado</option>
+      <option value="drive.upload">Upload</option>
+      <option value="drive.delete">Arquivo apagado</option>
+      <option value="user.invite">Usuário convidado</option>
+      <option value="user.suspend">Usuário suspenso</option>
+      <option value="admin.access">Acesso admin</option>
+    </select>
+    <input type="date" id="audit-date-from" class="search-input-sm" onchange="filterAudit(document.getElementById('audit-search').value)">
+    <input type="date" id="audit-date-to" class="search-input-sm" onchange="filterAudit(document.getElementById('audit-search').value)">
+  </div>
+
+  <div class="card" style="margin-top:.75rem;overflow:auto">
+    <table class="admin-table" id="audit-table">
+      <thead>
+        <tr>
+          <th>Data/Hora</th>
+          <th>Usuário</th>
+          <th>Ação</th>
+          <th>Recurso</th>
+          <th>IP</th>
+          <th>Detalhe</th>
+        </tr>
+      </thead>
+      <tbody id="audit-tbody">
+        {% if events.is_empty() %}
+          <tr><td colspan="6" class="muted" style="text-align:center;padding:2rem">Nenhum evento de auditoria.</td></tr>
+        {% else %}
+          {% for ev in events %}
+          <tr class="audit-row"
+              data-action="{{ ev.action }}"
+              data-user="{{ ev.user_email }}"
+              data-resource="{{ ev.resource_id }}"
+              data-ts="{{ ev.ts }}">
+            <td class="mono small">{{ ev.ts }}</td>
+            <td class="small">{{ ev.user_email }}</td>
+            <td><span class="audit-action-badge">{{ ev.action }}</span></td>
+            <td class="mono small muted">{% match ev.resource_id %}{% when Some with (r) %}{{ r }}{% when None %}—{% endmatch %}</td>
+            <td class="mono small muted">{% match ev.ip %}{% when Some with (i) %}{{ i }}{% when None %}—{% endmatch %}</td>
+            <td class="small muted">{% match ev.detail %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}</td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+function filterAudit(q) {
+  var action = document.getElementById('audit-action-filter').value;
+  var from = document.getElementById('audit-date-from').value;
+  var to = document.getElementById('audit-date-to').value;
+  document.querySelectorAll('.audit-row').forEach(function(r) {
+    var textMatch = !q || r.dataset.user.toLowerCase().includes(q.toLowerCase()) ||
+                    r.dataset.action.toLowerCase().includes(q.toLowerCase()) ||
+                    (r.dataset.resource || '').toLowerCase().includes(q.toLowerCase());
+    var actionMatch = !action || r.dataset.action === action;
+    var ts = r.dataset.ts || '';
+    var fromMatch = !from || ts >= from;
+    var toMatch = !to || ts.slice(0,10) <= to;
+    r.style.display = (textMatch && actionMatch && fromMatch && toMatch) ? '' : 'none';
+  });
+}
+function exportAuditLog() {
+  var rows = document.querySelectorAll('.audit-row');
+  var csv = 'Data/Hora,Usuário,Ação,Recurso,IP\n';
+  rows.forEach(function(r) {
+    if (r.style.display === 'none') return;
+    var cells = r.querySelectorAll('td');
+    csv += [cells[0],cells[1],cells[2],cells[3],cells[4]].map(function(c){
+      return '"' + (c ? c.textContent.replace(/"/g,'""') : '') + '"';
+    }).join(',') + '\n';
+  });
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'audit-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+</script>
+{% endblock %}

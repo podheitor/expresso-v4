@@ -24,6 +24,8 @@ use crate::{
         ContactFormTpl, AclRow, CalendarShareTpl, AddrbookShareTpl, ChatTpl, ChatChannel,
         ChatMessage, MeetTpl, MeetRoomTpl, MeetRoom, MeetScheduleTpl, MeetParticipant, TasksTpl,
         SettingsTpl, MailSearchTpl, GalContact,
+        AdminUsersTpl, AdminTenantsTpl, AdminMonitoringTpl, AdminAuditTpl, AdminConfigTpl,
+        AdminUser, AdminTenant, AuditEvent, AdminConfig,
     },
     upstream::{get_json, get_bytes, post_body, post_json, patch_json, put_body, put_json, delete_at, post_empty},
 };
@@ -64,6 +66,7 @@ pub fn router(state: AppState) -> Router {
         .route("/calendar/:cal_id/events/new",        get(event_new_form).post(event_new_action))
         .route("/calendar/:cal_id/events/:id/edit",   get(event_edit_form).post(event_edit_action))
         .route("/calendar/:cal_id/events/:id/delete", post(event_delete_action))
+        .route("/calendar/:cal_id/events/:id/rsvp",   post(event_rsvp_action))
         .route("/calendar/:cal_id/share", get(calendar_share_page).post(calendar_share_create))
         .route("/calendar/:cal_id/share/:grantee_id/revoke", post(calendar_share_revoke))
         .route("/contacts",                                 get(contacts_page))
@@ -113,6 +116,19 @@ pub fn router(state: AppState) -> Router {
         .route("/api/gal/search",            get(gal_search_api))
         // Mail attachment list (JSON for JS)
         .route("/api/mail/:id/attachments",  get(mail_attachments_api))
+        // Admin panel
+        .route("/admin",                           get(admin_redirect))
+        .route("/admin/users",                     get(admin_users_page))
+        .route("/admin/users/invite",              post(admin_users_invite))
+        .route("/admin/users/:id/role",            post(admin_users_set_role))
+        .route("/admin/users/:id/suspend",         post(admin_users_suspend))
+        .route("/admin/users/:id/activate",        post(admin_users_activate))
+        .route("/admin/users/:id/reset-password",  post(admin_users_reset_password))
+        .route("/admin/tenants",                   get(admin_tenants_page).post(admin_tenants_create))
+        .route("/admin/tenants/:id/toggle",        post(admin_tenants_toggle))
+        .route("/admin/monitoring",                get(admin_monitoring_page))
+        .route("/admin/audit",                     get(admin_audit_page))
+        .route("/admin/config",                    get(admin_config_page).post(admin_config_save))
         .merge(expresso_observability::metrics_router())
         .with_state(state)
 }
@@ -1753,6 +1769,31 @@ async fn event_delete_action(
     Ok(Redirect::to(&format!("/calendar/{cal_id}")).into_response())
 }
 
+// ─── RSVP action ────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct RsvpForm { partstat: String }
+
+async fn event_rsvp_action(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path((cal_id, id)): Path<(String, String)>,
+    Form(f): Form<RsvpForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    let (t, u) = ctx_of(&me);
+    let enc_c = utf8_percent_encode(&cal_id, NON_ALPHANUMERIC).to_string();
+    let enc_e = utf8_percent_encode(&id, NON_ALPHANUMERIC).to_string();
+    let body = serde_json::json!({"partstat": f.partstat});
+    let _ = post_json(
+        &st, &st.backends.calendar,
+        &format!("/api/v1/calendars/{enc_c}/events/{enc_e}/rsvp"),
+        &headers, Some((&t, &u)), &body,
+    ).await;
+    Ok(Redirect::to(&format!("/calendar/{cal_id}/events/{id}/edit")).into_response())
+}
+
 /// Unique-enough UID for iCal VEVENTs — unix nanos as 32-hex.
 fn uuid_v4_hex() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -2888,4 +2929,254 @@ mod tests {
         let v = split_addrs("\t");
         assert!(v.is_empty());
     }
+}
+
+// ─── Admin helpers ────────────────────────────────────────────────────────────
+
+fn require_admin(me: &Me) -> bool {
+    me.roles.iter().any(|r| r == "admin" || r == "superadmin")
+}
+
+async fn admin_redirect() -> impl IntoResponse {
+    Redirect::to("/admin/users")
+}
+
+// ─── /admin/users ─────────────────────────────────────────────────────────────
+
+async fn admin_users_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else {
+        return Ok(login_redirect(&uri).into_response());
+    };
+    if !require_admin(&me) {
+        return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response());
+    }
+    let (t, u) = ctx_of(&me);
+    let users = get_json::<Vec<AdminUser>>(
+        &st, &st.backends.auth, "/api/v1/admin/users", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    let flash = extract_flash(&uri);
+    Ok(askama_axum::IntoResponse::into_response(AdminUsersTpl { me, users, flash }))
+}
+
+#[derive(Deserialize)]
+struct AdminInviteForm {
+    email:        String,
+    #[serde(default)] display_name: String,
+    #[serde(default)] role:         String,
+}
+
+async fn admin_users_invite(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<AdminInviteForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({"email": f.email, "display_name": f.display_name, "role": f.role});
+    let _ = post_json(&st, &st.backends.auth, "/api/v1/admin/users/invite", &headers, Some((&t, &u)), &body).await;
+    Ok(Redirect::to("/admin/users?flash=Convite+enviado").into_response())
+}
+
+#[derive(Deserialize)]
+struct AdminRoleForm { role: String }
+
+async fn admin_users_set_role(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>, Form(f): Form<AdminRoleForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({"role": f.role});
+    let _ = patch_json(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/role"), &headers, Some((&t, &u)), &body).await;
+    Ok(Redirect::to("/admin/users?flash=Papel+atualizado").into_response())
+}
+
+async fn admin_users_suspend(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/suspend"), &headers, Some((&t, &u))).await;
+    Ok(Redirect::to("/admin/users?flash=Usuário+suspenso").into_response())
+}
+
+async fn admin_users_activate(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/activate"), &headers, Some((&t, &u))).await;
+    Ok(Redirect::to("/admin/users?flash=Usuário+reativado").into_response())
+}
+
+async fn admin_users_reset_password(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/users/{id}/reset-password"), &headers, Some((&t, &u))).await;
+    Ok(Redirect::to("/admin/users?flash=Email+de+redefinição+enviado").into_response())
+}
+
+// ─── /admin/tenants ───────────────────────────────────────────────────────────
+
+async fn admin_tenants_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let tenants = get_json::<Vec<AdminTenant>>(
+        &st, &st.backends.auth, "/api/v1/admin/tenants", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    let flash = extract_flash(&uri);
+    Ok(askama_axum::IntoResponse::into_response(AdminTenantsTpl { me, tenants, flash }))
+}
+
+#[derive(Deserialize)]
+struct AdminTenantForm {
+    name:     String,
+    #[serde(default)] domain:   String,
+    #[serde(default)] quota_gb: i64,
+}
+
+async fn admin_tenants_create(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<AdminTenantForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({"name": f.name, "domain": f.domain, "quota_gb": f.quota_gb});
+    let _ = post_json(&st, &st.backends.auth, "/api/v1/admin/tenants", &headers, Some((&t, &u)), &body).await;
+    Ok(Redirect::to("/admin/tenants?flash=Tenant+criado").into_response())
+}
+
+async fn admin_tenants_toggle(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Path(id): Path<String>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let _ = post_empty(&st, &st.backends.auth, &format!("/api/v1/admin/tenants/{id}/toggle"), &headers, Some((&t, &u))).await;
+    Ok(Redirect::to("/admin/tenants").into_response())
+}
+
+// ─── /admin/monitoring ────────────────────────────────────────────────────────
+
+async fn admin_monitoring_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    Ok(askama_axum::IntoResponse::into_response(AdminMonitoringTpl { me }))
+}
+
+// ─── /admin/audit ─────────────────────────────────────────────────────────────
+
+async fn admin_audit_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let events = get_json::<Vec<AuditEvent>>(
+        &st, &st.backends.auth, "/api/v1/admin/audit?limit=200", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    Ok(askama_axum::IntoResponse::into_response(AdminAuditTpl { me, events }))
+}
+
+// ─── /admin/config ────────────────────────────────────────────────────────────
+
+fn extract_flash(uri: &Uri) -> Option<String> {
+    let q = uri.query().unwrap_or("");
+    for part in q.split('&') {
+        if let Some(v) = part.strip_prefix("flash=") {
+            return Some(v.replace('+', " ").replace("%20", " "));
+        }
+    }
+    None
+}
+
+async fn admin_config_page(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let config = get_json::<serde_json::Value>(
+        &st, &st.backends.auth, "/api/v1/admin/config", &headers, Some((&t, &u)),
+    ).await?.unwrap_or_default();
+    let cfg = AdminConfig {
+        platform_name:        config["platform_name"].as_str().unwrap_or("Expresso").to_string(),
+        logo_url:             config["logo_url"].as_str().unwrap_or("").to_string(),
+        accent_color:         config["accent_color"].as_str().unwrap_or("#0ea5e9").to_string(),
+        mail_domain:          config["mail_domain"].as_str().unwrap_or("").to_string(),
+        mail_quota_mb:        config["mail_quota_mb"].as_i64().unwrap_or(1024),
+        allow_external_relay: config["allow_external_relay"].as_bool().unwrap_or(false),
+        jitsi_domain:         config["jitsi_domain"].as_str().unwrap_or("").to_string(),
+        jitsi_recording:      config["jitsi_recording"].as_bool().unwrap_or(false),
+        drive_quota_gb:       config["drive_quota_gb"].as_i64().unwrap_or(10),
+        blocked_extensions:   config["blocked_extensions"].as_str().unwrap_or("exe,bat,ps1").to_string(),
+        require_mfa:          config["require_mfa"].as_bool().unwrap_or(false),
+        session_hours:        config["session_hours"].as_i64().unwrap_or(24),
+        allowed_cidrs:        config["allowed_cidrs"].as_str().unwrap_or("0.0.0.0/0").to_string(),
+    };
+    let flash = extract_flash(&uri);
+    Ok(askama_axum::IntoResponse::into_response(AdminConfigTpl { me, config: cfg, flash }))
+}
+
+#[derive(Deserialize)]
+struct AdminConfigForm {
+    #[serde(default)] platform_name:       String,
+    #[serde(default)] logo_url:            String,
+    #[serde(default)] accent_color:        String,
+    #[serde(default)] mail_domain:         String,
+    #[serde(default)] mail_quota_mb:       i64,
+    #[serde(default)] allow_external_relay: Option<String>,
+    #[serde(default)] jitsi_domain:        String,
+    #[serde(default)] jitsi_secret:        String,
+    #[serde(default)] jitsi_recording:     Option<String>,
+    #[serde(default)] drive_quota_gb:      i64,
+    #[serde(default)] blocked_extensions:  String,
+    #[serde(default)] require_mfa:         Option<String>,
+    #[serde(default)] session_hours:       i64,
+    #[serde(default)] allowed_cidrs:       String,
+}
+
+async fn admin_config_save(
+    State(st): State<AppState>, headers: HeaderMap, uri: Uri,
+    Form(f): Form<AdminConfigForm>,
+) -> WebResult<Response> {
+    let Some(me) = require_me(&st, &headers).await? else { return Ok(login_redirect(&uri).into_response()); };
+    if !require_admin(&me) { return Ok((StatusCode::FORBIDDEN, "Acesso negado").into_response()); }
+    let (t, u) = ctx_of(&me);
+    let body = serde_json::json!({
+        "platform_name":       f.platform_name,
+        "logo_url":            f.logo_url,
+        "accent_color":        f.accent_color,
+        "mail_domain":         f.mail_domain,
+        "mail_quota_mb":       f.mail_quota_mb,
+        "allow_external_relay": f.allow_external_relay.is_some(),
+        "jitsi_domain":        f.jitsi_domain,
+        "jitsi_secret":        if f.jitsi_secret.is_empty() { serde_json::Value::Null } else { f.jitsi_secret.into() },
+        "jitsi_recording":     f.jitsi_recording.is_some(),
+        "drive_quota_gb":      f.drive_quota_gb,
+        "blocked_extensions":  f.blocked_extensions,
+        "require_mfa":         f.require_mfa.is_some(),
+        "session_hours":       f.session_hours,
+        "allowed_cidrs":       f.allowed_cidrs,
+    });
+    let _ = put_json(&st, &st.backends.auth, "/api/v1/admin/config", &headers, Some((&t, &u)), &body).await;
+    Ok(Redirect::to("/admin/config?flash=Configurações+salvas").into_response())
 }

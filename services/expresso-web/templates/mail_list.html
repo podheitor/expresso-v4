@@ -80,6 +80,7 @@
             {% endmatch %}
             <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ d.id }}&folder={{ selected }}">↩ Responder</a>
             <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ d.id }}&folder={{ selected }}">→ Encaminhar</a>
+            <button class="btn btn-ghost btn-sm mail-print-btn" onclick="window.print()" title="Imprimir mensagem">🖨</button>
             <div class="detail-dropdown">
               <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯</button>
               <div class="dropdown-menu">
@@ -295,12 +296,21 @@ function nextWeekAt(h, m) { var d = new Date(); d.setDate(d.getDate()+7-d.getDay
   due.forEach(function(s) {
     if (Notification.permission === 'granted') {
       new Notification('Expresso — lembrete', { body: s.subject, icon: '/static/favicon.png', tag: 'snooze-' + s.id });
-    } else {
-      alert('🔔 Lembrete: ' + s.subject);
     }
+    showSnoozeToast(s.subject, s.id);
   });
   saveSnooze(list.filter(function(s){ return new Date(s.until).getTime() > now; }));
 })();
+
+function showSnoozeToast(subject, msgId) {
+  var toast = document.createElement('div');
+  toast.className = 'snooze-toast';
+  toast.innerHTML = '<div class="snooze-toast-header"><span>🔔 Lembrete</span><button onclick="this.closest(\'.snooze-toast\').remove()" class="btn btn-ghost btn-sm">✕</button></div>' +
+    '<div class="snooze-toast-body">' + String(subject).replace(/&/g,'&amp;').replace(/</g,'&lt;').slice(0,60) + '</div>' +
+    (msgId ? '<a class="btn btn-primary btn-sm" style="margin-top:.25rem" href="/mail/' + encodeURIComponent(msgId) + '">Abrir</a>' : '');
+  document.body.appendChild(toast);
+  setTimeout(function(){ if (toast.parentNode) toast.remove(); }, 8000);
+}
 
 // ── Keyboard shortcuts (j/k navigate, r reply, e archive) ────────────────────
 (function() {

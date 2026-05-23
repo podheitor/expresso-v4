@@ -1,0 +1,117 @@
+{% extends "admin_base.html" %}
+{% block title %}Monitoramento · Admin · Expresso{% endblock %}
+{% block nav_monitoring %} active{% endblock %}
+{% block body %}
+<div class="admin-page">
+  <div class="admin-page-header">
+    <h1>Monitoramento</h1>
+    <span class="muted small" id="admin-monitor-ts">Atualizado agora</span>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="admin-stat-grid">
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Usuários ativos (24h)</div>
+      <div class="admin-stat-value" id="stat-active-users">—</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Emails enviados (hoje)</div>
+      <div class="admin-stat-value" id="stat-emails-sent">—</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Mensagens chat (hoje)</div>
+      <div class="admin-stat-value" id="stat-chat-msgs">—</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Reuniões ativas</div>
+      <div class="admin-stat-value" id="stat-active-meets">—</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Drive: armazenamento total</div>
+      <div class="admin-stat-value" id="stat-drive-used">—</div>
+    </div>
+    <div class="admin-stat-card">
+      <div class="admin-stat-label">Erros (última hora)</div>
+      <div class="admin-stat-value admin-stat-error" id="stat-errors">—</div>
+    </div>
+  </div>
+
+  <!-- Serviços -->
+  <div class="card stack" style="margin-top:1.5rem">
+    <h2>Status dos serviços</h2>
+    <div class="admin-services-grid" id="admin-services-grid">
+      <div class="admin-service-card" data-svc="mail">
+        <span class="admin-svc-icon">✉</span>
+        <span class="admin-svc-name">Mail</span>
+        <span class="admin-svc-status" id="svc-mail">…</span>
+      </div>
+      <div class="admin-service-card" data-svc="chat">
+        <span class="admin-svc-icon">💬</span>
+        <span class="admin-svc-name">Chat</span>
+        <span class="admin-svc-status" id="svc-chat">…</span>
+      </div>
+      <div class="admin-service-card" data-svc="meet">
+        <span class="admin-svc-icon">🎥</span>
+        <span class="admin-svc-name">Meet</span>
+        <span class="admin-svc-status" id="svc-meet">…</span>
+      </div>
+      <div class="admin-service-card" data-svc="drive">
+        <span class="admin-svc-icon">💾</span>
+        <span class="admin-svc-name">Drive</span>
+        <span class="admin-svc-status" id="svc-drive">…</span>
+      </div>
+      <div class="admin-service-card" data-svc="calendar">
+        <span class="admin-svc-icon">📅</span>
+        <span class="admin-svc-name">Calendar</span>
+        <span class="admin-svc-status" id="svc-calendar">…</span>
+      </div>
+      <div class="admin-service-card" data-svc="contacts">
+        <span class="admin-svc-icon">👥</span>
+        <span class="admin-svc-name">Contacts</span>
+        <span class="admin-svc-status" id="svc-contacts">…</span>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  var svcs = [
+    { id: 'mail',     url: '/healthz' },
+    { id: 'chat',     url: '/healthz' },
+    { id: 'meet',     url: '/healthz' },
+    { id: 'drive',    url: '/healthz' },
+    { id: 'calendar', url: '/healthz' },
+    { id: 'contacts', url: '/healthz' },
+  ];
+  function checkServices() {
+    svcs.forEach(function(s) {
+      var el = document.getElementById('svc-' + s.id);
+      if (!el) return;
+      fetch(s.url, {credentials:'include'})
+        .then(function(r) {
+          el.textContent = r.ok ? '● OK' : '● Erro';
+          el.className = 'admin-svc-status ' + (r.ok ? 'svc-ok' : 'svc-err');
+        }).catch(function() {
+          el.textContent = '● Indisponível';
+          el.className = 'admin-svc-status svc-err';
+        });
+    });
+    var ts = document.getElementById('admin-monitor-ts');
+    if (ts) ts.textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR');
+  }
+  checkServices();
+  setInterval(checkServices, 30000);
+
+  // Load stats from API
+  fetch('/admin/api/stats', {credentials:'include'})
+    .then(function(r){ return r.ok ? r.json() : {}; })
+    .then(function(d) {
+      ['active-users','emails-sent','chat-msgs','active-meets','drive-used','errors'].forEach(function(k) {
+        var el = document.getElementById('stat-' + k);
+        var key = k.replace(/-/g,'_');
+        if (el && d[key] !== undefined) el.textContent = d[key];
+      });
+    }).catch(function(){});
+})();
+</script>
+{% endblock %}
