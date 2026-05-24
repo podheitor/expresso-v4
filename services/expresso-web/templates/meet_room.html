@@ -1832,5 +1832,13 @@ window.copyMeetJoinTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleMeetVirtualBg=function(){
+  if(window.jitsiApi){window.jitsiApi.executeCommand('toggleVirtualBackgroundDialog');}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bg virtual';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

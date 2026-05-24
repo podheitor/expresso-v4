@@ -1274,5 +1274,18 @@ window.copyDayMeetingLinks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBackToBack=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]')).map(r=>({s:r.dataset.eventStart||'',e:r.dataset.eventEnd||'',t:r.dataset.eventTitle||''})).filter(x=>x.s&&x.e).sort((a,b)=>a.s.localeCompare(b.s));
+  const pairs=[];
+  for(let i=1;i<rows.length;i++){if(rows[i].s===rows[i-1].e)pairs.push(rows[i-1].t+' → '+rows[i].t);}
+  const ta=document.createElement('textarea');
+  ta.value=pairs.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pairs.length+' back-to-back';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
