@@ -1925,5 +1925,19 @@ window.copyOwnFilesOnly = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestN=function(n){
+  n=n||5;
+  const rows=Array.from(document.querySelectorAll('[data-file-id]')).map(r=>({name:r.dataset.fileName||'',size:parseInt(r.dataset.fileSize||'0',10)}));
+  rows.sort((a,b)=>b.size-a.size);
+  const lines=rows.slice(0,n).map(r=>r.size+' '+r.name).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=n+' maiores';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

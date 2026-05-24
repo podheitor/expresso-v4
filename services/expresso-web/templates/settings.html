@@ -2058,5 +2058,17 @@ window.testNotification = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAllPrefsAsEnv=function(){
+  const keys=Object.keys(localStorage).filter(k=>k.startsWith('expresso_'));
+  const lines=keys.map(k=>k.toUpperCase().replace(/[^A-Z0-9_]/g,'_')+'='+JSON.stringify(localStorage.getItem(k))).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' prefs .env';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

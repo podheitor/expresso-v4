@@ -1821,5 +1821,18 @@ window.copyMailDigestDaily = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailOldestN=function(n){
+  n=n||10;
+  const rows=Array.from(document.querySelectorAll('[data-mail-id]'));
+  const lines=rows.slice(-n).reverse().map(r=>(r.dataset.mailDate||'')+' '+(r.dataset.mailFrom||'')+' '+(r.dataset.mailSubject||'')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=n+' mais antigos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
