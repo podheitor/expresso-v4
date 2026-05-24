@@ -17,6 +17,8 @@
         <input type="checkbox" id="cal-hide-weekend-cb" onchange="toggleWeekend()">
         <span>Ocultar fim de semana</span>
       </label>
+      <input type="search" id="week-event-filter" placeholder="🔍 Filtrar eventos…"
+             oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
   </div>
@@ -238,6 +240,15 @@ function jumpToWeekOf(d) {
 function toggleWeekend() {
   var hide = document.body.classList.toggle('hide-weekend');
   try { localStorage.setItem('expresso_cal_hide_weekend_{{ me.user_id }}', hide ? '1' : '0'); } catch(e){}
+}
+function filterWeekEvents(q) {
+  q = (q || '').toLowerCase().trim();
+  document.querySelectorAll('.event-chip, .week-event').forEach(function(ev) {
+    var txt = (ev.getAttribute('title') || ev.textContent || '').toLowerCase();
+    var match = !q || txt.includes(q);
+    ev.style.opacity = match ? '' : '.15';
+    ev.style.filter = match ? '' : 'grayscale(1)';
+  });
 }
 (function restoreWeekendPref() {
   try {

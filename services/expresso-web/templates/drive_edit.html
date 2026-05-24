@@ -10,6 +10,8 @@
     </div>
     <div style="display:flex;gap:.4rem">
       <button class="btn btn-ghost btn-sm" onclick="copyWopiUrl(this)" title="Copiar link de edição">🔗 Copiar</button>
+      <button class="btn btn-ghost btn-sm" onclick="openWopiNewTab()" title="Abrir em nova aba">↗ Abrir</button>
+      <a class="btn btn-ghost btn-sm" href="/drive/{{ file.id }}/versions" title="Histórico de versões">⏱ Versões</a>
       <button class="btn btn-ghost btn-sm" onclick="toggleEditFullscreen()" title="Tela cheia">⛶</button>
       <a class="btn btn-ghost" href="/drive">← Drive</a>
     </div>
@@ -39,6 +41,11 @@ function copyWopiUrl(btn) {
     btn.textContent = '✓ Copiado';
     setTimeout(function(){ btn.textContent = prev; }, 1500);
   }).catch(function(){ alert('Falha ao copiar link.'); });
+}
+function openWopiNewTab() {
+  var iframe = document.getElementById('wopi-frame');
+  if (!iframe) return;
+  window.open(iframe.src, '_blank', 'noopener');
 }
 </script>
 {% endblock %}

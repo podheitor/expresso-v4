@@ -162,6 +162,24 @@
       }
     });
   })();
+  (function networkBanner() {
+    var banner = document.createElement('div');
+    banner.id = 'expresso-net-banner';
+    banner.style.cssText = 'position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:.4rem .8rem;border-radius:99px;font-size:.78rem;z-index:9999;display:none;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+    banner.textContent = '⚠ Sem conexão';
+    document.body.appendChild(banner);
+    function refresh() {
+      banner.style.display = navigator.onLine ? 'none' : 'block';
+    }
+    window.addEventListener('online', function(){
+      banner.style.background = '#22c55e';
+      banner.textContent = '✓ Conexão restaurada';
+      banner.style.display = 'block';
+      setTimeout(function(){ banner.style.display = 'none'; banner.style.background = '#ef4444'; banner.textContent = '⚠ Sem conexão'; }, 2500);
+    });
+    window.addEventListener('offline', refresh);
+    refresh();
+  })();
   </script>
 </body>
 </html>

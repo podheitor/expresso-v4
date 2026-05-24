@@ -578,6 +578,7 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('settings-import-input').click()">📥 Importar JSON</button>
           <input type="file" id="settings-import-input" accept=".json,application/json" style="display:none"
                  onchange="importLocalSettings(this.files[0])">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="previewLocalSettings()">👁 Listar chaves</button>
           <button type="button" class="btn btn-danger btn-sm" onclick="clearAllLocalSettings()">🗑 Apagar dados locais</button>
         </div>
       </div>
@@ -886,6 +887,20 @@ function clearAllLocalSettings() {
     alert('Apagados ' + toRemove.length + ' itens. Recarregando.');
     window.location.reload();
   } catch(e) { alert('Erro ao apagar.'); }
+}
+function previewLocalSettings() {
+  try {
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && (k.indexOf('expresso_') === 0 || k === 'theme' || k === 'accent')) {
+        var v = localStorage.getItem(k) || '';
+        keys.push(k + '  (' + v.length + ' chars)');
+      }
+    }
+    if (!keys.length) { alert('Nenhum dado local.'); return; }
+    alert(keys.length + ' chaves armazenadas:\n\n' + keys.sort().join('\n'));
+  } catch(e) { alert('Erro ao listar.'); }
 }
 (function showLocalStorageUsage() {
   var el = document.getElementById('local-storage-usage'); if (!el) return;

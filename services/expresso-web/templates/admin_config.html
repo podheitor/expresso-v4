@@ -80,10 +80,23 @@
       </label>
     </div>
 
-    <div class="form-actions">
+    <div class="form-actions" style="position:sticky;bottom:0;background:var(--surface);padding:.5rem 0;z-index:5;border-top:1px solid var(--border)">
+      <span class="muted small" id="admin-cfg-dirty" style="display:none;color:#f59e0b">● Alterações não salvas</span>
       <button type="submit" class="btn btn-primary">Salvar configurações</button>
     </div>
   </form>
+  <script>
+  (function watchCfgDirty() {
+    var form = document.querySelector('form[action="/admin/config"]');
+    if (!form) return;
+    var dirty = document.getElementById('admin-cfg-dirty');
+    form.addEventListener('input', function(){ if (dirty) dirty.style.display = 'inline'; });
+    form.addEventListener('change', function(){ if (dirty) dirty.style.display = 'inline'; });
+    window.addEventListener('beforeunload', function(e) {
+      if (dirty && dirty.style.display !== 'none') { e.preventDefault(); e.returnValue = ''; }
+    });
+  })();
+  </script>
 
   <!-- Maintenance banner -->
   <div class="card stack" style="max-width:600px;margin-top:1.5rem">

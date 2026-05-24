@@ -104,8 +104,9 @@
   <div class="card stack">
     <h3>Sessões ativas</h3>
     <p class="muted small">Gerencie sessões no console Keycloak ou via API de admin.</p>
-    <form method="post" action="/admin/users/{{ user.id }}/sessions/revoke" onsubmit="return confirm('Revogar todas as sessões deste usuário?')">
+    <form method="post" action="/admin/users/{{ user.id }}/sessions/revoke" onsubmit="return confirm('Revogar todas as sessões deste usuário?')" style="display:flex;gap:.4rem;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" type="submit">⊘ Revogar todas as sessões</button>
+      <a class="btn btn-ghost btn-sm" href="/admin/audit?q={{ user.email }}" title="Ver auditoria deste usuário">📋 Auditoria</a>
     </form>
   </div>
 </div>

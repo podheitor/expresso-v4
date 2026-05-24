@@ -26,6 +26,9 @@
       <a class="btn btn-ghost" href="/calendar/{{ selected.id }}/day">Dia</a>
       <button class="btn btn-ghost" onclick="toggleAgendaView()" id="agenda-view-btn" title="Agenda">Lista</button>
     </nav>
+    <input type="search" id="month-event-filter" placeholder="🔍 Filtrar eventos do mês…"
+           oninput="filterMonthEvents(this.value)"
+           class="search-input-sm" style="width:14rem">
 
     {% if calendars.len() > 1 %}
     <nav class="calendar-switch">
@@ -384,5 +387,14 @@ document.addEventListener('keydown', function(e) {
   var el = document.getElementById('month-event-total');
   if (el) el.textContent = total > 0 ? '· ' + total + ' evento(s) este mês' : '';
 })();
+function filterMonthEvents(q) {
+  q = (q || '').toLowerCase().trim();
+  document.querySelectorAll('.event-chip').forEach(function(chip) {
+    var txt = (chip.getAttribute('title') || chip.textContent || '').toLowerCase();
+    var match = !q || txt.includes(q);
+    chip.style.opacity = match ? '' : '.15';
+    chip.style.filter = match ? '' : 'grayscale(1)';
+  });
+}
 </script>
 {% endblock %}

@@ -102,6 +102,23 @@ function copyShareLink(shareId) {
     prompt('Copie o link:', url);
   });
 }
+(function summarizeShares() {
+  var rows = document.querySelectorAll('table.data-table tbody tr');
+  if (!rows.length) return;
+  var active = 0, revoked = 0;
+  rows.forEach(function(r) {
+    if (r.querySelector('.badge-ok')) active++;
+    else if (r.querySelector('.badge-off')) revoked++;
+  });
+  var card = document.querySelector('.card:last-of-type');
+  if (!card) return;
+  var summary = document.createElement('div');
+  summary.className = 'muted small';
+  summary.style.cssText = 'margin-bottom:.5rem;display:flex;gap:1rem';
+  summary.innerHTML = '✅ <strong>' + active + '</strong> ativo(s) · ⛔ <strong>' + revoked + '</strong> revogado(s)';
+  var h2 = card.querySelector('h2');
+  if (h2) h2.after(summary);
+})();
 {% match new_url %}{% when Some with (u) %}
 // Auto-copy new link
 navigator.clipboard.writeText('{{ u }}').catch(function(){});

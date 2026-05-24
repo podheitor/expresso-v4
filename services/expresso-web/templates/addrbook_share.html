@@ -8,7 +8,10 @@
       <h1>Compartilhar · {{ addressbook.name }}</h1>
       <p class="muted" style="font-size:.875rem">Conceda acesso ao catálogo para outros usuários do tenant.</p>
     </div>
-    <a class="btn btn-ghost" href="/contacts?book_id={{ addressbook.id }}">◀ Voltar</a>
+    <div style="display:flex;gap:.4rem">
+      <a class="btn btn-ghost" href="/contacts/gal" title="Pesquisar GAL global">🔍 GAL</a>
+      <a class="btn btn-ghost" href="/contacts?book_id={{ addressbook.id }}">◀ Voltar</a>
+    </div>
   </div>
 
   {% match error %}{% when Some with (e) %}<div class="alert alert-error">{{ e }}</div>{% when None %}{% endmatch %}

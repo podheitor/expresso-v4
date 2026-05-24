@@ -476,6 +476,20 @@ function scrollToBottom() {
 }
 scrollToBottom();
 setInterval(loadNewMessages, 3000);
+(function jumpToBottomBtn() {
+  var c = document.getElementById('chat-messages');
+  if (!c) return;
+  var btn = document.createElement('button');
+  btn.textContent = '⬇ Novo';
+  btn.style.cssText = 'position:absolute;bottom:5rem;right:1.5rem;background:var(--accent,#14b8a6);color:#fff;border:none;border-radius:99px;padding:.4rem .8rem;cursor:pointer;display:none;font-size:.75rem;box-shadow:var(--shadow-md);z-index:50';
+  btn.onclick = function(){ scrollToBottom(); btn.style.display = 'none'; };
+  c.parentNode.style.position = 'relative';
+  c.parentNode.appendChild(btn);
+  c.addEventListener('scroll', function() {
+    var atBottom = (c.scrollHeight - c.scrollTop - c.clientHeight) < 80;
+    btn.style.display = atBottom ? 'none' : 'block';
+  });
+})();
 
 // ── Chat search ───────────────────────────────────────────────────────────────
 function toggleChatSearch() {

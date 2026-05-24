@@ -74,8 +74,9 @@
           </label>
 
           <label>
-            <span>Script Sieve</span>
-            <textarea name="script" rows="18" spellcheck="false"
+            <span>Script Sieve <span class="muted small" id="sieve-script-stats" style="font-weight:400"></span></span>
+            <textarea name="script" id="sieve-script-textarea" rows="18" spellcheck="false"
+                      oninput="updateSieveStats()"
                       placeholder='require ["fileinto"];
 if header :contains "Subject" "NEWSLETTER" {
     fileinto "Newsletters";
@@ -271,5 +272,14 @@ function testSieveRule() {
   ta.addEventListener('input', recount);
   recount();
 })();
+function updateSieveStats() {
+  var ta = document.getElementById('sieve-script-textarea');
+  var el = document.getElementById('sieve-script-stats');
+  if (!ta || !el) return;
+  var s = ta.value || '';
+  var lines = s ? s.split('\n').length : 0;
+  el.textContent = '· ' + lines + ' linha(s), ' + s.length + ' caractere(s)';
+}
+updateSieveStats();
 </script>
 {% endblock %}

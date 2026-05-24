@@ -36,6 +36,7 @@
           <button class="btn btn-ghost btn-sm" onclick="copyThreadLink(this)" title="Copiar link da conversa">🔗 Link</button>
           <button class="btn btn-ghost btn-sm" onclick="expandAllThreadMsgs()" title="Expandir todas as mensagens">⬇ Expandir todas</button>
           <button class="btn btn-ghost btn-sm" onclick="collapseAllThreadMsgs()" title="Recolher todas as mensagens">⬆ Recolher todas</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleThreadToc()" title="Sumário (jump-to)">📑 Sumário</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -284,4 +285,28 @@ function collapseAllThreadMsgs() {
   body { background: white !important; color: black !important; }
 }
 </style>
+<script>
+function toggleThreadToc() {
+  var existing = document.getElementById('thread-toc-panel');
+  if (existing) { existing.remove(); return; }
+  var msgs = document.querySelectorAll('.thread-msg-item');
+  if (!msgs.length) return;
+  var panel = document.createElement('div');
+  panel.id = 'thread-toc-panel';
+  panel.style.cssText = 'position:fixed;right:1rem;top:6rem;width:18rem;max-height:70vh;overflow:auto;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:.5rem;z-index:80';
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem"><strong>Sumário</strong>'
+           + '<button onclick="document.getElementById(\'thread-toc-panel\').remove()" style="border:none;background:none;cursor:pointer">✕</button></div>';
+  msgs.forEach(function(m, i) {
+    var from = (m.querySelector('.thread-msg-from') || {}).textContent || ('Msg ' + (i+1));
+    var date = (m.querySelector('.thread-msg-date') || {}).textContent || '';
+    html += '<a href="#' + m.id + '" style="display:block;padding:.3rem;font-size:.8rem;text-decoration:none;color:inherit;border-bottom:1px solid var(--border)"'
+          + ' onclick="document.getElementById(\'' + m.id + '\').scrollIntoView({behavior:\'smooth\'});return false">'
+          + '<strong>' + (i+1) + '.</strong> ' + from.trim().slice(0,40)
+          + (date ? '<br><span class="muted small">' + date.trim() + '</span>' : '')
+          + '</a>';
+  });
+  panel.innerHTML = html;
+  document.body.appendChild(panel);
+}
+</script>
 {% endblock %}

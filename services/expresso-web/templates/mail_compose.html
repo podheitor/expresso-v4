@@ -104,7 +104,7 @@
             <input type="checkbox" id="toggle-rich" checked onchange="toggleRichMode(this.checked)"> Rich text
           </label>
         </div>
-        <div id="compose-rich-editor" class="compose-rich-editor" contenteditable="true"
+        <div id="compose-rich-editor" class="compose-rich-editor" contenteditable="true" spellcheck="true" lang="pt-BR"
              oninput="syncRichToText();updateComposeStats()">{{ prefill_body }}</div>
         <textarea name="body_text" id="compose-body-text" rows="14" style="display:none" required
                   oninput="updateComposeStats()">{{ prefill_body }}</textarea>
