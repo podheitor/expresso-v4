@@ -1195,5 +1195,21 @@ document.addEventListener('keydown', function(e){
   if (first) window.location.href = first.getAttribute('href');
   else alert('Nenhuma thread visível.');
 });
+// sprint #20787 — copyMailListSummary: copia "from — subject" das linhas visíveis
+function copyMailListSummary() {
+  var lines = [];
+  document.querySelectorAll('.mail-row, tr[data-thread-id]').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var from = (r.querySelector('.mail-from, [data-from]') || {}).textContent || '';
+    var subj = (r.querySelector('.mail-subject, [data-subject]') || {}).textContent || '';
+    var l = (from.trim() + ' — ' + subj.trim()).replace(/\s+/g, ' ').trim();
+    if (l && l !== '—') lines.push(l);
+  });
+  if (!lines.length) { alert('Sem linhas visíveis.'); return; }
+  var txt = lines.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(lines.length + ' linha(s) copiada(s).');
+}
 </script>
 {% endblock %}

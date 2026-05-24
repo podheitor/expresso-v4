@@ -1348,5 +1348,23 @@ function copyTasksTitles() {
     }
   });
 })();
+// sprint #20791 — exportTasksJson: baixa todas tarefas visíveis como JSON
+function exportTasksJson() {
+  var tasks = [];
+  document.querySelectorAll('.task-row, [data-task-id]').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var done = !!(r.classList.contains('done') || r.classList.contains('completed') || r.querySelector('input[type="checkbox"]:checked'));
+    var title = (r.querySelector('.task-title, [data-title]') || r).textContent.trim().replace(/\s+/g, ' ');
+    var id = r.getAttribute('data-task-id') || '';
+    tasks.push({ id: id, title: title, done: done });
+  });
+  if (!tasks.length) { alert('Sem tarefas visíveis.'); return; }
+  var blob = new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'tasks-' + (new Date()).toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+}
 </script>
 {% endblock %}

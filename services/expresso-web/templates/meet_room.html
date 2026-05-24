@@ -1246,5 +1246,14 @@ document.addEventListener('keydown', function(e){
     catch (err) { alert('Erro: ' + err.message); }
   });
 })();
+// sprint #20790 — copyRoomUrlWithTimestamp: copia URL + ts ISO
+function copyRoomUrlWithTimestamp() {
+  var url = window.location.href;
+  var ts = new Date().toISOString();
+  var txt = url + ' (entrou em ' + ts + ')';
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('URL+timestamp copiado.');
+}
 </script>
 {% endblock %}

@@ -1393,5 +1393,21 @@ function revealAllExpressoLocalKeys() {
   if (!lines.length) alert('Nenhuma chave expresso_*.');
   else alert(lines.length + ' chave(s):\n\n' + lines.join('\n'));
 }
+// sprint #20793 — pingNotificationApi: solicita permissão e dispara notif teste
+function pingNotificationApi() {
+  if (!('Notification' in window)) { alert('Navegador sem suporte a Notification API.'); return; }
+  function fire(p) {
+    if (p === 'granted') {
+      try {
+        new Notification('Expresso', { body: 'Notificação de teste OK.', tag: 'expresso-test' });
+        alert('Notificação enviada.');
+      } catch (err) { alert('Granted, mas falha ao criar: ' + err.message); }
+    } else {
+      alert('Permissão: ' + p);
+    }
+  }
+  if (Notification.permission === 'default') Notification.requestPermission().then(fire);
+  else fire(Notification.permission);
+}
 </script>
 {% endblock %}

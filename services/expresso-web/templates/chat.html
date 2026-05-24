@@ -1943,5 +1943,16 @@ document.addEventListener('keydown', function(e){
     else alert('Nenhum canal visível.');
   });
 })();
+// sprint #20788 — showChatChannelCount: conta canais e DMs na sidebar
+function showChatChannelCount() {
+  var links = document.querySelectorAll('.chat-channel-link, .chat-sidebar a[href*="/chat/"], a[data-channel-id]');
+  var ch = 0, dm = 0;
+  links.forEach(function(a){
+    var h = a.getAttribute('href') || '';
+    if (h.indexOf('/dm/') !== -1 || a.classList.contains('dm')) dm++;
+    else ch++;
+  });
+  alert('Sidebar de chat:\n  Canais: ' + ch + '\n  DMs: ' + dm + '\n  Total: ' + links.length);
+}
 </script>
 {% endblock %}

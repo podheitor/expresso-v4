@@ -1254,5 +1254,23 @@ document.addEventListener('keydown', function(e){
   if (folder) window.location.href = folder.getAttribute('href');
   else alert('Nenhuma pasta visível.');
 });
+// sprint #20789 — sumSelectedFilesSize: soma data-size das linhas selecionadas
+function sumSelectedFilesSize() {
+  var bytes = 0, count = 0;
+  document.querySelectorAll('.file-checkbox:checked, .drive-row input[type="checkbox"]:checked').forEach(function(cb){
+    var row = cb.closest('.drive-row, tr, li');
+    if (!row) return;
+    var sz = parseInt(row.getAttribute('data-size') || '0', 10);
+    if (!isNaN(sz) && sz > 0) { bytes += sz; count++; }
+  });
+  if (!count) { alert('Nada selecionado ou sem data-size.'); return; }
+  function fmt(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(2) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(2) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+  }
+  alert(count + ' arquivo(s) selecionado(s): ' + fmt(bytes));
+}
 </script>
 {% endblock %}

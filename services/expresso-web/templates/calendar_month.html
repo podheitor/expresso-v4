@@ -603,5 +603,21 @@ document.addEventListener('keydown', function(e){
     }
   });
 })();
+// sprint #20798 — copyMonthEventsCsv: "date,title"
+function copyMonthEventsCsv() {
+  var rows = [['date','title']];
+  document.querySelectorAll('.day-cell, [data-day]').forEach(function(cell){
+    var d = cell.getAttribute('data-day') || ((cell.querySelector('.day-number, .day-label') || {}).textContent || '').trim();
+    cell.querySelectorAll('.event, .calendar-event, [data-event-id]').forEach(function(ev){
+      var title = (ev.querySelector('.event-title, .title') || ev).textContent.trim().replace(/\s+/g, ' ');
+      rows.push([d, title]);
+    });
+  });
+  if (rows.length < 2) { alert('Sem eventos.'); return; }
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(csv);
+  else { var ta = document.createElement('textarea'); ta.value = csv; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert((rows.length - 1) + ' evento(s) copiado(s) como CSV.');
+}
 </script>
 {% endblock %}

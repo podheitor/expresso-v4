@@ -597,5 +597,19 @@ document.addEventListener('keydown', function(e){
     else alert('Sem link raw/.eml visível.');
   });
 })();
+// sprint #20795 — copyThreadParticipantsList: copia from-set único da thread
+function copyThreadParticipantsList() {
+  var set = {};
+  document.querySelectorAll('.msg-from, .message-from, [data-from]').forEach(function(el){
+    var v = (el.getAttribute('data-from') || el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (v) set[v] = (set[v] || 0) + 1;
+  });
+  var keys = Object.keys(set);
+  if (!keys.length) { alert('Sem participantes detectados.'); return; }
+  var txt = keys.map(function(k){ return k + ' (' + set[k] + ')'; }).join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(keys.length + ' participante(s) copiado(s).');
+}
 </script>
 {% endblock %}

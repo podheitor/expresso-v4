@@ -1017,5 +1017,22 @@ document.addEventListener('keydown', function(e){
     else alert('Nenhum contato visível.');
   });
 })();
+// sprint #20792 — copyAllContactsAsVcfBlock: copia VCF inline de todos contatos visíveis
+function copyAllContactsAsVcfBlock() {
+  var cards = [];
+  document.querySelectorAll('.contact-row, [data-contact-id]').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var name = ((r.querySelector('.contact-name, [data-name]') || {}).textContent || '').trim();
+    var email = ((r.querySelector('.contact-email, [data-contact-email]') || {}).textContent
+                  || r.getAttribute('data-contact-email') || '').trim();
+    if (!name && !email) return;
+    cards.push('BEGIN:VCARD\nVERSION:3.0\nFN:' + name + '\nEMAIL:' + email + '\nEND:VCARD');
+  });
+  if (!cards.length) { alert('Sem contatos visíveis.'); return; }
+  var txt = cards.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(cards.length + ' VCard(s) copiado(s).');
+}
 </script>
 {% endblock %}

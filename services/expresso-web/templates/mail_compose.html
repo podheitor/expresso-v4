@@ -935,5 +935,17 @@ function flagShortLinksInBody() {
   if (!matches.length) { alert('Sem encurtadores de URL detectados.'); return; }
   alert(matches.length + ' encurtador(es) detectado(s): ' + matches.join(', ') + '\n\n(Considere expandir antes de enviar.)');
 }
+// sprint #20794 — previewBodyPlainInNewTab: abre body em nova aba como texto
+function previewBodyPlainInNewTab() {
+  var body = document.querySelector('textarea[name="body"], #compose-body');
+  if (!body || !body.value.trim()) { alert('Corpo vazio.'); return; }
+  var w = window.open('', '_blank');
+  if (!w) { alert('Popup bloqueado.'); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Preview</title>' +
+    '<pre style="white-space:pre-wrap;font:14px/1.5 system-ui,sans-serif;max-width:780px;margin:2rem auto;padding:1rem;border:1px solid #ccc">' +
+    body.value.replace(/[&<>]/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]; }) +
+    '</pre>');
+  w.document.close();
+}
 </script>
 {% endblock %}

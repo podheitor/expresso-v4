@@ -1259,5 +1259,24 @@ document.addEventListener('keydown', function(e){
   if (link) window.location.href = '/admin';
   else alert('Sem acesso admin nesta conta.');
 });
+// sprint #20786 — pingExpressoLatency: 3 GETs /health e mostra média/min/max
+function pingExpressoLatency() {
+  var samples = [];
+  function one() {
+    var t0 = performance.now();
+    return fetch('/health', { cache: 'no-store' }).then(function(){
+      samples.push(performance.now() - t0);
+    }).catch(function(){ samples.push(-1); });
+  }
+  Promise.resolve()
+    .then(one).then(one).then(one)
+    .then(function(){
+      var ok = samples.filter(function(s){ return s >= 0; });
+      if (!ok.length) { alert('Falha no fetch /health.'); return; }
+      var avg = ok.reduce(function(a, b){ return a + b; }, 0) / ok.length;
+      var min = Math.min.apply(null, ok), max = Math.max.apply(null, ok);
+      alert('Latência /health (3 amostras):\n  avg: ' + avg.toFixed(1) + ' ms\n  min: ' + min.toFixed(1) + ' ms\n  max: ' + max.toFixed(1) + ' ms');
+    });
+}
 </script>
 {% endblock %}

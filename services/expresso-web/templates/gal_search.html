@@ -394,5 +394,17 @@ document.addEventListener('keydown', function(e){
     window.location.href = '/mail/compose?to=' + encodeURIComponent(email);
   });
 })();
+// sprint #20799 — printGalResults: window.print após filtrar só a tabela
+function printGalResults() {
+  var list = document.querySelector('.gal-results, .gal-list, .results');
+  if (!list) { alert('Lista GAL não encontrada.'); return; }
+  var w = window.open('', '_blank');
+  if (!w) { alert('Popup bloqueado.'); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>GAL</title>' +
+    '<style>body{font:14px system-ui;padding:1rem}</style>' +
+    list.outerHTML);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 250);
+}
 </script>
 {% endblock %}

@@ -475,5 +475,23 @@ document.addEventListener('keydown', function(e){
     else alert('Sem detalhe de auditoria disponível.');
   });
 })();
+// sprint #20800 — copyAuditAsCsv: extrai linhas da tabela como CSV
+function copyAuditAsCsv() {
+  var table = document.querySelector('table.audit-table, table');
+  if (!table) { alert('Tabela de auditoria não encontrada.'); return; }
+  var rows = [];
+  table.querySelectorAll('tr').forEach(function(tr){
+    var cells = [];
+    tr.querySelectorAll('th,td').forEach(function(c){
+      cells.push((c.textContent || '').trim().replace(/\s+/g, ' '));
+    });
+    if (cells.length) rows.push(cells);
+  });
+  if (!rows.length) { alert('Tabela vazia.'); return; }
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"' + c.replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(csv);
+  else { var ta = document.createElement('textarea'); ta.value = csv; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert((rows.length - 1) + ' linha(s) copiada(s) como CSV.');
+}
 </script>
 {% endblock %}
