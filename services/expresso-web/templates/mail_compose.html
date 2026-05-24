@@ -1590,5 +1590,15 @@ window.copyRecipientCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.insertSignature=function(){
+  const sig='\n\n--\n{{ me.email }}';
+  const b=document.querySelector('[name=body]');
+  if(b)b.value=b.value.replace(/\n\n--\n[\s\S]*$/,'')+sig;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='assinatura inserida';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2158,5 +2158,20 @@ window.copyOriginAndProtocol=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyStorageSummary=function(){
+  if(!navigator.storage||!navigator.storage.estimate){return;}
+  navigator.storage.estimate().then(e=>{
+    const u=((e.usage||0)/1024/1024).toFixed(2),q=((e.quota||0)/1024/1024).toFixed(2);
+    const v='Usage: '+u+' MB / '+q+' MB';
+    const ta=document.createElement('textarea');
+    ta.value=v; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=v;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

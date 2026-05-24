@@ -1361,5 +1361,19 @@ window.copyWeekMondayLoad=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeAfternoons=function(){
+  const days={};
+  Array.from(document.querySelectorAll('[data-event-id]')).forEach(r=>{const s=r.dataset.eventStart;if(s){const d=s.slice(0,10),h=new Date(s).getHours();if(h>=13&&h<18){days[d]=(days[d]||0)+1;}}});
+  const all=new Set(Array.from(document.querySelectorAll('[data-event-id]')).map(r=>(r.dataset.eventStart||'').slice(0,10)));
+  const free=Array.from(all).filter(d=>!days[d]).sort();
+  const ta=document.createElement('textarea');
+  ta.value=free.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=free.length+' tardes livres';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

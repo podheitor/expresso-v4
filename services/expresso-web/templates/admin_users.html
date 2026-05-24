@@ -1256,5 +1256,21 @@ window.copyUsersOverQuota=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAvgQuotaUsage=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-id]')).filter(r=>r.dataset.userQuota&&r.dataset.userUsage);
+  if(!rows.length)return;
+  let sum=0;
+  rows.forEach(r=>{const u=parseInt(r.dataset.userUsage,10),q=parseInt(r.dataset.userQuota,10);if(q>0)sum+=(u/q)*100;});
+  const avg=(sum/rows.length).toFixed(1);
+  const ta=document.createElement('textarea');
+  ta.value='média uso: '+avg+'% em '+rows.length+' usuários';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=avg+'% médio';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

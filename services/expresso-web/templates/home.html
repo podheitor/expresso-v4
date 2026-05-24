@@ -1903,5 +1903,19 @@ window.copyHomeSessionId=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeBatteryStatus=function(){
+  if(!navigator.getBattery){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='battery API n/a';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.getBattery().then(b=>{
+    const v=Math.round(b.level*100)+'% '+(b.charging?'charging':'discharging');
+    const ta=document.createElement('textarea');
+    ta.value=v; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=v;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}
