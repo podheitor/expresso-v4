@@ -961,7 +961,26 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === '/') {
     var f = document.getElementById('task-filter') || document.querySelector('input[type="search"]');
     if (f) { e.preventDefault(); f.focus(); }
+  } else if (e.key === 'p' || e.key === 'P') {
+    // Cycle priority of the most recently hovered/selected task
+    var el = window._lastHoverTask || document.querySelector('.task-item[data-id]');
+    if (!el) return;
+    var id = el.dataset.id;
+    if (!id) return;
+    e.preventDefault();
+    var arr = loadTasks();
+    var idx = arr.findIndex(function(x){ return x.id === id; });
+    if (idx < 0) return;
+    var cur = arr[idx].priority || 'normal';
+    arr[idx].priority = cur === 'normal' ? 'high' : (cur === 'high' ? 'low' : 'normal');
+    saveTasks(arr);
+    renderAll();
   }
+});
+// Track last hovered task for priority shortcut
+document.addEventListener('mouseover', function(e) {
+  var t = e.target && e.target.closest && e.target.closest('.task-item[data-id]');
+  if (t) window._lastHoverTask = t;
 });
 </script>
 <style>

@@ -41,6 +41,7 @@
           </label>
           <button class="btn btn-ghost btn-sm" onclick="detectDuplicates('{{ bid }}')" title="Detectar e mesclar contatos duplicados">⊞ Mesclar dupl.</button>
           <button class="btn btn-ghost btn-sm" onclick="emailVisibleContacts()" title="Escrever email para todos os contatos visíveis">✉ Email p/ visíveis</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportVisibleContactsVcf()" title="Baixar .vcf dos contatos visíveis">⬇ vCard visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
@@ -540,6 +541,55 @@ function emailVisibleContacts() {
   if (!emails.length) { alert('Nenhum contato visível com email.'); return; }
   if (emails.length > 50 && !confirm('Adicionar ' + emails.length + ' destinatários ao compose?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(emails.join(', '));
+}
+function exportVisibleContactsVcf() {
+  var lines = [];
+  var n = 0;
+  function escV(s) { return String(s||'').replace(/\\/g,'\\\\').replace(/[,;]/g,'\\$&').replace(/\r?\n/g,'\\n'); }
+  // Prefer card-view if visible; otherwise iterate table rows
+  var cardsView = document.getElementById('contacts-cards-view');
+  var useCards = cardsView && cardsView.style.display !== 'none';
+  if (useCards) {
+    document.querySelectorAll('.contact-card[data-name]').forEach(function(card) {
+      if (card.style.display === 'none') return;
+      var name  = (card.querySelector('.contact-card-name')  || {}).textContent || '';
+      var email = (card.querySelector('.contact-card-email') || {}).textContent || '';
+      var phone = (card.querySelector('.contact-card-phone') || {}).textContent || '';
+      var org   = (card.querySelector('.contact-card-org')   || {}).textContent || '';
+      phone = phone.replace(/^📞\s*/, '').trim();
+      org   = org.replace(/^🏢\s*/, '').trim();
+      if (!name.trim() && !email.trim()) return;
+      lines.push('BEGIN:VCARD','VERSION:3.0','FN:' + escV(name.trim()));
+      if (email.trim()) lines.push('EMAIL;TYPE=INTERNET:' + email.trim());
+      if (phone)        lines.push('TEL:' + phone);
+      if (org)          lines.push('ORG:' + escV(org));
+      lines.push('UID:' + (email.trim() || name.trim()),'END:VCARD');
+      n++;
+    });
+  } else {
+    document.querySelectorAll('.data-table tbody tr[data-name]').forEach(function(row) {
+      if (row.style.display === 'none') return;
+      var cells = row.querySelectorAll('td');
+      var name  = cells[0] ? cells[0].textContent.trim() : '';
+      var email = cells[1] ? cells[1].textContent.trim() : '';
+      var phone = cells[2] ? cells[2].textContent.trim() : '';
+      var org   = cells[3] ? cells[3].textContent.trim() : '';
+      if (!name && !email) return;
+      lines.push('BEGIN:VCARD','VERSION:3.0','FN:' + escV(name));
+      if (email) lines.push('EMAIL;TYPE=INTERNET:' + email);
+      if (phone) lines.push('TEL:' + phone);
+      if (org)   lines.push('ORG:' + escV(org));
+      lines.push('UID:' + (email || name),'END:VCARD');
+      n++;
+    });
+  }
+  if (!n) { alert('Nenhum contato visível.'); return; }
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/vcard;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'contatos-' + new Date().toISOString().slice(0,10) + '.vcf';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(a.href); }, 500);
 }
 // ── Favorites (localStorage) ────────────────────────────────────────────────
 var CONTACT_FAV_KEY = 'expresso_contact_favs_{{ me.user_id }}';

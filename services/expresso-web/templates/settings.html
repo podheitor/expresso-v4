@@ -555,7 +555,9 @@
             <span>Atalhos de teclado globais habilitados</span>
           </label>
         </div>
-        <table class="data-table shortcuts-table">
+        <input type="search" id="shortcuts-search" class="input-sm" placeholder="🔍 Filtrar atalhos…"
+               oninput="filterShortcuts(this.value)" style="width:100%;margin-bottom:.5rem">
+        <table class="data-table shortcuts-table" id="shortcuts-table">
           <thead><tr><th>Atalho</th><th>Ação</th><th>Módulo</th></tr></thead>
           <tbody>
             <tr><td><kbd>G</kbd> <kbd>M</kbd></td><td>Ir para E-mail (Inbox)</td><td>Global</td></tr>
@@ -967,5 +969,15 @@ function setBlockTrackers(v) { try { localStorage.setItem(TRK_KEY, v ? '1' : '0'
   if (a) a.checked = localStorage.getItem(EXT_IMG_KEY) === '1';
   if (b) b.checked = localStorage.getItem(TRK_KEY) !== '0';
 })();
+// ── Shortcuts filter ────────────────────────────────────────────────────────
+function filterShortcuts(q) {
+  var tbl = document.getElementById('shortcuts-table');
+  if (!tbl) return;
+  var lq = (q || '').toLowerCase().trim();
+  tbl.querySelectorAll('tbody tr').forEach(function(tr) {
+    var text = tr.textContent.toLowerCase();
+    tr.style.display = (!lq || text.indexOf(lq) >= 0) ? '' : 'none';
+  });
+}
 </script>
 {% endblock %}

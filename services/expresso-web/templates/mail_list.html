@@ -39,6 +39,7 @@
           <button class="btn btn-ghost btn-sm" id="sender-filter-btn" onclick="clearSenderFilter()" style="display:none" title="Limpar filtro de remetente">✕ <span id="sender-filter-label"></span></button>
           <button class="btn btn-ghost btn-sm" onclick="toggleMailFilters()" title="Filtros avançados">⚙ Filtros</button>
           <button class="btn btn-ghost btn-sm" onclick="showMailShortcuts()" title="Atalhos de teclado">⌨</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleGroupBySender(this)" title="Agrupar por remetente" id="mail-group-btn">🗂 Grupo</button>
           <form method="get" action="/mail/search" class="toolbar-search">
             <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
           </form>
@@ -101,7 +102,8 @@
         {% for msg in messages %}
         <li class="msg-row-wrap" data-mid="{{ msg.id }}"
             data-unread="{% if msg.is_unread() %}1{% else %}0{% endif %}"
-            data-attach="{% if msg.has_attachments %}1{% else %}0{% endif %}">
+            data-attach="{% if msg.has_attachments %}1{% else %}0{% endif %}"
+            data-sender="{{ msg.from_display() }}">
           <input type="checkbox" class="mail-row-check" data-mid="{{ msg.id }}"
                  onchange="updateMailSelection(event)" style="position:absolute;left:.4rem;top:50%;transform:translateY(-50%);z-index:2;display:none">
           <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
@@ -891,6 +893,27 @@ function setMailQuickFilter(f, btn) {
   });
   var cnt = document.getElementById('mail-quick-filter-count');
   if (cnt) cnt.textContent = visible + ' mensagem(ns)';
+}
+// Group-by-sender: insert visual separators when consecutive rows share sender
+function toggleGroupBySender(btn) {
+  var ul = document.querySelector('.msg-rows'); if (!ul) return;
+  document.querySelectorAll('.sender-group-header').forEach(function(h){ h.remove(); });
+  var on = !btn.dataset.active;
+  if (!on) { btn.dataset.active = ''; btn.style.background = ''; return; }
+  btn.dataset.active = '1'; btn.style.background = 'var(--accent)';
+  var rows = Array.from(ul.querySelectorAll('.msg-row-wrap'));
+  var groups = {};
+  rows.forEach(function(r) { var s = r.dataset.sender || '—'; (groups[s] = groups[s] || []).push(r); });
+  var sorted = Object.keys(groups).sort(function(a,b){ return groups[b].length - groups[a].length; });
+  ul.innerHTML = '';
+  sorted.forEach(function(s) {
+    var h = document.createElement('li');
+    h.className = 'sender-group-header';
+    h.style.cssText = 'padding:.3rem .75rem;background:var(--bg-raised);font-size:.72rem;color:var(--muted);font-weight:600;border-top:1px solid var(--border)';
+    h.textContent = s + ' (' + groups[s].length + ')';
+    ul.appendChild(h);
+    groups[s].forEach(function(r){ ul.appendChild(r); });
+  });
 }
 </script>
 {% endblock %}

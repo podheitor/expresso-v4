@@ -219,6 +219,11 @@
       <div id="drive-share-link-row" style="display:none;margin-top:.5rem;gap:.4rem;align-items:center;display:none">
         <input type="text" id="drive-share-link-val" readonly style="flex:1;font-size:.78rem" class="input-sm">
         <button class="btn btn-ghost btn-sm" onclick="copyShareLink()">Copiar</button>
+        <button class="btn btn-ghost btn-sm" onclick="webShareDriveLink()" title="Compartilhar via app nativo (mobile)">📤</button>
+        <button class="btn btn-ghost btn-sm" onclick="qrShareDriveLink()" title="Mostrar QR code do link">▦ QR</button>
+      </div>
+      <div id="drive-share-qr" style="display:none;margin-top:.5rem;text-align:center">
+        <img id="drive-share-qr-img" alt="QR code" style="max-width:180px;border:1px solid var(--border);border-radius:.25rem;background:#fff;padding:.25rem">
       </div>
       <div class="form-actions" style="margin-top:.75rem">
         <button type="button" class="btn btn-ghost" onclick="closeShareModal()">Fechar</button>
@@ -397,6 +402,12 @@ document.addEventListener('keydown', function(e) {
     var cbs = document.querySelectorAll('.drive-row-check');
     var allChecked = Array.from(cbs).every(function(cb){ return cb.checked; });
     cbs.forEach(function(cb){ cb.checked = !allChecked; cb.dispatchEvent(new Event('change', { bubbles: true })); });
+  }
+  else if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    var selFav = document.querySelectorAll('.drive-row-check:checked');
+    if (!selFav.length) { alert('Selecione um ou mais arquivos para favoritar.'); return; }
+    selFav.forEach(function(cb) { if (typeof toggleDriveFav === 'function') toggleDriveFav(cb.dataset.id); });
   }
   else if (e.key === 'Delete' || e.key === 'Backspace') {
     var sel = document.querySelectorAll('.drive-row-check:checked');
@@ -779,6 +790,27 @@ function copyShareLink() {
   var inp = document.getElementById('drive-share-link-val');
   if (!inp) return;
   navigator.clipboard.writeText(inp.value).then(function(){ inp.select(); }).catch(function(){});
+}
+function webShareDriveLink() {
+  var inp = document.getElementById('drive-share-link-val');
+  if (!inp || !inp.value) { alert('Link ainda não gerado.'); return; }
+  if (!navigator.share) {
+    copyShareLink();
+    alert('Web Share não suportado neste navegador. Link copiado para área de transferência.');
+    return;
+  }
+  navigator.share({ title: 'Arquivo compartilhado', text: 'Acessar arquivo no Expresso Drive:', url: inp.value })
+    .catch(function(err){ if (err && err.name !== 'AbortError') alert('Falha ao compartilhar: ' + err.message); });
+}
+function qrShareDriveLink() {
+  var inp = document.getElementById('drive-share-link-val');
+  var box = document.getElementById('drive-share-qr');
+  var img = document.getElementById('drive-share-qr-img');
+  if (!inp || !inp.value) { alert('Link ainda não gerado.'); return; }
+  if (!box || !img) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(inp.value);
+  box.style.display = 'block';
 }
 function saveSharing() {
   if (!_shareFileId) return;

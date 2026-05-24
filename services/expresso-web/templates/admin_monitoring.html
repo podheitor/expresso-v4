@@ -16,9 +16,26 @@
         </select>
       </label>
       <button class="btn btn-ghost btn-sm" onclick="refreshMonitorNow()" title="Atualizar agora">⟳</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportMonitorSnapshot()" title="Exportar snapshot das métricas como JSON">⬇ Snapshot</button>
       <span class="muted small" id="admin-monitor-ts">Atualizado agora</span>
     </div>
   </div>
+  <script>
+  function exportMonitorSnapshot() {
+    var snap = { ts: new Date().toISOString(), metrics: {} };
+    document.querySelectorAll('.admin-stat-card').forEach(function(card) {
+      var k = (card.querySelector('.admin-stat-label') || {}).textContent || '';
+      var v = (card.querySelector('.admin-stat-value') || {}).textContent || '';
+      if (k) snap.metrics[k.trim()] = v.trim();
+    });
+    var blob = new Blob([JSON.stringify(snap, null, 2)], {type:'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'expresso-monitor-' + snap.ts.replace(/[:.]/g,'-') + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+  </script>
 
   <!-- Stat cards -->
   <div class="admin-stat-grid">

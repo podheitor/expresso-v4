@@ -21,7 +21,11 @@
     {% else %}
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin:0 0 .5rem">
         <p class="muted small" style="margin:0"><strong>{{ contacts.len() }}</strong> resultado(s) para "{{ query }}"</p>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
+        <div style="display:flex;gap:.4rem">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
+        </div>
       </div>
       <div class="contact-grid">
         {% for c in contacts %}
@@ -44,6 +48,29 @@
   </div>
 </div>
 <script>
+function _allGalEmails() {
+  var emails = [];
+  document.querySelectorAll('.contact-card').forEach(function(c) {
+    var em = ((c.querySelector('.contact-email') || {}).textContent || '').trim();
+    if (em) emails.push(em);
+  });
+  return emails;
+}
+function mailAllGal() {
+  var ems = _allGalEmails();
+  if (!ems.length) { alert('Sem destinatários.'); return; }
+  if (ems.length > 50 && !confirm('Compor e-mail para ' + ems.length + ' destinatários?')) return;
+  window.location.href = '/mail/compose?to=' + encodeURIComponent(ems.join(', '));
+}
+function copyAllGalEmails(btn) {
+  var ems = _allGalEmails();
+  if (!ems.length) { alert('Sem e-mails.'); return; }
+  navigator.clipboard.writeText(ems.join(', ')).then(function() {
+    var p = btn.textContent;
+    btn.textContent = '✓ ' + ems.length;
+    setTimeout(function(){ btn.textContent = p; }, 1500);
+  }).catch(function(){ prompt('Copie:', ems.join(', ')); });
+}
 function exportGalVcf() {
   var cards = document.querySelectorAll('.contact-card');
   if (!cards.length) { alert('Nenhum resultado para exportar.'); return; }

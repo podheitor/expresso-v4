@@ -9,6 +9,7 @@
     <div>
       <h1>Olá, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
       <span class="muted small" id="home-date-label">Plataforma Expresso — visão geral do dia</span>
+      <div class="muted small" id="home-last-visit" style="font-size:.72rem;margin-top:.15rem;display:none"></div>
     </div>
     <div class="home-clock-widget">
       <div class="home-clock-time" id="home-clock" onclick="toggleClockFormat()" title="Clique para alternar 12h/24h" style="cursor:pointer">--:--</div>
@@ -322,8 +323,18 @@
 .home-stat-lbl  { margin-top:.1rem }
 </style>
 <script>
-// ── Remember last login (shown on /login page) ───────────────────────────────
+// ── Remember last login + show "última visita há…" in greeting ───────────────
 try {
+  var _prevTs = parseInt(localStorage.getItem('expresso_last_login_ts') || '0', 10);
+  if (_prevTs && Date.now() - _prevTs > 60000) {
+    var diffMin = Math.round((Date.now() - _prevTs) / 60000);
+    var label;
+    if      (diffMin <   60) label = diffMin + ' min atrás';
+    else if (diffMin < 1440) label = Math.round(diffMin / 60) + 'h atrás';
+    else                     label = Math.round(diffMin / 1440) + ' dia(s) atrás';
+    var el = document.getElementById('home-last-visit');
+    if (el) { el.textContent = '↻ Última visita: ' + label; el.style.display = 'block'; }
+  }
   localStorage.setItem('expresso_last_login_email', '{{ me.email }}');
   localStorage.setItem('expresso_last_login_ts', String(Date.now()));
 } catch(e) {}

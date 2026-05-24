@@ -39,6 +39,7 @@
           <button class="btn btn-ghost btn-sm" onclick="toggleThreadToc()" title="Sumário (jump-to)">📑 Sumário</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadRead()" title="Marcar todas as mensagens como lidas">✓ Tudo lido</button>
+          <button class="btn btn-ghost btn-sm" onclick="markThreadUnread()" title="Marcar a primeira mensagem como não lida">○ Não lida</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
             <div class="dropdown-menu">
@@ -236,6 +237,32 @@ function markThreadRead() {
       var b = d.querySelector('.chat-unread-badge'); if (b) b.remove();
     });
   });
+}
+function markThreadUnread() {
+  // Mark the first message in the thread as unread (\Seen flag off).
+  var first = document.querySelector('.thread-msg-item');
+  if (!first) { alert('Nenhuma mensagem nesta conversa.'); return; }
+  var id = (first.id || '').replace(/^tmsg-/, '');
+  if (!id) return;
+  var form = new URLSearchParams();
+  form.set('flag', '\\Seen'); form.set('value', '0'); form.set('folder', 'INBOX');
+  fetch('/mail/' + encodeURIComponent(id) + '/flag', {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form.toString(),
+    redirect: 'manual',
+  }).then(function() {
+    first.classList.add('thread-msg-unread');
+    if (!first.querySelector('.chat-unread-badge')) {
+      var span = document.createElement('span');
+      span.className = 'chat-unread-badge';
+      span.style.marginLeft = 'auto';
+      span.textContent = 'Não lida';
+      var hdr = first.querySelector('.thread-msg-header') || first.firstElementChild;
+      if (hdr) hdr.appendChild(span);
+    }
+    window.location.href = '/mail';
+  }).catch(function(){ alert('Erro ao marcar como não lida.'); });
 }
 function archiveThread() {
   if (!_threadMsgIds.length) return;

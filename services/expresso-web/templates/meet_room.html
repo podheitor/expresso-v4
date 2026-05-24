@@ -26,6 +26,7 @@
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
       <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleMeetFullscreen(this)" title="Tela cheia (F11)" id="meet-fs-btn">⛶</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
@@ -923,6 +924,22 @@ function testPjMic(btn) {
     setTimeout(function(){ btn.textContent = origText; }, 2000);
   });
 }
+// ── Fullscreen toggle for the Jitsi container ──────────────────────────────
+function toggleMeetFullscreen(btn) {
+  var target = document.getElementById('jitsi-container') || document.querySelector('.meet-room-shell') || document.documentElement;
+  if (!document.fullscreenElement) {
+    var req = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+    if (!req) { alert('Tela cheia não suportada neste navegador.'); return; }
+    req.call(target).then(function(){ if (btn) btn.textContent = '⛶ Sair'; }).catch(function(){});
+  } else {
+    var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    if (exit) exit.call(document).then(function(){ if (btn) btn.textContent = '⛶'; }).catch(function(){});
+  }
+}
+document.addEventListener('fullscreenchange', function() {
+  var b = document.getElementById('meet-fs-btn');
+  if (b) b.textContent = document.fullscreenElement ? '⛶ Sair' : '⛶';
+});
 </script>
 
 <!-- Invite modal -->

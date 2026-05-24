@@ -29,6 +29,7 @@
     <input type="search" id="month-event-filter" placeholder="🔍 Filtrar eventos do mês…"
            oninput="filterMonthEvents(this.value)"
            class="search-input-sm" style="width:14rem">
+    <button class="btn btn-ghost btn-sm" onclick="scrollToNextEvent()" title="Rolar até o próximo evento futuro">⏭ Próximo</button>
 
     {% if calendars.len() > 1 %}
     <nav class="calendar-switch">
@@ -408,6 +409,22 @@ function filterMonthEvents(q) {
     chip.style.opacity = match ? '' : '.15';
     chip.style.filter = match ? '' : 'grayscale(1)';
   });
+}
+function scrollToNextEvent() {
+  var today = new Date(); today.setHours(0,0,0,0);
+  var todayIso = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  var cells = Array.from(document.querySelectorAll('.month-cell[data-date]'));
+  var target = cells.find(function(c) {
+    return c.dataset.date >= todayIso && c.querySelector('.event-chip');
+  });
+  if (target) {
+    target.scrollIntoView({behavior:'smooth', block:'center'});
+    target.style.transition = 'outline .2s';
+    target.style.outline = '3px solid var(--accent,#14b8a6)';
+    setTimeout(function(){ target.style.outline = ''; }, 1800);
+  } else {
+    alert('Nenhum evento futuro neste mês.');
+  }
 }
 </script>
 {% endblock %}

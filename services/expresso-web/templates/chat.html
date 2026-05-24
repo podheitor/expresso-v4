@@ -122,6 +122,7 @@
           <span class="muted small" id="chat-search-result"></span>
           <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
+          <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
         </div>
       </header>
 
@@ -263,6 +264,7 @@
               <ul class="mention-list" id="mention-list" style="display:none"></ul>
               <div id="chat-char-count" class="muted small" style="position:absolute;right:.4rem;bottom:-1.1rem;font-size:.7rem;pointer-events:none"></div>
             </div>
+            <button type="button" class="btn btn-ghost chat-send-btn" onclick="insertSlashCommand()" title="Comando: /me ação, /shrug, /tableflip">/</button>
             <button type="button" class="btn btn-ghost chat-send-btn" id="chat-mic-btn" onclick="toggleVoiceRecord()" title="Gravar áudio">🎤</button>
             <button type="button" class="btn btn-ghost chat-send-btn" onclick="toggleChatEnterSends()" title="Alternar modo Enter (envia/quebra linha)">⏎</button>
             <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
@@ -1520,5 +1522,52 @@ function markAllChannelsRead() {
   unread.forEach(function(b) { b.style.display = 'none'; });
   fetch('/api/v1/chat/mark-all-read', { method: 'POST', credentials: 'include' }).catch(function(){});
 }
+var CHAT_COMPACT_KEY = 'expresso_chat_compact';
+function toggleChatCompact() {
+  var on = document.body.classList.toggle('chat-compact');
+  try { localStorage.setItem(CHAT_COMPACT_KEY, on ? '1' : '0'); } catch(e){}
+  var btn = document.getElementById('chat-compact-btn');
+  if (btn) btn.style.background = on ? 'var(--accent)' : '';
+}
+(function initChatCompact() {
+  if (localStorage.getItem(CHAT_COMPACT_KEY) === '1') {
+    document.body.classList.add('chat-compact');
+    var btn = document.getElementById('chat-compact-btn');
+    if (btn) btn.style.background = 'var(--accent)';
+  }
+})();
+// ── Slash-command picker ────────────────────────────────────────────────────
+function insertSlashCommand() {
+  var ta = document.getElementById('chat-compose-input');
+  if (!ta) return;
+  var cmd = prompt('Comando rápido:\n' +
+    '  me <ação>   → exibe como "* nome <ação>"\n' +
+    '  shrug       → ¯\\_(ツ)_/¯\n' +
+    '  tableflip   → (╯°□°)╯︵ ┻━┻\n' +
+    '  unflip      → ┬─┬ ノ( ゜-゜ノ)\n' +
+    '  /clear      → limpa o campo\n\n' +
+    'Digite (sem a barra):', 'me ');
+  if (cmd === null) return;
+  cmd = cmd.trim();
+  if (!cmd) return;
+  var out = '';
+  if      (cmd === 'shrug')                       out = '¯\\_(ツ)_/¯';
+  else if (cmd === 'tableflip')                   out = '(╯°□°)╯︵ ┻━┻';
+  else if (cmd === 'unflip')                      out = '┬─┬ ノ( ゜-゜ノ)';
+  else if (cmd === '/clear' || cmd === 'clear')   { ta.value = ''; autoResize(ta); ta.focus(); return; }
+  else if (cmd.indexOf('me ') === 0)              out = '/me ' + cmd.slice(3);
+  else                                            out = '/' + cmd;
+  var ins = (ta.value && !/\s$/.test(ta.value)) ? (ta.value + ' ' + out) : (ta.value + out);
+  ta.value = ins;
+  autoResize(ta);
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
 </script>
+<style>
+.chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }
+.chat-compact .chat-msg-meta { font-size: .68rem !important; }
+.chat-compact .chat-msg-body { font-size: .8rem !important; line-height: 1.25 !important; }
+.chat-compact .chat-msg-avatar { width: 1.4rem !important; height: 1.4rem !important; font-size: .65rem !important; }
+</style>
 {% endblock %}
