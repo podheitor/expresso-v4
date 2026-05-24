@@ -2639,5 +2639,14 @@ window.countLocalStorageKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.checkNotificationPerm=function(){
+  if(!('Notification' in window)){alert('Notification API indisponível');return;}
+  const p=Notification.permission;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(p==='granted'?'#069':p==='denied'?'#c00':'#c60');
+  t.textContent='notif: '+p;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
 </script>
 {% endblock %}

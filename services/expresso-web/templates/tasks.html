@@ -2761,5 +2761,25 @@ window.copyTasksByAssigneeDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByTagDist=function(){
+  const tg={};
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const raw=(r.getAttribute('data-task-tags')||'').trim();
+    if(!raw)return;
+    raw.split(/[,;\s]+/).filter(Boolean).forEach(t=>{
+      tg[t]=(tg[t]||0)+1;
+    });
+  });
+  const keys=Object.keys(tg);
+  if(!keys.length){alert('Sem tags');return;}
+  keys.sort((x,y)=>tg[y]-tg[x]);
+  const out=keys.map(k=>k+'\t'+tg[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' tags';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

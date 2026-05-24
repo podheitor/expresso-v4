@@ -2315,5 +2315,17 @@ window.copyHomeNavTiming=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeMemUsage=function(){
+  const m=(performance.memory||{});
+  if(!m.usedJSHeapSize){alert('memory API indisponível');return;}
+  const fmt=(b)=>(b/1048576).toFixed(2)+'MB';
+  const out='used: '+fmt(m.usedJSHeapSize)+'\ntotal: '+fmt(m.totalJSHeapSize)+'\nlimit: '+fmt(m.jsHeapSizeLimit);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='heap '+fmt(m.usedJSHeapSize);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
