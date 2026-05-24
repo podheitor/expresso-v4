@@ -24,6 +24,7 @@
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
       <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
@@ -755,6 +756,39 @@ function endPoll() {
   try { localStorage.removeItem('expresso_active_poll_{{ room_name }}'); } catch(e){}
   hidePollModal();
 }
+
+// ── Raise hand (per-room localStorage; surfaces banner) ─────────────────────
+var HAND_KEY = 'expresso_meet_hand_{{ room_name }}';
+function toggleRaiseHand(btn) {
+  var raised = localStorage.getItem(HAND_KEY) === '1';
+  raised = !raised;
+  try { localStorage.setItem(HAND_KEY, raised ? '1' : '0'); } catch(e){}
+  if (btn) btn.classList.toggle('btn-primary', raised);
+  showHandBanner(raised);
+}
+function showHandBanner(on) {
+  var id = 'meet-hand-banner';
+  var b = document.getElementById(id);
+  if (on) {
+    if (!b) {
+      b = document.createElement('div');
+      b.id = id;
+      b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:#f59e0b;color:#fff;padding:.4rem .8rem;border-radius:var(--radius);font-weight:600;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.3)';
+      b.textContent = '✋ Você levantou a mão';
+      document.body.appendChild(b);
+    }
+  } else {
+    if (b) b.remove();
+  }
+}
+(function restoreHand() {
+  var raised = localStorage.getItem(HAND_KEY) === '1';
+  if (raised) {
+    var btn = document.getElementById('meet-hand-btn');
+    if (btn) btn.classList.add('btn-primary');
+    showHandBanner(true);
+  }
+})();
 
 // ── Layout cycler (grid / spotlight / sidebar) ──────────────────────────────
 var MEET_LAYOUTS = [

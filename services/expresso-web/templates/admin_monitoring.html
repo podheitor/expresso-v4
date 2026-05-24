@@ -5,7 +5,19 @@
 <div class="admin-page">
   <div class="admin-page-header">
     <h1>Monitoramento</h1>
-    <span class="muted small" id="admin-monitor-ts">Atualizado agora</span>
+    <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+      <label class="muted small">Atualizar:
+        <select id="monitor-interval-sel" class="search-input-sm" onchange="setMonitorInterval(this.value)" style="width:auto">
+          <option value="0">Manual</option>
+          <option value="10000">10s</option>
+          <option value="30000" selected>30s</option>
+          <option value="60000">1min</option>
+          <option value="300000">5min</option>
+        </select>
+      </label>
+      <button class="btn btn-ghost btn-sm" onclick="refreshMonitorNow()" title="Atualizar agora">⟳</button>
+      <span class="muted small" id="admin-monitor-ts">Atualizado agora</span>
+    </div>
   </div>
 
   <!-- Stat cards -->
@@ -136,9 +148,23 @@
     if (ts) ts.textContent = 'Atualizado ' + new Date().toLocaleTimeString('pt-BR');
   }
   checkServices();
-  setInterval(checkServices, 30000);
   renderActivityChart();
-  setInterval(renderActivityChart, 30000);
+  // Refresh interval is controlled by selector below; default 30s.
+  var _monitorTimer = null;
+  window.refreshMonitorNow = function() { checkServices(); renderActivityChart(); };
+  window.setMonitorInterval = function(ms) {
+    if (_monitorTimer) { clearInterval(_monitorTimer); _monitorTimer = null; }
+    var n = parseInt(ms, 10);
+    if (n > 0) _monitorTimer = setInterval(function(){ checkServices(); renderActivityChart(); }, n);
+    try { localStorage.setItem('expresso_monitor_interval', String(n)); } catch(e){}
+  };
+  (function restore() {
+    var saved = 30000;
+    try { var s = parseInt(localStorage.getItem('expresso_monitor_interval'), 10); if (!isNaN(s)) saved = s; } catch(e){}
+    var sel = document.getElementById('monitor-interval-sel');
+    if (sel) sel.value = String(saved);
+    window.setMonitorInterval(saved);
+  })();
 
   // Load stats from API
   fetch('/admin/api/stats', {credentials:'include'})

@@ -341,7 +341,20 @@ function importIcsFile(input) {
     </div>
   </div>
 </div>
+<script>
+(function shadeWeekends() {
+  document.querySelectorAll('td.month-cell[data-date]').forEach(function(td) {
+    var iso = td.dataset.date;
+    if (!iso) return;
+    var d = new Date(iso + 'T00:00:00');
+    var dow = d.getDay();
+    if (dow === 0 || dow === 6) td.classList.add('cal-weekend');
+  });
+})();
+</script>
 <style>
+.cal-weekend { background: var(--bg-raised, rgba(0,0,0,.03)) }
+.cal-weekend.today { background: var(--accent-soft, #ecfeff) }
 @media print {
   .app-nav, .sidebar, .view-switch, .calendar-switch, .page-header .row, .modal-overlay,
   button, .agenda-toggle { display: none !important; }

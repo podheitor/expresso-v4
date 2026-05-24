@@ -103,8 +103,10 @@
           </label>
         </div>
         <div id="compose-rich-editor" class="compose-rich-editor" contenteditable="true"
-             oninput="syncRichToText()">{{ prefill_body }}</div>
-        <textarea name="body_text" id="compose-body-text" rows="14" style="display:none" required>{{ prefill_body }}</textarea>
+             oninput="syncRichToText();updateComposeStats()">{{ prefill_body }}</div>
+        <textarea name="body_text" id="compose-body-text" rows="14" style="display:none" required
+                  oninput="updateComposeStats()">{{ prefill_body }}</textarea>
+        <div class="muted small" id="compose-stats" style="margin-top:.2rem;text-align:right">0 palavras · 0 caracteres · &lt;1min de leitura</div>
       </div>
       <!-- Anexos -->
       <div class="compose-attach-area" id="compose-drop-zone"
@@ -498,5 +500,21 @@ function schedSend(preset) {
   var btn = document.querySelector('.form-actions button[type="submit"]');
   if (btn) btn.textContent = 'Agendar envio';
 }
+
+// ── Compose word/char/read-time stats ───────────────────────────────────────
+function updateComposeStats() {
+  var rich = document.getElementById('compose-rich-editor');
+  var ta   = document.getElementById('compose-body-text');
+  var text = '';
+  if (rich && rich.offsetParent !== null) text = rich.innerText || '';
+  else if (ta) text = ta.value || '';
+  var chars = text.length;
+  var words = (text.match(/\S+/g) || []).length;
+  var mins = Math.max(1, Math.ceil(words / 200));
+  var lbl = mins === 1 ? '<1min de leitura' : '~' + mins + 'min de leitura';
+  var el = document.getElementById('compose-stats');
+  if (el) el.textContent = words + ' palavras · ' + chars + ' caracteres · ' + lbl;
+}
+updateComposeStats();
 </script>
 {% endblock %}

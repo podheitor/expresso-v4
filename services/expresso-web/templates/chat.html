@@ -164,6 +164,7 @@
                   <button class="chat-action-btn" onclick="openThread('{{ msg.id }}','{{ msg.sender() }}','{{ ch.id }}')" title="Ver thread">💬 <span class="chat-thread-count muted" style="font-size:.72rem"></span></button>
                   <button class="chat-action-btn" onclick="toggleReactionPicker('{{ msg.id }}')" title="Reação">😊</button>
                   <button class="chat-action-btn" onclick="pinMessage('{{ msg.id }}', this)" title="Fixar mensagem">📌</button>
+                  <button class="chat-action-btn" onclick="copyMsgLink('{{ ch.id }}','{{ msg.id }}', this)" title="Copiar link da mensagem">🔗</button>
                   {% if msg.is_own(&me.user_id) %}<button class="chat-action-btn" onclick="startEditMsg('{{ msg.id }}')" title="Editar">✏</button>{% endif %}
                 </div>
                 <div class="chat-reaction-picker" id="rpicker-{{ msg.id }}" style="display:none">
@@ -228,6 +229,7 @@
                   oninput="filterEmojis(this.value)" autocomplete="off">
                 <div id="emoji-category-tabs" style="display:flex;gap:.2rem;margin-bottom:.3rem;flex-wrap:wrap">
                   <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('all')" id="ecat-all" style="font-size:.7rem;padding:.1rem .35rem">Todos</button>
+                  <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('recent')" id="ecat-recent" style="font-size:.7rem;padding:.1rem .35rem">🕓</button>
                   <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('faces')" id="ecat-faces" style="font-size:.7rem;padding:.1rem .35rem">😊</button>
                   <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('hands')" id="ecat-hands" style="font-size:.7rem;padding:.1rem .35rem">👋</button>
                   <button type="button" class="btn btn-ghost btn-sm" onclick="setEmojiCat('objects')" id="ecat-objects" style="font-size:.7rem;padding:.1rem .35rem">💡</button>
@@ -595,11 +597,22 @@ function setEmojiCat(cat) {
   renderEmojiGrid('');
 }
 function filterEmojis(q) { renderEmojiGrid(q); }
+function loadRecentEmojis() { try { return JSON.parse(localStorage.getItem('expresso_emoji_recent') || '[]'); } catch(e){ return []; } }
+function pushRecentEmoji(e) {
+  var r = loadRecentEmojis().filter(function(x){ return x !== e; });
+  r.unshift(e);
+  r = r.slice(0, 16);
+  try { localStorage.setItem('expresso_emoji_recent', JSON.stringify(r)); } catch(_){}
+}
 function renderEmojiGrid(q) {
   var grid = document.getElementById('emoji-grid');
   if (!grid) return;
   var all = [];
-  if (_emojiCat === 'all') {
+  if (_emojiCat === 'recent') {
+    all = loadRecentEmojis();
+  } else if (_emojiCat === 'all') {
+    var rec = loadRecentEmojis();
+    if (rec.length) all = rec.slice(0, 8);
     Object.values(EMOJI_DB).forEach(function(arr){ all = all.concat(arr); });
   } else {
     all = EMOJI_DB[_emojiCat] || [];
@@ -625,6 +638,7 @@ function insertEmoji(e) {
   inp.focus();
   document.getElementById('chat-emoji-picker').style.display = 'none';
   autoResize(inp);
+  pushRecentEmoji(e);
 }
 document.addEventListener('click', function(e) {
   if (!e.target.closest('.chat-emoji-wrap')) {
@@ -1272,6 +1286,31 @@ function sendVoiceBlob(blob) {
     .then(function(r){ if (r.ok) window.location.reload(); else alert('Erro ao enviar áudio.'); })
     .catch(function(){ alert('Erro de rede.'); });
 }
+
+// ── Copy message deep-link ──────────────────────────────────────────────────
+function copyMsgLink(cid, mid, btn) {
+  var url = window.location.origin + '/chat/' + encodeURIComponent(cid) + '#msg-' + encodeURIComponent(mid);
+  if (!navigator.clipboard) { prompt('Copie o link:', url); return; }
+  navigator.clipboard.writeText(url).then(function() {
+    if (btn) {
+      var orig = btn.textContent;
+      btn.textContent = '✓';
+      setTimeout(function(){ btn.textContent = orig; }, 800);
+    }
+  });
+}
+(function scrollToHashMsg() {
+  if (!window.location.hash || !window.location.hash.startsWith('#msg-')) return;
+  var id = window.location.hash.slice(5);
+  setTimeout(function() {
+    var el = document.getElementById(id) || document.querySelector('[id$="' + id + '"]');
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'background-color 1.5s';
+    el.style.backgroundColor = 'var(--accent-soft, #fef3c7)';
+    setTimeout(function(){ el.style.backgroundColor = ''; }, 1800);
+  }, 300);
+})();
 
 // ── Drag-drop attachments ────────────────────────────────────────────────────
 function chatDragOver(e) {

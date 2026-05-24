@@ -18,8 +18,41 @@
   <div class="drive-preview-area">
     {% if file.preview_kind() == "image" %}
       <div class="drive-preview-image-wrap">
-        <img class="drive-preview-image" src="{{ download_url }}" alt="{{ file.name }}">
+        <div class="drive-preview-image-toolbar" style="display:flex;gap:.3rem;padding:.3rem;background:var(--bg-raised);border-radius:var(--radius-sm) var(--radius-sm) 0 0">
+          <button class="btn btn-ghost btn-sm" onclick="zoomImg(-0.25)" title="Zoom out">➖</button>
+          <span class="muted small" id="img-zoom-label" style="align-self:center;min-width:3.5rem;text-align:center">100%</span>
+          <button class="btn btn-ghost btn-sm" onclick="zoomImg(0.25)" title="Zoom in">➕</button>
+          <button class="btn btn-ghost btn-sm" onclick="zoomImgReset()" title="Reset">⟲</button>
+          <button class="btn btn-ghost btn-sm" onclick="rotateImg()" title="Girar 90°">⟳</button>
+          <button class="btn btn-ghost btn-sm" onclick="openImgFullscreen()" title="Tela cheia">⛶</button>
+        </div>
+        <div style="overflow:auto;text-align:center">
+          <img class="drive-preview-image" id="drive-preview-img" src="{{ download_url }}" alt="{{ file.name }}"
+               style="transform-origin:center center;transition:transform .2s">
+        </div>
       </div>
+      <script>
+      var _imgZoom = 1, _imgRot = 0;
+      function applyImgT() {
+        var img = document.getElementById('drive-preview-img');
+        if (img) img.style.transform = 'scale(' + _imgZoom + ') rotate(' + _imgRot + 'deg)';
+        var lbl = document.getElementById('img-zoom-label');
+        if (lbl) lbl.textContent = Math.round(_imgZoom * 100) + '%';
+      }
+      function zoomImg(d) { _imgZoom = Math.max(0.25, Math.min(5, _imgZoom + d)); applyImgT(); }
+      function zoomImgReset() { _imgZoom = 1; _imgRot = 0; applyImgT(); }
+      function rotateImg() { _imgRot = (_imgRot + 90) % 360; applyImgT(); }
+      function openImgFullscreen() {
+        var img = document.getElementById('drive-preview-img');
+        if (img && img.requestFullscreen) img.requestFullscreen();
+      }
+      document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.key === '+' || e.key === '=') zoomImg(0.25);
+        else if (e.key === '-') zoomImg(-0.25);
+        else if (e.key === '0') zoomImgReset();
+      });
+      </script>
     {% else if file.preview_kind() == "pdf" %}
       <iframe class="drive-preview-iframe" src="{{ download_url }}" title="{{ file.name }}"></iframe>
     {% else %}

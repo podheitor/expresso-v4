@@ -222,6 +222,18 @@ function printThread() {
   window.print();
   document.title = orig;
 }
+
+(function jumpFirstUnread() {
+  var first = document.querySelector('.thread-msg-unread');
+  if (first) {
+    setTimeout(function() {
+      first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      first.style.transition = 'background-color 1.5s';
+      first.style.backgroundColor = 'var(--accent-soft, #ecfeff)';
+      setTimeout(function(){ first.style.backgroundColor = ''; }, 1500);
+    }, 250);
+  }
+})();
 </script>
 <style>
 @media print {

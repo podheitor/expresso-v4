@@ -109,6 +109,23 @@
       <ul id="home-bday-list" style="list-style:none;padding:0;margin:0"></ul>
     </div>
 
+    <!-- Clima / utilitário -->
+    <div class="home-widget" id="home-weather-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">☀</span>
+        <span class="home-widget-title">Clima</span>
+        <button class="btn btn-ghost btn-sm" onclick="setWeatherCity()" title="Definir cidade">⚙</button>
+      </div>
+      <div id="home-weather-body" style="padding:.3rem 0">
+        <p class="muted small" id="home-weather-empty">Defina sua cidade para ver previsão.</p>
+        <div id="home-weather-info" style="display:none">
+          <div style="font-size:1.4rem;font-weight:600" id="home-weather-city"></div>
+          <div class="muted small" id="home-weather-hint">Abre em previsão externa ao clicar.</div>
+          <a id="home-weather-link" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm" style="margin-top:.3rem">🌤 Abrir previsão</a>
+        </div>
+      </div>
+    </div>
+
     <!-- Chat -->
     <div class="home-widget">
       <div class="home-widget-header">
@@ -600,6 +617,33 @@ function toggleFocusMode() {
       '<span class="muted small">' + dateStr + ' (' + dStr + ')</span></li>';
   }).join('');
 })();
+
+// ── Weather widget (city only, link out — no API needed) ───────────────────
+var WEATHER_KEY = 'expresso_weather_city';
+function setWeatherCity() {
+  var cur = '';
+  try { cur = localStorage.getItem(WEATHER_KEY) || ''; } catch(e){}
+  var v = prompt('Digite sua cidade (ex.: Brasília, BR):', cur || 'Brasília, BR');
+  if (v === null) return;
+  v = v.trim();
+  try {
+    if (v) localStorage.setItem(WEATHER_KEY, v);
+    else localStorage.removeItem(WEATHER_KEY);
+  } catch(e){}
+  renderWeatherWidget();
+}
+function renderWeatherWidget() {
+  var city = '';
+  try { city = localStorage.getItem(WEATHER_KEY) || ''; } catch(e){}
+  var empty = document.getElementById('home-weather-empty');
+  var info  = document.getElementById('home-weather-info');
+  if (!city) { empty.style.display = ''; info.style.display = 'none'; return; }
+  empty.style.display = 'none';
+  info.style.display = '';
+  document.getElementById('home-weather-city').textContent = '📍 ' + city;
+  document.getElementById('home-weather-link').href = 'https://wttr.in/' + encodeURIComponent(city);
+}
+renderWeatherWidget();
 
 // ── Tasks pending count from localStorage ───────────────────────────────────
 (function homeTasksCount() {

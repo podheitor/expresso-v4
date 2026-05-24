@@ -45,10 +45,20 @@
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
             <button class="btn btn-ghost btn-sm" id="contacts-view-cards" onclick="setContactsView('cards')">⊞</button>
           </div>
+          <button class="btn btn-ghost btn-sm" onclick="toggleQuickAddContact()" title="Adicionar rápido (email apenas)">⚡ Rápido</button>
           <a class="btn btn-primary" href="/contacts/{{ bid }}/new">+ Novo contato</a>
         </div>
       {% when None %}{% endmatch %}
     </div>
+
+    {% match selected_book %}{% when Some with (bid) %}
+    <form id="quick-add-contact" method="post" action="/contacts/{{ bid }}/new" style="display:none;padding:.5rem .75rem;background:var(--bg-raised);border-radius:var(--radius);margin-bottom:.5rem;gap:.4rem">
+      <input type="email" name="email" placeholder="email@empresa.com" required style="flex:1">
+      <input type="text" name="full_name" placeholder="Nome (opcional)" style="flex:1">
+      <button type="submit" class="btn btn-primary btn-sm">Adicionar</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="toggleQuickAddContact()">✕</button>
+    </form>
+    {% when None %}{% endmatch %}
 
     {% if contacts.is_empty() %}
       <div class="empty-state">Catálogo vazio</div>
@@ -474,6 +484,14 @@ function editGroupMembers(i) {
   groups[i] = g;
   saveGroups(groups);
   renderGroupsList();
+}
+
+function toggleQuickAddContact() {
+  var f = document.getElementById('quick-add-contact');
+  if (!f) return;
+  var open = f.style.display === 'flex';
+  f.style.display = open ? 'none' : 'flex';
+  if (!open) { var inp = f.querySelector('input[name="email"]'); if (inp) inp.focus(); }
 }
 
 // ── Share contact via mailto with vCard body ────────────────────────────────

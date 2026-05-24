@@ -12,6 +12,7 @@
       <a class="btn btn-ghost" href="{{ prev_link }}">◀</a>
       <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
+      <input type="date" id="week-jump-date" onchange="jumpToWeekOf(this.value)" title="Ir para data" style="padding:.3rem;border:1px solid var(--border);border-radius:var(--radius-sm)">
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
   </div>
@@ -212,6 +213,11 @@ function evResizeEnd(e) {
     if (r.ok || r.redirected) window.location.reload();
   }).catch(function(){});
   _evResizeId = null;
+}
+
+function jumpToWeekOf(d) {
+  if (!d) return;
+  window.location.href = '/calendar/{{ selected.id }}/week?date=' + encodeURIComponent(d);
 }
 </script>
 {% endblock %}

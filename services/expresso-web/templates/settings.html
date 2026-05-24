@@ -124,9 +124,12 @@
             <dt>Tenant</dt>   <dd class="mono small">{{ me.tenant_id }}</dd>
             <dt>Roles</dt>    <dd class="small">{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
             <dt>Expira em</dt><dd class="mono small">{{ me.expires_at }}</dd>
+            <dt>Versão app</dt><dd class="mono small" id="settings-app-ver">Expresso v4 (web)</dd>
+            <dt>Navegador</dt><dd class="mono small" id="settings-user-agent">—</dd>
           </dl>
           <div class="row">
             <a class="btn btn-ghost btn-sm" href="{{ logout_url }}">Sair da conta</a>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="copyDiagnostics()" title="Copiar info para suporte">📋 Copiar diagnóstico</button>
           </div>
         </div>
       </div>
@@ -744,6 +747,26 @@ function previewAvatar(input) {
     preview.innerHTML = '<img src="' + e.target.result + '" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
   };
   reader.readAsDataURL(file);
+}
+
+// ── App version / diagnostics ───────────────────────────────────────────────
+(function fillDiagnostics() {
+  var ua = document.getElementById('settings-user-agent');
+  if (ua) ua.textContent = navigator.userAgent.split(') ')[0] + ')';
+})();
+function copyDiagnostics() {
+  var info = [
+    'Expresso v4 (web)',
+    'User ID: {{ me.user_id }}',
+    'Tenant: {{ me.tenant_id }}',
+    'UA: ' + navigator.userAgent,
+    'Tela: ' + window.screen.width + 'x' + window.screen.height,
+    'Idioma: ' + (navigator.language || '—'),
+    'Timezone: ' + (Intl.DateTimeFormat().resolvedOptions().timeZone || '—'),
+    'Hora: ' + new Date().toISOString(),
+  ].join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(info).then(function(){ alert('Diagnóstico copiado.'); });
+  else alert(info);
 }
 
 // ── Density compact mode ─────────────────────────────────────────────────────

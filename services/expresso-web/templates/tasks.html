@@ -51,8 +51,9 @@
         </button>
       </nav>
 
-      <div style="padding:.5rem .75rem;border-top:1px solid var(--border)">
+      <div style="padding:.5rem .75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
         <button class="btn btn-ghost btn-sm" onclick="exportTasksCsv()" style="width:100%;font-size:.78rem">⬇ Exportar CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="archiveCompletedTasks()" style="width:100%;font-size:.78rem" title="Mover concluídas para arquivo (oculta da lista)">🗄 Arquivar concluídas</button>
       </div>
 
       <div style="padding:.75rem 1rem;border-top:1px solid var(--border);margin-top:.5rem">
@@ -814,6 +815,22 @@ function stopPomodoro() {
   var widget = document.getElementById('pomodoro-widget');
   if (widget) widget.style.display = 'none';
   _pomodoroTaskId = null;
+}
+
+// ── Archive completed tasks (move to separate localStorage key) ─────────────
+function archiveCompletedTasks() {
+  var tasks = loadTasks();
+  var done = tasks.filter(function(t){ return t.done; });
+  if (!done.length) { alert('Nenhuma tarefa concluída para arquivar.'); return; }
+  if (!confirm('Arquivar ' + done.length + ' tarefa(s) concluída(s)? Elas saem da lista mas continuam acessíveis no arquivo.')) return;
+  var archive = [];
+  try { archive = JSON.parse(localStorage.getItem('expresso_tasks_archive') || '[]'); } catch(e){}
+  done.forEach(function(t){ t.archived_at = new Date().toISOString(); archive.push(t); });
+  try { localStorage.setItem('expresso_tasks_archive', JSON.stringify(archive)); } catch(e){}
+  var remaining = tasks.filter(function(t){ return !t.done; });
+  saveTasks(remaining);
+  renderAll();
+  alert('Arquivadas ' + done.length + ' tarefa(s). Total no arquivo: ' + archive.length + '.');
 }
 
 // ── Tasks sort ────────────────────────────────────────────────────────────────

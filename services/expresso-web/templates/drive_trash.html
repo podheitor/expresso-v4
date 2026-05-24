@@ -5,7 +5,12 @@
 <div class="page">
   <div class="page-header">
     <h1>Lixeira</h1>
-    <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
+    <div style="display:flex;gap:.4rem">
+      {% if !files.is_empty() %}
+      <button class="btn btn-danger btn-sm" onclick="emptyTrash()" title="Esvaziar lixeira">🗑 Esvaziar tudo</button>
+      {% endif %}
+      <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
+    </div>
   </div>
 
   {% if files.is_empty() %}
@@ -37,4 +42,25 @@
   </table>
   {% endif %}
 </div>
+<script>
+function emptyTrash() {
+  var rows = document.querySelectorAll('table tbody tr');
+  if (!rows.length) return;
+  if (!confirm('Apagar permanentemente ' + rows.length + ' arquivo(s) da lixeira? Esta ação não pode ser desfeita.')) return;
+  if (!confirm('Tem certeza ABSOLUTA? Esta ação é irreversível.')) return;
+  var ids = Array.from(rows).map(function(tr) {
+    var f = tr.querySelector('form[action$="/purge"]');
+    if (!f) return null;
+    var m = f.getAttribute('action').match(/\/drive\/([^/]+)\/purge/);
+    return m ? m[1] : null;
+  }).filter(Boolean);
+  var promises = ids.map(function(id) {
+    return fetch('/drive/' + encodeURIComponent(id) + '/purge', { method: 'POST', credentials: 'include' });
+  });
+  Promise.all(promises).then(function(){
+    alert('Lixeira esvaziada (' + ids.length + ' arquivos).');
+    window.location.reload();
+  });
+}
+</script>
 {% endblock %}
