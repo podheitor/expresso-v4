@@ -935,5 +935,17 @@ window.copyGalResultsCount = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalUniqueDepts = function(){
+  const rows=document.querySelectorAll('[data-gal-dept]');
+  const s=new Set();
+  rows.forEach(r=>{const d=(r.getAttribute('data-gal-dept')||'').trim(); if(d) s.add(d);});
+  const out=Array.from(s).sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s.size+' departamentos únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

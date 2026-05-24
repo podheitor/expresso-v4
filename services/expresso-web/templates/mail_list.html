@@ -1709,5 +1709,15 @@ window.copyMailWithAttach = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailNonReplied = function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-replied]')).filter(r=>{const v=r.getAttribute('data-mail-replied');return v!=='1'&&v!=='true';});
+  const out=rows.map(r=>r.getAttribute('data-mail-from')+'\t'+r.getAttribute('data-mail-subject')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' sem resposta';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1379,5 +1379,20 @@ window.replaceUrlsWithMd = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.countWordsBody = function(){
+  const ta=document.querySelector('textarea[name="body"]');
+  if(!ta) return;
+  const txt=ta.value||'';
+  const words=(txt.trim().match(/\S+/g)||[]).length;
+  const chars=txt.length;
+  const lines=txt.split('\n').length;
+  const out='words: '+words+'\tchars: '+chars+'\tlines: '+lines;
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=words+' palavras / '+chars+' chars';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}
