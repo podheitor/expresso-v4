@@ -1774,5 +1774,24 @@ window.copyAuditLast24h=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFailed=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const st=(r.getAttribute('data-audit-status')||'').toLowerCase();
+    if(st==='fail'||st==='failed'||st==='error'||st==='denied'){
+      const ts=(r.getAttribute('data-audit-ts')||'').trim();
+      const act=(r.getAttribute('data-audit-action')||'').trim();
+      const actor=(r.getAttribute('data-audit-actor')||'').trim();
+      out.push(ts+'\t'+actor+'\t'+act+'\t'+st);
+    }
+  });
+  if(!out.length){alert('Sem falhas');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' fail';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

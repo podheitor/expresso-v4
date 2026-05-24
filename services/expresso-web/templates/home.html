@@ -2246,5 +2246,20 @@ window.copyHomeBatteryStatus=async function(){
     setTimeout(()=>t.remove(),1500);
   }catch(e){alert('Erro: '+e.message);}
 };
+window.copyHomePageMetrics=function(){
+  if(!performance||!performance.timing){alert('Performance timing indisponível');return;}
+  const p=performance.timing;
+  const out='loadTime: '+(p.loadEventEnd-p.navigationStart)+'ms'+
+    '\ndomReady: '+(p.domContentLoadedEventEnd-p.navigationStart)+'ms'+
+    '\ndnsLookup: '+(p.domainLookupEnd-p.domainLookupStart)+'ms'+
+    '\ntcpConnect: '+(p.connectEnd-p.connectStart)+'ms'+
+    '\nttfb: '+(p.responseStart-p.requestStart)+'ms';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='load '+(p.loadEventEnd-p.navigationStart)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

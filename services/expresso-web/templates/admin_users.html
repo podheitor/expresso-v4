@@ -1784,5 +1784,22 @@ window.copyUsersAdminOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWith2faOff=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const v=(r.getAttribute('data-user-2fa')||'').trim();
+    if(v==='false'||v==='0'||v===''){
+      out.push((r.getAttribute('data-user-email')||r.getAttribute('data-user-id')||'').trim());
+    }
+  });
+  const list=out.filter(Boolean);
+  if(!list.length){alert('Todos com 2FA');return;}
+  const ta=document.createElement('textarea');ta.value=list.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=list.length+' s/2FA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

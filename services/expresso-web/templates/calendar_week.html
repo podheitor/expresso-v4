@@ -1889,5 +1889,22 @@ window.copyWeekEarliestStart=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLatestEnd=function(){
+  let best=null;
+  document.querySelectorAll('[data-event-end]').forEach(e=>{
+    const d=new Date(e.getAttribute('data-event-end'));
+    if(isNaN(d))return;
+    const min=d.getHours()*60+d.getMinutes();
+    if(best===null||min>best.min){best={min,iso:d.toISOString(),title:(e.getAttribute('data-event-title')||'').trim()};}
+  });
+  if(!best){alert('Sem eventos');return;}
+  const out=String(Math.floor(best.min/60)).padStart(2,'0')+':'+String(best.min%60).padStart(2,'0')+'\t'+best.title;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='latest '+String(Math.floor(best.min/60)).padStart(2,'0')+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
