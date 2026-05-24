@@ -2089,5 +2089,21 @@ window.copyDraftQuotedRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDraftDomainsCited=function(){
+  const body=(document.querySelector('[name="body"]')||document.querySelector('#body')||document.querySelector('textarea')||{}).value||'';
+  const ms=body.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/g)||[];
+  const doms={};
+  ms.forEach(e=>{const at=e.lastIndexOf('@');if(at<0)return;const d=e.slice(at+1).toLowerCase();doms[d]=(doms[d]||0)+1;});
+  const keys=Object.keys(doms);
+  if(!keys.length){alert('Sem emails no body');return;}
+  keys.sort((x,y)=>doms[y]-doms[x]);
+  const out=keys.map(k=>k+'\t'+doms[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' domínios';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

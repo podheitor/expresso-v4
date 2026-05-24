@@ -1785,5 +1785,22 @@ window.copyGalWithPhone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalByTitle=function(){
+  const ti={};
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const t=(r.getAttribute('data-gal-title')||r.getAttribute('data-gal-role')||'?').trim();
+    ti[t]=(ti[t]||0)+1;
+  });
+  const keys=Object.keys(ti);
+  if(!keys.length){alert('Sem títulos');return;}
+  keys.sort((x,y)=>ti[y]-ti[x]);
+  const out=keys.map(k=>k+'\t'+ti[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' títulos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

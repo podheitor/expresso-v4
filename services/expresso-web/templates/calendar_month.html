@@ -2067,5 +2067,24 @@ window.copyMonthAvgPerWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthWeekendEvents=function(){
+  const out=[];
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const d=new Date(s);if(isNaN(d))return;
+    const w=d.getDay();
+    if(w===0||w===6){
+      const t=(e.getAttribute('data-event-title')||e.textContent||'').trim().slice(0,80);
+      out.push(s.slice(0,10)+'\t'+(w===0?'dom':'sáb')+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Sem fins de semana');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' wknd';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2543,5 +2543,23 @@ window.copyMailListReplyOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListByHourDist=function(){
+  const h=new Array(24).fill(0);
+  document.querySelectorAll('[data-mail-id]').forEach(r=>{
+    const ts=(r.getAttribute('data-mail-date')||r.getAttribute('data-mail-ts')||'').trim();
+    if(!ts)return;
+    const d=new Date(ts);if(isNaN(d))return;
+    h[d.getHours()]++;
+  });
+  const total=h.reduce((a,b)=>a+b,0);
+  if(!total){alert('Sem timestamps');return;}
+  const out=h.map((v,i)=>String(i).padStart(2,'0')+'h\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total+' msgs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

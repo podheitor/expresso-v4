@@ -1902,5 +1902,21 @@ window.copyUsersWithMFA=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersNoMFA=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const m=(u.getAttribute('data-user-mfa')||u.getAttribute('data-user-2fa')||'').trim();
+    if(!(m==='1'||m==='true'||m==='enabled')){
+      out.push((u.getAttribute('data-user-email')||u.getAttribute('data-user-id')||'').trim());
+    }
+  });
+  if(!out.length){alert('Todos c/ MFA');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' s/MFA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
