@@ -1526,5 +1526,30 @@ window.copyWeekLongMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDayWithMostHours=function(){
+  const cards=document.querySelectorAll('[data-event-start][data-event-end]');
+  if(!cards.length){alert('Sem eventos');return;}
+  const buckets={};
+  cards.forEach(c=>{
+    const s=new Date(c.getAttribute('data-event-start')||'');
+    const e=new Date(c.getAttribute('data-event-end')||'');
+    if(!isNaN(s)&&!isNaN(e)){
+      const d=s.toISOString().slice(0,10);
+      buckets[d]=(buckets[d]||0)+(e-s);
+    }
+  });
+  const top=Object.entries(buckets).sort((a,b)=>b[1]-a[1])[0];
+  if(!top){alert('Sem datas');return;}
+  const h=(top[1]/3600000).toFixed(1);
+  const txt=top[0]+' = '+h+'h';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=top[0]+' '+h+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

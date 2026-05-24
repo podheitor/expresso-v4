@@ -1395,5 +1395,26 @@ window.copyAuditByWeekday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAdminActions=function(){
+  const rows=document.querySelectorAll('[data-audit-ts]');
+  const out=[];
+  rows.forEach(r=>{
+    const act=r.getAttribute('data-audit-action')||'';
+    if(/admin|grant|revoke|delete|create.user|suspend/i.test(act)){
+      const ts=r.getAttribute('data-audit-ts')||'';
+      const a=r.getAttribute('data-audit-actor')||'';
+      out.push(ts+'\t'+a+'\t'+act);
+    }
+  });
+  if(!out.length){alert('Sem ações admin');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' ações admin';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

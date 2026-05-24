@@ -2841,5 +2841,24 @@ window.copyChatThreadStarters=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLinksOnly=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const urls=new Set();
+  const re=/https?:\/\/[^\s<>"]+/g;
+  rows.forEach(r=>{
+    const body=(r.querySelector('.body')||r).textContent||'';
+    (body.match(re)||[]).forEach(u=>urls.add(u));
+  });
+  if(!urls.size){alert('Sem links');return;}
+  const ta=document.createElement('textarea');
+  ta.value=Array.from(urls).join('\n');
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=urls.size+' URLs únicas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

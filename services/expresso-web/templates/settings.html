@@ -2278,5 +2278,22 @@ window.toggleDarkMode=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMediaCaps=function(){
+  const ml=navigator.mediaDevices;
+  if(!ml){alert('mediaDevices ausente');return;}
+  ml.enumerateDevices().then(devs=>{
+    const counts={audioinput:0,audiooutput:0,videoinput:0};
+    devs.forEach(d=>{if(counts[d.kind]!==undefined)counts[d.kind]++;});
+    const txt='mics\t'+counts.audioinput+'\nspeakers\t'+counts.audiooutput+'\ncameras\t'+counts.videoinput;
+    const ta=document.createElement('textarea');
+    ta.value=txt; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=counts.videoinput+' cams / '+counts.audioinput+' mics';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(e=>alert(e.message));
+};
 </script>
 {% endblock %}

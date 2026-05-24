@@ -1983,5 +1983,30 @@ window.copyContactsCustomLDIF=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsExternalOnly=function(){
+  const me='{{ me.email }}';
+  const at=me.lastIndexOf('@');
+  const myDomain=at>0?me.slice(at+1).toLowerCase():'';
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const e=(r.getAttribute('data-contact-email')||'').toLowerCase();
+    const eAt=e.lastIndexOf('@');
+    const dom=eAt>0?e.slice(eAt+1):'';
+    if(dom && dom!==myDomain){
+      const n=r.getAttribute('data-contact-name')||'';
+      out.push(n+'\t'+e);
+    }
+  });
+  if(!out.length){alert('Todos internos');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' externos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

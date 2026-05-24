@@ -1961,5 +1961,24 @@ window.copyMeetBrowser=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSessionStart=function(){
+  const k='expresso_meet_start_{{ me.user_id }}';
+  let start=localStorage.getItem(k);
+  if(!start){
+    start=new Date().toISOString();
+    try{localStorage.setItem(k,start);}catch(e){}
+  }
+  const elapsed=Math.round((Date.now()-new Date(start).getTime())/1000);
+  const m=Math.floor(elapsed/60), s=elapsed%60;
+  const txt='início '+start.slice(11,19)+' / '+m+'m '+s+'s';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=m+'m '+s+'s';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2174,5 +2174,26 @@ window.copyDriveTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveImagesOnly=function(){
+  const exts=['jpg','jpeg','png','gif','webp','svg','bmp','heic','heif','avif'];
+  const rows=document.querySelectorAll('[data-file-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const name=(r.getAttribute('data-file-name')||'').toLowerCase();
+    const dot=name.lastIndexOf('.');
+    if(dot>0 && exts.includes(name.slice(dot+1))){
+      out.push(name);
+    }
+  });
+  if(!out.length){alert('Sem imagens');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.sort().join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' imagens';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

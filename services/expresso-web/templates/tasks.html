@@ -2273,5 +2273,28 @@ window.copyTasksOldestPending=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksMine=function(){
+  const me='{{ me.email }}';
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const a=(r.getAttribute('data-task-assignee')||'').toLowerCase();
+    if(a===me.toLowerCase()){
+      const t=r.getAttribute('data-task-title')||'';
+      const due=r.getAttribute('data-task-due')||'';
+      const st=r.getAttribute('data-task-status')||'';
+      out.push(st+'\t'+due+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Sem tarefas suas');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' minhas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
