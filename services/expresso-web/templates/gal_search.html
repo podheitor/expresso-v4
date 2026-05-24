@@ -649,4 +649,26 @@ window.copyResultsByDept = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyResultPhones = function(){
+  const rows = document.querySelectorAll('.gal-row,.result,tr[data-uid],li[data-uid]');
+  const lines = [];
+  rows.forEach(r => {
+    const p = (r.querySelector('.phone,[data-phone]')||{}).textContent || r.getAttribute('data-phone') || '';
+    if (p.trim()) {
+      const n = (r.querySelector('.name,[data-name]')||{}).textContent || r.getAttribute('data-name') || '';
+      lines.push(n.trim()+'\t'+p.trim());
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' telefones copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

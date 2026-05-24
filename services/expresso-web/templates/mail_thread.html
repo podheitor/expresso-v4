@@ -824,4 +824,24 @@ window.expandAllQuotes = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyThreadStats = function(){
+  const msgs = document.querySelectorAll('.message,.msg,[data-msg-id]');
+  let chars = 0, words = 0;
+  msgs.forEach(m => {
+    const txt = (m.querySelector('.body,[data-body]') || m).textContent || '';
+    chars += txt.length;
+    words += txt.trim().split(/\s+/).filter(Boolean).length;
+  });
+  const s = msgs.length+' msgs · '+words+' palavras · '+chars+' chars';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2200);
+};
+</script>
 {% endblock %}

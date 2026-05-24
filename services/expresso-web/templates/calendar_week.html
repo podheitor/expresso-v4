@@ -813,4 +813,30 @@ window.copyMorningEvents = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyMeetingHoursPerDay = function(){
+  const ev = Array.from(document.querySelectorAll('.event,.cal-event,[data-event-id]'));
+  const totals = {};
+  ev.forEach(e => {
+    const ts = e.querySelector('time,[data-start]');
+    const te = e.querySelector('[data-end]') || e.querySelector('time:last-of-type');
+    const s = ts && (ts.getAttribute('datetime') || ts.getAttribute('data-start'));
+    const en = te && (te.getAttribute('data-end') || te.getAttribute('datetime'));
+    if (!s || !en) return;
+    const ds = new Date(s), de = new Date(en);
+    if (isNaN(ds) || isNaN(de)) return;
+    const k = ds.toISOString().slice(0,10);
+    totals[k] = (totals[k]||0) + Math.max(0,(de-ds)/3600000);
+  });
+  const out = Object.entries(totals).sort().map(([k,v])=>k+'\t'+v.toFixed(2)+'h').join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(totals).length+' dias × horas copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

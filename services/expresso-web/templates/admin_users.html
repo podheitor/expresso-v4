@@ -721,4 +721,27 @@ window.copyUsersByStatus = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyUsersOverQuota = function(){
+  const rows = document.querySelectorAll('.user-row,tr[data-user-id],li[data-user-id]');
+  const lines = [];
+  rows.forEach(r => {
+    const used = parseFloat(r.getAttribute('data-quota-used') || '0');
+    const limit = parseFloat(r.getAttribute('data-quota-limit') || '0');
+    if (limit > 0 && used / limit >= 0.9) {
+      const e = (r.querySelector('.email,[data-email]')||{}).textContent || r.getAttribute('data-email') || '';
+      lines.push(e.trim()+'\t'+(used/limit*100).toFixed(1)+'%');
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' usuários ≥90% quota';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -1442,4 +1442,23 @@ window.copyJitsiVersion = function(){
   }).catch(()=>{});
 };
 </script>
+<script>
+window.toggleLowBandwidth = function(){
+  if (!window.jitsiApi) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Jitsi API indisponível';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const cur = window._lowBw = !window._lowBw;
+  try { window.jitsiApi.executeCommand('setVideoQuality', cur ? 180 : 720); } catch(e) {}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Vídeo: '+(cur?'180p (low-bw)':'720p (normal)');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

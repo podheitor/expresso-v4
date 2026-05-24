@@ -1589,4 +1589,27 @@ window.copyTasksByTag = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyDueTodayList = function(){
+  const rows = document.querySelectorAll('.task,.task-row,li[data-task-id],tr[data-task-id]');
+  const today = new Date().toISOString().slice(0,10);
+  const lines = [];
+  rows.forEach(r => {
+    const due = r.getAttribute('data-due') || (r.querySelector('[data-due]')||{}).getAttribute && r.querySelector('[data-due]').getAttribute('data-due') || '';
+    if (due && due.slice(0,10) === today) {
+      const t = (r.querySelector('.title,[data-title]')||{}).textContent || '';
+      lines.push(t.trim());
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' tarefas vencendo hoje';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

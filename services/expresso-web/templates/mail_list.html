@@ -1408,4 +1408,25 @@ window.copySubjectPrefixes = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyAttachedOnly = function(){
+  const rows = document.querySelectorAll('.mail-row, tr[data-mail-id], li[data-mail-id]');
+  const ids = [];
+  rows.forEach(r => {
+    if (r.querySelector('.has-attachment, [data-has-attachment="true"]') || r.getAttribute('data-has-attachment') === 'true') {
+      const id = r.getAttribute('data-mail-id') || r.id || '';
+      if (id) ids.push(id);
+    }
+  });
+  const out = ids.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=ids.length+' mensagens com anexo copiadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

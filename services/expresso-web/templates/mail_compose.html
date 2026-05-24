@@ -1098,4 +1098,19 @@ window.trimTrailingWs = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.dedupeRecipients = function(){
+  ['to','cc','bcc'].forEach(f => {
+    const el = document.querySelector('[name="'+f+'"], #'+f);
+    if (!el) return;
+    const parts = (el.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    el.value = Array.from(new Set(parts.map(p=>p.toLowerCase()))).join(', ');
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Destinatários duplicados removidos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

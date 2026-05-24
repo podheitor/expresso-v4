@@ -1292,4 +1292,26 @@ window.copyContactsWithPhone = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyContactsMissingEmail = function(){
+  const rows = document.querySelectorAll('.contact,.contact-row,li[data-contact-id],tr[data-contact-id]');
+  const missing = [];
+  rows.forEach(r => {
+    const e = (r.querySelector('.email,[data-email]')||{}).textContent || r.getAttribute('data-email') || '';
+    if (!e.trim()) {
+      const n = (r.querySelector('.name,[data-name]')||{}).textContent || r.getAttribute('data-name') || '';
+      if (n.trim()) missing.push(n.trim());
+    }
+  });
+  const out = missing.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=missing.length+' contatos sem email';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}
