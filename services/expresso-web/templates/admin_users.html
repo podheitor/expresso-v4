@@ -2077,5 +2077,21 @@ window.copyUsersCreatedThisYear=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersBy2FA=function(){
+  const a={enabled:0,disabled:0};
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const t=(u.getAttribute('data-user-2fa')||u.getAttribute('data-user-mfa')||'').trim().toLowerCase();
+    if(t==='true'||t==='1'||t==='enabled')a.enabled++;else a.disabled++;
+  });
+  const total=a.enabled+a.disabled;
+  if(!total){alert('Sem users');return;}
+  const out='2FA enabled: '+a.enabled+'\n2FA disabled: '+a.disabled+'\ntotal: '+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(a.disabled>0?'#c60':'#069');
+  t.textContent=a.enabled+'/'+total+' 2FA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

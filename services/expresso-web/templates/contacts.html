@@ -2671,5 +2671,22 @@ window.copyContactsWithNotes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.findDuplicateContacts=function(){
+  const a={};
+  document.querySelectorAll('[data-contact-id]').forEach(c=>{
+    const em=(c.getAttribute('data-contact-email')||'').trim().toLowerCase();
+    if(!em)return;
+    a[em]=(a[em]||0)+1;
+  });
+  const dup=Object.keys(a).filter(k=>a[k]>1);
+  if(!dup.length){alert('Sem duplicatas');return;}
+  const out=dup.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=dup.length+' dup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

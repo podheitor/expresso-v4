@@ -2778,5 +2778,15 @@ window.clearAllToasts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyScreenInfo=function(){
+  const s=window.screen||{};
+  const out='size: '+s.width+'x'+s.height+'\navail: '+s.availWidth+'x'+s.availHeight+'\ndepth: '+s.colorDepth+'b\norientation: '+((s.orientation&&s.orientation.type)||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s.width+'x'+s.height;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

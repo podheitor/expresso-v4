@@ -2218,5 +2218,22 @@ window.copyDraftStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.dedupeRecipients=function(){
+  const get=name=>document.getElementById(name)||document.querySelector('input[name="'+name+'"]');
+  let removed=0;
+  ['to','cc','bcc'].forEach(n=>{
+    const f=get(n);if(!f)return;
+    const arr=f.value.split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+    const before=arr.length;
+    const uniq=Array.from(new Set(arr));
+    removed+=before-uniq.length;
+    f.value=uniq.join(', ');
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='-'+removed+' dup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2204,5 +2204,21 @@ window.copyDayCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWithLocation=function(){
+  const out=[];
+  document.querySelectorAll('[data-event-id]').forEach(e=>{
+    const l=(e.getAttribute('data-event-location')||'').trim();
+    if(!l)return;
+    out.push((e.getAttribute('data-event-start')||'')+'\t'+l+'\t'+(e.getAttribute('data-event-title')||'').slice(0,80));
+  });
+  if(!out.length){alert('Sem locais');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' c/loc';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
