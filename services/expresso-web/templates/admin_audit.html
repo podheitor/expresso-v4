@@ -134,6 +134,30 @@ function pollAuditLog() {
 }
 function escAudit(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// Click row to copy full event as JSON
+document.addEventListener('click', function(e) {
+  var row = e.target.closest('.audit-row');
+  if (!row) return;
+  if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+  var cells = row.querySelectorAll('td');
+  if (cells.length < 6) return;
+  var obj = {
+    ts: cells[0].textContent.trim(),
+    user: cells[1].textContent.trim(),
+    action: cells[2].textContent.trim(),
+    resource: cells[3].textContent.trim(),
+    ip: cells[4].textContent.trim(),
+    detail: cells[5].textContent.trim(),
+  };
+  var txt = JSON.stringify(obj, null, 2);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(txt).then(function() {
+      row.style.background = 'var(--accent-soft, #ecfeff)';
+      setTimeout(function(){ row.style.background = ''; }, 800);
+    });
+  }
+});
+
 function exportAuditLog() {
   var rows = document.querySelectorAll('.audit-row');
   var csv = 'Data/Hora,Usuário,Ação,Recurso,IP\n';

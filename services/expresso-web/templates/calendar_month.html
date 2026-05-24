@@ -15,6 +15,7 @@
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
       <a class="btn btn-ghost btn-sm" href="/calendar/{{ selected.id }}/export.ics" title="Exportar como iCalendar">↓ .ics</a>
       <button class="btn btn-ghost btn-sm" onclick="showImportIcsModal()" title="Importar arquivo .ics">↑ Importar .ics</button>
+      <button class="btn btn-ghost btn-sm" onclick="window.print()" title="Imprimir mês">🖨</button>
     </div>
   </div>
 
@@ -340,4 +341,15 @@ function importIcsFile(input) {
     </div>
   </div>
 </div>
+<style>
+@media print {
+  .app-nav, .sidebar, .view-switch, .calendar-switch, .page-header .row, .modal-overlay,
+  button, .agenda-toggle { display: none !important; }
+  .page { padding: 0 !important; }
+  .cal-month, .calendar-month-grid { border: 1px solid #999; font-size: .72rem; }
+  .cal-day, .calendar-day { border: 1px solid #ccc; min-height: 90px; page-break-inside: avoid; }
+  body { background: white !important; color: black !important; }
+  h1 { font-size: 1.2rem !important; }
+}
+</style>
 {% endblock %}

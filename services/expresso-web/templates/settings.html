@@ -109,6 +109,15 @@
         </div>
 
         <div class="subcard stack" style="margin-top:1rem">
+          <h3>Densidade da interface</h3>
+          <p class="muted small">Reduz o espaçamento de listas e linhas para mostrar mais conteúdo por tela.</p>
+          <label class="checkbox-row">
+            <input type="checkbox" id="density-compact-input" onchange="applyDensityCompact(this.checked)">
+            <span>Modo compacto</span>
+          </label>
+        </div>
+
+        <div class="subcard stack" style="margin-top:1rem">
           <h3>Sessão atual</h3>
           <dl class="kv">
             <dt>User ID</dt>  <dd class="mono small">{{ me.user_id }}</dd>
@@ -540,6 +549,19 @@
         <p class="muted small" style="margin-top:.5rem">Os atalhos não funcionam quando o foco está em campos de texto.</p>
       </div>
 
+      <div class="card stack" style="margin-top:1rem">
+        <h2>Privacidade e dados locais</h2>
+        <p class="muted small">Suas preferências (tema, atalhos, rascunhos, fixados, reações offline, lembretes,
+        aniversários, etc.) são salvas no seu navegador. Você pode exportar, restaurar ou apagar tudo aqui.</p>
+        <div class="form-actions" style="margin-top:.5rem;justify-content:flex-start">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="exportLocalSettings()">📤 Exportar JSON</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('settings-import-input').click()">📥 Importar JSON</button>
+          <input type="file" id="settings-import-input" accept=".json,application/json" style="display:none"
+                 onchange="importLocalSettings(this.files[0])">
+          <button type="button" class="btn btn-danger btn-sm" onclick="clearAllLocalSettings()">🗑 Apagar dados locais</button>
+        </div>
+      </div>
+
       {% endif %}
 
     </div>
@@ -722,6 +744,70 @@ function previewAvatar(input) {
     preview.innerHTML = '<img src="' + e.target.result + '" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
   };
   reader.readAsDataURL(file);
+}
+
+// ── Density compact mode ─────────────────────────────────────────────────────
+function applyDensityCompact(on) {
+  document.documentElement.classList.toggle('density-compact', !!on);
+  try { localStorage.setItem('expresso_density', on ? 'compact' : 'comfortable'); } catch(e){}
+}
+(function restoreDensity() {
+  var c = false;
+  try { c = localStorage.getItem('expresso_density') === 'compact'; } catch(e){}
+  var inp = document.getElementById('density-compact-input');
+  if (inp) inp.checked = c;
+  document.documentElement.classList.toggle('density-compact', c);
+})();
+
+// ── Local-settings import/export/wipe ────────────────────────────────────────
+function exportLocalSettings() {
+  var out = {};
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k) continue;
+      if (k.indexOf('expresso_') === 0 || k === 'theme' || k === 'accent') {
+        out[k] = localStorage.getItem(k);
+      }
+    }
+  } catch(e) { alert('Erro ao ler localStorage.'); return; }
+  var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'expresso-settings-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function importLocalSettings(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var obj = JSON.parse(String(e.target.result || '{}'));
+      var keys = Object.keys(obj);
+      if (!keys.length) { alert('Arquivo vazio.'); return; }
+      if (!confirm('Importar ' + keys.length + ' chave(s)? Configurações existentes serão sobrescritas.')) return;
+      keys.forEach(function(k){ try { localStorage.setItem(k, obj[k]); } catch(_){} });
+      alert('Importação concluída. A página será recarregada.');
+      window.location.reload();
+    } catch(x) { alert('Arquivo JSON inválido.'); }
+  };
+  reader.readAsText(file);
+}
+function clearAllLocalSettings() {
+  if (!confirm('Apagar TODOS os dados locais do Expresso (preferências, rascunhos, fixados, etc.)?\nEsta ação não pode ser desfeita.')) return;
+  if (!confirm('Tem certeza? Você terá que reconfigurar tudo.')) return;
+  try {
+    var toRemove = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && (k.indexOf('expresso_') === 0 || k === 'theme' || k === 'accent')) toRemove.push(k);
+    }
+    toRemove.forEach(function(k){ localStorage.removeItem(k); });
+    alert('Apagados ' + toRemove.length + ' itens. Recarregando.');
+    window.location.reload();
+  } catch(e) { alert('Erro ao apagar.'); }
 }
 </script>
 {% endblock %}

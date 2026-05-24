@@ -47,6 +47,7 @@
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
+        <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchTrash()" title="Mover selecionados para lixeira">🗑 Lixeira</button>
         <button class="btn btn-ghost btn-sm" onclick="clearDriveSelection()">✕ Cancelar</button>
       </div>
@@ -92,6 +93,8 @@
         <td class="row-actions">
           <button class="btn btn-ghost btn-sm drive-fav-btn" data-id="{{ f.id }}"
                   onclick="toggleDriveFav('{{ f.id }}')" title="Favorito">⭐</button>
+          <button class="btn btn-ghost btn-sm drive-color-btn" data-id="{{ f.id }}"
+                  onclick="cycleDriveColor('{{ f.id }}', this)" title="Cor (clique p/ alternar)">●</button>
           {% if f.is_folder() == false %}
             {% if f.is_previewable() %}<button class="btn btn-ghost btn-sm" onclick="openDrivePreview('{{ f.id }}','{{ f.name }}')" title="Visualizar">👁 Ver</button>{% endif %}
             <a class="btn btn-ghost btn-sm" href="/api/v1/drive/files/{{ f.id }}" title="Download">↓</a>
@@ -739,5 +742,51 @@ function saveSharing() {
     else alert('Erro ao salvar compartilhamento.');
   }).catch(function(){ alert('Erro de rede.'); });
 }
+
+// ── Bulk download (sequential, browser-native, no zipping) ──────────────────
+function batchDownload() {
+  var ids = Array.from(document.querySelectorAll('.drive-row-check:checked')).map(function(b){ return b.dataset.id; });
+  if (!ids.length) { alert('Nenhum arquivo selecionado.'); return; }
+  if (ids.length > 20 && !confirm('Baixar ' + ids.length + ' arquivos? Cada um abre em uma janela; popups podem ser bloqueados.')) return;
+  ids.forEach(function(id, i) {
+    setTimeout(function() {
+      var a = document.createElement('a');
+      a.href = '/api/v1/drive/files/' + encodeURIComponent(id);
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }, i * 300);
+  });
+}
+
+// ── File color labels (localStorage) ────────────────────────────────────────
+var DRIVE_COLOR_KEY = 'expresso_drive_colors';
+var DRIVE_COLOR_PALETTE = ['', '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#a855f7', '#ec4899'];
+function loadDriveColors() { try { return JSON.parse(localStorage.getItem(DRIVE_COLOR_KEY) || '{}'); } catch(e) { return {}; } }
+function saveDriveColors(o) { try { localStorage.setItem(DRIVE_COLOR_KEY, JSON.stringify(o)); } catch(e){} }
+function cycleDriveColor(id, btn) {
+  var all = loadDriveColors();
+  var cur = all[id] || '';
+  var idx = DRIVE_COLOR_PALETTE.indexOf(cur);
+  var next = DRIVE_COLOR_PALETTE[(idx + 1) % DRIVE_COLOR_PALETTE.length];
+  if (next) all[id] = next; else delete all[id];
+  saveDriveColors(all);
+  applyDriveColor(btn, next);
+}
+function applyDriveColor(btn, color) {
+  if (!btn) return;
+  btn.style.color = color || 'var(--muted)';
+  var row = btn.closest('tr');
+  if (row) row.style.borderLeft = color ? ('3px solid ' + color) : '';
+}
+(function initDriveColors() {
+  var all = loadDriveColors();
+  document.querySelectorAll('.drive-color-btn').forEach(function(b) {
+    var id = b.dataset.id;
+    var c = all[id] || '';
+    applyDriveColor(b, c);
+  });
+})();
 </script>
 {% endblock %}

@@ -5,6 +5,21 @@
 <div class="page">
   <div class="card stack" style="max-width:640px">
     <h1>Sessão atual</h1>
+
+    <div class="subcard" style="display:flex;gap:1rem;align-items:center">
+      <div id="me-avatar-preview" class="admin-avatar" style="width:5rem;height:5rem;font-size:2rem;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden">
+        <span id="me-avatar-initial"></span>
+      </div>
+      <div style="flex:1">
+        <label class="btn btn-ghost btn-sm" style="cursor:pointer">
+          📷 Trocar foto…
+          <input type="file" accept="image/*" style="display:none" onchange="previewMyAvatar(this)">
+        </label>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="removeMyAvatar()">🗑 Remover</button>
+        <p class="muted small" style="margin:.3rem 0 0">Salvo localmente; sincronização opcional.</p>
+      </div>
+    </div>
+
     <div class="subcard">
       <dl class="kv">
         <dt>Usuário</dt>  <dd>{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}—{% endmatch %}</dd>
@@ -21,4 +36,34 @@
     </div>
   </div>
 </div>
+<script>
+var ME_AVATAR_KEY = 'expresso_avatar_{{ me.user_id }}';
+(function loadAvatar() {
+  var initial = '{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}'.trim().charAt(0).toUpperCase() || '?';
+  var i = document.getElementById('me-avatar-initial');
+  if (i) i.textContent = initial;
+  try {
+    var d = localStorage.getItem(ME_AVATAR_KEY);
+    if (d) document.getElementById('me-avatar-preview').innerHTML =
+      '<img src="' + d + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  } catch(e){}
+})();
+function previewMyAvatar(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  if (f.size > 1024 * 1024) { alert('Imagem muito grande (máx 1MB).'); return; }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var data = e.target.result;
+    try { localStorage.setItem(ME_AVATAR_KEY, data); } catch(_) { alert('Falha ao salvar.'); return; }
+    document.getElementById('me-avatar-preview').innerHTML =
+      '<img src="' + data + '" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
+  };
+  reader.readAsDataURL(f);
+}
+function removeMyAvatar() {
+  try { localStorage.removeItem(ME_AVATAR_KEY); } catch(e){}
+  window.location.reload();
+}
+</script>
 {% endblock %}

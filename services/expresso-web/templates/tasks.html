@@ -64,7 +64,18 @@
     </aside>
 
     <main class="tasks-main">
-      <div style="display:flex;justify-content:flex-end;margin-bottom:.5rem">
+      <div style="display:flex;justify-content:space-between;margin-bottom:.5rem;align-items:center;gap:.5rem">
+        <div style="display:flex;gap:.3rem;align-items:center">
+          <span class="muted small">Ordenar:</span>
+          <select id="tasks-sort-select" class="search-input-sm" onchange="setTasksSort(this.value)" style="width:auto">
+            <option value="default">Padrão</option>
+            <option value="priority">Prioridade</option>
+            <option value="due-asc">Prazo ↑</option>
+            <option value="due-desc">Prazo ↓</option>
+            <option value="title">Título A→Z</option>
+            <option value="created-desc">Mais novas</option>
+          </select>
+        </div>
         <div class="view-switch" style="gap:0">
           <button class="btn btn-primary btn-sm" id="view-list-btn" onclick="setTasksView('list')" title="Vista lista">☰ Lista</button>
           <button class="btn btn-ghost btn-sm" id="view-kanban-btn" onclick="setTasksView('kanban')" title="Vista Kanban">⊟ Kanban</button>
@@ -262,7 +273,7 @@ function exportTasksCsv() {
 
 function renderAll() {
   var tasks = loadTasks();
-  var filtered = filterTasks(tasks);
+  var filtered = sortTasksBy(filterTasks(tasks), getTasksSort());
   var list = document.getElementById('task-list');
   var empty = document.getElementById('tasks-empty');
 
@@ -804,6 +815,32 @@ function stopPomodoro() {
   if (widget) widget.style.display = 'none';
   _pomodoroTaskId = null;
 }
+
+// ── Tasks sort ────────────────────────────────────────────────────────────────
+var TASKS_SORT_KEY = 'expresso_tasks_sort';
+function getTasksSort() { try { return localStorage.getItem(TASKS_SORT_KEY) || 'default'; } catch(e){ return 'default'; } }
+function setTasksSort(s) { try { localStorage.setItem(TASKS_SORT_KEY, s); } catch(e){} renderAll(); }
+function sortTasksBy(arr, mode) {
+  var prio = { high: 0, normal: 1, low: 2 };
+  var a = arr.slice();
+  switch (mode) {
+    case 'priority':
+      a.sort(function(x, y){ return (prio[x.priority]||1) - (prio[y.priority]||1); }); break;
+    case 'due-asc':
+      a.sort(function(x, y){ return (x.due || '9999') > (y.due || '9999') ? 1 : -1; }); break;
+    case 'due-desc':
+      a.sort(function(x, y){ return (x.due || '') < (y.due || '') ? 1 : -1; }); break;
+    case 'title':
+      a.sort(function(x, y){ return (x.title || '').localeCompare(y.title || '', 'pt-BR'); }); break;
+    case 'created-desc':
+      a.sort(function(x, y){ return (y.created || 0) - (x.created || 0); }); break;
+  }
+  return a;
+}
+(function restoreTasksSort() {
+  var sel = document.getElementById('tasks-sort-select');
+  if (sel) sel.value = getTasksSort();
+})();
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 if (_tasksView === 'kanban') {

@@ -23,6 +23,7 @@
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
+      <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
       {% match meeting %}{% when Some with (m) %}{% match m.recording_url %}
@@ -754,6 +755,39 @@ function endPoll() {
   try { localStorage.removeItem('expresso_active_poll_{{ room_name }}'); } catch(e){}
   hidePollModal();
 }
+
+// ── Layout cycler (grid / spotlight / sidebar) ──────────────────────────────
+var MEET_LAYOUTS = [
+  { name: 'Grid',      icon: '▦', cls: 'meet-layout-grid' },
+  { name: 'Spotlight', icon: '◉', cls: 'meet-layout-spotlight' },
+  { name: 'Sidebar',   icon: '◧', cls: 'meet-layout-sidebar' },
+];
+function cycleMeetLayout(btn) {
+  var stage = document.querySelector('.meet-stage') || document.querySelector('#meet-prejoin')?.parentElement;
+  if (!stage) { alert('Layout não disponível antes de entrar na sala.'); return; }
+  var curIdx = parseInt(stage.dataset.layoutIdx || '0', 10);
+  var nextIdx = (curIdx + 1) % MEET_LAYOUTS.length;
+  MEET_LAYOUTS.forEach(function(l){ stage.classList.remove(l.cls); });
+  stage.classList.add(MEET_LAYOUTS[nextIdx].cls);
+  stage.dataset.layoutIdx = String(nextIdx);
+  if (btn) btn.textContent = MEET_LAYOUTS[nextIdx].icon + ' ' + MEET_LAYOUTS[nextIdx].name;
+  try { localStorage.setItem('expresso_meet_layout', MEET_LAYOUTS[nextIdx].cls); } catch(e){}
+}
+(function restoreMeetLayout() {
+  try {
+    var saved = localStorage.getItem('expresso_meet_layout');
+    if (!saved) return;
+    var stage = document.querySelector('.meet-stage');
+    if (!stage) return;
+    stage.classList.add(saved);
+    var idx = MEET_LAYOUTS.findIndex(function(l){ return l.cls === saved; });
+    if (idx >= 0) {
+      stage.dataset.layoutIdx = String(idx);
+      var btn = document.getElementById('meet-layout-btn');
+      if (btn) btn.textContent = MEET_LAYOUTS[idx].icon + ' ' + MEET_LAYOUTS[idx].name;
+    }
+  } catch(e){}
+})();
 </script>
 
 <!-- Invite modal -->

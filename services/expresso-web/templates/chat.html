@@ -103,6 +103,8 @@
               oninput="filterMessages(this.value)"
               onkeydown="if(event.key==='Escape'){toggleChatSearch();}" style="display:none">
           </div>
+          <input type="date" class="chat-date-jump" id="chat-date-jump" onchange="jumpToDate(this.value)"
+                 title="Ir para data" style="width:8.5rem">
           <span class="muted small" id="chat-search-result"></span>
         </div>
       </header>
@@ -198,7 +200,9 @@
           <span id="chat-reply-text"></span>
           <button class="btn btn-ghost btn-sm" onclick="clearReply()">✕</button>
         </div>
-        <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)" enctype="multipart/form-data">
+        <div id="chat-drag-overlay" style="display:none;position:absolute;inset:0;background:rgba(20,184,166,.15);border:2px dashed var(--accent);border-radius:var(--radius);z-index:50;pointer-events:none;align-items:center;justify-content:center;font-size:1.2rem;font-weight:600;color:var(--accent)">📎 Solte para anexar</div>
+        <form class="chat-compose-form" method="post" action="/chat/channels/{{ ch.id }}/send" onsubmit="handleChatSend(event, this)" enctype="multipart/form-data"
+              ondragover="chatDragOver(event)" ondragleave="chatDragLeave(event)" ondrop="chatDrop(event)">
           <input type="hidden" name="parent_id" id="chat-parent-id" value="">
           <ul class="chat-attach-preview" id="chat-attach-preview" style="display:none"></ul>
           <div class="chat-compose-row">
@@ -1267,6 +1271,55 @@ function sendVoiceBlob(blob) {
   fetch(url, { method: 'POST', body: fd, credentials: 'include' })
     .then(function(r){ if (r.ok) window.location.reload(); else alert('Erro ao enviar áudio.'); })
     .catch(function(){ alert('Erro de rede.'); });
+}
+
+// ── Drag-drop attachments ────────────────────────────────────────────────────
+function chatDragOver(e) {
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+  e.preventDefault();
+  var o = document.getElementById('chat-drag-overlay');
+  if (o) o.style.display = 'flex';
+}
+function chatDragLeave(e) {
+  if (e.target.closest('.chat-compose-form')) return;
+  var o = document.getElementById('chat-drag-overlay');
+  if (o) o.style.display = 'none';
+}
+function chatDrop(e) {
+  e.preventDefault();
+  var o = document.getElementById('chat-drag-overlay');
+  if (o) o.style.display = 'none';
+  var files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || !files.length) return;
+  var inp = document.getElementById('chat-file-input');
+  if (!inp) return;
+  var dt = new DataTransfer();
+  for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
+  inp.files = dt.files;
+  if (typeof handleChatFileSelect === 'function') handleChatFileSelect(inp.files);
+}
+
+// ── Jump-to-date ─────────────────────────────────────────────────────────────
+function jumpToDate(d) {
+  if (!d) return;
+  var msgs = document.querySelectorAll('.chat-msg[data-ts]');
+  if (!msgs.length) return;
+  var target = new Date(d + 'T00:00:00').getTime();
+  var best = null, bestDiff = Infinity;
+  msgs.forEach(function(m) {
+    var ts = parseInt(m.dataset.ts, 10);
+    if (!ts) return;
+    var diff = Math.abs(ts - target);
+    if (diff < bestDiff) { bestDiff = diff; best = m; }
+  });
+  if (best) {
+    best.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    best.style.transition = 'background-color 1.5s';
+    best.style.backgroundColor = 'var(--accent-soft, #ffe066)';
+    setTimeout(function(){ best.style.backgroundColor = ''; }, 1500);
+  } else {
+    alert('Nenhuma mensagem nessa data no canal carregado.');
+  }
 }
 </script>
 {% endblock %}

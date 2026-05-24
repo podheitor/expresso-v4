@@ -32,6 +32,7 @@
         <h1 class="folder-title">🧵 {{ subject }}</h1>
         <span class="muted small">{{ messages.len() }} mensagens</span>
         <div style="display:flex;gap:.4rem;margin-left:auto">
+          <button class="btn btn-ghost btn-sm" onclick="printThread()" title="Imprimir conversa">🖨 Imprimir</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -215,5 +216,19 @@ function moveThread(folder) {
   });
   Promise.all(promises).then(function(){ window.location.href = '/mail'; }).catch(function(){});
 }
+function printThread() {
+  var orig = document.title;
+  document.title = 'Thread';
+  window.print();
+  document.title = orig;
+}
 </script>
+<style>
+@media print {
+  .sidebar, .list-toolbar > div, .dropdown-menu, .compose-area, button { display: none !important; }
+  .mail-shell { display: block !important; }
+  .msg-list { width: 100% !important; padding: 0 !important; }
+  body { background: white !important; color: black !important; }
+}
+</style>
 {% endblock %}

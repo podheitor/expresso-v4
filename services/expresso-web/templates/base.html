@@ -13,8 +13,21 @@
     var t = localStorage.getItem('expresso_theme') ||
       (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     document.documentElement.setAttribute('data-theme', t);
+    try {
+      if (localStorage.getItem('expresso_density') === 'compact') {
+        document.documentElement.classList.add('density-compact');
+      }
+    } catch(e){}
   })();
   </script>
+  <style>
+    .density-compact .msg-row-wrap, .density-compact .home-event-item,
+    .density-compact .home-file-item, .density-compact .admin-user-row td,
+    .density-compact .data-table td, .density-compact .data-table th { padding: .25rem .5rem !important; line-height: 1.2 !important; }
+    .density-compact .card, .density-compact .subcard { padding: .55rem .75rem !important; }
+    .density-compact .home-widget { padding: .6rem !important; }
+    .density-compact .btn-sm { padding: .15rem .45rem !important; font-size: .78rem !important; }
+  </style>
 </head>
 <body>
   <div id="maintenance-banner" style="display:none;padding:.35rem .75rem;font-size:.82rem;color:#fff;text-align:center"></div>

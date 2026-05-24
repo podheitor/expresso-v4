@@ -206,8 +206,39 @@
       </ul>
     </div>
 
+    <!-- Estatísticas do dia -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">📊</span>
+        <span class="home-widget-title">Resumo</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;padding:.3rem 0">
+        <div class="home-stat-cell">
+          <div class="home-stat-num" id="home-stat-mail">{{ mail_unread }}</div>
+          <div class="home-stat-lbl muted small">Não lidas</div>
+        </div>
+        <div class="home-stat-cell">
+          <div class="home-stat-num" id="home-stat-events">{{ events.len() }}</div>
+          <div class="home-stat-lbl muted small">Eventos hoje</div>
+        </div>
+        <div class="home-stat-cell">
+          <div class="home-stat-num" id="home-stat-tasks">—</div>
+          <div class="home-stat-lbl muted small">Tarefas pendentes</div>
+        </div>
+        <div class="home-stat-cell">
+          <div class="home-stat-num" id="home-stat-chat">{{ chat_unread }}</div>
+          <div class="home-stat-lbl muted small">Chat não lido</div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
+<style>
+.home-stat-cell { padding:.5rem;border:1px solid var(--border);border-radius:var(--radius-sm);text-align:center }
+.home-stat-num  { font-size:1.6rem;font-weight:700;color:var(--accent) }
+.home-stat-lbl  { margin-top:.1rem }
+</style>
 <script>
 // ── Clock widget ──────────────────────────────────────────────────────────────
 (function initClock() {
@@ -568,6 +599,19 @@ function toggleFocusMode() {
       '<strong>' + b.name.replace(/</g,'&lt;') + '</strong> · ' +
       '<span class="muted small">' + dateStr + ' (' + dStr + ')</span></li>';
   }).join('');
+})();
+
+// ── Tasks pending count from localStorage ───────────────────────────────────
+(function homeTasksCount() {
+  try {
+    var raw = localStorage.getItem('expresso_tasks_{{ me.user_id }}') || localStorage.getItem('expresso_tasks');
+    if (!raw) return;
+    var arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return;
+    var pending = arr.filter(function(t){ return !t.done; }).length;
+    var el = document.getElementById('home-stat-tasks');
+    if (el) el.textContent = pending;
+  } catch(e){}
 })();
 </script>
 {% endblock %}

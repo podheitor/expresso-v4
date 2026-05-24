@@ -76,6 +76,10 @@
       {% else %}
       <!-- Batch action bar -->
       <div id="mail-batch-bar" style="display:none;padding:.3rem .75rem;background:var(--bg-raised);border-bottom:1px solid var(--border);display:none;align-items:center;gap:.5rem">
+        <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer" title="Selecionar todas">
+          <input type="checkbox" id="mail-select-all" onchange="toggleSelectAllMail(this.checked)">
+          <span class="muted small">Todas</span>
+        </label>
         <span class="muted small" id="mail-sel-count">0 selecionadas</span>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
@@ -736,6 +740,17 @@ function confirmSnooze() {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('snooze-modal').style.display === 'flex') closeSnoozeModal();
 });
+
+function toggleSelectAllMail(checked) {
+  var boxes = document.querySelectorAll('.mail-row-check');
+  boxes.forEach(function(b) {
+    b.checked = checked;
+    b.style.display = checked ? 'block' : '';
+  });
+  if (typeof updateMailSelection === 'function') {
+    boxes.forEach(function(b){ b.dispatchEvent(new Event('change', { bubbles: true })); });
+  }
+}
 </script>
 
 <!-- Snooze picker modal -->

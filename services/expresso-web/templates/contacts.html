@@ -90,7 +90,10 @@
           <td class="mono">{{ c.email_display() }}</td>
           <td>{{ c.phone_display() }}</td>
           <td class="muted">{{ c.org_display() }}</td>
-          <td class="row-actions"><a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/{{ c.id }}/edit">Editar</a></td>
+          <td class="row-actions">
+            <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/{{ c.id }}/edit">Editar</a>
+            <button class="btn btn-ghost btn-sm" onclick="shareContactCard('{{ c.name_display() }}','{{ c.email_display() }}','{{ c.phone_display() }}','{{ c.org_display() }}')" title="Compartilhar por e-mail">📤</button>
+          </td>
         </tr>
         {% when None %}
         <tr>
@@ -471,6 +474,23 @@ function editGroupMembers(i) {
   groups[i] = g;
   saveGroups(groups);
   renderGroupsList();
+}
+
+// ── Share contact via mailto with vCard body ────────────────────────────────
+function shareContactCard(name, email, phone, org) {
+  var body = 'Compartilhando contato:\n\n' +
+    'Nome: ' + (name || '—') + '\n' +
+    'Email: ' + (email || '—') + '\n' +
+    'Telefone: ' + (phone || '—') + '\n' +
+    'Organização: ' + (org || '—') + '\n\n' +
+    '— vCard —\n' +
+    'BEGIN:VCARD\nVERSION:3.0\nFN:' + (name || '') + '\n' +
+    (email ? 'EMAIL:' + email + '\n' : '') +
+    (phone ? 'TEL:' + phone + '\n' : '') +
+    (org ? 'ORG:' + org + '\n' : '') +
+    'END:VCARD';
+  var subj = 'Contato: ' + (name || email || '—');
+  window.location.href = '/mail/compose?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
 }
 </script>
 
