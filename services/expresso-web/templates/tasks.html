@@ -1469,6 +1469,16 @@ function highlightAllOverdueTasks() {
 })();
 </script>
 <script>
+window.percentDone = function(){
+  const all = document.querySelectorAll('.task-row').length;
+  const done = document.querySelectorAll('.task-row.done, .task-row[data-status="done"]').length;
+  const pct = all ? Math.round(100 * done / all) : 0;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = pct + '% concluídas (' + done + '/' + all + ')';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.copyOverdueTitles = function(){
   const now = Date.now();
   const overdue = Array.from(document.querySelectorAll('.task-row[data-due]'))

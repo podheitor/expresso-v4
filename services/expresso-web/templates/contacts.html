@@ -1144,6 +1144,15 @@ function groupContactsByFirstLetter() {
 })();
 </script>
 <script>
+window.countWithPhone = function(){
+  const total = document.querySelectorAll('.contact-row').length;
+  const with_phone = document.querySelectorAll('.contact-row[data-has-phone="1"], .contact-row [data-phone]').length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = with_phone + '/' + total + ' com telefone';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.groupByCompany = function(){
   const groups = {};
   document.querySelectorAll('.contact-row').forEach(r => {

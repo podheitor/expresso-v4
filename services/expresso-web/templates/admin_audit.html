@@ -582,6 +582,22 @@ function copyAuditAsCsv() {
 })();
 </script>
 <script>
+window.copyJsonRows = function(){
+  const rows = Array.from(document.querySelectorAll('[data-audit-id]'));
+  const out = rows.map(r => ({
+    id: r.dataset.auditId,
+    actor: r.dataset.actor,
+    type: r.dataset.eventType,
+    ts: r.dataset.auditTs,
+  }));
+  const json = JSON.stringify(out, null, 2);
+  navigator.clipboard?.writeText(json).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = out.length + ' linhas JSON copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countLast24h = function(){
   const cut = Date.now() - 86400000;
   const n = Array.from(document.querySelectorAll('[data-audit-ts]'))

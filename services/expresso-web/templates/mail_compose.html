@@ -959,6 +959,18 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.countRecipients = function(){
+  const get = (n) => (document.querySelector('input[name="' + n + '"]') || {}).value || '';
+  const split = (v) => v.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  const to = split(get('to')).length;
+  const cc = split(get('cc')).length;
+  const bcc = split(get('bcc')).length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'To: ' + to + ' · Cc: ' + cc + ' · Bcc: ' + bcc;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+};
 window.insertDateLine = function(){
   const body = document.querySelector('textarea[name="body"]');
   if (!body) return;

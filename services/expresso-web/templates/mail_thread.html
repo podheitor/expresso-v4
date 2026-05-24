@@ -715,6 +715,22 @@ function printThread() {
 })();
 </script>
 <script>
+window.copyHeadersFirstMsg = function(){
+  const first = document.querySelector('[data-message-id]');
+  if (!first) return;
+  const hdr = [
+    'Message-ID: ' + (first.dataset.messageId || ''),
+    'From: ' + (first.dataset.from || ''),
+    'Date: ' + (first.dataset.messageDate || ''),
+    'Subject: ' + (first.dataset.subject || ''),
+  ].join('\n');
+  navigator.clipboard?.writeText(hdr).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Cabeçalhos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyDateFirstMsg = function(){
   const first = document.querySelector('[data-message-date]');
   if (!first) return;

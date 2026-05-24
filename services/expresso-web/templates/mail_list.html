@@ -1304,6 +1304,16 @@ function toggleMailListDensity() {
 })();
 </script>
 <script>
+window.copyMsgIdsPage = function(){
+  const ids = Array.from(document.querySelectorAll('.mail-row[data-id]')).map(r => r.dataset.id);
+  if (!ids.length) return;
+  navigator.clipboard?.writeText(ids.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = ids.length + ' IDs copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.togglePreviewFirstLine = function(){
   const k = 'expresso_mail_previewline_{{ me.user_id }}';
   const next = localStorage.getItem(k) !== '1';

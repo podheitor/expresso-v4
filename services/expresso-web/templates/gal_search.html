@@ -529,6 +529,16 @@ function listGalFavoritesLocal() {
 })();
 </script>
 <script>
+window.copyAllNames = function(){
+  const names = Array.from(document.querySelectorAll('[data-name]')).map(n => n.dataset.name).filter(Boolean);
+  if (!names.length) return;
+  navigator.clipboard?.writeText(names.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = names.length + ' nomes copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyFirstNHits = function(){
   const n = parseInt(prompt('Quantos primeiros hits copiar?', '10'), 10);
   if (!n || n < 1) return;

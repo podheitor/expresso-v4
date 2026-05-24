@@ -607,6 +607,14 @@ function copySuspendedUsersList() {
 })();
 </script>
 <script>
+window.countUsers = function(){
+  const n = document.querySelectorAll('tr[data-user-id]').length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = n + ' usuários na página';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.copyEmailsByDomain = function(){
   const dom = prompt('Domínio (ex: empresa.com):');
   if (!dom) return;

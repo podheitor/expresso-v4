@@ -1339,6 +1339,14 @@ function toggleMeetParticipantsPane() {
 })();
 </script>
 <script>
+window.toggleLowBandwidth = function(){
+  try { window.jitsiApi && window.jitsiApi.executeCommand('toggleLowBandwidth'); } catch (_) {}
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Low-bandwidth alternado';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyMyDisplayName = function(){
   const name = '{{ me.email }}';
   navigator.clipboard?.writeText(name).catch(() => {});

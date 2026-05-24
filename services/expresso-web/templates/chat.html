@@ -2047,6 +2047,15 @@ function copyChatLastN(n) {
 })();
 </script>
 <script>
+window.copyMyHandle = function(){
+  const handle = '@{{ me.user_id }}';
+  navigator.clipboard?.writeText(handle).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = handle + ' copiado';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyRoomMembers = function(){
   const members = Array.from(document.querySelectorAll('.member-row [data-user-email], [data-channel-member]'))
     .map(n => n.dataset.userEmail || n.dataset.channelMember).filter(Boolean);

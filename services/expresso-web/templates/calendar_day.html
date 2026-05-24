@@ -607,6 +607,21 @@ function printDayAgenda() {
 })();
 </script>
 <script>
+window.copyNextEventTitle = function(){
+  const now = Date.now();
+  const next = Array.from(document.querySelectorAll('[data-event-id][data-start]'))
+    .map(e => ({ e, t: Date.parse(e.dataset.start) }))
+    .filter(x => !isNaN(x.t) && x.t >= now)
+    .sort((a,b) => a.t - b.t)[0];
+  if (!next) return;
+  const title = next.e.dataset.title || '';
+  navigator.clipboard?.writeText(title).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Próximo: ' + title;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+};
 window.copyFreeSlots = function(){
   const evs = Array.from(document.querySelectorAll('[data-event-id][data-start][data-end]'))
     .map(e => ({ s: Date.parse(e.dataset.start), e: Date.parse(e.dataset.end) }))

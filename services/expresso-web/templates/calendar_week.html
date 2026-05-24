@@ -670,6 +670,16 @@ function printWeekAgenda() {
 })();
 </script>
 <script>
+window.copyEventTitles = function(){
+  const titles = Array.from(document.querySelectorAll('[data-event-id]')).map(e => e.dataset.title).filter(Boolean);
+  if (!titles.length) return;
+  navigator.clipboard?.writeText(titles.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = titles.length + ' títulos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyWeekStartIso = function(){
   const start = (document.querySelector('[data-week-start]') || {}).dataset?.weekStart
     || new Date().toISOString().slice(0,10);
