@@ -1070,5 +1070,16 @@ window.copyDayLocations = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLunchBlocked = function(){
+  const lunchStart=12*60,lunchEnd=14*60;
+  const blocked=Array.from(document.querySelectorAll('[data-event-start][data-event-end]')).filter(e=>{const s=new Date(e.getAttribute('data-event-start')),f=new Date(e.getAttribute('data-event-end'));if(isNaN(s)||isNaN(f))return false;const sm=s.getHours()*60+s.getMinutes(),fm=f.getHours()*60+f.getMinutes();return !(fm<=lunchStart||sm>=lunchEnd);});
+  const out=blocked.map(e=>e.getAttribute('data-event-start').slice(11,16)+'–'+e.getAttribute('data-event-end').slice(11,16)+'\t'+(e.getAttribute('data-event-title')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=blocked.length+' eventos no almoço';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
