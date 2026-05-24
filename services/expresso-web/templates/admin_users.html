@@ -1768,5 +1768,21 @@ window.copyUsersInactive90d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdminOnly=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const role=(r.getAttribute('data-user-role')||'').toLowerCase();
+    if(role==='admin'||role==='superadmin'){
+      out.push((r.getAttribute('data-user-email')||r.getAttribute('data-user-id')||'')+'\t'+role);
+    }
+  });
+  if(!out.length){alert('Nenhum admin');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' admins';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

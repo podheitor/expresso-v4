@@ -2407,5 +2407,23 @@ window.copyMailListSendersTop=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListUnread=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const u=(r.getAttribute('data-mail-unread')||'').trim();
+    if(u==='true'||u==='1'){
+      const s=(r.getAttribute('data-mail-subject')||'').trim();
+      const f=(r.getAttribute('data-mail-from')||'').trim();
+      out.push(f+'\t'+s);
+    }
+  });
+  if(!out.length){alert('Nenhum unread');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' unread';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

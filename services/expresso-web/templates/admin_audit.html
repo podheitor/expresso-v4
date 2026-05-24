@@ -1754,5 +1754,25 @@ window.copyAuditActionTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLast24h=function(){
+  const cutoff=Date.now()-86400000;
+  const out=[];
+  document.querySelectorAll('[data-audit-ts]').forEach(r=>{
+    const ts=(r.getAttribute('data-audit-ts')||'').trim();
+    const d=new Date(ts);
+    if(!isNaN(d)&&d.getTime()>=cutoff){
+      const act=(r.getAttribute('data-audit-action')||'').trim();
+      const actor=(r.getAttribute('data-audit-actor')||'').trim();
+      out.push(ts+'\t'+actor+'\t'+act);
+    }
+  });
+  if(!out.length){alert('Sem ações em 24h');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' em 24h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
