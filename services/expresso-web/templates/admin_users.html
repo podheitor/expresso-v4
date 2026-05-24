@@ -912,5 +912,18 @@ window.copyUsersByQuotaUsage = function(threshold){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyNewUsers = function(days){
+  const k=typeof days==='number'?days:30;
+  const cutoff=Date.now()-k*86400000;
+  const rows=document.querySelectorAll('[data-user-created]');
+  const out=[];
+  rows.forEach(r=>{const d=Date.parse(r.getAttribute('data-user-created'));if(!isNaN(d)&&d>=cutoff)out.push((r.getAttribute('data-user-email')||r.getAttribute('data-user')||'?')+'\t'+r.getAttribute('data-user-created'));});
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' novos ≤'+k+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

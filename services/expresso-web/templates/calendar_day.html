@@ -966,5 +966,17 @@ window.copyEventAttendees = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyPct = function(){
+  const evs=document.querySelectorAll('[data-event-start][data-event-end]');
+  let busy=0;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-event-start'));const f=Date.parse(e.getAttribute('data-event-end'));if(!isNaN(s)&&!isNaN(f))busy+=(f-s);});
+  const pct=((busy/(8*3600000))*100).toFixed(1);
+  const ta=document.createElement('textarea');ta.value='day_busy_pct\t'+pct;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% do dia útil ocupado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
 </script>
 {% endblock %}

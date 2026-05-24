@@ -1045,5 +1045,19 @@ window.copyEventsAfterHours = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAvgEventsPerDay = function(){
+  const evs=document.querySelectorAll('[data-event-start]');
+  const set=new Set();
+  evs.forEach(e=>{const d=(e.getAttribute('data-event-start')||'').slice(0,10);if(d)set.add(d);});
+  const total=evs.length;
+  const days=set.size||1;
+  const avg=(total/days).toFixed(2);
+  const ta=document.createElement('textarea');ta.value='events_per_day_avg\t'+avg;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=avg+' eventos/dia (média)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

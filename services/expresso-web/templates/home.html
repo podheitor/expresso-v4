@@ -1573,5 +1573,18 @@ window.copyBrowserInfo = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTzInfo = function(){
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const off=new Date().getTimezoneOffset();
+  const sign=off<=0?'+':'-';
+  const a=Math.abs(off);
+  const txt='tz\t'+tz+'\noffset\tUTC'+sign+String(Math.floor(a/60)).padStart(2,'0')+':'+String(a%60).padStart(2,'0');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=tz;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

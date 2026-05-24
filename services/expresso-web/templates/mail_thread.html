@@ -980,5 +980,15 @@ window.copyThreadAsMd = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadId = function(){
+  const t=document.querySelector('[data-thread-id]');
+  const id=t?t.getAttribute('data-thread-id'):(location.pathname.split('/').filter(Boolean).pop()||'');
+  const ta=document.createElement('textarea');ta.value=id;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const ti=document.createElement('div');
+  ti.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  ti.textContent='thread id: '+id;
+  document.body.appendChild(ti);
+  setTimeout(()=>ti.remove(),1500);
+};
 </script>
 {% endblock %}

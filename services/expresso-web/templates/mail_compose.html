@@ -1252,5 +1252,19 @@ window.trimWhitespace = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.swapToBcc = function(){
+  const to=document.querySelector('[name="to"]');
+  const bcc=document.querySelector('[name="bcc"]');
+  if(!to||!bcc){alert('campos não encontrados');return;}
+  const v=(to.value||'').trim();
+  if(!v){alert('campo "para" vazio');return;}
+  bcc.value=bcc.value?bcc.value+', '+v:v;
+  to.value='';
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='para → bcc';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

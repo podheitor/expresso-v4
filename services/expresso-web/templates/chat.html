@@ -2323,5 +2323,18 @@ window.copyMyMsgs = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMsgsByLength = function(){
+  const msgs=document.querySelectorAll('[data-msg-text]');
+  const arr=[];
+  msgs.forEach(m=>{const t=m.getAttribute('data-msg-text')||'';arr.push({l:t.length,from:m.getAttribute('data-msg-from')||'?',t:t});});
+  arr.sort((a,b)=>b.l-a.l);
+  const out=arr.slice(0,10).map(x=>x.l+'\t'+x.from+'\t'+x.t.slice(0,80)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 10 mais longas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
