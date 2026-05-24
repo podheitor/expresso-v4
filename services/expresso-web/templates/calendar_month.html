@@ -1220,5 +1220,15 @@ window.copyBusiestDay = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyFreeDays = function(){
+  const cells=document.querySelectorAll('[data-day]');
+  const free=Array.from(cells).filter(c=>c.querySelectorAll('[data-event-id]').length===0).map(c=>c.getAttribute('data-day'));
+  const ta=document.createElement('textarea');ta.value=free.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=free.length+' dias livres';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

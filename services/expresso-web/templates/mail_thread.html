@@ -1145,5 +1145,15 @@ window.copyThreadDates = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachments = function(){
+  const rows=document.querySelectorAll('[data-attach-id]');
+  const out=Array.from(rows).map(r=>(r.getAttribute('data-attach-name')||'?')+'\t'+(r.getAttribute('data-attach-size')||'?')+'B').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' anexos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
