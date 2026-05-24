@@ -2724,5 +2724,25 @@ window.copyTasksByPriorityDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOldestPending=function(){
+  let oldest=null,oldestTs='';
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const st=(r.getAttribute('data-task-status')||'').toLowerCase();
+    if(st==='done'||st==='completed'||st==='closed')return;
+    const c=(r.getAttribute('data-task-created')||'').trim();
+    if(!c)return;
+    if(!oldestTs||c<oldestTs){oldestTs=c;oldest=r;}
+  });
+  if(!oldest){alert('Sem pendentes');return;}
+  const title=oldest.getAttribute('data-task-title')||'';
+  const id=oldest.getAttribute('data-task-id')||'';
+  const out='created: '+oldestTs+'\nid: '+id+'\ntitle: '+title;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oldest '+oldestTs.slice(0,10);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2448,5 +2448,25 @@ window.copyContactsDuplicates=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByDomain=function(){
+  const dom={};
+  document.querySelectorAll('[data-contact-row]').forEach(r=>{
+    const e=(r.getAttribute('data-contact-email')||'').trim().toLowerCase();
+    const at=e.lastIndexOf('@');
+    if(at<0)return;
+    const d=e.slice(at+1);
+    dom[d]=(dom[d]||0)+1;
+  });
+  const keys=Object.keys(dom);
+  if(!keys.length){alert('Sem emails');return;}
+  keys.sort((a,b)=>dom[b]-dom[a]);
+  const out=keys.map(k=>k+'\t'+dom[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' domínios';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

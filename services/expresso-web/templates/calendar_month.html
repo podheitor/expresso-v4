@@ -2007,5 +2007,22 @@ window.copyMonthBusiestDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFreeDays=function(){
+  const days=new Set();
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    days.add(s.slice(0,10));
+  });
+  const cells=document.querySelectorAll('[data-month-day]');
+  const all=[...cells].map(c=>c.getAttribute('data-month-day')).filter(Boolean);
+  const free=all.filter(d=>!days.has(d));
+  if(!free.length){alert('Sem dias livres');return;}
+  const ta=document.createElement('textarea');ta.value=free.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=free.length+' livres';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2288,5 +2288,16 @@ window.copyHomeUserAgent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeOnlineStatus=function(){
+  const nav=navigator;
+  const conn=nav.connection||nav.mozConnection||nav.webkitConnection||{};
+  const out='online: '+nav.onLine+'\neffectiveType: '+(conn.effectiveType||'?')+'\ndownlink: '+(conn.downlink||'?')+'Mbps\nrtt: '+(conn.rtt||'?')+'ms\nsaveData: '+(conn.saveData||false);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(nav.onLine?'#069':'#c00');
+  t.textContent=nav.onLine?'online':'OFFLINE';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2052,5 +2052,18 @@ window.warnEmptySubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyDraftCharCount=function(){
+  const body=(document.querySelector('[name="body"]')||document.querySelector('#body')||document.querySelector('textarea')||{}).value||'';
+  const chars=body.length;
+  const words=body.trim().split(/\s+/).filter(Boolean).length;
+  const lines=body.split('\n').length;
+  const out='chars: '+chars+'\nwords: '+words+'\nlines: '+lines;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=chars+'c '+words+'w';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

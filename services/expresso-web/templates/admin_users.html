@@ -1853,5 +1853,21 @@ window.copyUsersWithoutGroup=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdmins=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const r=(u.getAttribute('data-user-role')||'').toLowerCase();
+    if(r==='admin'||r==='superadmin'||r==='root'){
+      out.push((u.getAttribute('data-user-email')||u.getAttribute('data-user-id')||'')+'\t'+r);
+    }
+  });
+  if(!out.length){alert('Sem admins');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' admins';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

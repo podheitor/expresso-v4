@@ -1902,5 +1902,19 @@ window.copyThreadUniqueFroms=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstLast=function(){
+  const msgs=[...document.querySelectorAll('[data-msg-id]')];
+  if(msgs.length<2){alert('Thread c/ <2 msgs');return;}
+  const first=msgs[0],last=msgs[msgs.length-1];
+  const f={ts:first.getAttribute('data-msg-ts')||'',from:first.getAttribute('data-msg-from')||''};
+  const l={ts:last.getAttribute('data-msg-ts')||'',from:last.getAttribute('data-msg-from')||''};
+  const out='first: '+f.ts+' '+f.from+'\nlast:  '+l.ts+' '+l.from+'\ncount: '+msgs.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=msgs.length+' msgs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
