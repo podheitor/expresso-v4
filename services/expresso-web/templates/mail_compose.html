@@ -1668,5 +1668,30 @@ window.swapToCc=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.dedupRecipients=function(){
+  const ids=['to','cc','bcc'];
+  let changed=0;
+  ids.forEach(k=>{
+    const el=document.querySelector('[name="'+k+'"]');
+    if(el && el.value.trim()){
+      const orig=el.value.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+      const seen=new Set();
+      const out=[];
+      orig.forEach(a=>{
+        const lc=a.toLowerCase();
+        if(!seen.has(lc)){seen.add(lc); out.push(a);}
+      });
+      if(out.length!==orig.length){
+        el.value=out.join(', ');
+        changed+=(orig.length-out.length);
+      }
+    }
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=changed+' duplicatas removidas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

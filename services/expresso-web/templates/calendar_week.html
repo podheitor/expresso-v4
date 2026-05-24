@@ -1456,5 +1456,23 @@ window.copyWeekRecurringEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOrganizers=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  if(!cards.length){alert('Sem eventos');return;}
+  const buckets={};
+  cards.forEach(c=>{
+    const o=c.getAttribute('data-event-organizer')||'?';
+    buckets[o]=(buckets[o]||0)+1;
+  });
+  const lines=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' organizadores';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1435,5 +1435,20 @@ window.copyThreadQuoteRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSubjectChanges=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-subject]'));
+  if(msgs.length<2){alert('Precisa ≥2 mensagens');return;}
+  const subs=msgs.map(m=>(m.getAttribute('data-msg-subject')||'').replace(/^(re:|fwd?:|enc:)\s*/i,'').trim());
+  const uniq=Array.from(new Set(subs));
+  if(uniq.length<2){alert('Assunto sempre igual');return;}
+  const ta=document.createElement('textarea');
+  ta.value=uniq.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=uniq.length+' assuntos distintos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

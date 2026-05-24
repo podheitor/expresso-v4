@@ -1348,5 +1348,24 @@ window.copyUsersCreatedThisMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersSuspendedDetail=function(){
+  const rows=document.querySelectorAll('[data-user-email][data-user-status="suspended"]');
+  if(!rows.length){alert('Nenhum suspenso');return;}
+  const out=[];
+  rows.forEach(r=>{
+    const email=r.getAttribute('data-user-email')||'';
+    const since=r.getAttribute('data-user-suspendedat')||'';
+    const reason=r.getAttribute('data-user-suspendedreason')||'';
+    out.push(email+'\t'+since+'\t'+reason);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' suspensos detalhe';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

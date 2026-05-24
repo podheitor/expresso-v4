@@ -2782,5 +2782,24 @@ window.copyChatEmojiCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatActivityByHour=function(){
+  const rows=document.querySelectorAll('[data-msg-ts]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  const hours=new Array(24).fill(0);
+  rows.forEach(r=>{
+    const d=new Date(r.getAttribute('data-msg-ts')||'');
+    if(!isNaN(d))hours[d.getHours()]++;
+  });
+  const lines=hours.map((c,h)=>String(h).padStart(2,'0')+':00\t'+c).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const peak=hours.indexOf(Math.max(...hours));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pico '+String(peak).padStart(2,'0')+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
