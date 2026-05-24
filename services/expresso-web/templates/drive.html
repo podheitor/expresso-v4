@@ -2045,5 +2045,19 @@ window.copyDriveFilesByYear=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveStaleN=function(months){
+  months=months||6;
+  const cutoff=Date.now()-months*30*86400000;
+  const rows=Array.from(document.querySelectorAll('[data-file-id]')).filter(r=>{const m=r.dataset.fileMtime;return m&&new Date(m).getTime()<cutoff;});
+  const lines=rows.map(r=>(r.dataset.fileMtime||'').slice(0,10)+'\t'+(r.dataset.fileName||'')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' stale ≥'+months+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

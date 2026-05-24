@@ -1375,5 +1375,25 @@ window.copyWeekFreeAfternoons=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestStart=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  if(!cards.length){alert('Sem eventos');return;}
+  let earliest=null, ev=null;
+  cards.forEach(c=>{
+    const s=c.getAttribute('data-event-start')||'';
+    const hm=s.split('T')[1]||'';
+    if(hm && (earliest===null || hm<earliest)){earliest=hm; ev=c;}
+  });
+  const title=ev?(ev.getAttribute('data-event-title')||'sem título'):'';
+  const ta=document.createElement('textarea');
+  ta.value=earliest+' — '+title;
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='início mais cedo '+earliest;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

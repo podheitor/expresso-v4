@@ -1840,5 +1840,19 @@ window.copyContactsLastName=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsDuplicatePhones=function(){
+  const rows=Array.from(document.querySelectorAll('[data-contact-id]')).filter(r=>r.dataset.contactPhone);
+  const m={};
+  rows.forEach(r=>{const p=(r.dataset.contactPhone||'').replace(/\D/g,'');if(p)(m[p]=m[p]||[]).push(r.dataset.contactName||'');});
+  const dup=Object.entries(m).filter(([,v])=>v.length>1).map(([p,ns])=>p+': '+ns.join(', ')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=dup; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=dup.split('\n').filter(Boolean).length+' duplicados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

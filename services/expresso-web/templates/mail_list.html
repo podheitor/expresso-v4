@@ -1935,5 +1935,19 @@ window.copyMailRepliesOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailMonthlyVolume=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-id]'));
+  const m={};
+  rows.forEach(r=>{const k=(r.dataset.mailDate||'').slice(0,7);if(k)m[k]=(m[k]||0)+1;});
+  const lines=Object.entries(m).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(m).length+' meses';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

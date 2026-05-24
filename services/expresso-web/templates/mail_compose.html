@@ -1600,5 +1600,16 @@ window.insertSignature=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleRichTextMode=function(){
+  const k='expresso_richtext_{{ me.user_id }}';
+  const cur=localStorage.getItem(k)==='1';
+  const next=!cur;
+  localStorage.setItem(k,next?'1':'0');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='richtext '+(next?'on':'off')+' (próxima sessão)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

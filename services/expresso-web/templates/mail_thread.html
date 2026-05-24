@@ -1356,5 +1356,20 @@ window.copyThreadMessageCountPerSender=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDuration=function(){
+  const ts=Array.from(document.querySelectorAll('[data-msg-id]')).map(r=>r.dataset.msgDate||'').filter(Boolean).sort();
+  if(ts.length<2)return;
+  const ms=new Date(ts[ts.length-1])-new Date(ts[0]);
+  const d=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000);
+  const v='duração: '+d+'d '+h+'h ('+ts.length+' msgs)';
+  const ta=document.createElement('textarea');
+  ta.value=v; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=d+'d '+h+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

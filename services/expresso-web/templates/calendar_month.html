@@ -1420,5 +1420,28 @@ window.copyMonthCancellations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByWeek=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  if(!cards.length){alert('Sem eventos');return;}
+  const buckets={};
+  cards.forEach(c=>{
+    const s=c.getAttribute('data-event-start')||'';
+    const d=s.split('T')[0]; if(!d)return;
+    const day=new Date(d); if(isNaN(day))return;
+    const onejan=new Date(day.getFullYear(),0,1);
+    const wk=Math.ceil((((day-onejan)/86400000)+onejan.getDay()+1)/7);
+    const key='S'+wk;
+    buckets[key]=(buckets[key]||0)+1;
+  });
+  const lines=Object.keys(buckets).sort().map(k=>k+'\t'+buckets[k]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' semanas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

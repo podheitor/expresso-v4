@@ -1169,5 +1169,31 @@ window.copyGalEmployeeIds=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalRecentlyHired=function(){
+  const months=parseInt(prompt('Contratados nos últimos N meses:','6')||'6',10);
+  if(!months)return;
+  const cutoff=new Date(); cutoff.setMonth(cutoff.getMonth()-months);
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const recent=[];
+  rows.forEach(r=>{
+    const hire=r.getAttribute('data-contact-hiredate')||'';
+    if(!hire)return;
+    const d=new Date(hire);
+    if(!isNaN(d) && d>=cutoff){
+      const name=r.getAttribute('data-contact-name')||'';
+      const email=r.getAttribute('data-contact-email')||'';
+      recent.push(hire+'\t'+name+'\t'+email);
+    }
+  });
+  if(!recent.length){alert('Nenhum contratado em '+months+'m');return;}
+  const ta=document.createElement('textarea');
+  ta.value=recent.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=recent.length+' recém-contratados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

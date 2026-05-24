@@ -1272,5 +1272,24 @@ window.copyUsersAvgQuotaUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByLastLoginYear=function(){
+  const rows=document.querySelectorAll('[data-user-email]');
+  if(!rows.length){alert('Sem usuários');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const last=r.getAttribute('data-user-lastlogin')||'';
+    const yr=last?last.slice(0,4):'never';
+    buckets[yr]=(buckets[yr]||0)+1;
+  });
+  const lines=Object.keys(buckets).sort().map(k=>k+'\t'+buckets[k]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' anos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
