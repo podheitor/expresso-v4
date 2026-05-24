@@ -1460,5 +1460,28 @@ window.copyDayFocusBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWithVideoLink=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  const out=[];
+  cards.forEach(c=>{
+    const desc=c.getAttribute('data-event-desc')||'';
+    const loc=c.getAttribute('data-event-location')||'';
+    const url=c.getAttribute('data-event-url')||'';
+    const blob=desc+' '+loc+' '+url;
+    if(/meet|jitsi|zoom|teams|webex/i.test(blob)){
+      const t=c.getAttribute('data-event-title')||'';
+      out.push((c.getAttribute('data-event-start')||'').slice(11,16)+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Sem video links');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' com vídeo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

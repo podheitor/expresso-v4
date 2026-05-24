@@ -1693,5 +1693,27 @@ window.dedupRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.estimateSendCost=function(){
+  const ids=['to','cc','bcc'];
+  let n=0;
+  ids.forEach(k=>{
+    const el=document.querySelector('[name="'+k+'"]');
+    if(el && el.value.trim()){
+      n+=el.value.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+    }
+  });
+  const body=document.querySelector('[name="body"]');
+  const sz=body?body.value.length:0;
+  const totalKB=(n*(sz/1024)).toFixed(2);
+  const ta=document.createElement('textarea');
+  ta.value=n+' destinatários × '+(sz/1024).toFixed(2)+' KB = '+totalKB+' KB';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='custo ~'+totalKB+' KB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

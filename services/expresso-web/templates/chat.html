@@ -2801,5 +2801,24 @@ window.copyChatActivityByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatAvgMsgLength=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  let total=0;
+  rows.forEach(r=>{
+    const body=(r.querySelector('.body')||r).textContent||'';
+    total+=body.trim().length;
+  });
+  const avg=Math.round(total/rows.length);
+  const ta=document.createElement('textarea');
+  ta.value='avg '+avg+' chars em '+rows.length+' msgs';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+' chars';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

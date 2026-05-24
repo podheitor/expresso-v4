@@ -1270,5 +1270,27 @@ window.copyGalByDept=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDirectReports=function(){
+  const me='{{ me.email }}';
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const mgr=(r.getAttribute('data-contact-manager')||'').toLowerCase();
+    if(mgr===me.toLowerCase()){
+      const n=r.getAttribute('data-contact-name')||'';
+      const e=r.getAttribute('data-contact-email')||'';
+      out.push(n+'\t'+e);
+    }
+  });
+  if(!out.length){alert('Sem reports diretos');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' reports diretos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

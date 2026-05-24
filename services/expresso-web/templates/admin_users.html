@@ -1367,5 +1367,23 @@ window.copyUsersSuspendedDetail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByTenant=function(){
+  const rows=document.querySelectorAll('[data-user-email]');
+  if(!rows.length){alert('Sem usuários');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const t=r.getAttribute('data-user-tenant')||'(default)';
+    buckets[t]=(buckets[t]||0)+1;
+  });
+  const lines=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' tenants';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

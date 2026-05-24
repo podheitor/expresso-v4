@@ -2029,5 +2029,23 @@ window.copyMailFlaggedOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailUniqueSenders=function(){
+  const rows=document.querySelectorAll('[data-msg-from]');
+  const set=new Set();
+  rows.forEach(r=>{
+    const f=(r.getAttribute('data-msg-from')||'').toLowerCase().trim();
+    if(f)set.add(f);
+  });
+  if(!set.size){alert('Sem remetentes');return;}
+  const ta=document.createElement('textarea');
+  ta.value=Array.from(set).sort().join('\n');
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=set.size+' remetentes únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

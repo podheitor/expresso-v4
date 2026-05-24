@@ -2247,5 +2247,25 @@ window.copyHardwareInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyPagePerformance=function(){
+  const p=performance.getEntriesByType('navigation')[0];
+  if(!p){alert('Sem nav timing');return;}
+  const lines=[
+    'dns\t'+Math.round(p.domainLookupEnd-p.domainLookupStart)+'ms',
+    'connect\t'+Math.round(p.connectEnd-p.connectStart)+'ms',
+    'ttfb\t'+Math.round(p.responseStart-p.requestStart)+'ms',
+    'response\t'+Math.round(p.responseEnd-p.responseStart)+'ms',
+    'domLoaded\t'+Math.round(p.domContentLoadedEventEnd)+'ms',
+    'loadComplete\t'+Math.round(p.loadEventEnd)+'ms'
+  ].join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ttfb '+Math.round(p.responseStart-p.requestStart)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

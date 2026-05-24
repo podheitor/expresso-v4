@@ -1518,5 +1518,24 @@ window.copyMonthByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFirstLast=function(){
+  const cards=Array.from(document.querySelectorAll('[data-event-start]'));
+  if(!cards.length){alert('Sem eventos');return;}
+  const sorted=cards.map(c=>({
+    s:c.getAttribute('data-event-start')||'',
+    t:c.getAttribute('data-event-title')||''
+  })).filter(x=>x.s).sort((a,b)=>a.s.localeCompare(b.s));
+  if(!sorted.length){alert('Sem datas');return;}
+  const first=sorted[0], last=sorted[sorted.length-1];
+  const txt='primeiro\t'+first.s+'\t'+first.t+'\núltimo\t'+last.s+'\t'+last.t;
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='1º '+first.s.slice(0,10)+' → último '+last.s.slice(0,10);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

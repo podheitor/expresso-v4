@@ -1935,5 +1935,14 @@ window.toggleMeetChat=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleMeetRaiseHand=function(){
+  if(!window.jitsiApi){alert('Jitsi ausente');return;}
+  try{window.jitsiApi.executeCommand('toggleRaiseHand');}catch(e){alert(e.message);return;}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hand toggle';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

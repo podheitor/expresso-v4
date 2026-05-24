@@ -1936,5 +1936,30 @@ window.copyContactsByDomain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecent=function(){
+  const days=parseInt(prompt('Adicionados nos últimos N dias:','30')||'30',10);
+  if(!days)return;
+  const cutoff=Date.now()-(days*86400000);
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const created=r.getAttribute('data-contact-created')||'';
+    const d=new Date(created);
+    if(!isNaN(d) && d.getTime()>=cutoff){
+      const n=r.getAttribute('data-contact-name')||'';
+      const e=r.getAttribute('data-contact-email')||'';
+      out.push(created.slice(0,10)+'\t'+n+'\t'+e);
+    }
+  });
+  if(!out.length){alert('Nenhum em '+days+'d');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' recentes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
