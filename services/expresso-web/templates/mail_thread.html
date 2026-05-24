@@ -1468,5 +1468,23 @@ window.copyThreadReplyChain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentsList=function(){
+  const atts=document.querySelectorAll('[data-attach-name]');
+  if(!atts.length){alert('Sem anexos');return;}
+  const lines=[];
+  atts.forEach(a=>{
+    const n=a.getAttribute('data-attach-name')||'';
+    const sz=parseInt(a.getAttribute('data-attach-size')||'0',10);
+    lines.push((sz/1024).toFixed(1)+' KB\t'+n);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=atts.length+' anexos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

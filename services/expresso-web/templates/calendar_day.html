@@ -1483,5 +1483,28 @@ window.copyDayWithVideoLink=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLunchSlot=function(){
+  const cards=Array.from(document.querySelectorAll('[data-event-start][data-event-end]'));
+  const lunch=cards.filter(c=>{
+    const s=c.getAttribute('data-event-start')||'';
+    const h=parseInt(s.slice(11,13),10);
+    return h>=11 && h<14;
+  });
+  if(!lunch.length){alert('Almoço livre');return;}
+  const out=lunch.map(c=>{
+    const s=(c.getAttribute('data-event-start')||'').slice(11,16);
+    const e=(c.getAttribute('data-event-end')||'').slice(11,16);
+    const t=c.getAttribute('data-event-title')||'';
+    return s+'-'+e+'\t'+t;
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lunch.length+' no almoço';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2267,5 +2267,16 @@ window.copyPagePerformance=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleDarkMode=function(){
+  const cur=document.documentElement.getAttribute('data-theme')||'light';
+  const next=cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  try{localStorage.setItem('expresso_theme_{{ me.user_id }}',next);}catch(e){}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tema '+next;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

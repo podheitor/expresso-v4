@@ -1961,5 +1961,27 @@ window.copyContactsRecent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCustomLDIF=function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  if(!rows.length){alert('Sem contatos');return;}
+  const lines=[];
+  rows.forEach(r=>{
+    const n=r.getAttribute('data-contact-name')||'';
+    const e=r.getAttribute('data-contact-email')||'';
+    lines.push('dn: cn='+n+',mail='+e);
+    lines.push('cn: '+n);
+    lines.push('mail: '+e);
+    lines.push('objectClass: inetOrgPerson');
+    lines.push('');
+  });
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' LDIF entries';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

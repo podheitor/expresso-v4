@@ -2255,5 +2255,23 @@ window.copyTasksByTag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOldestPending=function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-id]')).filter(r=>r.getAttribute('data-task-status')!=='done');
+  if(!rows.length){alert('Nada pendente');return;}
+  rows.sort((a,b)=>(a.getAttribute('data-task-created')||'').localeCompare(b.getAttribute('data-task-created')||''));
+  const top=rows.slice(0,10).map(r=>{
+    const c=r.getAttribute('data-task-created')||'';
+    const t=r.getAttribute('data-task-title')||'';
+    return c.slice(0,10)+'\t'+t;
+  });
+  const ta=document.createElement('textarea');
+  ta.value=top.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+top.length+' antigos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

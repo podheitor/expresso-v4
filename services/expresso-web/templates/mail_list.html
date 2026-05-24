@@ -2047,5 +2047,23 @@ window.copyMailUniqueSenders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailReadVsUnread=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  let read=0, unread=0;
+  rows.forEach(r=>{
+    if(r.getAttribute('data-msg-unread')==='1')unread++; else read++;
+  });
+  const pct=Math.round((unread/(rows.length||1))*100);
+  const txt=read+' lidas / '+unread+' não lidas ('+pct+'%)';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% não lidas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

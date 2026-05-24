@@ -1537,5 +1537,28 @@ window.copyMonthFirstLast=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthWeekendsOnly=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  const out=[];
+  cards.forEach(c=>{
+    const s=c.getAttribute('data-event-start')||'';
+    const d=new Date(s);
+    if(isNaN(d))return;
+    const dow=d.getDay();
+    if(dow===0||dow===6){
+      const t=c.getAttribute('data-event-title')||'';
+      out.push(s.slice(0,16).replace('T',' ')+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Sem eventos no fim de semana');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' fim de semana';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
