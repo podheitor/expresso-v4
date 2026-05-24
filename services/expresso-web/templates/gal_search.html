@@ -50,5 +50,27 @@ function copyGalContact(btn) {
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
 }
+// j/k navigation through GAL results
+(function galKeyNav() {
+  var idx = -1;
+  var cards = document.querySelectorAll('.contact-card');
+  if (!cards.length) return;
+  function highlight() {
+    cards.forEach(function(c, i) {
+      c.style.outline = i === idx ? '2px solid var(--accent, #14b8a6)' : '';
+      if (i === idx) c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') { idx = Math.min(idx + 1, cards.length - 1); highlight(); e.preventDefault(); }
+    else if (e.key === 'k' || e.key === 'ArrowUp') { idx = Math.max(idx - 1, 0); highlight(); e.preventDefault(); }
+    else if (e.key === 'Enter' && idx >= 0) {
+      var a = cards[idx].querySelector('a.btn-ghost');
+      if (a) a.click();
+    }
+  });
+})();
 </script>
 {% endblock %}

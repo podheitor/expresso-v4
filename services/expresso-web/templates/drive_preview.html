@@ -53,6 +53,8 @@
         if (e.key === '+' || e.key === '=') zoomImg(0.25);
         else if (e.key === '-') zoomImg(-0.25);
         else if (e.key === '0') zoomImgReset();
+        else if (e.key === 'r' || e.key === 'R') rotateImg();
+        else if (e.key === 'f' || e.key === 'F') openImgFullscreen();
       });
       </script>
     {% else if file.preview_kind() == "pdf" %}

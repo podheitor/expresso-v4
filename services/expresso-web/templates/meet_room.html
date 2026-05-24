@@ -251,6 +251,7 @@
     <aside class="meet-side-panel" id="panel-chat" style="display:none">
       <div class="meet-side-panel-header">
         <span>Chat da reunião</span>
+        <button class="btn btn-ghost btn-sm" onclick="copyMeetChat(this)" title="Copiar transcrição">📋</button>
         <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')">✕</button>
       </div>
       <div class="meet-chat-messages" id="meet-chat-msgs"></div>
@@ -844,6 +845,18 @@ function cycleMeetLayout(btn) {
     }
   } catch(e){}
 })();
+function copyMeetChat(btn) {
+  var lines = [];
+  document.querySelectorAll('#meet-chat-msgs .meet-chat-msg').forEach(function(m){
+    lines.push(m.textContent.trim());
+  });
+  if (!lines.length) { alert('Sem mensagens para copiar.'); return; }
+  navigator.clipboard.writeText(lines.join('\n')).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 
 <!-- Invite modal -->

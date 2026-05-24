@@ -16,13 +16,19 @@
   {% if files.is_empty() %}
     <div class="empty-state">Lixeira vazia</div>
   {% else %}
+  <div style="margin-bottom:.6rem;display:flex;gap:.5rem;align-items:center">
+    <input type="search" id="trash-filter" placeholder="🔍 Filtrar por nome…"
+           class="search-input-sm" style="width:18rem"
+           oninput="filterTrash(this.value)">
+    <span class="muted small" id="trash-visible-count"></span>
+  </div>
   <table class="data-table">
     <thead>
       <tr><th></th><th>Nome</th><th>Tamanho</th><th>Excluído</th><th>Ações</th></tr>
     </thead>
     <tbody>
       {% for f in files %}
-      <tr>
+      <tr class="trash-row" data-name="{{ f.name }}">
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>{{ f.name }}</td>
         <td class="mono muted">{{ f.size_human() }}</td>
@@ -61,6 +67,18 @@ function emptyTrash() {
     alert('Lixeira esvaziada (' + ids.length + ' arquivos).');
     window.location.reload();
   });
+}
+function filterTrash(q) {
+  q = (q || '').toLowerCase();
+  var visible = 0;
+  document.querySelectorAll('.trash-row').forEach(function(tr) {
+    var name = (tr.dataset.name || '').toLowerCase();
+    var match = !q || name.includes(q);
+    tr.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  var lbl = document.getElementById('trash-visible-count');
+  if (lbl) lbl.textContent = q ? visible + ' visível(eis)' : '';
 }
 </script>
 {% endblock %}

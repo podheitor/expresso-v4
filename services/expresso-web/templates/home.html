@@ -680,5 +680,24 @@ renderWeatherWidget();
     if (el) el.textContent = pending;
   } catch(e){}
 })();
+// Track quick-link clicks; star most-used
+(function quickLinkHeatmap() {
+  var KEY = 'expresso_quick_link_hits_{{ me.user_id }}';
+  var hits = {};
+  try { hits = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch(e){}
+  document.querySelectorAll('.home-quick-item').forEach(function(a) {
+    a.addEventListener('click', function() {
+      hits[a.getAttribute('href')] = (hits[a.getAttribute('href')] || 0) + 1;
+      try { localStorage.setItem(KEY, JSON.stringify(hits)); } catch(e){}
+    });
+  });
+  var top = Object.keys(hits).sort(function(a,b){ return hits[b] - hits[a]; })[0];
+  if (!top) return;
+  var el = document.querySelector('.home-quick-item[href="' + top + '"]');
+  if (el) {
+    el.style.borderColor = 'var(--accent, #14b8a6)';
+    el.title = 'Mais usado (' + hits[top] + ' acessos)';
+  }
+})();
 </script>
 {% endblock %}

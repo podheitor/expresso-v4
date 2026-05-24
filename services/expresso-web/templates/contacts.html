@@ -69,7 +69,9 @@
       <div class="contacts-card-grid">
         {% for c in contacts %}
         {% match selected_book %}{% when Some with (bid) %}
-        <div class="contact-card" data-name="{{ c.name_display() }}">
+        <div class="contact-card" data-name="{{ c.name_display() }}" data-cid="{{ c.id }}" style="position:relative">
+          <button class="contact-fav-btn" onclick="toggleContactFav(this, '{{ c.id }}')" title="Favoritar"
+                  style="position:absolute;top:.3rem;right:.4rem;background:none;border:none;cursor:pointer;font-size:1rem;opacity:.4">☆</button>
           <div class="contact-card-avatar">{{ c.avatar_initial() }}</div>
           <div class="contact-card-name">{{ c.name_display() }}</div>
           {% if !c.email_display().is_empty() %}<div class="contact-card-email muted small">{{ c.email_display() }}</div>{% endif %}
@@ -539,6 +541,28 @@ function emailVisibleContacts() {
   if (emails.length > 50 && !confirm('Adicionar ' + emails.length + ' destinatários ao compose?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(emails.join(', '));
 }
+// ── Favorites (localStorage) ────────────────────────────────────────────────
+var CONTACT_FAV_KEY = 'expresso_contact_favs_{{ me.user_id }}';
+function loadContactFavs() {
+  try { return JSON.parse(localStorage.getItem(CONTACT_FAV_KEY) || '{}'); } catch(e){ return {}; }
+}
+function saveContactFavs(f) {
+  try { localStorage.setItem(CONTACT_FAV_KEY, JSON.stringify(f)); } catch(e){}
+}
+function toggleContactFav(btn, cid) {
+  var favs = loadContactFavs();
+  if (favs[cid]) { delete favs[cid]; btn.textContent = '☆'; btn.style.opacity = '.4'; btn.style.color = ''; }
+  else { favs[cid] = 1; btn.textContent = '★'; btn.style.opacity = '1'; btn.style.color = '#f59e0b'; }
+  saveContactFavs(favs);
+}
+(function applyContactFavs() {
+  var favs = loadContactFavs();
+  document.querySelectorAll('.contact-fav-btn').forEach(function(b) {
+    var card = b.closest('.contact-card');
+    var cid = card && card.dataset.cid;
+    if (cid && favs[cid]) { b.textContent = '★'; b.style.opacity = '1'; b.style.color = '#f59e0b'; }
+  });
+})();
 </script>
 
 <!-- Groups modal -->

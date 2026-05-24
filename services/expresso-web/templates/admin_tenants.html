@@ -39,7 +39,7 @@
           <tr class="admin-tenant-row"
               data-name="{{ t.name }}"
               data-domain="{% match t.domain %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
-            <td class="mono small">{{ t.id }}</td>
+            <td class="mono small">{{ t.id }} <button class="btn btn-ghost btn-sm" onclick="copyTenantId(this,'{{ t.id }}')" title="Copiar ID" style="padding:.05rem .25rem;font-size:.7rem">📋</button></td>
             <td><strong>{{ t.name }}</strong></td>
             <td class="mono small">{% match t.domain %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
             <td class="muted small">{{ t.user_count }}</td>
@@ -106,5 +106,11 @@ function filterTenants(q) {
     if (q && inp) { inp.value = q; filterTenants(q); }
   } catch(e){}
 })();
+function copyTenantId(btn, id) {
+  navigator.clipboard.writeText(id).then(function() {
+    var prev = btn.textContent; btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 {% endblock %}

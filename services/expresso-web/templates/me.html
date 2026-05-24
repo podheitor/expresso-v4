@@ -35,6 +35,7 @@
       <a class="btn btn-ghost" href="/settings">⚙ Configurações</a>
       <a class="btn btn-ghost" href="/settings?tab=notifications">🔔 Notificações</a>
       <a class="btn btn-ghost" href="/settings?tab=filters">📨 Regras de email</a>
+      <button class="btn btn-ghost" onclick="downloadMeJson()" title="Baixar snapshot do perfil">⬇ Meus dados (JSON)</button>
       <a class="btn btn-ghost" href="{{ logout_url }}">↪ Sair</a>
     </div>
 
@@ -101,6 +102,22 @@ function copyMeField(btn, text) {
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
+}
+function downloadMeJson() {
+  var snap = {
+    user_id:    '{{ me.user_id }}',
+    email:      '{{ me.email }}',
+    tenant_id:  '{{ me.tenant_id }}',
+    roles:      [{% for r in me.roles %}'{{ r }}'{% if !loop.last %},{% endif %}{% endfor %}],
+    expires_at: '{{ me.expires_at }}',
+    exported_at: new Date().toISOString(),
+  };
+  var blob = new Blob([JSON.stringify(snap, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-profile-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 {% endblock %}

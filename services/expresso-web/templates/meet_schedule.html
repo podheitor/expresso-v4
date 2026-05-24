@@ -28,6 +28,13 @@
           <input type="datetime-local" name="scheduled_end" id="meet-end" oninput="updateMeetTzPreview()">
         </label>
       </div>
+      <div style="display:flex;gap:.3rem;margin-top:-.4rem;flex-wrap:wrap">
+        <span class="muted small">Duração:</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(15)">15min</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(30)">30min</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(60)">1h</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(90)">1h30</button>
+      </div>
       <div class="muted small" id="meet-tz-info" style="margin-top:-.4rem"></div>
 
       <label>
@@ -80,6 +87,18 @@ function copyMeetDraft(btn) {
     var prev = btn.textContent; btn.textContent = '✓ Copiado';
     setTimeout(function(){ btn.textContent = prev; }, 1500);
   });
+}
+function setMeetDur(mins) {
+  var s = document.getElementById('meet-start');
+  var e = document.getElementById('meet-end');
+  if (!s || !e || !s.value) { alert('Defina o início primeiro.'); return; }
+  var d = new Date(s.value);
+  if (isNaN(d.getTime())) return;
+  d.setMinutes(d.getMinutes() + mins);
+  var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+  e.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+          + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  if (typeof updateMeetTzPreview === 'function') updateMeetTzPreview();
 }
 </script>
 {% endblock %}

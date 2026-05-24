@@ -13,6 +13,7 @@
       <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir agenda do dia">🖨</button>
+      <button class="btn btn-ghost" onclick="copyDayLink(this)" title="Copiar link deste dia">🔗</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
     </div>
   </div>
@@ -245,5 +246,13 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
 });
+function copyDayLink(btn) {
+  var url = window.location.origin + window.location.pathname + window.location.search;
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 {% endblock %}

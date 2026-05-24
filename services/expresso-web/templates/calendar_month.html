@@ -5,7 +5,7 @@
 <div class="page">
   <div class="page-header">
     <div>
-      <h1>{{ selected.name }}</h1>
+      <h1>{{ selected.name }} <span class="muted small" id="month-event-total" style="font-size:.7rem;font-weight:400"></span></h1>
       <p class="muted">{{ month_label }}</p>
     </div>
     <div class="row">
@@ -376,5 +376,13 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
 });
+(function sumMonthEvents() {
+  var total = 0;
+  document.querySelectorAll('.month-cell:not(.off-month) .cell-event-count').forEach(function(s) {
+    var n = parseInt(s.textContent || '0', 10); if (!isNaN(n)) total += n;
+  });
+  var el = document.getElementById('month-event-total');
+  if (el) el.textContent = total > 0 ? '· ' + total + ' evento(s) este mês' : '';
+})();
 </script>
 {% endblock %}

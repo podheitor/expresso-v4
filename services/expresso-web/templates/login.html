@@ -10,7 +10,10 @@
   {% match error %}{% when Some with (e) %}
     <div class="alert alert-error" role="alert">{{ e }}</div>
   {% when None %}{% endmatch %}
-  <a class="btn btn-primary btn-lg block" href="{{ login_url }}">Entrar com Keycloak</a>
+  <div id="login-offline-banner" class="alert alert-warning" style="display:none;margin:.5rem 0">
+    ⚠ Sem conexão. O login OIDC requer rede ativa.
+  </div>
+  <a class="btn btn-primary btn-lg block" id="login-btn" href="{{ login_url }}">Entrar com Keycloak</a>
   <p class="muted small" id="last-login-hint" style="margin-top:.75rem;text-align:center;display:none"></p>
   <p class="muted small" style="margin-top:.4rem;text-align:center;font-size:.75rem">
     <a href="/healthz" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">● Status</a>
@@ -35,6 +38,18 @@
   var el = document.getElementById('login-clock'); if (!el) return;
   function tick(){ el.textContent = new Date().toLocaleTimeString('pt-BR'); }
   tick(); setInterval(tick, 1000);
+})();
+(function networkStatus() {
+  var banner = document.getElementById('login-offline-banner');
+  var btn    = document.getElementById('login-btn');
+  function refresh() {
+    var off = !navigator.onLine;
+    if (banner) banner.style.display = off ? '' : 'none';
+    if (btn) { btn.style.opacity = off ? '.5' : ''; btn.style.pointerEvents = off ? 'none' : ''; }
+  }
+  window.addEventListener('online', refresh);
+  window.addEventListener('offline', refresh);
+  refresh();
 })();
 </script>
 {% endblock %}

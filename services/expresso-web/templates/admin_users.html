@@ -14,6 +14,7 @@
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bulk-csv-input').click()" title="Importar lista de usuários (CSV)">📥 Importar CSV</button>
       <input type="file" id="bulk-csv-input" accept=".csv,text/csv" style="display:none" onchange="bulkImportCsv(this.files[0])">
       <button class="btn btn-ghost btn-sm" onclick="exportUsersCsv()" title="Exportar usuários para CSV">📤 Exportar CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyVisibleEmails(this)" title="Copiar emails visíveis (separados por vírgula)">📋 Emails</button>
       <button class="btn btn-primary btn-sm" onclick="showModal('admin-user-modal')">+ Convidar usuário</button>
     </div>
   </div>
@@ -291,5 +292,18 @@ function sortAdminUsers(key) {
     if (s.q || s.role || s.status) filterAdminUsers(s.q || '');
   } catch(e){}
 })();
+function copyVisibleEmails(btn) {
+  var emails = [];
+  document.querySelectorAll('.admin-user-row').forEach(function(r) {
+    if (r.style.display === 'none') return;
+    var e = r.dataset.email || '';
+    if (e) emails.push(e);
+  });
+  if (!emails.length) { alert('Nenhum email visível.'); return; }
+  navigator.clipboard.writeText(emails.join(', ')).then(function() {
+    var prev = btn.textContent; btn.textContent = '✓ ' + emails.length;
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
+  });
+}
 </script>
 {% endblock %}

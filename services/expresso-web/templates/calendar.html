@@ -5,6 +5,9 @@
 <div class="page">
   <div class="page-header">
     <h1>Minhas agendas</h1>
+    {% if !calendars.is_empty() %}
+    <button class="btn btn-ghost btn-sm" onclick="downloadAllIcs()" title="Baixar todas as agendas como .ics">⬇ Todas (.ics)</button>
+    {% endif %}
   </div>
   {% if calendars.is_empty() %}
     <div class="empty-state">Nenhuma agenda configurada</div>
@@ -39,6 +42,14 @@ function copyCalDavUrl(btn, calId) {
     var prev = btn.textContent;
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+function downloadAllIcs() {
+  var links = document.querySelectorAll('a.btn-ghost[href$="/ical"]');
+  if (!links.length) return;
+  if (!confirm('Baixar ' + links.length + ' agendas como arquivos .ics separados?')) return;
+  links.forEach(function(a, i) {
+    setTimeout(function(){ window.open(a.href, '_blank'); }, i * 300);
   });
 }
 </script>

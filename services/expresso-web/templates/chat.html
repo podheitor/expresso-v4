@@ -115,6 +115,7 @@
                  title="Ir para data" style="width:8.5rem">
           <span class="muted small" id="chat-search-result"></span>
           <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
+          <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
         </div>
       </header>
 
@@ -1423,6 +1424,24 @@ function exportChannelJson() {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportChannelMarkdown() {
+  var lines = ['# Chat export — ' + new Date().toLocaleString('pt-BR'), ''];
+  document.querySelectorAll('.chat-msg').forEach(function(m) {
+    var author = ((m.querySelector('.chat-msg-author') || {}).textContent || '').trim();
+    var time   = ((m.querySelector('.chat-msg-time')   || {}).textContent || '').trim();
+    var body   = ((m.querySelector('.chat-msg-body')   || {}).textContent || '').trim();
+    lines.push('**' + author + '** _' + time + '_');
+    lines.push('');
+    lines.push(body);
+    lines.push('');
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.md';
   a.click();
   URL.revokeObjectURL(a.href);
 }
