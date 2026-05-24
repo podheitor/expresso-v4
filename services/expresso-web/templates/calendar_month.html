@@ -945,4 +945,20 @@ window.copyEventsByWeekday = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyEventsCountAvg = function(){
+  const ev = document.querySelectorAll('.event,.cal-event,[data-event-id]');
+  const cells = document.querySelectorAll('[data-day], .cal-day');
+  const avg = cells.length > 0 ? (ev.length / cells.length).toFixed(2) : '0';
+  const s = ev.length+' eventos / '+cells.length+' dias = '+avg+' média';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
+</script>
 {% endblock %}

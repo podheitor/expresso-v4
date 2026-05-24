@@ -1666,4 +1666,25 @@ window.copyTasksNoDueDate = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyOldestPending = function(){
+  const rows = Array.from(document.querySelectorAll('.task,.task-row,li[data-task-id],tr[data-task-id]')).filter(r => r.getAttribute('data-status') !== 'done' && !r.classList.contains('done'));
+  let best = null, bestTs = Infinity;
+  rows.forEach(r => {
+    const c = new Date(r.getAttribute('data-created')||'').getTime();
+    if (!isNaN(c) && c < bestTs) { bestTs = c; best = r; }
+  });
+  if (!best) return;
+  const ti = ((best.querySelector('.title,[data-title]')||{}).textContent||'').trim();
+  const s = new Date(bestTs).toISOString()+'\t'+ti;
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Mais antiga pendente';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

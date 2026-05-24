@@ -1583,4 +1583,23 @@ window.copySharedFiles = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyMediaFiles = function(){
+  const rows = document.querySelectorAll('.file-row, tr[data-file-id], li[data-file-id]');
+  const media = [];
+  rows.forEach(r => {
+    const n = ((r.querySelector('.name,[data-name]')||{}).textContent || r.getAttribute('data-name') || '').trim();
+    if (/\.(jpg|jpeg|png|gif|webp|mp4|mov|mp3|wav|ogg|webm|svg|avif)$/i.test(n)) media.push(n);
+  });
+  const out = media.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=media.length+' arquivos de mídia';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

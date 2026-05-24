@@ -720,4 +720,15 @@ window.copyResultsAsLdif = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.focusSearchBox = function(){
+  const q = document.querySelector('input[name="q"], #q, input[type="search"]');
+  if (q) { q.focus(); q.select(); }
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Busca focada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),800);
+};
+</script>
 {% endblock %}

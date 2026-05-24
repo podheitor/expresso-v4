@@ -1371,4 +1371,24 @@ window.copyBirthdays = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyContactsAsTsv = function(){
+  const rows = document.querySelectorAll('.contact,.contact-row,li[data-contact-id],tr[data-contact-id]');
+  const out = 'name\temail\tphone\tcompany\n' + Array.from(rows).map(r => {
+    const n = ((r.querySelector('.name,[data-name]')||{}).textContent||r.getAttribute('data-name')||'').trim();
+    const e = ((r.querySelector('.email,[data-email]')||{}).textContent||r.getAttribute('data-email')||'').trim();
+    const p = ((r.querySelector('.phone,[data-phone]')||{}).textContent||r.getAttribute('data-phone')||'').trim();
+    const c = ((r.querySelector('.company,[data-company]')||{}).textContent||r.getAttribute('data-company')||'').trim();
+    return [n,e,p,c].join('\t');
+  }).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' contatos (TSV)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

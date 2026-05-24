@@ -855,4 +855,31 @@ window.copyBackToBack = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyShortestEvent = function(){
+  const ev = Array.from(document.querySelectorAll('.event,.cal-event,[data-event-id]')).map(e => {
+    const ts = e.querySelector('time,[data-start]');
+    const te = e.querySelector('[data-end]') || e.querySelector('time:last-of-type');
+    const s = ts && (ts.getAttribute('datetime') || ts.getAttribute('data-start'));
+    const en = te && (te.getAttribute('data-end') || te.getAttribute('datetime'));
+    const ti = ((e.querySelector('.title,[data-title]')||{}).textContent||'').trim();
+    if (!s || !en) return null;
+    const ds = new Date(s), de = new Date(en);
+    if (isNaN(ds) || isNaN(de)) return null;
+    return { d:(de-ds)/60000, t:ti, s };
+  }).filter(Boolean);
+  if (!ev.length) return;
+  ev.sort((a,b)=>a.d-b.d);
+  const o = ev[0];
+  const s = o.d+'min\t'+o.s+'\t'+o.t;
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Mais curto: '+o.d+'min';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

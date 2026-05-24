@@ -2219,4 +2219,26 @@ window.copyAvgMsgLength = function(){
   setTimeout(()=>t.remove(),2000);
 };
 </script>
+<script>
+window.copyMessagesWithCode = function(){
+  const msgs = document.querySelectorAll('.message,.msg,[data-msg-id]');
+  const lines = [];
+  msgs.forEach(m => {
+    const codes = m.querySelectorAll('pre, code');
+    if (codes.length) {
+      const a = ((m.querySelector('.author,[data-author]')||{}).textContent||'').trim();
+      codes.forEach(c => lines.push(a+': '+c.textContent.trim().replace(/\s+/g,' ').slice(0,120)));
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' blocos de código';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -792,4 +792,23 @@ window.copyAuditByResource = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyUniqueActors = function(){
+  const rows = document.querySelectorAll('.audit-row,tr[data-audit-id],li[data-audit-id]');
+  const set = new Set();
+  rows.forEach(r => {
+    const a = ((r.querySelector('.actor,[data-actor]')||{}).textContent || r.getAttribute('data-actor') || '').trim();
+    if (a) set.add(a);
+  });
+  const out = Array.from(set).sort().join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=set.size+' atores únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

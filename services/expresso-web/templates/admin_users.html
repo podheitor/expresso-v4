@@ -810,4 +810,25 @@ window.copyRecentlyCreated = function(n){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyUsersAsCsv = function(){
+  const rows = document.querySelectorAll('.user-row,tr[data-user-id],li[data-user-id]');
+  const esc = s => '"'+String(s||'').replace(/"/g,'""')+'"';
+  const out = 'email,role,status,tenant,2fa\n' + Array.from(rows).map(r => [
+    esc((r.querySelector('.email,[data-email]')||{}).textContent || r.getAttribute('data-email') || ''),
+    esc((r.querySelector('.role,[data-role]')||{}).textContent || r.getAttribute('data-role') || ''),
+    esc((r.querySelector('.status,[data-status]')||{}).textContent || r.getAttribute('data-status') || ''),
+    esc((r.querySelector('.tenant,[data-tenant]')||{}).textContent || r.getAttribute('data-tenant') || ''),
+    esc(r.getAttribute('data-2fa')||'')
+  ].join(',')).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' usuários (CSV)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -1513,4 +1513,21 @@ window.toggleVirtualBackground = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.kickAll = function(){
+  if (!window.jitsiApi) return;
+  if (!confirm('Remover todos os participantes (exceto você)?')) return;
+  Promise.resolve(window.jitsiApi.getParticipantsInfo ? window.jitsiApi.getParticipantsInfo() : []).then(list => {
+    let n = 0;
+    (list||[]).forEach(p => {
+      try { window.jitsiApi.executeCommand('kickParticipant', p.participantId); n++; } catch(e) {}
+    });
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=n+' removidos';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
+</script>
 {% endblock %}
