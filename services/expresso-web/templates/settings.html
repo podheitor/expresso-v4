@@ -1426,6 +1426,23 @@ function countExpressoPrefsByPrefix() {
 }
 </script>
 <script>
+window.copyAllPrefs = function(){
+  const out = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('expresso_')) out[k] = localStorage.getItem(k);
+  }
+  const txt = JSON.stringify(out, null, 2);
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {
+    const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }).finally(() => {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = Object.keys(out).length + ' prefs copiadas';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  });
+};
 window.printSettingsTab = function(){
   const main = document.querySelector('.settings-page main, .settings-page') || document.body;
   const w = window.open('', '_blank');

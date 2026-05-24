@@ -688,4 +688,30 @@ function printThread() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'X') return;
+    const k = 'expresso_thread_collapsequoted_{{ me.user_id }}';
+    const next = localStorage.getItem(k) !== '1';
+    localStorage.setItem(k, next ? '1' : '0');
+    document.querySelectorAll('.message-body, [data-message-body]').forEach(b => {
+      const lines = (b.innerHTML || '').split(/(<br\s*\/?>|\n)/);
+      if (next) {
+        b.dataset.origHtml = b.dataset.origHtml || b.innerHTML;
+        b.innerHTML = lines.filter(l => !/^\s*&gt;/.test(l) && !/^\s*>/.test(l)).join('');
+      } else if (b.dataset.origHtml) {
+        b.innerHTML = b.dataset.origHtml;
+      }
+    });
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Quoted: ' + (next ? 'oculto' : 'visível');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  });
+})();
+</script>
 {% endblock %}

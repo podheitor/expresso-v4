@@ -1121,4 +1121,26 @@ function groupContactsByFirstLetter() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Y') return;
+    const rows = Array.from(document.querySelectorAll('.contact-row[data-name]'));
+    if (!rows.length) return;
+    const md = '# Contatos\n\n' + rows.map(r => {
+      const name = r.dataset.name || '';
+      const email = r.dataset.email || '';
+      return '- **' + name + '** — ' + email;
+    }).join('\n');
+    const blob = new Blob([md], {type:'text/markdown'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'contacts-' + Date.now() + '.md';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
 {% endblock %}

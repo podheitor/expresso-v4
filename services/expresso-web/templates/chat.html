@@ -2032,4 +2032,18 @@ function copyChatLastN(n) {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== '3') return;
+    const firstDm = document.querySelector('[data-channel-type="dm"], .channel-dm');
+    if (firstDm) {
+      const a = firstDm.querySelector('a[href]');
+      if (a) location.href = a.href;
+    }
+  });
+})();
+</script>
 {% endblock %}

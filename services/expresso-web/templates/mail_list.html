@@ -1293,4 +1293,14 @@ function toggleMailListDensity() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== '2') return;
+    location.href = '/mail/Sent';
+  });
+})();
+</script>
 {% endblock %}

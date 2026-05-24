@@ -959,6 +959,17 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.insertHorizontalRule = function(){
+  const body = document.querySelector('textarea[name="body"]');
+  if (!body) return;
+  const pos = body.selectionStart || body.value.length;
+  const before = body.value.slice(0, pos);
+  const after = body.value.slice(pos);
+  const sep = '\n\n---\n\n';
+  body.value = before + sep + after;
+  body.focus();
+  body.selectionStart = body.selectionEnd = pos + sep.length;
+};
 window.clearAttachmentsAll = function(){
   const input = document.querySelector('input[type="file"][name="attachments"], input[type="file"]');
   if (input) input.value = '';

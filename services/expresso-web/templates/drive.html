@@ -1349,4 +1349,27 @@ function copyDriveBreadcrumbs() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Y') return;
+    const items = Array.from(document.querySelectorAll('.drive-row[data-name]'));
+    const tree = items.map(i => {
+      const isDir = i.dataset.type === 'dir' || i.classList.contains('dir');
+      return (isDir ? '[d] ' : '[f] ') + i.dataset.name;
+    }).join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(tree) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = tree; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = items.length + ' itens copiados';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}
