@@ -1368,5 +1368,29 @@ window.copyDayExternalOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBackToBack=function(){
+  const cards=Array.from(document.querySelectorAll('[data-event-start]'));
+  if(cards.length<2){alert('Precisa ≥2 eventos');return;}
+  const items=cards.map(c=>({
+    start:c.getAttribute('data-event-start')||'',
+    end:c.getAttribute('data-event-end')||'',
+    title:c.getAttribute('data-event-title')||''
+  })).filter(x=>x.start&&x.end).sort((a,b)=>a.start.localeCompare(b.start));
+  const b2b=[];
+  for(let i=1;i<items.length;i++){
+    if(items[i-1].end===items[i].start){
+      b2b.push(items[i-1].title+' → '+items[i].title);
+    }
+  }
+  if(!b2b.length){alert('Sem reuniões coladas');return;}
+  const ta=document.createElement('textarea');
+  ta.value=b2b.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=b2b.length+' back-to-back';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2723,5 +2723,23 @@ window.copyChatCodeBlocks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatPinnedMessages=function(){
+  const rows=document.querySelectorAll('[data-msg-id][data-msg-pinned="1"]');
+  if(!rows.length){alert('Nenhuma mensagem fixada');return;}
+  const lines=[];
+  rows.forEach(r=>{
+    const author=r.getAttribute('data-msg-author')||'';
+    const body=(r.querySelector('.body')||r).textContent.trim().slice(0,200);
+    lines.push(author+': '+body);
+  });
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' fixadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

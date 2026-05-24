@@ -2152,5 +2152,24 @@ window.copyTasksProgressBar=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyTasksByPriority=function(){
+  const rows=document.querySelectorAll('[data-task-id]');
+  if(!rows.length){alert('Sem tarefas');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const p=r.getAttribute('data-task-priority')||'none';
+    buckets[p]=(buckets[p]||0)+1;
+  });
+  const order=['high','medium','low','none'];
+  const lines=order.filter(k=>buckets[k]).map(k=>k+'\t'+buckets[k]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' prioridades';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

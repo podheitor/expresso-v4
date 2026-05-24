@@ -1949,5 +1949,25 @@ window.copyMailMonthlyVolume=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailWithAttachOnly=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const att=[];
+  rows.forEach(r=>{
+    if(r.getAttribute('data-msg-hasattach')==='1'){
+      const subj=r.getAttribute('data-msg-subject')||'';
+      const from=r.getAttribute('data-msg-from')||'';
+      att.push(from+'\t'+subj);
+    }
+  });
+  if(!att.length){alert('Nenhum com anexo');return;}
+  const ta=document.createElement('textarea');
+  ta.value=att.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=att.length+' com anexo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

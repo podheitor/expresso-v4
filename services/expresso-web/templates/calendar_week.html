@@ -1395,5 +1395,25 @@ window.copyWeekEarliestStart=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalHours=function(){
+  const cards=document.querySelectorAll('[data-event-start][data-event-end]');
+  if(!cards.length){alert('Sem eventos');return;}
+  let totalMs=0;
+  cards.forEach(c=>{
+    const s=new Date(c.getAttribute('data-event-start')||'');
+    const e=new Date(c.getAttribute('data-event-end')||'');
+    if(!isNaN(s)&&!isNaN(e)&&e>s)totalMs+=e-s;
+  });
+  const h=(totalMs/3600000).toFixed(1);
+  const ta=document.createElement('textarea');
+  ta.value=h+'h em '+cards.length+' eventos';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=h+'h total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
