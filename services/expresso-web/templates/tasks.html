@@ -1612,4 +1612,16 @@ window.copyDueTodayList = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.collapseCompletedSection = function(){
+  document.querySelectorAll('.task.done, .task[data-status="done"], li[data-status="done"], tr[data-status="done"]').forEach(r => {
+    r.style.display = r.style.display === 'none' ? '' : 'none';
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Concluídas: visibilidade alternada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

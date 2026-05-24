@@ -844,4 +844,24 @@ window.copyThreadStats = function(){
   setTimeout(()=>t.remove(),2200);
 };
 </script>
+<script>
+window.copyAttachmentSizes = function(){
+  const els = document.querySelectorAll('.attachment,[data-attachment]');
+  const lines = [];
+  els.forEach(a => {
+    const n = (a.querySelector('.name,[data-name]')||{}).textContent || a.getAttribute('data-name') || '';
+    const sz = a.getAttribute('data-size') || (a.querySelector('[data-size]')||{}).getAttribute && a.querySelector('[data-size]').getAttribute('data-size') || '';
+    if (n.trim()) lines.push((sz||'?')+'\t'+n.trim());
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' tamanhos de anexo copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

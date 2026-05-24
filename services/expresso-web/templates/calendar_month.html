@@ -880,4 +880,24 @@ window.copyDaysWithoutEvents = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyMonthStats = function(){
+  const ev = document.querySelectorAll('.event,.cal-event,[data-event-id]');
+  const days = new Set();
+  ev.forEach(e => {
+    const ts = (e.querySelector('time,[data-start]')||{});
+    const s = ts.getAttribute && (ts.getAttribute('datetime')||ts.getAttribute('data-start')||ts.textContent) || '';
+    if (s) days.add(s.slice(0,10));
+  });
+  const s = ev.length+' eventos · '+days.size+' dias com eventos';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -1515,4 +1515,34 @@ window.copyEmptyFolders = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyOldestFile = function(){
+  const rows = document.querySelectorAll('.file-row, tr[data-file-id], li[data-file-id]');
+  let best = null, bestTs = Infinity;
+  rows.forEach(r => {
+    const mt = r.getAttribute('data-mtime') || (r.querySelector('time')||{}).getAttribute && r.querySelector('time').getAttribute('datetime') || '';
+    if (!mt) return;
+    const d = new Date(mt).getTime();
+    if (!isNaN(d) && d < bestTs) { bestTs = d; best = r; }
+  });
+  if (!best) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Sem mtime nos arquivos';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const n = ((best.querySelector('.name,[data-name]')||{}).textContent || best.getAttribute('data-name') || '').trim();
+  const s = n+'\t'+new Date(bestTs).toISOString();
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Arquivo mais antigo copiado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

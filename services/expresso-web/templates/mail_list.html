@@ -1429,4 +1429,15 @@ window.copyAttachedOnly = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.markAllReadVisible = function(){
+  const rows = document.querySelectorAll('.mail-row.unread, tr[data-mail-id].unread, li[data-mail-id].unread');
+  rows.forEach(r => r.classList.remove('unread'));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' marcadas lidas (somente UI)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}
