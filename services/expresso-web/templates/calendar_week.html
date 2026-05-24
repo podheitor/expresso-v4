@@ -2321,5 +2321,25 @@ window.copyWeekWeekendCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekOrganizers=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const by={};
+  evs.forEach(e=>{
+    const o=e.dataset.organizer||e.querySelector('.event-organizer')?.textContent.trim()||'(none)';
+    by[o]=(by[o]||0)+1;
+  });
+  const lines=Object.entries(by).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+v);
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' org';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

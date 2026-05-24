@@ -2181,5 +2181,27 @@ window.copyUsersByQuotaPct=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByCreated=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const arr=[];
+  rows.forEach(r=>{
+    const c=Date.parse(r.dataset.created||'');
+    const e=r.dataset.email||r.querySelector('.user-email')?.textContent.trim()||'';
+    if(!isNaN(c))arr.push({c,e});
+  });
+  arr.sort((a,b)=>b.c-a.c);
+  const out=arr.slice(0,30).map(x=>new Date(x.c).toISOString().slice(0,10)+'\t'+x.e);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

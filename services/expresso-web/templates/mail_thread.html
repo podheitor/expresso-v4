@@ -2189,5 +2189,36 @@ window.copyThreadAttachNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDateRange=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const ts=[];
+  msgs.forEach(m=>{
+    const d=Date.parse(m.dataset.date||m.dataset.ts||'');
+    if(!isNaN(d))ts.push(d);
+  });
+  ts.sort((a,b)=>a-b);
+  if(ts.length===0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no ts';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const first=new Date(ts[0]).toISOString().slice(0,19);
+  const last=new Date(ts[ts.length-1]).toISOString().slice(0,19);
+  const span=Math.round((ts[ts.length-1]-ts[0])/86400000);
+  const ta=document.createElement('textarea');
+  ta.value=first+' → '+last+' ('+span+' dias)';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=span+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

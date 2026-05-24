@@ -2432,5 +2432,22 @@ window.copyRoomUrl=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.muteEveryoneElse=function(){
+  if(!window.jitsiApi){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no jitsi';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  if(!confirm('Mutar todos os outros participantes?'))return;
+  window.jitsiApi.executeCommand('muteEveryone','audio');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='muted all';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

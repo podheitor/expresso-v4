@@ -2357,5 +2357,32 @@ window.copyMonthFirstLast=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByWeek=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const by={};
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    if(!isNaN(s)){
+      const d=new Date(s);
+      const yr=d.getFullYear();
+      const start=new Date(yr,0,1);
+      const w=Math.ceil(((d-start)/86400000+start.getDay()+1)/7);
+      const k='W'+String(w).padStart(2,'0');
+      by[k]=(by[k]||0)+1;
+    }
+  });
+  const lines=Object.entries(by).sort().map(([k,v])=>k+': '+v);
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' wk';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

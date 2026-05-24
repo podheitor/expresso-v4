@@ -2053,5 +2053,28 @@ window.copyGalByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagers=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const ti=(r.dataset.title||r.querySelector('.gal-title')?.textContent||'').toLowerCase();
+    if(/manager|gerente|diretor|chefe|coord|head|lead/.test(ti)){
+      const n=r.dataset.name||r.querySelector('.gal-name')?.textContent.trim()||'';
+      const e=r.dataset.email||r.querySelector('.gal-email')?.textContent.trim()||'';
+      out.push(n+'\t'+ti+'\t'+e);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' mgr';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2931,5 +2931,28 @@ window.copyDriveLargestN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveRecentN=function(){
+  const n=parseInt(prompt('Últimos N modificados:','10'),10)||10;
+  const rows=document.querySelectorAll('[data-file-id]');
+  const arr=[];
+  rows.forEach(r=>{
+    const mt=Date.parse(r.dataset.mtime||'');
+    const nm=r.dataset.name||r.querySelector('.file-name')?.textContent.trim()||r.dataset.fileId;
+    if(!isNaN(mt))arr.push({mt,nm});
+  });
+  arr.sort((a,b)=>b.mt-a.mt);
+  const out=arr.slice(0,n).map(x=>new Date(x.mt).toISOString().slice(0,19)+'\t'+x.nm);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='last '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
