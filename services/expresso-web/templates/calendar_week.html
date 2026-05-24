@@ -2037,5 +2037,28 @@ window.copyWeekByCategory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFirstOfDay=function(){
+  const map={};
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const k=s.slice(0,10);
+    if(!map[k]||s<map[k].s){
+      map[k]={s,e};
+    }
+  });
+  const keys=Object.keys(map).sort();
+  if(!keys.length){alert('Sem eventos');return;}
+  const out=keys.map(k=>{
+    const ev=map[k].e;
+    const t=(ev.getAttribute('data-event-title')||ev.textContent||'').trim().slice(0,60);
+    return map[k].s+'\t'+t;
+  }).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' dias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

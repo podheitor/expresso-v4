@@ -2667,5 +2667,22 @@ window.copyDriveByOwnerDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSharedItems=function(){
+  const out=[];
+  document.querySelectorAll('[data-file-name],[data-folder-name]').forEach(r=>{
+    const sh=(r.getAttribute('data-file-shared')||r.getAttribute('data-folder-shared')||'').trim();
+    if(sh==='1'||sh==='true'){
+      const p=(r.getAttribute('data-file-path')||r.getAttribute('data-folder-path')||r.getAttribute('data-file-name')||r.getAttribute('data-folder-name')||'').trim();
+      out.push(p);
+    }
+  });
+  if(!out.length){alert('Nada compartilhado');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' shared';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2659,5 +2659,18 @@ window.requestNotificationPerm=function(){
     setTimeout(()=>t.remove(),1800);
   });
 };
+window.copySettingsServiceWorker=function(){
+  if(!('serviceWorker' in navigator)){alert('SW indisponível');return;}
+  navigator.serviceWorker.getRegistrations().then(rs=>{
+    if(!rs.length){alert('Sem SW registrados');return;}
+    const out=rs.map(r=>r.scope+'\t'+(r.active?'active':r.installing?'installing':'waiting')).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=rs.length+' SW';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

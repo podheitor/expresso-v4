@@ -1916,5 +1916,24 @@ window.copyAuditLast24h=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByHourDist=function(){
+  const h=new Array(24).fill(0);
+  document.querySelectorAll('[data-audit-id]').forEach(r=>{
+    const ts=(r.getAttribute('data-audit-ts')||'').trim();
+    if(!ts)return;
+    const d=new Date(ts);if(isNaN(d))return;
+    h[d.getHours()]++;
+  });
+  const total=h.reduce((a,b)=>a+b,0);
+  if(!total){alert('Sem entradas');return;}
+  const peak=h.indexOf(Math.max(...h));
+  const out=h.map((v,i)=>String(i).padStart(2,'0')+'h\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+String(peak).padStart(2,'0')+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
