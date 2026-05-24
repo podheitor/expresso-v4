@@ -251,10 +251,11 @@
             <div class="chat-mention-wrap" style="position:relative;flex:1">
               <textarea class="chat-compose-input" name="body" id="chat-compose-input"
                 placeholder="Mensagem em #{{ ch.name }}… (@ para mencionar)"
-                rows="1"
+                rows="1" maxlength="4000"
                 onkeydown="chatKeydown(event, this.form); mentionKeydown(event)"
-                oninput="autoResize(this); chatTyping(); mentionDetect(this)"></textarea>
+                oninput="autoResize(this); chatTyping(); mentionDetect(this); updateChatCharCount(this)"></textarea>
               <ul class="mention-list" id="mention-list" style="display:none"></ul>
+              <div id="chat-char-count" class="muted small" style="position:absolute;right:.4rem;bottom:-1.1rem;font-size:.7rem;pointer-events:none"></div>
             </div>
             <button type="button" class="btn btn-ghost chat-send-btn" id="chat-mic-btn" onclick="toggleVoiceRecord()" title="Gravar áudio">🎤</button>
             <button type="button" class="btn btn-ghost chat-send-btn" onclick="toggleChatEnterSends()" title="Alternar modo Enter (envia/quebra linha)">⏎</button>
@@ -1458,6 +1459,14 @@ function exportChannelMarkdown() {
   a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.md';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+function updateChatCharCount(ta) {
+  var el = document.getElementById('chat-char-count');
+  if (!el) return;
+  var n = ta.value.length, max = 4000;
+  if (n === 0) { el.textContent = ''; return; }
+  el.textContent = n + '/' + max;
+  el.style.color = n > max * 0.9 ? '#ef4444' : '';
 }
 </script>
 {% endblock %}

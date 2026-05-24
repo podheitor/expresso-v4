@@ -59,7 +59,10 @@
   <div class="card stack" style="margin-top:1.5rem" id="meet-recent-card" style="display:none">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <h2 style="margin:0">Salas recentes</h2>
-      <button class="btn btn-ghost btn-sm" onclick="clearRecentMeets()">Limpar</button>
+      <div style="display:flex;gap:.3rem">
+        <button class="btn btn-ghost btn-sm" onclick="exportRecentMeets()" title="Baixar histórico (JSON)">⬇</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearRecentMeets()">Limpar</button>
+      </div>
     </div>
     <ul class="meet-list" id="meet-recent-list"></ul>
   </div>
@@ -252,5 +255,16 @@ renderRecentMeets();
   });
   setTimeout(checkMeetSoon, 60000);
 })();
+function exportRecentMeets() {
+  try {
+    var raw = localStorage.getItem(RECENT_MEETS_KEY) || '[]';
+    var blob = new Blob([raw], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'meet-history-' + new Date().toISOString().slice(0,10) + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) { alert('Erro ao exportar.'); }
+}
 </script>
 {% endblock %}

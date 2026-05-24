@@ -32,6 +32,7 @@
     <div class="subcard stack">
       <h2>Códigos de backup</h2>
       <p class="muted small">Use estes códigos uma única vez se perder acesso ao TOTP. Guarde em local seguro.</p>
+      <div id="backup-codes-count" class="muted small"></div>
       <div id="backup-codes-box" style="font-family:monospace;background:var(--surface-2);padding:.5rem;border-radius:var(--radius);min-height:2rem;white-space:pre-wrap"></div>
       <div style="display:flex;gap:.4rem;flex-wrap:wrap">
         <button class="btn btn-ghost btn-sm" onclick="genBackupCodes()">Gerar 10 códigos</button>
@@ -55,6 +56,8 @@ function renderBackupCodes() {
   if (!box) return;
   var codes = loadBackupCodes();
   box.textContent = codes.length ? codes.join('\n') : '(nenhum código gerado)';
+  var cnt = document.getElementById('backup-codes-count');
+  if (cnt) cnt.textContent = codes.length ? (codes.length + ' código(s) ativo(s)') : '';
 }
 function genBackupCodes() {
   var codes = [];

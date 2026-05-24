@@ -14,6 +14,7 @@
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir agenda do dia">🖨</button>
       <button class="btn btn-ghost" onclick="copyDayLink(this)" title="Copiar link deste dia">🔗</button>
+      <a class="btn btn-ghost" href="/calendar/{{ selected.id }}/ical?date={{ date_iso }}" title="Baixar .ics do dia">⬇ .ics</a>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
     </div>
   </div>

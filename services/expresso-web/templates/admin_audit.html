@@ -11,7 +11,8 @@
         <span>Live-tail</span>
       </label>
       <span class="muted small" id="audit-live-status" style="display:none">⏺ ao vivo</span>
-      <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ Exportar CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportAuditJson()">⬇ JSON</button>
     </div>
   </div>
 
@@ -172,6 +173,28 @@ function exportAuditLog() {
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = 'audit-' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
+}
+function exportAuditJson() {
+  var rows = document.querySelectorAll('.audit-row');
+  var out = [];
+  rows.forEach(function(r) {
+    if (r.style.display === 'none') return;
+    var cells = r.querySelectorAll('td');
+    out.push({
+      ts: cells[0].textContent.trim(),
+      user: cells[1].textContent.trim(),
+      action: cells[2].textContent.trim(),
+      resource: cells[3].textContent.trim(),
+      ip: cells[4].textContent.trim(),
+      detail: cells[5] ? cells[5].textContent.trim() : '',
+    });
+  });
+  var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'audit-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 (function relativeAuditTimes() {
   function rel(ts) {

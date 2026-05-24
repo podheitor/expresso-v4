@@ -14,9 +14,11 @@
   {% if versions.is_empty() %}
     <div class="empty-state">Nenhuma versão arquivada. Uploads subsequentes do mesmo nome geram versões.</div>
   {% else %}
-  <div class="subcard" style="display:flex;gap:1.5rem;margin-bottom:.75rem">
+  <div class="subcard" style="display:flex;gap:1.5rem;margin-bottom:.75rem;align-items:center;flex-wrap:wrap">
     <span class="muted small">📦 <strong>{{ versions.len() }}</strong> versão(ões)</span>
     <span class="muted small">📊 Total: <strong id="versions-total-size">—</strong></span>
+    <span class="muted small">📈 Crescimento: <strong id="versions-growth">—</strong></span>
+    <button class="btn btn-ghost btn-sm" onclick="toggleVersionsCompact()" style="margin-left:auto" title="Modo compacto">⇕ Compactar</button>
   </div>
   <div class="versions-timeline">
     {% for v in versions %}
@@ -99,6 +101,23 @@ function copyVersionUrl(btn, path) {
     var prev = btn.textContent;
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+(function computeGrowth() {
+  var el = document.getElementById('versions-growth'); if (!el) return;
+  var sizes = Array.from(document.querySelectorAll('.version-size')).map(function(s){
+    return parseInt(s.dataset.bytes || '0', 10);
+  });
+  if (sizes.length < 2) { el.textContent = '—'; return; }
+  var first = sizes[sizes.length - 1], last = sizes[0];
+  if (first === 0) { el.textContent = '—'; return; }
+  var pct = ((last - first) / first * 100).toFixed(1);
+  el.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+  el.style.color = pct >= 0 ? '#22c55e' : '#ef4444';
+})();
+function toggleVersionsCompact() {
+  document.querySelectorAll('.version-mime, .version-actions').forEach(function(el){
+    el.style.display = el.style.display === 'none' ? '' : 'none';
   });
 }
 </script>

@@ -21,13 +21,13 @@
     <table class="admin-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Nome</th>
-          <th>Domínio</th>
-          <th>Usuários</th>
-          <th>Cota (GB)</th>
+          <th onclick="sortTenants(0)" style="cursor:pointer">ID ⇅</th>
+          <th onclick="sortTenants(1)" style="cursor:pointer">Nome ⇅</th>
+          <th onclick="sortTenants(2)" style="cursor:pointer">Domínio ⇅</th>
+          <th onclick="sortTenants(3,true)" style="cursor:pointer">Usuários ⇅</th>
+          <th onclick="sortTenants(4,true)" style="cursor:pointer">Cota (GB) ⇅</th>
           <th>Status</th>
-          <th>Criado em</th>
+          <th onclick="sortTenants(6)" style="cursor:pointer">Criado em ⇅</th>
           <th>Ações</th>
         </tr>
       </thead>
@@ -111,6 +111,21 @@ function copyTenantId(btn, id) {
     var prev = btn.textContent; btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
+}
+var _tenantSortAsc = {};
+function sortTenants(col, numeric) {
+  var tbody = document.querySelector('table.admin-table tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('tr.admin-tenant-row'));
+  var asc = !(_tenantSortAsc[col] === true);
+  _tenantSortAsc[col] = asc;
+  rows.sort(function(a, b) {
+    var av = (a.cells[col] && a.cells[col].textContent.trim()) || '';
+    var bv = (b.cells[col] && b.cells[col].textContent.trim()) || '';
+    if (numeric) { av = parseFloat(av) || 0; bv = parseFloat(bv) || 0; return asc ? av - bv : bv - av; }
+    return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+  rows.forEach(function(r){ tbody.appendChild(r); });
 }
 </script>
 {% endblock %}

@@ -256,5 +256,16 @@ function filterAdminConfig(q) {
     if (q && inp) { inp.value = q; filterAdminConfig(q); }
   } catch(e){}
 })();
+(function backToTopBtn() {
+  var btn = document.createElement('button');
+  btn.textContent = '↑';
+  btn.title = 'Voltar ao topo';
+  btn.style.cssText = 'position:fixed;bottom:1.2rem;right:1.2rem;width:2.6rem;height:2.6rem;border-radius:50%;border:1px solid var(--border);background:var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.15);cursor:pointer;display:none;font-size:1.1rem;z-index:100';
+  btn.onclick = function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  document.body.appendChild(btn);
+  window.addEventListener('scroll', function() {
+    btn.style.display = window.scrollY > 400 ? 'block' : 'none';
+  });
+})();
 </script>
 {% endblock %}

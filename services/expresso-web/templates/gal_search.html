@@ -50,6 +50,17 @@ function copyGalContact(btn) {
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
 }
+(function highlightGalTerms() {
+  var q = '{{ query }}'.trim();
+  if (!q || q.length < 2) return;
+  var safeQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var re = new RegExp('(' + safeQ + ')', 'gi');
+  document.querySelectorAll('.contact-name, .contact-email').forEach(function(el) {
+    if (el.textContent && !el.querySelector('mark')) {
+      el.innerHTML = el.textContent.replace(re, '<mark style="background:rgba(20,184,166,.25);color:inherit;padding:0 .15em;border-radius:.2em">$1</mark>');
+    }
+  });
+})();
 // j/k navigation through GAL results
 (function galKeyNav() {
   var idx = -1;

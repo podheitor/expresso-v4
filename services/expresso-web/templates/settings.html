@@ -876,7 +876,8 @@ function importLocalSettings(file) {
 }
 function clearAllLocalSettings() {
   if (!confirm('Apagar TODOS os dados locais do Expresso (preferências, rascunhos, fixados, etc.)?\nEsta ação não pode ser desfeita.')) return;
-  if (!confirm('Tem certeza? Você terá que reconfigurar tudo.')) return;
+  var typed = prompt('Para confirmar, digite APAGAR (em maiúsculas):');
+  if (typed !== 'APAGAR') { alert('Cancelado — texto não conferiu.'); return; }
   try {
     var toRemove = [];
     for (var i = 0; i < localStorage.length; i++) {

@@ -19,9 +19,17 @@
       </label>
       <input type="search" id="week-event-filter" placeholder="🔍 Filtrar eventos…"
              oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
+      <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
   </div>
+  <style>
+    @media print {
+      .view-switch, .cal-mini-sidebar, .btn, input, label, .page-header .row { display: none !important; }
+      .page-header h1 { font-size: 1.1rem; }
+      body { background: white; color: black; }
+    }
+  </style>
 
   <nav class="view-switch" style="margin-bottom:1rem">
     <a class="btn btn-ghost" href="{{ month_link }}">Mês</a>

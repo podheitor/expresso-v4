@@ -563,6 +563,32 @@ function toggleContactFav(btn, cid) {
     if (cid && favs[cid]) { b.textContent = '★'; b.style.opacity = '1'; b.style.color = '#f59e0b'; }
   });
 })();
+(function contactsKeyNav() {
+  var idx = -1;
+  var cards = function() { return document.querySelectorAll('.contact-card[data-name]'); };
+  function visibleCards() {
+    return Array.from(cards()).filter(function(c){ return c.offsetParent !== null; });
+  }
+  function focus() {
+    var list = visibleCards();
+    list.forEach(function(c, i) {
+      c.style.outline = i === idx ? '2px solid var(--accent, #14b8a6)' : '';
+      if (i === idx) c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var list = visibleCards();
+    if (!list.length) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') { idx = Math.min(idx + 1, list.length - 1); focus(); e.preventDefault(); }
+    else if (e.key === 'k' || e.key === 'ArrowUp') { idx = Math.max(idx - 1, 0); focus(); e.preventDefault(); }
+    else if (e.key === 'Enter' && idx >= 0 && idx < list.length) {
+      var a = list[idx].querySelector('a.btn-ghost, a.btn-primary');
+      if (a) window.location.href = a.href;
+    }
+  });
+})();
 </script>
 
 <!-- Groups modal -->

@@ -305,5 +305,11 @@ function copyVisibleEmails(btn) {
     setTimeout(function(){ btn.textContent = prev; }, 1500);
   });
 }
+(function tintAdminRows() {
+  document.querySelectorAll('.admin-user-row').forEach(function(r) {
+    if (r.dataset.role === 'admin') r.style.background = 'rgba(20,184,166,.05)';
+    if (r.dataset.status === 'suspended') { r.style.opacity = '.65'; r.title = 'Usuário suspenso'; }
+  });
+})();
 </script>
 {% endblock %}
