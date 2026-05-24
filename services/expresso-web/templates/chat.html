@@ -1932,5 +1932,16 @@ document.addEventListener('keydown', function(e){
     if (ed) { e.preventDefault(); ed.focus(); }
   });
 })();
+// sprint #20773 — tecla o abre primeiro canal/DM da sidebar
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var first = document.querySelector('.chat-channel-link, .chat-sidebar a[href*="/chat/"], a[data-channel-id]');
+    if (first) window.location.href = first.getAttribute('href');
+    else alert('Nenhum canal visível.');
+  });
+})();
 </script>
 {% endblock %}

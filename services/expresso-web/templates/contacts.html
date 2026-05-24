@@ -1006,5 +1006,16 @@ document.addEventListener('keydown', function(e){
     else alert(bad.length + ' e-mail(s) inválido(s):\n\n' + bad.slice(0, 20).join('\n'));
   });
 })();
+// sprint #20777 — tecla o abre primeiro contato
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var first = document.querySelector('.contact-row a[href*="/contacts/"], a[data-contact-id]');
+    if (first) window.location.href = first.getAttribute('href');
+    else alert('Nenhum contato visível.');
+  });
+})();
 </script>
 {% endblock %}

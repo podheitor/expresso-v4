@@ -1326,5 +1326,27 @@ function copyTasksTitles() {
     alert('Total: ' + total + '\nConcluídas: ' + done + '\nPendentes: ' + (total - done) + '\nProgresso: ' + pct + '%');
   });
 })();
+// sprint #20776 — tecla u rola para primeira tarefa pendente
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'u') return;
+    var rows = document.querySelectorAll('.task-row, [data-task-id]');
+    var found = null;
+    rows.forEach(function(r){
+      if (found) return;
+      var done = r.classList.contains('done') || r.classList.contains('completed') || r.querySelector('input[type="checkbox"]:checked');
+      if (!done && r.offsetParent !== null) found = r;
+    });
+    if (found) {
+      found.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      found.style.outline = '2px solid #ff8800';
+      setTimeout(function(){ found.style.outline = ''; }, 1500);
+    } else {
+      alert('Nenhuma tarefa pendente.');
+    }
+  });
+})();
 </script>
 {% endblock %}

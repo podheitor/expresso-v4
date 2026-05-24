@@ -1250,5 +1250,14 @@ document.addEventListener('keydown', function(e){
              'Online: ' + navigator.onLine;
   alert(info);
 });
+// sprint #20771 — tecla o abre /admin se link existe
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'o') return;
+  var link = document.querySelector('a[href="/admin"], a[href^="/admin/"]');
+  if (link) window.location.href = '/admin';
+  else alert('Sem acesso admin nesta conta.');
+});
 </script>
 {% endblock %}

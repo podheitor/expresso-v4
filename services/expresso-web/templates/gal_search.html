@@ -381,5 +381,18 @@ document.addEventListener('keydown', function(e){
     setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
   });
 })();
+// sprint #20784 — tecla o abre mailto: do primeiro resultado
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var row = document.querySelector('.gal-result, [data-gal-email]');
+    if (!row) { alert('Sem resultados GAL.'); return; }
+    var email = (row.getAttribute('data-gal-email') || (row.querySelector('[data-gal-email], .gal-email') || {}).textContent || '').trim();
+    if (!email) { alert('Sem e-mail detectado.'); return; }
+    window.location.href = '/mail/compose?to=' + encodeURIComponent(email);
+  });
+})();
 </script>
 {% endblock %}

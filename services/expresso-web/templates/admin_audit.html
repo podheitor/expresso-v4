@@ -464,5 +464,16 @@ document.addEventListener('keydown', function(e){
     alert(n + ' entrada(s) de auditoria visível(eis).');
   });
 })();
+// sprint #20785 — tecla o abre detalhe da primeira entrada
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var row = document.querySelector('.audit-row a[href*="/admin/audit/"], a[data-audit-id]');
+    if (row) window.location.href = row.getAttribute('href');
+    else alert('Sem detalhe de auditoria disponível.');
+  });
+})();
 </script>
 {% endblock %}

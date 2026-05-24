@@ -586,5 +586,16 @@ document.addEventListener('keydown', function(e){
     alert(hrefs.length + ' link(s):\n\n' + hrefs.slice(0, 20).join('\n'));
   });
 })();
+// sprint #20780 — tecla o abre raw view do thread em nova aba
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var raw = document.querySelector('a[href*="/raw"], a[href*=".eml"], a[data-action="raw"]');
+    if (raw) window.open(raw.getAttribute('href'), '_blank');
+    else alert('Sem link raw/.eml visível.');
+  });
+})();
 </script>
 {% endblock %}

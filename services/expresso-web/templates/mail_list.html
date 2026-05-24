@@ -1186,5 +1186,14 @@ document.addEventListener('keydown', function(e){
   var s = document.querySelector('input[type="search"], input[name="q"], #quick-filter');
   if (s) { e.preventDefault(); s.focus(); s.select && s.select(); }
 });
+// sprint #20772 — tecla o abre primeira thread visível
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'o') return;
+  var first = document.querySelector('.mail-row a[href*="/mail/thread/"], a.thread-link, tr[data-thread-id] a');
+  if (first) window.location.href = first.getAttribute('href');
+  else alert('Nenhuma thread visível.');
+});
 </script>
 {% endblock %}

@@ -1245,5 +1245,14 @@ document.addEventListener('keydown', function(e){
   else if (ren) ren.click();
   else alert('Botão de renomear não encontrado nesta linha.');
 });
+// sprint #20774 — tecla o abre primeira pasta visível
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'o') return;
+  var folder = document.querySelector('.drive-row.folder a[href*="/drive/"], a[data-folder-id], a[href*="/drive/folder/"]');
+  if (folder) window.location.href = folder.getAttribute('href');
+  else alert('Nenhuma pasta visível.');
+});
 </script>
 {% endblock %}

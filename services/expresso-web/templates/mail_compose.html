@@ -925,5 +925,15 @@ function countLinksInBody() {
   matches.forEach(function(u){ unique[u] = (unique[u] || 0) + 1; });
   alert(matches.length + ' link(s) (' + Object.keys(unique).length + ' únicos).\n\nExemplos:\n' + matches.slice(0, 5).join('\n'));
 }
+// sprint #20779 — flagShortLinksInBody: detecta encurtadores comuns no body
+function flagShortLinksInBody() {
+  var body = document.querySelector('textarea[name="body"], #compose-body');
+  if (!body) return;
+  var txt = body.value || '';
+  var SHORT = /\b(bit\.ly|tinyurl\.com|t\.co|goo\.gl|ow\.ly|is\.gd|buff\.ly|short\.link|rebrand\.ly|cutt\.ly)\b/gi;
+  var matches = txt.match(SHORT) || [];
+  if (!matches.length) { alert('Sem encurtadores de URL detectados.'); return; }
+  alert(matches.length + ' encurtador(es) detectado(s): ' + matches.join(', ') + '\n\n(Considere expandir antes de enviar.)');
+}
 </script>
 {% endblock %}

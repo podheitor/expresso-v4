@@ -588,5 +588,20 @@ document.addEventListener('keydown', function(e){
     alert('Mês: ' + mn + '/' + now.getFullYear() + '\nDias no mês: ' + daysInMonth + '\nCélulas na grade: ' + cells + '\nEventos: ' + evs);
   });
 })();
+// sprint #20783 — tecla o abre primeiro evento do mês
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'o') return;
+    var ev = document.querySelector('a.event, a[data-event-id], .event a[href*="/calendar/event/"]');
+    if (ev) {
+      var href = ev.getAttribute('href') || (ev.closest('a') && ev.closest('a').getAttribute('href'));
+      if (href) window.location.href = href;
+    } else {
+      alert('Nenhum evento visível.');
+    }
+  });
+})();
 </script>
 {% endblock %}
