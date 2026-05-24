@@ -1014,5 +1014,17 @@ window.copyThreadStats = function(){
   document.body.appendChild(ti);
   setTimeout(()=>ti.remove(),1800);
 };
+window.copyResponseTimes = function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-date]'));
+  if(msgs.length<2){alert('precisa ≥2 msgs');return;}
+  const out=[];
+  for(let i=1;i<msgs.length;i++){const a=Date.parse(msgs[i-1].getAttribute('data-msg-date'));const b=Date.parse(msgs[i].getAttribute('data-msg-date'));if(!isNaN(a)&&!isNaN(b)){const m=Math.round((b-a)/60000);out.push(m+'min');}}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const ti=document.createElement('div');
+  ti.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  ti.textContent=out.length+' intervalos copiados';
+  document.body.appendChild(ti);
+  setTimeout(()=>ti.remove(),1500);
+};
 </script>
 {% endblock %}

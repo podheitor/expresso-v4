@@ -1807,5 +1807,18 @@ window.copyOverdueDays = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTaskCompletionRate = function(){
+  const rows=document.querySelectorAll('[data-task-done]');
+  const total=rows.length;
+  let done=0;
+  rows.forEach(r=>{if((r.getAttribute('data-task-done')||'').toLowerCase()==='true')done++;});
+  const pct=total?((done/total)*100).toFixed(1):'0';
+  const ta=document.createElement('textarea');ta.value='completion\t'+done+'/'+total+'\t'+pct+'%';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% concluído ('+done+'/'+total+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

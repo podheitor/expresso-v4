@@ -1796,5 +1796,15 @@ window.copyServerVersion = function(){
     setTimeout(()=>t.remove(),2000);
   });
 };
+window.resetTheme = function(){
+  const keys=['expresso_theme','expresso_density','expresso_font_size','expresso_color_scheme'];
+  let n=0;
+  keys.forEach(k=>{if(localStorage.getItem(k)){localStorage.removeItem(k);n++;}});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=n+' temas resetados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

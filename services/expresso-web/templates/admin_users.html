@@ -948,5 +948,16 @@ window.copyByPlan = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersNoLogin30d = function(){
+  const cutoff=Date.now()-30*86400000;
+  const rows=Array.from(document.querySelectorAll('[data-user-last-login]')).filter(r=>{const v=Date.parse(r.getAttribute('data-user-last-login'));return isNaN(v)||v<cutoff;});
+  const out=rows.map(r=>r.getAttribute('data-user-email')+'\t'+(r.getAttribute('data-user-last-login')||'nunca')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' inativos 30d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

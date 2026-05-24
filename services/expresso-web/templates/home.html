@@ -1606,5 +1606,17 @@ window.copyOnlineStatus = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyCookieSize = function(){
+  const c=document.cookie||'';
+  const bytes=new Blob([c]).size;
+  const count=c.split(';').filter(s=>s.trim()).length;
+  const txt='cookies\t'+count+'\nbytes\t'+bytes;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=count+' cookies / '+bytes+'B';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

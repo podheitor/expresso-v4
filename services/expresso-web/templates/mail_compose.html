@@ -1287,5 +1287,15 @@ window.removeDuplicateRecipients = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.previewSize = function(){
+  const f=['subject','body','to','cc','bcc'];
+  let bytes=0;
+  f.forEach(n=>{const el=document.querySelector('[name="'+n+'"]');if(el)bytes+=new Blob([el.value||'']).size;});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='preview size: '+bytes+'B';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

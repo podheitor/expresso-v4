@@ -1082,5 +1082,17 @@ window.copyMonthAttendeesUnique = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestDay = function(){
+  const cnt={};
+  document.querySelectorAll('[data-event-start]').forEach(e=>{const d=e.getAttribute('data-event-start').slice(0,10);cnt[d]=(cnt[d]||0)+1;});
+  const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+  const out=top?top[0]+'\t'+top[1]+' eventos':'sem eventos';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dia mais cheio copiado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

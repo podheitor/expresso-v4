@@ -1045,5 +1045,16 @@ window.copyMeetingCount = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1800);
 };
+window.copyWeekFocusBlocks = function(){
+  const evs=Array.from(document.querySelectorAll('[data-event-start][data-event-end]')).map(e=>({s:Date.parse(e.getAttribute('data-event-start')),f:Date.parse(e.getAttribute('data-event-end'))})).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=0;i<evs.length-1;i++){const gap=Math.round((evs[i+1].s-evs[i].f)/60000);if(gap>=90)out.push(new Date(evs[i].f).toISOString()+'\t'+gap+'min');}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' blocos de foco ≥90min';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

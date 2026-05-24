@@ -917,5 +917,16 @@ window.copyAuditByTenant = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByHour = function(){
+  const m={};
+  document.querySelectorAll('[data-audit-ts]').forEach(r=>{const h=r.getAttribute('data-audit-ts').slice(11,13);m[h]=(m[h]||0)+1;});
+  const out=Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).map(([h,n])=>h+'h\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='histograma horário copiado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
