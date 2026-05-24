@@ -1753,5 +1753,16 @@ window.copyMailFlaggedSubj = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailWeekRange = function(){
+  const rows=document.querySelectorAll('[data-mail-id][data-mail-date]');
+  const cutoff=Date.now()-7*86400000;
+  const out=Array.from(rows).filter(r=>{const t=Date.parse(r.getAttribute('data-mail-date')); return !isNaN(t)&&t>=cutoff;}).map(r=>(r.getAttribute('data-mail-date')||'?')+'\t'+(r.getAttribute('data-mail-subj')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='últimos 7d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

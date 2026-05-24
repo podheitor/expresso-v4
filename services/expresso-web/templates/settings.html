@@ -1949,5 +1949,20 @@ window.copyMediaDevices = function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copyFontList = function(){
+  const fonts=['Arial','Helvetica','Times New Roman','Courier New','Verdana','Georgia','Comic Sans MS','Trebuchet MS','Tahoma','Impact','Lucida Console','Calibri','Cambria','Consolas','Segoe UI','Roboto','Open Sans'];
+  const ctx=document.createElement('canvas').getContext('2d');
+  const base='monospace';
+  ctx.font='72px '+base;
+  const baseW=ctx.measureText('mmmmmmmmmmlli').width;
+  const avail=fonts.filter(f=>{ctx.font='72px "'+f+'",'+base; return ctx.measureText('mmmmmmmmmmlli').width!==baseW;});
+  const out=avail.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=avail.length+' fontes detectadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

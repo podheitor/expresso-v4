@@ -979,5 +979,18 @@ window.copyGalByTitle = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.exportGalCsvFull = function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  const headers='name,email,dept,title,phone';
+  const lines=Array.from(rows).map(r=>[r.getAttribute('data-gal-name')||'',r.getAttribute('data-gal-email')||'',r.getAttribute('data-gal-dept')||'',r.getAttribute('data-gal-title')||'',r.getAttribute('data-gal-phone')||''].map(v=>'"'+v.replace(/"/g,'""')+'"').join(','));
+  const csv=headers+'\n'+lines.join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='gal.csv';document.body.appendChild(a);a.click();a.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' linhas CSV';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
