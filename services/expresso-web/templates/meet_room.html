@@ -1118,6 +1118,14 @@ document.addEventListener('keydown', function(e){
   if (document.fullscreenElement) document.exitFullscreen();
   else if (target.requestFullscreen) target.requestFullscreen();
 });
+// sprint #20655 — tecla `q` confirma saída da sala
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'q' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (confirm('Sair da reunião?')) {
+    window.location.href = '/meet';
+  }
+});
 </script>
 
 <!-- Invite modal -->

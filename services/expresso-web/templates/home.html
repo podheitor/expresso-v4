@@ -1189,5 +1189,11 @@ document.addEventListener('keydown', function(e){
     h.textContent = prefix + ', ' + orig;
   }
 })();
+// sprint #20651 — tecla `c` abre /calendar/day rapidamente
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'c' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.href = '/calendar/day';
+});
 </script>
 {% endblock %}

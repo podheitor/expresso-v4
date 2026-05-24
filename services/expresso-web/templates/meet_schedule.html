@@ -269,5 +269,24 @@ function copyScheduledMeetLink(btn) {
   });
   else { var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert('Link: ' + url); }
 }
+// sprint #20665 — generateSlugFromName() preenche slug a partir do nome da reunião
+function generateSlugFromName() {
+  var name = (document.querySelector('input[name="name"]') || {}).value || '';
+  if (!name.trim()) { alert('Defina o nome da reunião primeiro.'); return; }
+  var slug = name.trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  if (!slug) { alert('Não foi possível gerar slug do nome.'); return; }
+  var rnd = Math.random().toString(36).slice(2, 6);
+  var inp = document.querySelector('input[name="room_name"], input[name="slug"], #meet-slug');
+  if (inp) {
+    inp.value = slug + '-' + rnd;
+    inp.dispatchEvent(new Event('input', {bubbles:true}));
+  } else {
+    alert('Sugestão: ' + slug + '-' + rnd);
+  }
+}
 </script>
 {% endblock %}

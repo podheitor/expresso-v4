@@ -419,5 +419,11 @@ document.addEventListener('keydown', function(e){
   if (!top.length) { alert('Sem usuários nas linhas visíveis.'); return; }
   alert('Top usuários no audit visível:\n\n' + top.map(function(u){ return tally[u] + '× ' + u; }).join('\n'));
 });
+// sprint #20664 — tecla `r` reload manual (sem cache-bust)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.reload();
+});
 </script>
 {% endblock %}

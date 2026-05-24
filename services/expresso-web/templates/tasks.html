@@ -1223,6 +1223,16 @@ document.addEventListener('keydown', function(e){
   });
   alert('📊 Tarefas:\n  Pendentes: ' + pend + '\n  Concluídas (total visível): ' + doneAll + '\n  Concluídas hoje: ' + doneToday);
 });
+// sprint #20656 — tecla `/` foca campo adicionar tarefa
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('.tasks-add-form input[type="text"], #new-task-title, input[name="title"]');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+  inp.scrollIntoView({block:'center'});
+});
 </script>
 <style>
 @media print {

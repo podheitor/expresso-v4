@@ -1265,5 +1265,18 @@ function importExpressoPrefs() {
   };
   inp.click();
 }
+// sprint #20658 — wipeExpressoPrefs() remove todas chaves expresso_* (com confirmação)
+function wipeExpressoPrefs() {
+  if (!confirm('Apagar TODAS as preferências locais do Expresso (expresso_*)? Esta ação não pode ser desfeita.')) return;
+  var n = 0, toRemove = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('expresso_') === 0) toRemove.push(k);
+    }
+    toRemove.forEach(function(k){ localStorage.removeItem(k); n++; });
+  } catch(e) {}
+  alert(n + ' chave(s) removida(s).');
+}
 </script>
 {% endblock %}

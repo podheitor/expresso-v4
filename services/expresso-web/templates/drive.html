@@ -1166,5 +1166,16 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.reload();
 });
+// sprint #20654 — tecla `u` navega pra pasta pai
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'u' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var crumb = document.querySelectorAll('.breadcrumb a, .drive-crumbs a, nav.breadcrumbs a');
+  if (crumb.length >= 2) {
+    window.location.href = crumb[crumb.length - 2].href;
+  } else {
+    window.location.href = '/drive';
+  }
+});
 </script>
 {% endblock %}

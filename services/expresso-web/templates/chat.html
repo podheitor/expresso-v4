@@ -1858,6 +1858,15 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'S' || e.ctrlKey || e.metaKey || e.altKey) return;
   showChatSnippets();
 });
+// sprint #20653 — tecla `/` foca campo de mensagem (entrada)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('textarea[name="body"], #chat-input, input[name="message"], .chat-input');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

@@ -494,5 +494,19 @@ document.addEventListener('keydown', function(e){
     if (body) body.style.display = anyOpen ? 'none' : '';
   });
 });
+// sprint #20660 — tecla `r` foca composer de resposta (textarea reply)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var ta = document.querySelector('#thread-reply, textarea[name="reply_body"], textarea[name="body"]');
+  if (!ta) {
+    var btn = document.querySelector('a[href*="reply"], button[name="reply"]');
+    if (btn) btn.click();
+    return;
+  }
+  e.preventDefault();
+  ta.focus();
+  ta.scrollIntoView({block:'center'});
+});
 </script>
 {% endblock %}

@@ -841,5 +841,11 @@ function insertSignatureBlock() {
   else if (!ta.value) ta.value = sig;
   ta.focus();
 }
+// sprint #20659 — resetComposeSignature() apaga a assinatura salva
+function resetComposeSignature() {
+  var K = 'expresso_compose_signature_{{ me.user_id }}';
+  localStorage.removeItem(K);
+  alert('Assinatura local removida. Próxima inserção pedirá uma nova.');
+}
 </script>
 {% endblock %}

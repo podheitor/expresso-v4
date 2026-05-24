@@ -498,5 +498,18 @@ document.addEventListener('keydown', function(e){
   var lines = stats.slice(0, 10).map(function(x){ return x.n + '× ' + x.label; });
   alert('Top dias do mês:\n\n' + lines.join('\n'));
 });
+// sprint #20663 — teclas `[`/`]` navegam mês anterior/seguinte
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== '[' && e.key !== ']') return;
+  var u = new URL(window.location.href);
+  var d = u.searchParams.get('date');
+  var base = d ? new Date(d + (d.length === 7 ? '-01' : '')) : new Date();
+  base.setDate(1);
+  base.setMonth(base.getMonth() + (e.key === ']' ? 1 : -1));
+  u.searchParams.set('date', base.toISOString().slice(0,10));
+  window.location.href = u.toString();
+});
 </script>
 {% endblock %}

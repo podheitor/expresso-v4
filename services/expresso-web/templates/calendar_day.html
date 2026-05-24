@@ -384,5 +384,17 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 3000);
 });
+// sprint #20661 — teclas `[`/`]` navegam dia anterior/seguinte
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== '[' && e.key !== ']') return;
+  var u = new URL(window.location.href);
+  var d = u.searchParams.get('date');
+  var base = d ? new Date(d) : new Date();
+  base.setDate(base.getDate() + (e.key === ']' ? 1 : -1));
+  u.searchParams.set('date', base.toISOString().slice(0,10));
+  window.location.href = u.toString();
+});
 </script>
 {% endblock %}

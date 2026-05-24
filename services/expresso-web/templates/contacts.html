@@ -868,6 +868,15 @@ document.addEventListener('keydown', function(e){
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
 });
+// sprint #20657 — tecla `/` foca filtro/busca de contatos
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('#contact-search, input[name="q"], input[type="search"]');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+});
 </script>
 
 <!-- Groups modal -->
