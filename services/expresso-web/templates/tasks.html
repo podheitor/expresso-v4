@@ -3130,5 +3130,34 @@ window.copyTasksDueToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAvgAge=function(){
+  const rows=document.querySelectorAll('[data-task-id]');
+  const ages=[];
+  rows.forEach(r=>{
+    const c=Date.parse(r.dataset.created||'');
+    if(!isNaN(c))ages.push(Date.now()-c);
+  });
+  if(ages.length===0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no ts';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const sum=ages.reduce((a,b)=>a+b,0);
+  const avgD=(sum/ages.length/86400000).toFixed(1);
+  const ta=document.createElement('textarea');
+  ta.value='avg age: '+avgD+' dias ('+ages.length+' tasks)';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avgD+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

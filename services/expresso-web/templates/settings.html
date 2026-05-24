@@ -2930,5 +2930,27 @@ window.copyMediaDevices=async function(){
     setTimeout(()=>t.remove(),1500);
   }
 };
+window.exportSettingsJson=function(){
+  const o={};
+  document.querySelectorAll('input[name],select[name],textarea[name]').forEach(el=>{
+    if(el.type==='checkbox')o[el.name]=el.checked;
+    else if(el.type==='radio'&&el.checked)o[el.name]=el.value;
+    else if(el.type!=='radio')o[el.name]=el.value;
+  });
+  const blob=new Blob([JSON.stringify(o,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='settings_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dl '+Object.keys(o).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
