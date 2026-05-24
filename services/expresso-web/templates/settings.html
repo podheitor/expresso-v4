@@ -2797,5 +2797,25 @@ window.copyAcceptLanguages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyScreenInfo=function(){
+  const s=window.screen||{};
+  const parts=[
+    'size: '+(s.width||'?')+'x'+(s.height||'?'),
+    'avail: '+(s.availWidth||'?')+'x'+(s.availHeight||'?'),
+    'depth: '+(s.colorDepth||'?')+'bit',
+    'orient: '+(s.orientation?.type||'?')
+  ];
+  const ta=document.createElement('textarea');
+  ta.value=parts.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='screen';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2737,5 +2737,28 @@ window.copyMailReplyDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargestN=function(){
+  const n=parseInt(prompt('Top N por tamanho:','5'),10)||5;
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const arr=[];
+  rows.forEach(r=>{
+    const sz=parseInt(r.dataset.size||'0',10);
+    const s=r.querySelector('.msg-subject')?.textContent.trim()||r.dataset.msgId;
+    arr.push({sz,s});
+  });
+  arr.sort((a,b)=>b.sz-a.sz);
+  const out=arr.slice(0,n).map(x=>x.sz+'\t'+x.s);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2113,5 +2113,27 @@ window.copyUsersSortByEmail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersSuspendedList=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const st=(r.dataset.status||'').toLowerCase();
+    if(st==='suspended'||st==='disabled'||r.dataset.suspended==='true'){
+      const e=r.dataset.email||r.querySelector('.user-email')?.textContent.trim()||'';
+      out.push(e);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' susp';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

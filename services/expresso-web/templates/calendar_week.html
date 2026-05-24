@@ -2256,5 +2256,27 @@ window.copyWeekByCalendar=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekBusiestDay=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const by={};
+  evs.forEach(e=>{
+    const s=(e.dataset.start||'').slice(0,10);
+    if(s)by[s]=(by[s]||0)+1;
+  });
+  let max=0,day='';
+  Object.entries(by).forEach(([k,v])=>{if(v>max){max=v;day=k;}});
+  const txt=day+': '+max+' eventos';
+  const ta=document.createElement('textarea');
+  ta.value=txt;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
