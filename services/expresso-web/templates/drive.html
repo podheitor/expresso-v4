@@ -1620,5 +1620,17 @@ window.copyDocFiles = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyImageFiles = function(){
+  const rows=document.querySelectorAll('[data-file-name]');
+  const exts=['jpg','jpeg','png','gif','webp','svg','bmp','heic'];
+  const imgs=[];
+  rows.forEach(r=>{const n=(r.getAttribute('data-file-name')||'').toLowerCase();const e=n.split('.').pop();if(exts.includes(e))imgs.push(r.getAttribute('data-file-name'));});
+  const ta=document.createElement('textarea');ta.value=imgs.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=imgs.length+' imagens';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

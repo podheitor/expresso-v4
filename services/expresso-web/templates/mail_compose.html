@@ -1189,5 +1189,22 @@ window.copyDraftAsJson = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.countRecipients = function(){
+  const f=['to','cc','bcc'];
+  let total=0;
+  const parts=f.map(n=>{
+    const el=document.querySelector('[name="'+n+'"]');
+    const v=el?(el.value||''):'';
+    const c=v.split(/[,;]/).map(s=>s.trim()).filter(Boolean).length;
+    total+=c;
+    return n+'\t'+c;
+  });
+  const ta=document.createElement('textarea');ta.value=parts.join('\n')+'\ntotal\t'+total;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total+' destinatários';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

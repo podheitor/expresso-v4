@@ -1517,5 +1517,18 @@ window.copyAvgSubjectLen = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyOldestUnread = function(){
+  const rows=document.querySelectorAll('tr[data-msg][data-unread="true"][data-date]');
+  if(!rows.length){alert('nenhum não-lido');return;}
+  let oldest=null,ts=Infinity;
+  rows.forEach(r=>{const d=Date.parse(r.getAttribute('data-date'));if(!isNaN(d)&&d<ts){ts=d;oldest=r;}});
+  if(!oldest){alert('sem datas válidas');return;}
+  const ta=document.createElement('textarea');ta.value=oldest.getAttribute('data-msg')+'\t'+oldest.getAttribute('data-date');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='não-lido mais antigo copiado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
