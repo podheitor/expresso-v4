@@ -106,6 +106,17 @@
         var subj = 'Acesso ao Expresso';
         var body = 'Olá, sua conta está pronta. Acesse: ' + window.location.origin + '/login\n\nEmail: ' + email;
         window.location.href = '/mail/compose?to=' + encodeURIComponent(email) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      } else if (e.key === 'p' || e.key === 'P') {
+        e.preventDefault();
+        var rows = document.querySelectorAll('.admin-user-row');
+        var byDomain = {};
+        rows.forEach(function(r){
+          var em = (r.dataset.email || '').toLowerCase();
+          var d = em.split('@')[1] || '?';
+          byDomain[d] = (byDomain[d] || 0) + 1;
+        });
+        var top = Object.keys(byDomain).sort(function(a,b){ return byDomain[b] - byDomain[a]; }).slice(0, 15);
+        alert('🌐 Top domínios:\n\n' + top.map(function(d){ return byDomain[d] + '× ' + d; }).join('\n'));
       } else if (e.key === 's' || e.key === 'S') {
         e.preventDefault();
         var tbody = document.querySelector('table tbody');

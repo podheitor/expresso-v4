@@ -442,6 +442,17 @@ function findInThread(q) {
     m.style.outline = hit ? '2px solid var(--accent)' : '';
   });
 }
+(function threadUnreadBadge(){
+  var h1 = document.querySelector('.folder-title, h1');
+  if (!h1) return;
+  var n = document.querySelectorAll('.thread-msg-unread').length;
+  if (n === 0) return;
+  var span = document.createElement('span');
+  span.className = 'muted small';
+  span.style.cssText = 'margin-left:.5rem;background:var(--accent);color:#fff;padding:.1rem .4rem;border-radius:8px;font-size:.7rem;font-weight:600';
+  span.textContent = n + ' não lida' + (n > 1 ? 's' : '');
+  h1.appendChild(span);
+})();
 function copyThreadIds() {
   var ids = [];
   document.querySelectorAll('.thread-msg[id^="tmsg-"]').forEach(function(m){

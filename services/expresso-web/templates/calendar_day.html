@@ -301,6 +301,21 @@ function copyDayLink(btn) {
   var n = document.querySelectorAll('.cal-day-event, .cal-day-allday-event').length;
   el.textContent = n === 0 ? '(sem eventos)' : '(' + n + ' evento' + (n > 1 ? 's' : '') + ')';
 })();
+function filterDayEvents() {
+  var q = prompt('Filtrar eventos por palavra (vazio = mostrar todos):');
+  if (q === null) return;
+  q = q.trim().toLowerCase();
+  var evs = document.querySelectorAll('.cal-day-event, .cal-day-allday-event');
+  var shown = 0;
+  evs.forEach(function(ev){
+    if (!q) { ev.style.display = ''; return; }
+    var txt = (ev.textContent || '').toLowerCase();
+    var match = txt.indexOf(q) >= 0;
+    ev.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  if (q) alert(shown + ' evento(s) com "' + q + '".');
+}
 function copyDayAgenda(btn) {
   var evs = document.querySelectorAll('.cal-day-event, .cal-day-allday-event');
   if (!evs.length) { alert('Nenhum evento.'); return; }

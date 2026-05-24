@@ -43,6 +43,13 @@
         <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(60)">1h</button>
         <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetDur(90)">1h30</button>
       </div>
+      <div style="display:flex;gap:.3rem;margin-top:.1rem;flex-wrap:wrap">
+        <span class="muted small">Início rápido:</span>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetStartOffset(15)">+15min</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetStartOffset(30)">+30min</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetStartOffset(60)">+1h</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="setMeetStartOffset(120)">+2h</button>
+      </div>
       <div class="muted small" id="meet-tz-info" style="margin-top:-.4rem"></div>
 
       <label>
@@ -93,6 +100,14 @@ function updateMeetTzPreview() {
   box.textContent = info;
 }
 updateMeetTzPreview();
+function setMeetStartOffset(min) {
+  var inp = document.getElementById('meet-start');
+  if (!inp) return;
+  var d = new Date(Date.now() + min * 60000);
+  var pad = function(n){ return n < 10 ? '0' + n : '' + n; };
+  inp.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  if (typeof updateMeetTzPreview === 'function') updateMeetTzPreview();
+}
 function copyMeetDraft(btn) {
   var name = (document.querySelector('input[name="name"]') || {}).value || '(sem título)';
   var start = (document.getElementById('meet-start') || {}).value || '';

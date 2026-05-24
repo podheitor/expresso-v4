@@ -1184,6 +1184,31 @@ function savePresenceMsg(text) {
       bookmarkChatMsg(mid, body, author);
       return;
     }
+    if (e.key === 'End') {
+      var stream = document.querySelector('.chat-msg-stream, .chat-messages, #chat-messages');
+      if (stream) { e.preventDefault(); stream.scrollTop = stream.scrollHeight; }
+      return;
+    }
+    if (e.key === 'Home') {
+      var stream2 = document.querySelector('.chat-msg-stream, .chat-messages, #chat-messages');
+      if (stream2) { e.preventDefault(); stream2.scrollTop = 0; }
+      return;
+    }
+    if (e.key === 'c' || e.key === 'C') {
+      var hmc = window._lastHoverChatMsg;
+      if (!hmc) return;
+      var body = ((hmc.querySelector('.chat-msg-body') || {}).textContent || '').trim();
+      if (!body) return;
+      e.preventDefault();
+      if (navigator.clipboard) navigator.clipboard.writeText(body);
+      else { var ta = document.createElement('textarea'); ta.value = body; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+      var t = document.createElement('div');
+      t.textContent = '📋 mensagem copiada';
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1500);
+      return;
+    }
     if (e.key === 'w' || e.key === 'W') {
       var hmw = window._lastHoverChatMsg;
       if (!hmw) return;

@@ -1054,6 +1054,18 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 's' || e.key === 'S') {
     e.preventDefault();
     showTasksWeekStats();
+  } else if (e.key === 't' || e.key === 'T') {
+    e.preventDefault();
+    var today = new Date().toISOString().slice(0, 10);
+    var items = document.querySelectorAll('.task-item[data-id]');
+    var shown = 0;
+    items.forEach(function(it){
+      var due = it.dataset.due || ((it.querySelector('[data-due]') || {}).dataset || {}).due || '';
+      var match = due === today;
+      it.style.display = match ? '' : 'none';
+      if (match) shown++;
+    });
+    alert(shown + ' tarefa(s) com prazo hoje. Use "a" para mostrar todas.');
   } else if (e.key === 'o' || e.key === 'O') {
     e.preventDefault();
     var today = new Date().toISOString().slice(0, 10);

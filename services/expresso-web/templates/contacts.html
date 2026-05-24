@@ -739,6 +739,18 @@ function toggleContactFav(btn, cid) {
     if (c) window._lastHoverContact = c;
   });
 })();
+function findDuplicateContacts() {
+  var byEmail = {};
+  document.querySelectorAll('.contact-card, .contact-row').forEach(function(el){
+    var em = (el.dataset.email || ((el.querySelector('.contact-card-email, a[href^="mailto:"]') || {}).textContent || '')).trim().toLowerCase();
+    if (!em) return;
+    if (!byEmail[em]) byEmail[em] = [];
+    byEmail[em].push((el.dataset.name || ((el.querySelector('.contact-card-name') || {}).textContent || '')).trim());
+  });
+  var dups = Object.keys(byEmail).filter(function(k){ return byEmail[k].length > 1; });
+  if (!dups.length) { alert('Nenhuma duplicata por e-mail.'); return; }
+  alert('🔁 Duplicatas detectadas (' + dups.length + '):\n\n' + dups.slice(0, 20).map(function(k){ return k + ' — ' + byEmail[k].length + '× (' + byEmail[k].join(', ') + ')'; }).join('\n'));
+}
 function exportGoogleContactsCsv() {
   var rows = [['Name','Given Name','Family Name','E-mail 1 - Value','Phone 1 - Value','Organization 1 - Name']];
   document.querySelectorAll('.contact-card, .contact-row').forEach(function(el) {

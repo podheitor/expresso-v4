@@ -718,9 +718,13 @@ document.addEventListener('keydown', function(e) {
       if (document.pictureInPictureElement) document.exitPictureInPicture();
       else v.requestPictureInPicture().catch(function(){ alert('PiP não disponível agora.'); });
     } else { alert('PiP não suportado neste navegador / iframe.'); }
+  } else if (e.key === 'r' || e.key === 'R') {
+    if (!confirm('Recarregar a sala? Você precisará reentrar com áudio/vídeo.')) return;
+    e.preventDefault();
+    window.location.reload();
   } else if (e.key === '?') {
     e.preventDefault();
-    alert('Atalhos da sala:\n\nm — alternar microfone\nv — alternar câmera\nc — copiar link da sala\nf — fullscreen\np — picture-in-picture\nh — histórico de salas\n? — esta ajuda');
+    alert('Atalhos da sala:\n\nm — alternar microfone\nv — alternar câmera\nc — copiar link da sala\nf — fullscreen\np — picture-in-picture\nh — histórico de salas\nr — recarregar sala\n? — esta ajuda');
   }
 });
 (function recordMeetVisit(){

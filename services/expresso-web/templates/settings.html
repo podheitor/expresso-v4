@@ -1133,6 +1133,16 @@ function importAllPreferences(input) {
   };
   rd.readAsText(f);
 }
+function clearSearchHistories() {
+  if (!confirm('Limpar históricos de busca (GAL, drive, mail, chat)?')) return;
+  var prefixes = ['expresso_gal_search_history_', 'expresso_drive_search_history_', 'expresso_mail_search_history_', 'expresso_chat_search_history_'];
+  var n = 0;
+  for (var i = localStorage.length - 1; i >= 0; i--) {
+    var k = localStorage.key(i);
+    if (k && prefixes.some(function(p){ return k.indexOf(p) === 0; })) { localStorage.removeItem(k); n++; }
+  }
+  alert('Históricos removidos: ' + n);
+}
 function showStorageQuota() {
   if (!navigator.storage || !navigator.storage.estimate) {
     alert('Estimativa de quota não disponível neste navegador.');

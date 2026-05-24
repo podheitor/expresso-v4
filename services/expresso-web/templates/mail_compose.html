@@ -757,6 +757,17 @@ function copyComposeBody(btn) {
   setInterval(snap, 30000);
   window.addEventListener('beforeunload', snap);
 })();
+function clearComposeForm() {
+  if (!confirm('Limpar todos os campos? Isto também apaga o rascunho local.')) return;
+  ['to','cc','bcc','subject','body','body_text'].forEach(function(name){
+    document.querySelectorAll('input[name="' + name + '"], textarea[name="' + name + '"]').forEach(function(el){ el.value = ''; });
+  });
+  var ed = document.getElementById('compose-rich-editor');
+  if (ed) ed.innerHTML = '';
+  document.querySelectorAll('.compose-pill').forEach(function(p){ p.remove(); });
+  try { localStorage.removeItem('expresso_compose_draft_local_{{ me.user_id }}'); } catch(e) {}
+  if (typeof updateComposeStats === 'function') updateComposeStats();
+}
 function showAttachmentsSummary() {
   var bytes = 0, names = [];
   document.querySelectorAll('input[type="file"]').forEach(function(inp){

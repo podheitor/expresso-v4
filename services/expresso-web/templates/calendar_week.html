@@ -311,7 +311,13 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'd' || e.key === 'D') { window.location.href = '{{ day_link }}'; }
   if (e.key === 'm' || e.key === 'M') { window.location.href = '{{ month_link }}'; }
   if (e.key === 'j' || e.key === 'k') { window.location.href = (e.key === 'j' ? '{{ next_link }}' : '{{ prev_link }}'); }
-  if (e.key === '?') { e.preventDefault(); alert('Atalhos semana:\n\n← → ou j k — semana anterior/próxima\nt — hoje\nn — novo evento\nd — dia\nm — mês\n? — esta ajuda'); }
+  if (e.key === 'h' || e.key === 'H') {
+    var now = new Date();
+    var slot = document.querySelector('[data-hour="' + now.getHours() + '"]');
+    if (slot) { slot.scrollIntoView({ behavior:'smooth', block:'center' }); slot.style.transition = 'outline .3s'; slot.style.outline = '2px solid var(--accent)'; setTimeout(function(){ slot.style.outline = ''; }, 1800); }
+    else window.scrollTo({ top: (now.getHours() / 24) * document.body.scrollHeight, behavior: 'smooth' });
+  }
+  if (e.key === '?') { e.preventDefault(); alert('Atalhos semana:\n\n← → ou j k — semana anterior/próxima\nt — hoje\nn — novo evento\nd — dia\nm — mês\nh — hora atual\n? — esta ajuda'); }
 });
 function setWorkingHours() {
   var WH_KEY = 'expresso_working_hours_{{ me.user_id }}';

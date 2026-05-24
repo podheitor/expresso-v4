@@ -1078,6 +1078,21 @@ document.addEventListener('keydown', function(e) {
   render();
   setInterval(render, 60000);
 })();
+(function homeTzWidget(){
+  var greet = document.querySelector('.home-greeting h1, .home-greeting, h1.home-greet');
+  if (!greet) return;
+  try {
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    var off = -new Date().getTimezoneOffset();
+    var sign = off >= 0 ? '+' : '−';
+    var h = Math.abs(Math.floor(off / 60));
+    var m = Math.abs(off % 60);
+    var span = document.createElement('div');
+    span.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:400;margin-top:.1rem';
+    span.textContent = '🌐 ' + tz + ' (UTC' + sign + (h < 10 ? '0' + h : h) + ':' + (m < 10 ? '0' + m : m) + ')';
+    greet.parentNode.appendChild(span);
+  } catch(e) {}
+})();
 (function homePomoTimer(){
   var box = document.createElement('div');
   box.id = 'home-pomo-timer';

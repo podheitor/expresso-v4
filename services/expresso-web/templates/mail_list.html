@@ -534,6 +534,11 @@ function showSnoozeToast(subject, msgId) {
       if (!sel.length) return;
       e.preventDefault();
       if (typeof batchMailAction === 'function') batchMailAction('flag');
+    } else if (e.key === 'u' || e.key === 'U') {
+      var sel2 = document.querySelectorAll('.msg-checkbox:checked, .row-checkbox:checked, .mail-row-check:checked');
+      if (!sel2.length) return;
+      e.preventDefault();
+      if (typeof batchMailAction === 'function') batchMailAction('read');
     } else if (e.key === '*') {
       e.preventDefault();
       var cb = document.getElementById('mail-select-all-toggle') || document.querySelector('thead .mail-row-check, #select-all-rows');

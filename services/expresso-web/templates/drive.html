@@ -444,6 +444,10 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\ny — copiar nome(s) selecionado(s)\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\ni — info do arquivo (sob mouse)\nc — copiar nome (sob mouse)\n* — favoritar (sob mouse)\n? — esta ajuda');
   }
+  else if (e.key === 'g' && !e.target.closest('input,textarea,[contenteditable]')) {
+    e.preventDefault();
+    window.location.href = '/drive';
+  }
   else if ((e.key === 'd' || e.key === 'D') && !e.target.closest('input,textarea,[contenteditable]')) {
     e.preventDefault();
     var selD = document.querySelectorAll('.drive-file-check:checked, .drive-row-check:checked');
