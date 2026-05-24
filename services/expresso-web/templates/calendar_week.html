@@ -2080,5 +2080,25 @@ window.copyWeekMornings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEveningOnly=function(){
+  const out=[];
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const d=new Date(s);if(isNaN(d))return;
+    const h=d.getHours();
+    if(h>=18){
+      const t=(e.getAttribute('data-event-title')||e.textContent||'').trim().slice(0,80);
+      out.push(s+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Sem noturnos');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' >=18h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

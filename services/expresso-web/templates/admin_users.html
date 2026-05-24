@@ -1954,5 +1954,24 @@ window.copyUsersRecentLogins=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOldestAccount=function(){
+  let best=null,bestEl=null;
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const c=(u.getAttribute('data-user-created')||'').trim();
+    if(!c)return;
+    const d=new Date(c);if(isNaN(d))return;
+    if(best===null||d.getTime()<best){best=d.getTime();bestEl=u;}
+  });
+  if(!bestEl){alert('Sem data');return;}
+  const em=bestEl.getAttribute('data-user-email')||bestEl.getAttribute('data-user-id')||'?';
+  const c=bestEl.getAttribute('data-user-created')||'';
+  const out=c+'\t'+em;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oldest '+em;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2593,5 +2593,16 @@ window.copyMailListSelected=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.invertMailSelection=function(){
+  const cbs=document.querySelectorAll('[data-mail-id] input[type="checkbox"]');
+  if(!cbs.length){alert('Sem rows');return;}
+  cbs.forEach(c=>{c.checked=!c.checked;});
+  const sel=document.querySelectorAll('[data-mail-id] input[type="checkbox"]:checked').length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='invert: '+sel+'/'+cbs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

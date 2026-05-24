@@ -2001,5 +2001,24 @@ window.copyThreadSubjects=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadHeadersJson=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    out.push({
+      id:m.getAttribute('data-msg-id'),
+      ts:m.getAttribute('data-msg-ts')||'',
+      from:m.getAttribute('data-msg-from')||'',
+      subject:m.getAttribute('data-msg-subject')||'',
+      size:m.getAttribute('data-msg-size')||''
+    });
+  });
+  if(!out.length){alert('Sem mensagens');return;}
+  const ta=document.createElement('textarea');ta.value=JSON.stringify(out,null,2);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' hdrs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

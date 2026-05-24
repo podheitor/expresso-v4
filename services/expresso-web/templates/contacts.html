@@ -2548,5 +2548,25 @@ window.copyContactsNotesOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecent=function(){
+  const cutoff=Date.now()-30*86400000;
+  const out=[];
+  document.querySelectorAll('[data-contact-row]').forEach(r=>{
+    const c=(r.getAttribute('data-contact-created')||'').trim();
+    if(!c)return;
+    const d=new Date(c);if(isNaN(d))return;
+    if(d.getTime()>=cutoff){
+      out.push(c+'\t'+(r.getAttribute('data-contact-name')||''));
+    }
+  });
+  if(!out.length){alert('Sem novos /30d');return;}
+  out.sort().reverse();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' /30d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

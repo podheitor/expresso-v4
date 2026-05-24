@@ -2361,5 +2361,17 @@ window.copyHomeLanguages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeBatteryStatus=function(){
+  if(!navigator.getBattery){alert('Battery API indisponível');return;}
+  navigator.getBattery().then(b=>{
+    const out='level: '+Math.round(b.level*100)+'%\ncharging: '+b.charging+'\nchargingTime: '+b.chargingTime+'s\ndischargingTime: '+b.dischargingTime+'s';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(b.level>0.2?'#069':'#c00');
+    t.textContent=Math.round(b.level*100)+'%'+(b.charging?' ⚡':'');
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

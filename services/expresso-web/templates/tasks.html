@@ -2837,5 +2837,23 @@ window.copyTasksDoneRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByCreatedDayDist=function(){
+  const d={};
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const c=(r.getAttribute('data-task-created')||'').trim();
+    if(!c)return;
+    const k=c.slice(0,10);
+    d[k]=(d[k]||0)+1;
+  });
+  const keys=Object.keys(d).sort();
+  if(!keys.length){alert('Sem created');return;}
+  const out=keys.map(k=>k+'\t'+d[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' dias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

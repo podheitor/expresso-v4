@@ -2127,5 +2127,17 @@ window.uppercaseSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.trimDraftBody=function(){
+  const body=document.querySelector('[name="body"]')||document.querySelector('#body')||document.querySelector('textarea');
+  if(!body){alert('Sem body');return;}
+  const before=body.value.length;
+  body.value=body.value.split('\n').map(l=>l.trimEnd()).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  const after=body.value.length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='-'+(before-after)+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

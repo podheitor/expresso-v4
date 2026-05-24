@@ -1953,5 +1953,25 @@ window.copyAuditTop10Actors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditExportJson=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-id]').forEach(r=>{
+    out.push({
+      id:r.getAttribute('data-audit-id'),
+      ts:r.getAttribute('data-audit-ts')||'',
+      actor:r.getAttribute('data-audit-actor')||'',
+      action:r.getAttribute('data-audit-action')||'',
+      target:r.getAttribute('data-audit-target')||''
+    });
+  });
+  if(!out.length){alert('Sem entradas');return;}
+  const j=JSON.stringify(out,null,2);
+  const ta=document.createElement('textarea');ta.value=j;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='json '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
