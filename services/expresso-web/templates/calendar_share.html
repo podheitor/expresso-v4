@@ -51,7 +51,8 @@
         <td>{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}</td>
         <td><span class="badge badge-off">{{ s.privilege }}</span></td>
         <td class="row-actions">
-          <form method="post" action="/calendar/{{ calendar.id }}/share/{{ s.grantee_id }}/revoke" style="margin:0">
+          <form method="post" action="/calendar/{{ calendar.id }}/share/{{ s.grantee_id }}/revoke" style="margin:0"
+                onsubmit="return confirm('Revogar compartilhamento com {% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}?')">
             <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
           </form>
         </td>

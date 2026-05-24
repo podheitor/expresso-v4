@@ -37,6 +37,7 @@
 
       <div class="form-actions">
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
+        <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button class="btn btn-primary" type="submit">Agendar reunião</button>
       </div>
     </form>
@@ -63,5 +64,22 @@ function updateMeetTzPreview() {
   box.textContent = info;
 }
 updateMeetTzPreview();
+function copyMeetDraft(btn) {
+  var name = (document.querySelector('input[name="name"]') || {}).value || '(sem título)';
+  var start = (document.getElementById('meet-start') || {}).value || '';
+  var end = (document.getElementById('meet-end') || {}).value || '';
+  var desc = (document.querySelector('textarea[name="description"]') || {}).value || '';
+  var lines = [
+    '📅 Reunião: ' + name,
+    start ? '🕐 Início: ' + start.replace('T',' ') : '',
+    end ? '🕐 Término: ' + end.replace('T',' ') : '',
+    desc ? '\n📝 Pauta:\n' + desc : '',
+    '\n— Após agendar, copie o link da sala na página /meet.'
+  ].filter(Boolean).join('\n');
+  navigator.clipboard.writeText(lines).then(function() {
+    var prev = btn.textContent; btn.textContent = '✓ Copiado';
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
+  });
+}
 </script>
 {% endblock %}

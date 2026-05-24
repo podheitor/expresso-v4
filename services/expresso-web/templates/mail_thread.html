@@ -33,6 +33,7 @@
         <span class="muted small">{{ messages.len() }} mensagens</span>
         <div style="display:flex;gap:.4rem;margin-left:auto">
           <button class="btn btn-ghost btn-sm" onclick="printThread()" title="Imprimir conversa">🖨 Imprimir</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyThreadLink(this)" title="Copiar link da conversa">🔗 Link</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -245,6 +246,14 @@ function printThread() {
   document.title = 'Thread';
   window.print();
   document.title = orig;
+}
+function copyThreadLink(btn) {
+  var url = window.location.href;
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓ Copiado';
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
+  });
 }
 
 (function jumpFirstUnread() {

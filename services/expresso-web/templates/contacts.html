@@ -40,6 +40,7 @@
             <input type="file" accept=".csv,text/csv" style="display:none" onchange="importCsv(this, '{{ bid }}')">
           </label>
           <button class="btn btn-ghost btn-sm" onclick="detectDuplicates('{{ bid }}')" title="Detectar e mesclar contatos duplicados">⊞ Mesclar dupl.</button>
+          <button class="btn btn-ghost btn-sm" onclick="emailVisibleContacts()" title="Escrever email para todos os contatos visíveis">✉ Email p/ visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
@@ -526,6 +527,17 @@ function setBirthday(id, name) {
   }
   try { localStorage.setItem('expresso_birthdays', JSON.stringify(raw)); } catch(e) {}
   alert(v ? 'Aniversário salvo. Aparecerá no widget de aniversários da home.' : 'Aniversário removido.');
+}
+function emailVisibleContacts() {
+  var emails = [];
+  document.querySelectorAll('.contact-card[data-name]').forEach(function(card) {
+    if (card.style.display === 'none') return;
+    var em = card.querySelector('.contact-card-email');
+    if (em && em.textContent.trim()) emails.push(em.textContent.trim());
+  });
+  if (!emails.length) { alert('Nenhum contato visível com email.'); return; }
+  if (emails.length > 50 && !confirm('Adicionar ' + emails.length + ' destinatários ao compose?')) return;
+  window.location.href = '/mail/compose?to=' + encodeURIComponent(emails.join(', '));
 }
 </script>
 

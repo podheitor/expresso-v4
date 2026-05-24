@@ -17,7 +17,7 @@
 
   <main class="mail-main" style="flex-direction:column;overflow-y:auto">
     <div style="padding:1.75rem;max-width:900px;width:100%">
-      <h1>Regras de entrada (Sieve)</h1>
+      <h1>Regras de entrada (Sieve) <span class="badge" id="sieve-rule-count" style="font-size:.7rem;vertical-align:middle">—</span></h1>
       <p class="muted" style="margin:.5rem 0 1.25rem;font-size:.9rem">
         Escreva um script
         <a href="https://datatracker.ietf.org/doc/html/rfc5228" target="_blank" rel="noopener">Sieve (RFC 5228)</a>
@@ -259,5 +259,17 @@ function testSieveRule() {
     result.innerHTML = '<p style="color:var(--amber)">⚠ Regra seria acionada: <strong>' + desc + '</strong></p>';
   }
 }
+(function countSieveRules() {
+  var ta = document.querySelector('textarea[name="script"]');
+  var badge = document.getElementById('sieve-rule-count');
+  if (!ta || !badge) return;
+  function recount() {
+    var script = ta.value || '';
+    var rules = (script.match(/^\s*if\s+/gm) || []).length;
+    badge.textContent = rules + ' regra' + (rules === 1 ? '' : 's');
+  }
+  ta.addEventListener('input', recount);
+  recount();
+})();
 </script>
 {% endblock %}

@@ -8,6 +8,8 @@
     <span style="font-weight:600">{{ file.name }}</span>
     <div style="margin-left:auto;display:flex;gap:.5rem">
       <a class="btn btn-ghost btn-sm" href="{{ download_url }}" download="{{ file.name }}">↓ Download</a>
+      <a class="btn btn-ghost btn-sm" href="{{ download_url }}" target="_blank" rel="noopener" title="Abrir em nova aba">↗</a>
+      <button class="btn btn-ghost btn-sm" onclick="copyFileName(this)" data-name="{{ file.name }}" title="Copiar nome do arquivo">📋</button>
       {% if file.is_editable() %}
         <a class="btn btn-ghost btn-sm" href="/drive/{{ file.id }}/edit">✏ Editar</a>
       {% endif %}
@@ -113,4 +115,14 @@
     </div>
   </div>
 </div>
+<script>
+function copyFileName(btn) {
+  var name = btn.dataset.name || '';
+  navigator.clipboard.writeText(name).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+</script>
 {% endblock %}

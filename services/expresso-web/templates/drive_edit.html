@@ -9,6 +9,7 @@
       <p class="muted small">{{ file.size_human() }} · {% match file.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}—{% endmatch %}</p>
     </div>
     <div style="display:flex;gap:.4rem">
+      <button class="btn btn-ghost btn-sm" onclick="copyWopiUrl(this)" title="Copiar link de edição">🔗 Copiar</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleEditFullscreen()" title="Tela cheia">⛶</button>
       <a class="btn btn-ghost" href="/drive">← Drive</a>
     </div>
@@ -28,6 +29,16 @@ function toggleEditFullscreen() {
   if (!wrap) return;
   if (document.fullscreenElement) document.exitFullscreen();
   else if (wrap.requestFullscreen) wrap.requestFullscreen();
+}
+function copyWopiUrl(btn) {
+  var iframe = document.getElementById('wopi-frame');
+  if (!iframe) return;
+  var url = iframe.src || '';
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓ Copiado';
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
+  }).catch(function(){ alert('Falha ao copiar link.'); });
 }
 </script>
 {% endblock %}

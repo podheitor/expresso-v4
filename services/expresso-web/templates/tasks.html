@@ -53,6 +53,10 @@
 
       <div style="padding:.5rem .75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
         <button class="btn btn-ghost btn-sm" onclick="exportTasksCsv()" style="width:100%;font-size:.78rem">⬇ Exportar CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportTasksJson()" style="width:100%;font-size:.78rem" title="Exportar tarefas e configurações como JSON">⬇ Exportar JSON</button>
+        <label class="btn btn-ghost btn-sm" style="width:100%;font-size:.78rem;cursor:pointer;text-align:center">📥 Importar JSON
+          <input type="file" accept="application/json" style="display:none" onchange="importTasksJson(this)">
+        </label>
         <button class="btn btn-ghost btn-sm" onclick="archiveCompletedTasks()" style="width:100%;font-size:.78rem" title="Mover concluídas para arquivo (oculta da lista)">🗄 Arquivar concluídas</button>
       </div>
 
@@ -872,6 +876,33 @@ function sortTasksBy(arr, mode) {
   var sel = document.getElementById('tasks-sort-select');
   if (sel) sel.value = getTasksSort();
 })();
+
+// ── Import/Export JSON ──────────────────────────────────────────────────────
+function exportTasksJson() {
+  var payload = { v: 1, exported_at: new Date().toISOString(), tasks: loadTasks() };
+  var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-tasks-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+}
+function importTasksJson(input) {
+  var f = input.files && input.files[0]; if (!f) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var obj = JSON.parse(String(e.target.result || '{}'));
+      var arr = Array.isArray(obj) ? obj : (Array.isArray(obj.tasks) ? obj.tasks : null);
+      if (!arr) { alert('JSON inválido.'); return; }
+      if (!confirm('Importar ' + arr.length + ' tarefa(s)? Tarefas atuais serão substituídas.')) return;
+      saveTasks(arr);
+      renderAll();
+      alert('Importadas ' + arr.length + ' tarefa(s).');
+    } catch(x) { alert('Erro ao ler JSON: ' + x.message); }
+  };
+  reader.readAsText(f);
+  input.value = '';
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 if (_tasksView === 'kanban') {

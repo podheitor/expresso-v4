@@ -348,12 +348,25 @@ function autoResize(el) {
 }
 
 // ── Enter to send, Shift+Enter for newline ────────────────────────────────────
+function chatEnterSends() {
+  try { return localStorage.getItem('expresso_chat_enter_sends') !== '0'; } catch(e) { return true; }
+}
 function chatKeydown(e, form) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  var enterSends = chatEnterSends();
+  if (enterSends && e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const body = form.querySelector('[name=body]');
+    if (body.value.trim()) form.requestSubmit();
+  } else if (!enterSends && e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     const body = form.querySelector('[name=body]');
     if (body.value.trim()) form.requestSubmit();
   }
+}
+function toggleChatEnterSends() {
+  var cur = chatEnterSends();
+  try { localStorage.setItem('expresso_chat_enter_sends', cur ? '0' : '1'); } catch(e){}
+  alert('Modo Enter atualizado: ' + (cur ? 'Ctrl+Enter envia (Enter quebra linha)' : 'Enter envia (Shift+Enter quebra linha)'));
 }
 
 // ── Submit via fetch (no full reload) ────────────────────────────────────────

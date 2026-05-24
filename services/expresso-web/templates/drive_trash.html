@@ -4,7 +4,7 @@
 {% block body %}
 <div class="page">
   <div class="page-header">
-    <h1>Lixeira</h1>
+    <h1>Lixeira {% if !files.is_empty() %}<span class="badge" style="vertical-align:middle">{{ files.len() }}</span>{% endif %}</h1>
     <div style="display:flex;gap:.4rem">
       {% if !files.is_empty() %}
       <button class="btn btn-danger btn-sm" onclick="emptyTrash()" title="Esvaziar lixeira">🗑 Esvaziar tudo</button>

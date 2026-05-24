@@ -150,6 +150,7 @@
       <div class="form-actions" style="justify-content:flex-end">
         {% match event_id %}{% when Some with (id) %}
         <a class="btn btn-ghost" href="/calendar/{{ calendar.id }}/events/{{ id }}/ical" title="Baixar evento (.ics)">⬇ .ics</a>
+        <button type="button" class="btn btn-ghost" onclick="copyEventDetails(this)" title="Copiar detalhes do evento">📋 Copiar</button>
         <button type="button" onclick="document.getElementById('delete-form').submit()" class="btn btn-danger">Apagar</button>
         {% when None %}{% endmatch %}
         <button type="submit" class="btn btn-primary">Salvar</button>
@@ -311,6 +312,21 @@ function updateRruleSummary(rule) {
   if (countM) txt += ', ' + countM[1] + ' vez(es)';
   if (untilM) txt += ', até ' + untilM[1].slice(0,8).replace(/(\d{4})(\d{2})(\d{2})/,'$3/$2/$1');
   el.textContent = txt;
+}
+function copyEventDetails(btn) {
+  function v(sel) { var e = document.querySelector(sel); return e ? (e.value || '') : ''; }
+  var lines = [
+    '📅 ' + (v('input[name="title"]') || '(sem título)'),
+    v('input[name="start_at"]') ? '🕐 Início: ' + v('input[name="start_at"]').replace('T',' ') : '',
+    v('input[name="end_at"]') ? '🕐 Término: ' + v('input[name="end_at"]').replace('T',' ') : '',
+    v('input[name="location"]') ? '📍 Local: ' + v('input[name="location"]') : '',
+    v('textarea[name="description"]') ? '\n📝 Descrição:\n' + v('textarea[name="description"]') : ''
+  ].filter(Boolean).join('\n');
+  navigator.clipboard.writeText(lines).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓ Copiado';
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
+  });
 }
 </script>
 {% endblock %}

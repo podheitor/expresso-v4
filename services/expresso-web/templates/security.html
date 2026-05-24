@@ -37,6 +37,7 @@
         <button class="btn btn-ghost btn-sm" onclick="genBackupCodes()">Gerar 10 códigos</button>
         <button class="btn btn-ghost btn-sm" onclick="copyBackupCodes()">Copiar</button>
         <button class="btn btn-ghost btn-sm" onclick="downloadBackupCodes()">Baixar .txt</button>
+        <button class="btn btn-ghost btn-sm" onclick="printBackupCodes()" title="Imprimir códigos">🖨 Imprimir</button>
         <button class="btn btn-ghost btn-sm" onclick="clearBackupCodes()">Limpar</button>
       </div>
     </div>
@@ -80,6 +81,18 @@ function clearBackupCodes() {
   if (!confirm('Limpar todos os códigos?')) return;
   localStorage.removeItem(BACKUP_KEY);
   renderBackupCodes();
+}
+function printBackupCodes() {
+  var c = loadBackupCodes(); if (!c.length) { alert('Gere códigos primeiro.'); return; }
+  var w = window.open('', '_blank', 'width=400,height=600');
+  if (!w) { alert('Bloqueador de pop-up impediu a impressão.'); return; }
+  w.document.write('<html><head><title>Códigos de backup · Expresso</title>' +
+    '<style>body{font-family:sans-serif;padding:2rem}h1{font-size:1.1rem}ol{font-family:monospace;font-size:1.2rem;line-height:1.8}small{color:#666}</style>' +
+    '</head><body><h1>Códigos de backup MFA · {{ me.email }}</h1>' +
+    '<small>Gerado em ' + new Date().toLocaleString() + '. Cada código serve uma única vez.</small>' +
+    '<ol><li>' + c.join('</li><li>') + '</li></ol>' +
+    '<script>window.onload=function(){window.print();}<\/script></body></html>');
+  w.document.close();
 }
 renderBackupCodes();
 </script>

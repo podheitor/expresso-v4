@@ -17,7 +17,11 @@
           <a class="link" href="/calendar/{{ c.id }}"><strong>{{ c.name }}</strong></a>
           {% if c.is_default %}<span class="badge">padrão</span>{% endif %}
         </div>
-        <span class="mono muted small">{{ c.id }}</span>
+        <div class="row" style="gap:.3rem">
+          <button class="btn btn-ghost btn-sm" onclick="copyCalDavUrl(this, '{{ c.id }}')" title="Copiar URL CalDAV">🔗</button>
+          <a class="btn btn-ghost btn-sm" href="/calendar/{{ c.id }}/ical" title="Baixar .ics">⬇</a>
+          <span class="mono muted small">{{ c.id }}</span>
+        </div>
       </div>
       {% match c.description %}
       {% when Some with (d) %}<p class="muted" style="margin-top:.4rem;font-size:.875rem">{{ d }}</p>
@@ -28,4 +32,14 @@
   <p class="muted" style="margin-top:1rem;font-size:.875rem">Clique em uma agenda para abrir o grid mensal.</p>
   {% endif %}
 </div>
+<script>
+function copyCalDavUrl(btn, calId) {
+  var url = window.location.origin + '/caldav/calendars/' + calId + '/';
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+</script>
 {% endblock %}

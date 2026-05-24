@@ -19,6 +19,7 @@
     {% else if contacts.is_empty() %}
       <p class="muted">Nenhum resultado para "{{ query }}".</p>
     {% else %}
+      <p class="muted small" style="margin:0 0 .5rem"><strong>{{ contacts.len() }}</strong> resultado(s) para "{{ query }}"</p>
       <div class="contact-grid">
         {% for c in contacts %}
         <div class="contact-card">

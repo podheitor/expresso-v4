@@ -4,7 +4,7 @@
 {% block body %}
 <div class="admin-page">
   <div class="admin-page-header">
-    <h1>Log de auditoria</h1>
+    <h1>Log de auditoria {% if !events.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ events.len() }}</span>{% endif %}</h1>
     <div style="display:flex;gap:.4rem;align-items:center">
       <label style="display:flex;align-items:center;gap:.3rem;font-size:.82rem">
         <input type="checkbox" id="audit-live" onchange="toggleAuditLive(this.checked)">

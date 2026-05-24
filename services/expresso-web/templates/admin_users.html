@@ -9,7 +9,7 @@
 {% block body %}
 <div class="admin-page">
   <div class="admin-page-header">
-    <h1>Usuários</h1>
+    <h1>Usuários {% if !users.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ users.len() }}</span>{% endif %}</h1>
     <div class="admin-header-actions">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bulk-csv-input').click()" title="Importar lista de usuários (CSV)">📥 Importar CSV</button>
       <input type="file" id="bulk-csv-input" accept=".csv,text/csv" style="display:none" onchange="bulkImportCsv(this.files[0])">

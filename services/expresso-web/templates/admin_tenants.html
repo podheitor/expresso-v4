@@ -9,7 +9,7 @@
 {% block body %}
 <div class="admin-page">
   <div class="admin-page-header">
-    <h1>Tenants</h1>
+    <h1>Tenants {% if !tenants.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ tenants.len() }}</span>{% endif %}</h1>
     <div style="margin-left:auto;display:flex;gap:.4rem">
       <input type="search" id="tenant-search" class="search-input-sm" placeholder="Filtrar por nome ou domínio…"
              oninput="filterTenants(this.value)" style="width:18rem">
