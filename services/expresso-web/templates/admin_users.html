@@ -1837,5 +1837,21 @@ window.copyUsersByTenantDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithoutGroup=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const g=(u.getAttribute('data-user-groups')||'').trim();
+    if(!g||g==='[]'||g==='none'){
+      out.push((u.getAttribute('data-user-email')||u.getAttribute('data-user-id')||'').trim());
+    }
+  });
+  if(!out.length){alert('Todos com grupo');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' s/grupo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

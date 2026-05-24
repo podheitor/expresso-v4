@@ -2475,5 +2475,23 @@ window.copyMailListFlaggedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListAvgSubjectLen=function(){
+  let sum=0,n=0,mx=0;
+  document.querySelectorAll('[data-mail-id]').forEach(r=>{
+    const s=(r.getAttribute('data-mail-subject')||'').trim();
+    if(!s)return;
+    sum+=s.length;n++;
+    if(s.length>mx)mx=s.length;
+  });
+  if(!n){alert('Sem subjects');return;}
+  const avg=Math.round(sum/n);
+  const out='count: '+n+'\navg: '+avg+'\nmax: '+mx;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+' max '+mx;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

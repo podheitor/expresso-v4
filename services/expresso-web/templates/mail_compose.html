@@ -2043,5 +2043,14 @@ window.countRecipientsAll=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.warnEmptySubject=function(){
+  const s=(document.querySelector('[name="subject"]')||document.querySelector('#subject')||{}).value||'';
+  const trimmed=s.trim();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(trimmed?'#069':'#c60');
+  t.textContent=trimmed?'subject ok ('+trimmed.length+')':'subject vazio!';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}
