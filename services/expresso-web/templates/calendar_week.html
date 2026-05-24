@@ -306,6 +306,8 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new'; }
   if (e.key === 'd' || e.key === 'D') { window.location.href = '{{ day_link }}'; }
   if (e.key === 'm' || e.key === 'M') { window.location.href = '{{ month_link }}'; }
+  if (e.key === 'j' || e.key === 'k') { window.location.href = (e.key === 'j' ? '{{ next_link }}' : '{{ prev_link }}'); }
+  if (e.key === '?') { e.preventDefault(); alert('Atalhos semana:\n\n← → ou j k — semana anterior/próxima\nt — hoje\nn — novo evento\nd — dia\nm — mês\n? — esta ajuda'); }
 });
 </script>
 {% endblock %}

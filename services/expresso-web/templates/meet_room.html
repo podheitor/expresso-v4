@@ -28,6 +28,7 @@
       <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetFullscreen(this)" title="Tela cheia (F11)" id="meet-fs-btn">⛶</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetSelfView(this)" title="Ocultar/mostrar meu vídeo (self-view)" id="meet-selfview-btn">🪞 Self</button>
+      <button class="btn btn-ghost btn-sm" onclick="setMeetPassword(this)" title="Definir senha para entrar na sala" id="meet-pwd-btn">🔒 Senha</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
@@ -951,6 +952,16 @@ document.addEventListener('fullscreenchange', function() {
   var b = document.getElementById('meet-fs-btn');
   if (b) b.textContent = document.fullscreenElement ? '⛶ Sair' : '⛶';
 });
+// ── Meeting password ────────────────────────────────────────────────────────
+function setMeetPassword(btn) {
+  if (typeof api === 'undefined' || !api) { alert('Aguarde a reunião carregar.'); return; }
+  var current = prompt('Senha da sala (deixe vazio para remover):', '');
+  if (current === null) return;
+  try { api.executeCommand('password', current); } catch(e) { alert('Falha ao definir senha: ' + e.message); return; }
+  if (btn) btn.textContent = current ? '🔒 Senha ✓' : '🔒 Senha';
+  if (current) alert('Senha definida. Compartilhe com os participantes.');
+  else alert('Senha removida.');
+}
 // ── Self-view toggle ────────────────────────────────────────────────────────
 var _meetSelfHidden = false;
 function toggleMeetSelfView(btn) {

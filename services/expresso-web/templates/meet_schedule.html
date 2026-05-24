@@ -60,6 +60,7 @@
       <div class="form-actions">
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
         <button type="button" class="btn btn-ghost" onclick="restoreLastMeetForm()" title="Preencher campos com os dados da última reunião agendada">↻ Repetir última</button>
+        <button type="button" class="btn btn-ghost" onclick="clearMeetForm()" title="Limpar todos os campos">⟲ Limpar</button>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
         <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
@@ -195,6 +196,18 @@ function restoreLastMeetForm() {
   setVal('input[name="name"]', data.name);
   setVal('textarea[name="description"]', data.description);
   setVal('textarea[name="invitees"]', data.invitees);
+  var ic = document.getElementById('meet-invitees-ta');
+  if (ic && typeof updateMeetInviteeCount === 'function') updateMeetInviteeCount(ic);
+}
+function clearMeetForm() {
+  if (!confirm('Limpar todos os campos do formulário?')) return;
+  var f = document.querySelector('form[action="/meet/schedule"]');
+  if (!f) return;
+  Array.prototype.forEach.call(f.elements, function(el) {
+    if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+    else if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else if (el.type !== 'submit' && el.type !== 'button') el.value = '';
+  });
   var ic = document.getElementById('meet-invitees-ta');
   if (ic && typeof updateMeetInviteeCount === 'function') updateMeetInviteeCount(ic);
 }

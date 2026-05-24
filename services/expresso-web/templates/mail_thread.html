@@ -40,6 +40,7 @@
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadRead()" title="Marcar todas as mensagens como lidas">✓ Tudo lido</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadUnread()" title="Marcar a primeira mensagem como não lida">○ Não lida</button>
+          <input type="search" id="thread-find" placeholder="Buscar na conversa…" oninput="findInThread(this.value)" style="width:11rem" class="search-input-sm">
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
             <div class="dropdown-menu">
@@ -379,6 +380,15 @@ function markMsgSpam(mid, btn) {
       alert('Falha ao mover (' + r.status + ').');
     }
   }).catch(function(){ btn.disabled = false; btn.textContent = '🚫 Spam'; alert('Erro de conexão.'); });
+}
+function findInThread(q) {
+  q = (q || '').trim().toLowerCase();
+  document.querySelectorAll('.thread-msg').forEach(function(m) {
+    if (!q) { m.style.display = ''; m.style.outline = ''; return; }
+    var hit = m.textContent.toLowerCase().indexOf(q) >= 0;
+    m.style.display = hit ? '' : 'none';
+    m.style.outline = hit ? '2px solid var(--accent)' : '';
+  });
 }
 </script>
 {% endblock %}

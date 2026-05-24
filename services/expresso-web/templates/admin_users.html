@@ -61,6 +61,7 @@
       <option value="active">Ativo</option>
       <option value="suspended">Suspenso</option>
     </select>
+    <button class="btn btn-ghost btn-sm" onclick="adminUsersClearFilters()" title="Limpar filtros">⟲ Limpar</button>
     <span class="muted small" style="margin-left:auto;font-size:.72rem">⌨ <kbd>/</kbd> buscar · <kbd>N</kbd> convidar</span>
   </div>
   <script>
@@ -362,5 +363,11 @@ function copyVisibleEmails(btn) {
     if (r.dataset.status === 'suspended') { r.style.opacity = '.65'; r.title = 'Usuário suspenso'; }
   });
 })();
+function adminUsersClearFilters() {
+  var s = document.getElementById('admin-user-search'); if (s) s.value = '';
+  var r = document.getElementById('admin-user-role-filter'); if (r) r.value = '';
+  var st = document.getElementById('admin-user-status-filter'); if (st) st.value = '';
+  filterAdminUsers('');
+}
 </script>
 {% endblock %}

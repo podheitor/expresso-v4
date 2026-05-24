@@ -116,6 +116,10 @@
             <input type="checkbox" id="density-compact-input" onchange="applyDensityCompact(this.checked)">
             <span>Modo compacto</span>
           </label>
+          <label class="checkbox-row" style="margin-top:.4rem">
+            <input type="checkbox" id="reduce-motion-input" onchange="applyReduceMotion(this.checked)">
+            <span>Reduzir animações (acessibilidade)</span>
+          </label>
         </div>
 
         <div class="subcard stack" style="margin-top:1rem">
@@ -989,6 +993,19 @@ function filterShortcuts(q) {
     tr.style.display = (!lq || text.indexOf(lq) >= 0) ? '' : 'none';
   });
 }
+// ── Reduce motion ──────────────────────────────────────────────────────────
+var REDUCE_MOTION_KEY = 'expresso_reduce_motion';
+function applyReduceMotion(on) {
+  document.documentElement.classList.toggle('reduce-motion', !!on);
+  try { localStorage.setItem(REDUCE_MOTION_KEY, on ? '1' : '0'); } catch(e){}
+}
+(function initReduceMotion() {
+  var v = localStorage.getItem(REDUCE_MOTION_KEY);
+  var on = v === '1' || (v === null && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var c = document.getElementById('reduce-motion-input');
+  if (c) c.checked = on;
+  applyReduceMotion(on);
+})();
 // ── Profile unsaved-changes warning ────────────────────────────────────────
 (function profileUnsavedGuard() {
   var f = document.querySelector('form[action="/settings/profile"]');

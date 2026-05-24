@@ -429,7 +429,21 @@ document.addEventListener('keydown', function(e) {
   }
   else if (e.key === '?' && !e.target.closest('input,textarea,[contenteditable]')) {
     e.preventDefault();
-    alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\n? — esta ajuda');
+    alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\ny — copiar nome(s) selecionado(s)\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\n? — esta ajuda');
+  }
+  else if ((e.key === 'y' || e.key === 'Y') && !e.target.closest('input,textarea,[contenteditable]')) {
+    var selY = document.querySelectorAll('.drive-file-check:checked, .drive-row-check:checked');
+    if (!selY.length) { alert('Selecione 1+ arquivo(s) para copiar o(s) nome(s).'); return; }
+    e.preventDefault();
+    var names = [];
+    selY.forEach(function(cb) {
+      var row = cb.closest('tr,.drive-card');
+      var n = row && row.querySelector('.drive-name');
+      if (n) names.push(n.textContent.trim());
+    });
+    var txt = names.join('\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){ alert('Copiado: ' + names.length + ' nome(s)'); });
+    else { var ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('Copiado.'); }
   }
   else if (e.key === 'r' || e.key === 'R') {
     // Rename the single selected file

@@ -43,6 +43,7 @@
           <button class="btn btn-ghost btn-sm" onclick="emailVisibleContacts()" title="Escrever email para todos os contatos visíveis">✉ Email p/ visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="exportVisibleContactsVcf()" title="Baixar .vcf dos contatos visíveis">⬇ vCard visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="printVisibleContacts()" title="Imprimir contatos visíveis">🖨 Imprimir</button>
+          <button class="btn btn-ghost btn-sm" onclick="showBirthdaysThisMonth()" title="Aniversariantes deste mês">🎂 Mês</button>
           <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
@@ -659,6 +660,27 @@ function toggleContactFav(btn, cid) {
     }
   });
 })();
+function showBirthdaysThisMonth() {
+  var raw = {};
+  try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e){}
+  var mm = String(new Date().getMonth() + 1).padStart(2, '0');
+  var hits = [];
+  Object.keys(raw).forEach(function(k) {
+    var v = raw[k] || '';
+    var parts = v.split('-');
+    var mon = parts.length === 3 ? parts[1] : parts[0];
+    var day = parts.length === 3 ? parts[2] : parts[1];
+    if (mon === mm) hits.push({ id: k, day: day, raw: v });
+  });
+  if (!hits.length) { alert('Nenhum aniversariante este mês.'); return; }
+  hits.sort(function(a,b){ return a.day.localeCompare(b.day); });
+  var lines = hits.map(function(h){
+    var row = document.querySelector('[data-id="'+h.id+'"]');
+    var name = row ? (row.dataset.name || row.textContent.trim().split('\n')[0]) : h.id;
+    return '  ' + h.day + ' — ' + name;
+  });
+  alert('🎂 Aniversariantes deste mês (' + hits.length + '):\n\n' + lines.join('\n'));
+}
 function printVisibleContacts() {
   var rows = [];
   document.querySelectorAll('.contact-card, .contact-row').forEach(function(el) {

@@ -10,7 +10,7 @@
 
   <div class="card stack">
     <form method="get" action="/contacts/gal" class="search-form-inline">
-      <input class="search-input-lg" type="search" name="q" value="{{ query }}" placeholder="Pesquisar por nome ou e-mail..." autofocus>
+      <input class="search-input-lg" type="search" name="q" id="gal-search-input" value="{{ query }}" placeholder="Pesquisar por nome ou e-mail..." autofocus>
       <button class="btn btn-primary" type="submit">Pesquisar</button>
     </form>
 
@@ -153,6 +153,10 @@ function copyGalContact(btn) {
     else if ((e.key === 'm' || e.key === 'M') && idx >= 0) {
       var ml = cards[idx].querySelector('a[href*="/mail/compose"]');
       if (ml) { e.preventDefault(); window.location.href = ml.href; }
+    }
+    else if (e.key === '/') {
+      var s = document.getElementById('gal-search-input');
+      if (s) { e.preventDefault(); s.focus(); s.select(); }
     }
   });
 })();

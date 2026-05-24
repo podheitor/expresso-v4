@@ -40,6 +40,7 @@
           <button class="btn btn-ghost btn-sm" onclick="toggleMailFilters()" title="Filtros avançados">⚙ Filtros</button>
           <button class="btn btn-ghost btn-sm" onclick="showMailShortcuts()" title="Atalhos de teclado">⌨</button>
           <button class="btn btn-ghost btn-sm" onclick="toggleGroupBySender(this)" title="Agrupar por remetente" id="mail-group-btn">🗂 Grupo</button>
+          {% if selected.as_str() == "Trash" || selected.as_str() == "Lixeira" %}<button class="btn btn-danger btn-sm" onclick="emptyTrashFolder(this)" title="Apagar permanentemente todos os e-mails da lixeira">🗑 Esvaziar lixeira</button>{% endif %}
           <form method="get" action="/mail/search" class="toolbar-search">
             <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
           </form>
@@ -923,6 +924,20 @@ function toggleGroupBySender(btn) {
     ul.appendChild(h);
     groups[s].forEach(function(r){ ul.appendChild(r); });
   });
+}
+function emptyTrashFolder(btn) {
+  if (!confirm('Apagar PERMANENTEMENTE todos os e-mails da lixeira? Esta ação não pode ser desfeita.')) return;
+  if (btn) { btn.disabled = true; btn.textContent = '🗑 Esvaziando…'; }
+  fetch('/api/v1/mail/folders/Trash/empty', { method: 'POST', credentials: 'include' })
+    .then(function(r) {
+      if (r.ok) { window.location.reload(); return; }
+      // fallback: select all + delete batch
+      var ids = Array.prototype.map.call(document.querySelectorAll('.msg-checkbox,.row-checkbox'), function(cb){ return cb.value || cb.dataset.id; }).filter(Boolean);
+      if (!ids.length) { alert('Nada a apagar.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar lixeira';} return; }
+      return fetch('/api/v1/mail/messages/batch-delete', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ids: ids, permanent: true}) })
+        .then(function(){ window.location.reload(); });
+    })
+    .catch(function(){ alert('Falha ao esvaziar lixeira.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar lixeira';} });
 }
 </script>
 {% endblock %}

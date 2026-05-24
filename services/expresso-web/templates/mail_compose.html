@@ -135,6 +135,7 @@
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enviar</button>
+        <button type="button" class="btn btn-ghost" onclick="saveComposeDraft(this)" title="Salvar como rascunho (Ctrl+S)">💾 Rascunho</button>
         <div style="position:relative;display:inline-block">
           <button type="button" class="btn btn-ghost" onclick="toggleSendLaterMenu()" title="Agendar envio">⏱ Enviar depois ▾</button>
           <div id="send-later-menu" style="display:none;position:absolute;top:100%;left:0;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);padding:.4rem;min-width:200px;z-index:50;box-shadow:var(--shadow-md)">
@@ -628,5 +629,24 @@ function setFollowupReminder() {
     saveFollowups(arr);
   });
 })();
+function saveComposeDraft(btn) {
+  var f = document.getElementById('compose-form');
+  if (!f) return;
+  var fd = new FormData(f);
+  fd.append('save_draft', '1');
+  if (btn) { btn.disabled = true; btn.textContent = '💾 Salvando…'; }
+  fetch('/mail/drafts', { method: 'POST', body: fd, credentials: 'include' })
+    .then(function(r){
+      if (btn) { btn.disabled = false; btn.textContent = r.ok ? '✓ Salvo' : '💾 Rascunho'; }
+      setTimeout(function(){ if (btn) btn.textContent = '💾 Rascunho'; }, 1500);
+    })
+    .catch(function(){ if (btn) { btn.disabled = false; btn.textContent = '💾 Rascunho'; } alert('Falha ao salvar rascunho'); });
+}
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    var btn = document.querySelector('button[onclick^="saveComposeDraft"]');
+    if (btn) { e.preventDefault(); saveComposeDraft(btn); }
+  }
+});
 </script>
 {% endblock %}

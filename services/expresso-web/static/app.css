@@ -1929,3 +1929,11 @@ mark.chat-search-hl { background:color-mix(in srgb,var(--accent) 30%,transparent
 .drive-folder-item { padding:.45rem .75rem; cursor:pointer; font-size:.875rem; transition:background .15s; }
 .drive-folder-item:hover { background:var(--bg-hover); }
 .drive-folder-item-selected { background:color-mix(in srgb,var(--accent) 15%,transparent); color:var(--accent); }
+
+/* ── Reduce-motion accessibility pref (sprint #20464) ────────────────────── */
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}

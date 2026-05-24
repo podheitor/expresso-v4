@@ -124,6 +124,27 @@
         <div class="muted small" style="font-weight:600;margin-bottom:.2rem">Abertos recentemente</div>
         <ul class="home-file-list" id="home-drive-recents-list"></ul>
       </div>
+      <div id="home-drive-favs" style="margin-top:.4rem;display:none">
+        <div class="muted small" style="font-weight:600;margin-bottom:.2rem">⭐ Favoritos</div>
+        <ul class="home-file-list" id="home-drive-favs-list"></ul>
+      </div>
+      <script>
+      (function homeDriveFavs() {
+        try {
+          var favs = JSON.parse(localStorage.getItem('expresso_drive_favs_{{ me.user_id }}') || '[]');
+          if (!favs.length) return;
+          var wrap = document.getElementById('home-drive-favs');
+          var ul = document.getElementById('home-drive-favs-list');
+          if (!wrap || !ul) return;
+          ul.innerHTML = favs.slice(0, 5).map(function(f) {
+            var name = (typeof f === 'string' ? f : (f.name || f.id || '?'));
+            var id = (typeof f === 'string' ? f : (f.id || ''));
+            return '<li><a class="link" href="/drive?focus=' + encodeURIComponent(id) + '">' + name.replace(/</g,'&lt;') + '</a></li>';
+          }).join('');
+          wrap.style.display = '';
+        } catch(e){}
+      })();
+      </script>
     </div>
 
     <!-- Saúde do sistema -->

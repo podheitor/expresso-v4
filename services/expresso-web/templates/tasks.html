@@ -1007,6 +1007,9 @@ document.addEventListener('keydown', function(e) {
     arr[idx].priority = cur === 'normal' ? 'high' : (cur === 'high' ? 'low' : 'normal');
     saveTasks(arr);
     renderAll();
+  } else if (e.key === '?') {
+    e.preventDefault();
+    alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (na tarefa sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\n? — esta ajuda');
   }
 });
 // Track last hovered task for priority shortcut

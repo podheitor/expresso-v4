@@ -380,6 +380,9 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
   if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new'; }
+  if (e.key === 'w' || e.key === 'W') { window.location.href = '/calendar/{{ selected.id }}/week'; }
+  if (e.key === 'd' || e.key === 'D') { window.location.href = '/calendar/{{ selected.id }}/day'; }
+  if (e.key === '?') { e.preventDefault(); alert('Atalhos do mês:\n\n← → — mês anterior/próximo\nt — hoje\nn — novo evento\nw — semana\nd — dia\n? — esta ajuda'); }
 });
 (function sumMonthEvents() {
   var total = 0;
