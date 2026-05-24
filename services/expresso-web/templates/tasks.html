@@ -2411,5 +2411,26 @@ window.copyTasksByLabel=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueList=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const due=(r.getAttribute('data-task-due')||'').slice(0,10);
+    const done=(r.getAttribute('data-task-status')||'').toLowerCase();
+    if(due&&due<today&&done!=='done'&&done!=='completed'){
+      const title=r.getAttribute('data-task-title')||(r.querySelector('.title')||r).textContent||'';
+      out.push(due+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Nada atrasado');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' atrasadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

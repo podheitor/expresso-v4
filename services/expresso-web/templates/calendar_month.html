@@ -1689,5 +1689,21 @@ window.copyMonthEventTitles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAverageEventsPerDay=function(){
+  const rows=document.querySelectorAll('[data-event-start]');
+  if(!rows.length){alert('Sem eventos');return;}
+  const buckets={};
+  rows.forEach(r=>{const d=(r.getAttribute('data-event-start')||'').slice(0,10);if(d)buckets[d]=(buckets[d]||0)+1;});
+  const days=Object.keys(buckets).length||1;
+  const total=Object.values(buckets).reduce((a,b)=>a+b,0);
+  const avg=(total/days).toFixed(2);
+  const out=total+' eventos / '+days+' dias = '+avg+' eventos/dia';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='média '+avg+'/dia';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

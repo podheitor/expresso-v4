@@ -1443,5 +1443,19 @@ window.copyGalNoTitle=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalRandomPick=function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  if(!rows.length){alert('Sem resultados');return;}
+  const pick=rows[Math.floor(Math.random()*rows.length)];
+  const name=pick.getAttribute('data-gal-name')||'?';
+  const email=pick.getAttribute('data-gal-email')||'';
+  const out=name+' <'+email+'>';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aleatório: '+name;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

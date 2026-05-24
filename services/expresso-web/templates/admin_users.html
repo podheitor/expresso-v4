@@ -1533,5 +1533,22 @@ window.copyUsersDeleted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAdminsList=function(){
+  const rows=document.querySelectorAll('[data-user-role]');
+  const out=[];
+  rows.forEach(r=>{
+    const role=(r.getAttribute('data-user-role')||'').toLowerCase();
+    if(role==='admin'||role==='owner'||role==='superuser'||role.includes('admin')){
+      out.push((r.getAttribute('data-user-email')||'?')+'\t'+role);
+    }
+  });
+  if(!out.length){alert('Nenhum admin');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' admins';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

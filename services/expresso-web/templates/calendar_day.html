@@ -1636,5 +1636,25 @@ window.copyDayCalendarMix=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWithUrl=function(){
+  const re=/https?:\/\/[^\s)\]]+/;
+  const rows=document.querySelectorAll('[data-event-start]');
+  const out=[];
+  rows.forEach(r=>{
+    const desc=(r.getAttribute('data-event-description')||'')+' '+(r.getAttribute('data-event-location')||'');
+    const m=desc.match(re);
+    if(m){
+      const title=r.getAttribute('data-event-title')||'';
+      out.push(title.trim()+'\t'+m[0]);
+    }
+  });
+  if(!out.length){alert('Sem URLs nos eventos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' c/URL';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

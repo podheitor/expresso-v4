@@ -2191,5 +2191,29 @@ window.copyMailWithAttachments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargerThan=function(){
+  const s=prompt('Tamanho mínimo em MB:','1');
+  if(s===null)return;
+  const mb=parseFloat(s);
+  if(!(mb>0)){alert('Valor inválido');return;}
+  const cutoff=mb*1048576;
+  const rows=document.querySelectorAll('[data-mail-id][data-mail-size]');
+  const out=[];
+  rows.forEach(r=>{
+    const sz=parseInt(r.getAttribute('data-mail-size')||'0',10);
+    if(sz>=cutoff){
+      const subj=r.getAttribute('data-mail-subject')||'';
+      out.push((sz/1048576).toFixed(2)+' MB\t'+subj.trim());
+    }
+  });
+  if(!out.length){alert('Nenhuma >= '+mb+' MB');return;}
+  out.sort((a,b)=>parseFloat(b)-parseFloat(a));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' >='+mb+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
