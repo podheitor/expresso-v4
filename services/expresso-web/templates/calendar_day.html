@@ -978,5 +978,18 @@ window.copyDayBusyPct = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1800);
 };
+window.copyNextEvent = function(){
+  const now=Date.now();
+  const evs=Array.from(document.querySelectorAll('[data-event-start]')).map(e=>({s:Date.parse(e.getAttribute('data-event-start')),t:e.getAttribute('data-event-title')||'?'}));
+  const next=evs.filter(x=>!isNaN(x.s)&&x.s>now).sort((a,b)=>a.s-b.s)[0];
+  if(!next){alert('sem próximos eventos');return;}
+  const mins=Math.round((next.s-now)/60000);
+  const ta=document.createElement('textarea');ta.value=next.t+'\t'+new Date(next.s).toISOString();document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='próximo em '+mins+'min: '+next.t;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

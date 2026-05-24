@@ -1586,5 +1586,16 @@ window.copyTzInfo = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyLoadTime = function(){
+  const nav=performance.getEntriesByType('navigation')[0];
+  if(!nav){alert('navigation timing indisponível');return;}
+  const txt='dom_content\t'+Math.round(nav.domContentLoadedEventEnd)+'ms\nload\t'+Math.round(nav.loadEventEnd)+'ms\ntransfer\t'+Math.round(nav.transferSize||0)+' bytes';
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='load: '+Math.round(nav.loadEventEnd)+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

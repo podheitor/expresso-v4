@@ -1600,5 +1600,17 @@ window.copyInviteText = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleVideoQuality = function(){
+  if(!window.jitsiApi){alert('Jitsi não carregado');return;}
+  const cur=parseInt(localStorage.getItem('expresso_video_q')||'720',10);
+  const next=cur===720?360:cur===360?180:720;
+  window.jitsiApi.executeCommand('setVideoQuality',next);
+  localStorage.setItem('expresso_video_q',String(next));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='video '+next+'p';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

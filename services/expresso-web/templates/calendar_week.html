@@ -1024,5 +1024,15 @@ window.copyOverlappingEvents = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortest = function(){
+  const evs=Array.from(document.querySelectorAll('[data-event-start][data-event-end]')).map(e=>{const s=Date.parse(e.getAttribute('data-event-start'));const f=Date.parse(e.getAttribute('data-event-end'));return{d:Math.round((f-s)/60000),t:e.getAttribute('data-event-title')||'?'};}).filter(x=>!isNaN(x.d)&&x.d>0).sort((a,b)=>a.d-b.d).slice(0,5);
+  const out=evs.map(x=>x.d+'min\t'+x.t).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 5 mais curtos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

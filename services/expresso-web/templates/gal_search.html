@@ -818,5 +818,16 @@ window.copyResultNames = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyResultsAsVcf = function(){
+  const rows=document.querySelectorAll('[data-email]');
+  const lines=[];
+  rows.forEach(r=>{const n=r.getAttribute('data-name')||'?';const e=r.getAttribute('data-email')||'';const p=r.getAttribute('data-phone')||'';lines.push('BEGIN:VCARD\nVERSION:3.0\nFN:'+n+'\nEMAIL:'+e+(p?'\nTEL:'+p:'')+'\nEND:VCARD');});
+  const ta=document.createElement('textarea');ta.value=lines.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' vCards';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
