@@ -1176,6 +1176,37 @@ document.addEventListener('mouseover', function(e) {
   var t = e.target && e.target.closest && e.target.closest('.task-item[data-id]');
   if (t) window._lastHoverTask = t;
 });
+// sprint #20626 — atualiza contador local de tarefas pendentes para a home (`t` key)
+(function(){
+  try {
+    var rows = document.querySelectorAll('.task-row, [data-task-id]');
+    var pending = 0;
+    rows.forEach(function(r){
+      var done = r.dataset.done === '1' || r.classList.contains('done') || r.classList.contains('completed');
+      if (!done) pending++;
+    });
+    localStorage.setItem('expresso_tasks_pending_count_{{ me.user_id }}', String(pending));
+  } catch(e) {}
+})();
+// tecla `e` exporta lista visível como markdown
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'e' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = document.querySelectorAll('.task-row, [data-task-id]');
+  if (!rows.length) return;
+  var lines = ['# Tarefas — ' + new Date().toLocaleString()];
+  rows.forEach(function(r){
+    var title = (r.querySelector('.task-title') || r.querySelector('[data-title]') || r).textContent.trim().replace(/\s+/g,' ').slice(0,160);
+    var done = r.dataset.done === '1' || r.classList.contains('done') || r.classList.contains('completed');
+    lines.push('- [' + (done ? 'x' : ' ') + '] ' + title);
+  });
+  var blob = new Blob([lines.join('\n')], {type:'text/markdown'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tasks-' + new Date().toISOString().slice(0,10) + '.md';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+});
 </script>
 <style>
 @media print {

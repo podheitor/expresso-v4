@@ -807,5 +807,24 @@ function estimateMessageSize() {
   function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
   alert('Estimativa do envio:\n\nCabeçalhos+corpo: ' + fmt(bytes) + '\nAnexos (após base64 ~+37%): ' + fmt(Math.round(attBytes * 1.37)) + '\n\nTOTAL: ' + fmt(total) + (total > 25*1048576 ? '\n\n⚠️ Acima de 25 MB — alguns servidores rejeitam.' : ''));
 }
+// sprint #20629 — conta destinatários em To/Cc/Bcc e mostra na status bar do compose
+function showRecipientCount() {
+  function n(sel){
+    var v = (document.querySelector(sel) || {}).value || '';
+    return v.split(/[,;]/).map(function(s){return s.trim();}).filter(Boolean).length;
+  }
+  var to = n('input[name="to"]'), cc = n('input[name="cc"]'), bcc = n('input[name="bcc"]');
+  alert('Destinatários: ' + (to+cc+bcc) + ' total\n  To: ' + to + '\n  Cc: ' + cc + '\n  Bcc: ' + bcc);
+}
+// sprint #20630 — Ctrl+Shift+R limpa apenas o corpo (preserva subject/dest)
+document.addEventListener('keydown', function(e){
+  if (!e.ctrlKey || !e.shiftKey || (e.key !== 'R' && e.key !== 'r')) return;
+  var ta = document.querySelector('textarea[name="body"]');
+  if (!ta) return;
+  if (!confirm('Limpar apenas o corpo da mensagem?')) return;
+  e.preventDefault();
+  ta.value = '';
+  ta.focus();
+});
 </script>
 {% endblock %}

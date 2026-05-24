@@ -464,5 +464,19 @@ function copyThreadIds() {
   else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert('Copiados ' + ids.length + ' Message-ID(s) ao clipboard.');
 }
+// sprint #20631 — tecla `a` lista anexos da thread inteira
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'a' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var atts = document.querySelectorAll('.thread-msg .attachment, .thread-msg [data-attachment], .thread-msg a[download]');
+  if (!atts.length) { alert('Sem anexos nesta thread.'); return; }
+  var lines = [];
+  atts.forEach(function(a){
+    var name = a.dataset.name || a.textContent.trim() || a.getAttribute('download') || '(sem nome)';
+    var size = a.dataset.size || '';
+    lines.push('• ' + name.slice(0, 80) + (size ? ' (' + size + ')' : ''));
+  });
+  alert('Anexos da thread (' + atts.length + '):\n\n' + lines.join('\n'));
+});
 </script>
 {% endblock %}

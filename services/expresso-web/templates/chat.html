@@ -1820,6 +1820,26 @@ function copyChannelLink(btn) {
     alert('Link: ' + url);
   }
 }
+// sprint #20623 — tecla `s` salva snippet da msg hovered em expresso_chat_snippets_{{ me.user_id }}
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var m = window._lastHoverChatMsg;
+  if (!m) return;
+  var body = (m.querySelector('.chat-msg-body') || m).textContent.trim().slice(0, 500);
+  if (!body) return;
+  var K = 'expresso_chat_snippets_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(K) || '[]'); } catch(e2) {}
+  arr.unshift({ts: Date.now(), body: body});
+  if (arr.length > 50) arr = arr.slice(0, 50);
+  try { localStorage.setItem(K, JSON.stringify(arr)); } catch(e2) {}
+  var t = document.createElement('div');
+  t.textContent = '💾 Snippet salvo (' + arr.length + ' total)';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#16a34a;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 1800);
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

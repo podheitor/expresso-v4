@@ -1065,5 +1065,15 @@ function showTopSenders() {
   if (!top.length) { alert('Sem remetentes.'); return; }
   alert('Top remetentes nesta pasta:\n\n' + top.map(function(s){ return tally[s] + '× ' + s; }).join('\n'));
 }
+// sprint #20622 — tecla `f` foca na primeira mensagem não lida
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'f' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var first = document.querySelector('tr.unread, tr[data-unread="1"], .mail-row.unread');
+  if (!first) { return; }
+  first.scrollIntoView({behavior:'smooth', block:'center'});
+  first.style.outline = '2px solid #3b82f6';
+  setTimeout(function(){ first.style.outline = ''; }, 1500);
+});
 </script>
 {% endblock %}

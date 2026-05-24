@@ -1157,5 +1157,25 @@ document.addEventListener('keydown', function(e) {
   document.body.appendChild(btn);
   refresh();
 })();
+// sprint #20621 — tecla `t` mostra contador de tarefas pendentes (lê localStorage feito por outras views se houver)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 't') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  var n = 0;
+  try {
+    Object.keys(localStorage).forEach(function(k){
+      if (k.indexOf('expresso_tasks_pending_count_') === 0) {
+        var v = parseInt(localStorage.getItem(k) || '0', 10);
+        if (!isNaN(v)) n += v;
+      }
+    });
+  } catch(e2) {}
+  var t = document.createElement('div');
+  t.textContent = '📝 Tarefas pendentes (cache local): ' + n;
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 2500);
+});
 </script>
 {% endblock %}

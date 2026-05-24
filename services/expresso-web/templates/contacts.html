@@ -834,6 +834,19 @@ function printVisibleContacts() {
   w.document.write('<!DOCTYPE html><html><head><title>Contatos</title><style>body{font-family:sans-serif;padding:1rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:.3rem .5rem;font-size:.85rem;text-align:left}h1{font-size:1.1rem}</style></head><body><h1>Contatos ('+rows.length+')</h1><table><thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th></tr></thead><tbody>'+rows.join('')+'</tbody></table><script>window.onload=function(){window.print();};<\/script></body></html>');
   w.document.close();
 }
+// sprint #20627 — tecla `n` mostra contagem de contatos visíveis
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = document.querySelectorAll('tr[data-contact-id], .contact-row, [data-email]');
+  var visible = 0;
+  rows.forEach(function(r){ if (r.offsetParent !== null) visible++; });
+  var t = document.createElement('div');
+  t.textContent = '👤 ' + visible + ' contatos visíveis (de ' + rows.length + ' total)';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 2500);
+});
 </script>
 
 <!-- Groups modal -->

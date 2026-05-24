@@ -464,5 +464,22 @@ function scrollToNextEvent() {
   span.textContent = n === 0 ? '(sem eventos)' : '(' + n + ' evento' + (n > 1 ? 's' : '') + ')';
   h1.appendChild(span);
 })();
+// sprint #20634 — tecla `T` rola para a célula de hoje
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'T' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var today = document.querySelector('.month-cell.today, .month-cell[data-today="1"], .today');
+  if (!today) {
+    var t = document.createElement('div');
+    t.textContent = 'Hoje não está visível neste mês';
+    t.style.cssText='position:fixed;top:1rem;right:1rem;background:#dc2626;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+    document.body.appendChild(t);
+    setTimeout(function(){t.remove();}, 2000);
+    return;
+  }
+  today.scrollIntoView({behavior:'smooth', block:'center'});
+  today.style.outline = '3px solid #3b82f6';
+  setTimeout(function(){ today.style.outline = ''; }, 2000);
+});
 </script>
 {% endblock %}

@@ -1090,6 +1090,24 @@ function setMeetReminder() {
   tick();
   setInterval(tick, 1000);
 })();
+// sprint #20625 — tecla `s` copia link da sala atual
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var url = window.location.href.split('#')[0];
+  function done(){
+    var t = document.createElement('div');
+    t.textContent = '🔗 Link da sala copiado';
+    t.style.cssText='position:fixed;top:1rem;right:1rem;background:#16a34a;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+    document.body.appendChild(t);
+    setTimeout(function(){t.remove();}, 1800);
+  }
+  if (navigator.clipboard) { navigator.clipboard.writeText(url).then(done); }
+  else {
+    var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    done();
+  }
+});
 </script>
 
 <!-- Invite modal -->

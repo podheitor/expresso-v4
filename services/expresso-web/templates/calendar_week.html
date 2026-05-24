@@ -402,6 +402,25 @@ function printWeekAgenda() {
   span.textContent = n === 0 ? '(sem eventos)' : '(' + n + ' evento' + (n > 1 ? 's' : '') + ')';
   h1.appendChild(span);
 })();
+// sprint #20633 — tecla `b` mostra dia mais ocupado da semana
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'b' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var cols = document.querySelectorAll('[data-day-col], .week-day-col');
+  if (!cols.length) return;
+  var best = null, bestN = -1;
+  cols.forEach(function(c){
+    var n = c.querySelectorAll('.event-chip, .event').length;
+    var label = c.dataset.day || (c.querySelector('h2,h3,header') || {}).textContent || '?';
+    if (n > bestN) { bestN = n; best = label.trim(); }
+  });
+  if (!best) return;
+  var t = document.createElement('div');
+  t.textContent = '📊 Dia mais ocupado: ' + best + ' (' + bestN + ' eventos)';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 3000);
+});
 </script>
 <style>
 @media print {

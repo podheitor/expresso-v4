@@ -1206,5 +1206,23 @@ function clearAvatarCache() {
   }
   alert('Cache de avatares limpo: ' + n + ' entrada(s) localStorage.');
 }
+// sprint #20628 — listar todas as chaves expresso_* em modal de inspeção
+function showExpressoLocalKeys() {
+  var keys = [];
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('expresso_') === 0) {
+        var v = localStorage.getItem(k) || '';
+        keys.push({k: k, size: v.length});
+      }
+    }
+  } catch(e) {}
+  keys.sort(function(a,b){ return b.size - a.size; });
+  if (!keys.length) { alert('Nenhuma chave expresso_* em localStorage.'); return; }
+  var total = keys.reduce(function(s,x){ return s + x.size; }, 0);
+  var lines = keys.slice(0, 60).map(function(x){ return (x.size + ' B').padStart(8) + ' · ' + x.k; });
+  alert('Chaves expresso_* (' + keys.length + ', ' + (total/1024).toFixed(1) + ' KiB):\n\n' + lines.join('\n'));
+}
 </script>
 {% endblock %}

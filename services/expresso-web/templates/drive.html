@@ -1143,5 +1143,22 @@ function shareCurrentDriveFolder(btn) {
     alert('Link copiado: ' + url);
   }
 }
+// sprint #20624 — tecla `n` mostra nº de arquivos vs pastas na listagem
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = document.querySelectorAll('[data-kind]');
+  var files = 0, folders = 0;
+  rows.forEach(function(r){
+    var k = (r.dataset.kind || '').toLowerCase();
+    if (k === 'folder' || k === 'dir') folders++;
+    else if (k) files++;
+  });
+  var t = document.createElement('div');
+  t.textContent = '📂 ' + folders + ' pastas · 📄 ' + files + ' arquivos';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 2500);
+});
 </script>
 {% endblock %}

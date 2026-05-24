@@ -400,5 +400,24 @@ function promptFilterAuditAction() {
   var n = filterAuditByAction(act);
   alert(n + ' linha(s) visível(is).');
 }
+// sprint #20635 — tecla `u` mostra top usuários por nº de eventos no audit visível
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'u' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = document.querySelectorAll('tbody tr');
+  var tally = {};
+  rows.forEach(function(r){
+    if (r.style.display === 'none') return;
+    var u = (r.dataset.user || r.dataset.actor || '').trim();
+    if (!u) {
+      var cells = r.querySelectorAll('td');
+      if (cells.length >= 2) u = cells[1].textContent.trim();
+    }
+    if (u) tally[u] = (tally[u] || 0) + 1;
+  });
+  var top = Object.keys(tally).sort(function(a,b){ return tally[b] - tally[a]; }).slice(0, 10);
+  if (!top.length) { alert('Sem usuários nas linhas visíveis.'); return; }
+  alert('Top usuários no audit visível:\n\n' + top.map(function(u){ return tally[u] + '× ' + u; }).join('\n'));
+});
 </script>
 {% endblock %}
