@@ -550,5 +550,17 @@ document.addEventListener('keydown', function(e){
   next.style.outline = '2px solid #f59e0b';
   setTimeout(function(){ next.style.outline = ''; }, 2000);
 });
+// sprint #20738 — tecla c conta eventos no mês
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'c') return;
+    var evs = document.querySelectorAll('.event, .calendar-event, [data-event-id]');
+    var days = document.querySelectorAll('.day-cell, [data-day]').length || 30;
+    var avg = evs.length ? (evs.length / days).toFixed(2) : '0';
+    alert('Mês: ' + evs.length + ' evento(s) em ' + days + ' dia(s).\nMédia: ' + avg + '/dia');
+  });
+})();
 </script>
 {% endblock %}

@@ -952,4 +952,24 @@ document.addEventListener('keydown', function(e){
     </div>
   </div>
 </div>
+<script>
+// sprint #20732 — copyContactsEmails (tecla x)
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'x') return;
+    var emails = [];
+    document.querySelectorAll('[data-contact-email], .contact-email').forEach(function(el){
+      var v = (el.getAttribute('data-contact-email') || el.textContent || '').trim();
+      if (v && emails.indexOf(v) === -1) emails.push(v);
+    });
+    if (!emails.length) { alert('Sem contatos visíveis.'); return; }
+    var txt = emails.join(', ');
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    alert(emails.length + ' e-mail(s) copiado(s).');
+  });
+})();
+</script>
 {% endblock %}

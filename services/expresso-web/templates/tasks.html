@@ -1264,6 +1264,20 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/';
 });
+// sprint #20731 — copyTasksTitles() copia títulos visíveis para clipboard
+function copyTasksTitles() {
+  var titles = [];
+  document.querySelectorAll('.task-row, [data-task-id]').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var t = (r.querySelector('.task-title') || r.querySelector('[data-title]') || r).textContent.trim().replace(/\s+/g,' ');
+    if (t) titles.push(t);
+  });
+  if (!titles.length) { alert('Sem tarefas visíveis.'); return; }
+  var txt = titles.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(titles.length + ' título(s) copiado(s).');
+}
 </script>
 <style>
 @media print {

@@ -488,4 +488,23 @@ document.addEventListener('keydown', function(e){
   .event-chip { page-break-inside: avoid; }
 }
 </style>
+<script>
+// sprint #20737 — tecla c conta eventos por dia da semana
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'c') return;
+    var cols = document.querySelectorAll('.day-col, .week-day-col, [data-day]');
+    if (!cols.length) { alert('Sem grade visível.'); return; }
+    var msgs = [];
+    cols.forEach(function(col){
+      var label = col.getAttribute('data-day') || (col.querySelector('.day-header, .day-label') || {}).textContent || '?';
+      var n = col.querySelectorAll('.event, .calendar-event, [data-event-id]').length;
+      msgs.push(String(label).trim() + ': ' + n);
+    });
+    alert('Eventos por dia:\n\n' + msgs.join('\n'));
+  });
+})();
+</script>
 {% endblock %}

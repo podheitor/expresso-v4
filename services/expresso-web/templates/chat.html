@@ -1899,6 +1899,12 @@ function clearChatSnippets() {
   localStorage.removeItem(K);
   alert('Snippets apagados.');
 }
+// sprint #20728 — tecla `h` /home
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.href = '/';
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

@@ -1158,5 +1158,16 @@ document.addEventListener('keydown', function(e){
   inp.focus();
   inp.select();
 });
+// sprint #20727 — tecla `a` arquiva selecionadas (clica botão archive da toolbar)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'a' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var btn = document.querySelector('button[name="bulk_action"][value="archive"], [data-bulk="archive"], a.bulk-archive');
+  if (btn) { btn.click(); return; }
+  var first = document.querySelector('.msg-checkbox:checked, .row-checkbox:checked');
+  if (!first) { return; }
+  var arch = document.querySelector('.dropdown-item[href*="archive"], button[data-action="archive"]');
+  if (arch) arch.click();
+});
 </script>
 {% endblock %}

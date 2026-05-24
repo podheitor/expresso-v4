@@ -1222,5 +1222,13 @@ document.addEventListener('keydown', function(e){
   e.preventDefault();
   inp.focus();
 });
+// sprint #20726 — tecla `n` mostra notificações pendentes (Notification API permission)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!('Notification' in window)) { alert('Navegador sem Notification API.'); return; }
+  alert('Estado das notificações: ' + Notification.permission +
+    (Notification.permission === 'default' ? '\n\nDica: vá em /settings para conceder permissão.' : ''));
+});
 </script>
 {% endblock %}

@@ -893,5 +893,15 @@ function countAttachmentsTotalSize() {
   function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
   alert(n + ' anexo(s) · ' + fmt(total) + ' total');
 }
+// sprint #20734 — appendQuotedBlock: insere bloco "> " no body
+function appendQuotedBlock(text) {
+  var body = document.querySelector('textarea[name="body"], #compose-body');
+  if (!body) return;
+  var t = (text || prompt('Texto a citar:') || '').trim();
+  if (!t) return;
+  var quoted = t.split('\n').map(function(l){ return '> ' + l; }).join('\n');
+  body.value = (body.value || '') + (body.value ? '\n\n' : '') + quoted + '\n';
+  body.focus();
+}
 </script>
 {% endblock %}

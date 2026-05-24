@@ -1205,5 +1205,14 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/';
 });
+// sprint #20729 — tecla `*` toggle select-all
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '*' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var boxes = document.querySelectorAll('input[type="checkbox"].file-checkbox, .drive-row input[type="checkbox"]');
+  if (!boxes.length) return;
+  var allChecked = Array.prototype.every.call(boxes, function(b){ return b.checked; });
+  boxes.forEach(function(b){ b.checked = !allChecked; });
+});
 </script>
 {% endblock %}

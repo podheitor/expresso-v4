@@ -1343,5 +1343,17 @@ function showRecentPageVisits() {
   });
   alert('Últimas visitas:\n\n' + lines.join('\n'));
 }
+// sprint #20733 — copyExpressoPrefsJson: copia preferences localStorage como JSON
+function copyExpressoPrefsJson() {
+  var prefs = {};
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && k.indexOf('expresso_') === 0) prefs[k] = localStorage.getItem(k);
+  }
+  var txt = JSON.stringify(prefs, null, 2);
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(Object.keys(prefs).length + ' pref(s) copiada(s) como JSON.');
+}
 </script>
 {% endblock %}

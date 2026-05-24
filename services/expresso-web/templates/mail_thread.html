@@ -541,5 +541,20 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/';
 });
+// sprint #20735 — tecla x copia subject + sender da primeira msg
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'x') return;
+    var subj = (document.querySelector('.thread-subject, h1.subject, h1') || {}).textContent || '';
+    var from = (document.querySelector('.msg-from, .message-from, .from') || {}).textContent || '';
+    var txt = subj.trim() + (from ? ' — ' + from.trim() : '');
+    if (!txt) { alert('Nada para copiar.'); return; }
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    alert('Subject+from copiado.');
+  });
+})();
 </script>
 {% endblock %}
