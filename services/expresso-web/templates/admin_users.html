@@ -479,5 +479,18 @@ document.addEventListener('keydown', function(e){
   inp.focus();
   inp.select();
 });
+// sprint #20710 — tecla `n` conta usuários visíveis (rápido, sem ir pro X-key)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = document.querySelectorAll('.admin-user-row');
+  var vis = 0;
+  rows.forEach(function(r){ if (r.style.display !== 'none') vis++; });
+  var t = document.createElement('div');
+  t.textContent = '👥 ' + vis + ' de ' + rows.length + ' visíveis';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 2200);
+});
 </script>
 {% endblock %}

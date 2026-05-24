@@ -1139,6 +1139,19 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /meet/room:\n  p → PiP\n  r → reload com confirmação\n  s → copia link\n  f → fullscreen\n  q → sair\n  i → convidar\n  ? → esta ajuda');
 });
+// sprint #20700 — tecla `m` toggle mute (post message ao iframe Jitsi)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'm' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (typeof window.jitsiApi !== 'undefined' && window.jitsiApi.executeCommand) {
+    window.jitsiApi.executeCommand('toggleAudio');
+  } else {
+    var iframe = document.querySelector('iframe[src*="jitsi"]');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({type:'toggleAudio'}, '*');
+    }
+  }
+});
 </script>
 
 <!-- Invite modal -->

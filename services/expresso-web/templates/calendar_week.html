@@ -464,6 +464,14 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /calendar/week:\n  [/] → semana anterior/seguinte\n  T → semana de hoje\n  h → hora atual\n  a → lista todos eventos\n  b → dia mais ocupado\n  ? → esta ajuda');
 });
+// sprint #20707 — tecla `d` muda pra view day
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'd' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var u = new URL(window.location.href);
+  var dt = u.searchParams.get('date');
+  window.location.href = '/calendar/day' + (dt ? '?date=' + dt : '');
+});
 </script>
 <style>
 @media print {

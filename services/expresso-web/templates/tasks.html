@@ -1252,6 +1252,12 @@ document.addEventListener('keydown', function(e){
     if (doneBtn) doneBtn.click();
   });
 });
+// sprint #20701 — tecla `r` reload
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.reload();
+});
 </script>
 <style>
 @media print {

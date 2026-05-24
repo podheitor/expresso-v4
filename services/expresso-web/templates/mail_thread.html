@@ -527,5 +527,13 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /mail/thread:\n  n → próxima msg\n  p → anterior\n  g/G → topo/fim\n  r → foco reply\n  c → colapsa/expande tudo\n  a → lista anexos\n  f → participantes\n  ? → esta ajuda');
 });
+// sprint #20705 — tecla `u` volta pra mail list (parent /mail)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'u' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var back = document.querySelector('a[href^="/mail/list"], a[href="/mail"], a[data-action="back"]');
+  if (back) window.location.href = back.href;
+  else window.location.href = '/mail';
+});
 </script>
 {% endblock %}

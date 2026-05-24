@@ -1189,5 +1189,15 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /drive:\n  i → file info\n  d → download selecionado\n  g → /drive\n  u → pasta pai\n  r → reload\n  t → lixeira\n  n → contagem\n  ? → esta ajuda');
 });
+// sprint #20699 — tecla `s` foca campo de busca do drive
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('#drive-search, input[name="q"], input[type="search"]');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+  inp.select();
+});
 </script>
 {% endblock %}

@@ -868,5 +868,19 @@ function toggleCcBccVisibility() {
     wrap.style.display = (wrap.style.display === 'none') ? '' : 'none';
   });
 }
+// sprint #20704 — Ctrl+S salva rascunho via submit do form draft (se houver) ou local
+document.addEventListener('keydown', function(e){
+  if (!e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
+  if (e.key !== 's' && e.key !== 'S') return;
+  e.preventDefault();
+  var draftBtn = document.querySelector('button[name="action"][value="save_draft"], button[data-action="save_draft"]');
+  if (draftBtn) { draftBtn.click(); return; }
+  if (typeof composeAutosaveLocal === 'function') composeAutosaveLocal();
+  var t = document.createElement('div');
+  t.textContent = '💾 Rascunho salvo localmente';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#16a34a;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 1500);
+});
 </script>
 {% endblock %}

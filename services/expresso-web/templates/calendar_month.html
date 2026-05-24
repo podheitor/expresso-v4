@@ -525,5 +525,15 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /calendar/month:\n  [/] → mês anterior/seguinte\n  H → mês de hoje\n  T → rola pra célula de hoje\n  y → pular pra ano\n  w → top dias\n  ? → esta ajuda');
 });
+// sprint #20708 — tecla `d`/`W` muda pra day/week
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'd' && e.key !== 'W') return;
+  var u = new URL(window.location.href);
+  var dt = u.searchParams.get('date');
+  var path = e.key === 'd' ? '/calendar/day' : '/calendar/week';
+  window.location.href = path + (dt ? '?date=' + dt : '');
+});
 </script>
 {% endblock %}

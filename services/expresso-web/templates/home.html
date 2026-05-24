@@ -1207,5 +1207,11 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'd' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/drive';
 });
+// sprint #20696 — tecla `k` abre /tasks (taKs)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'k' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.href = '/tasks';
+});
 </script>
 {% endblock %}

@@ -907,6 +907,23 @@ function exportContactsVcf() {
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
 }
+// sprint #20702 — tecla `a` mostra distribuição por domínio de email
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'a' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var tally = {};
+  document.querySelectorAll('tr[data-contact-id], .contact-row').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var email = (r.dataset.email || (r.querySelector('.contact-email') || {}).textContent || '').trim();
+    var i = email.lastIndexOf('@');
+    if (i < 0) return;
+    var dom = email.slice(i + 1).toLowerCase();
+    tally[dom] = (tally[dom] || 0) + 1;
+  });
+  var top = Object.keys(tally).sort(function(a,b){ return tally[b] - tally[a]; }).slice(0, 15);
+  if (!top.length) { alert('Sem domínios.'); return; }
+  alert('Top domínios:\n\n' + top.map(function(d){ return tally[d] + '× ' + d; }).join('\n'));
+});
 </script>
 
 <!-- Groups modal -->

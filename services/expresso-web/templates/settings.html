@@ -1306,5 +1306,18 @@ function pingServerHealth() {
       alert('Falhou: ' + err.message);
     });
 }
+// sprint #20703 — copyCurrentSessionInfo() copia info da sessão (user/tenant/UA)
+function copyCurrentSessionInfo() {
+  var info = [
+    'User: {{ me.user_id }}',
+    'Tenant: {{ me.tenant_id }}',
+    'UA: ' + navigator.userAgent,
+    'Time: ' + new Date().toISOString(),
+    'URL: ' + window.location.href
+  ].join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(info);
+  else { var ta = document.createElement('textarea'); ta.value = info; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Info da sessão copiada para clipboard:\n\n' + info);
+}
 </script>
 {% endblock %}

@@ -1883,6 +1883,12 @@ document.addEventListener('keydown', function(e){
   if (!stream) return;
   stream.scrollTop = stream.scrollHeight;
 });
+// sprint #20698 — tecla `?` ajuda chat
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /chat:\n  / → foco input\n  c → copia body (hover)\n  l → copia link msg\n  w → word count\n  s → salva snippet\n  S → lista snippets\n  g/G → topo/fim\n  Home/End → scroll stream\n  ? → esta ajuda');
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }
