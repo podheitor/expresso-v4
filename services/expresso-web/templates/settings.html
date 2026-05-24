@@ -2711,5 +2711,25 @@ window.copyTimezoneInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.exportLocalStorageJson=function(){
+  const all={};
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    if(!k)continue;
+    all[k]=localStorage.getItem(k);
+  }
+  const keys=Object.keys(all);
+  if(!keys.length){alert('localStorage vazio');return;}
+  const j=JSON.stringify(all,null,2);
+  const b=new Blob([j],{type:'application/json'});
+  const u=URL.createObjectURL(b);
+  const a=document.createElement('a');a.href=u;a.download='localStorage.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(u),1000);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exp '+keys.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

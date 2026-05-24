@@ -2736,5 +2736,24 @@ window.copyDriveTopLargest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveByExtension=function(){
+  const a={};
+  document.querySelectorAll('[data-file-id]').forEach(f=>{
+    const n=(f.getAttribute('data-file-name')||'').trim();
+    const i=n.lastIndexOf('.');
+    const ext=i>0?n.slice(i+1).toLowerCase():'(no-ext)';
+    a[ext]=(a[ext]||0)+1;
+  });
+  const keys=Object.keys(a);
+  if(!keys.length){alert('Sem arquivos');return;}
+  keys.sort((x,y)=>a[y]-a[x]);
+  const out=keys.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' ext';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

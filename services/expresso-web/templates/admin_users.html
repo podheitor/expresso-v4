@@ -1990,5 +1990,21 @@ window.copyUsersByTenant=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersDisabled=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const st=(u.getAttribute('data-user-status')||u.getAttribute('data-user-enabled')||'').trim().toLowerCase();
+    if(st==='disabled'||st==='false'||st==='suspended'){
+      out.push((u.getAttribute('data-user-email')||u.getAttribute('data-user-id')||'?')+'\t'+st);
+    }
+  });
+  if(!out.length){alert('Sem disabled');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' off';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

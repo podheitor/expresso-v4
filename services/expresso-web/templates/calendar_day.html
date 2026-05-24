@@ -2117,5 +2117,20 @@ window.copyDayBusyWindow=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLocations=function(){
+  const s=new Set();
+  document.querySelectorAll('[data-event-location]').forEach(e=>{
+    const l=(e.getAttribute('data-event-location')||'').trim();
+    if(l)s.add(l);
+  });
+  if(!s.size){alert('Sem locais');return;}
+  const arr=Array.from(s).sort();
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=arr.length+' loc';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
