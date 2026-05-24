@@ -1326,5 +1326,21 @@ window.copyThreadDomainsContacted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAvgGap=function(){
+  const ts=Array.from(document.querySelectorAll('[data-msg-id]')).map(r=>r.dataset.msgDate||'').filter(Boolean);
+  if(ts.length<2)return;
+  let sum=0,n=0;
+  for(let i=1;i<ts.length;i++){const d=(new Date(ts[i])-new Date(ts[i-1]))/3600000;if(!isNaN(d)){sum+=d;n++;}}
+  const avg=(sum/(n||1)).toFixed(2);
+  const ta=document.createElement('textarea');
+  ta.value='gap médio: '+avg+'h ('+n+' intervalos)';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='média '+avg+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

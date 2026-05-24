@@ -1230,5 +1230,17 @@ window.copyAuditByResource=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditWeekendOnly=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-id]')).filter(r=>{const ts=r.dataset.auditTs;if(!ts)return false;const d=new Date(ts).getDay();return d===0||d===6;});
+  const lines=rows.map(r=>(r.dataset.auditTs||'')+'\t'+(r.dataset.auditActor||'')+'\t'+(r.dataset.auditAction||'')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' fim de semana';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

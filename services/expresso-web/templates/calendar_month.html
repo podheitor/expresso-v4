@@ -1392,5 +1392,21 @@ window.copyMonthFirstWeekOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestDay=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]'));
+  const m={};
+  rows.forEach(r=>{const d=(r.dataset.eventStart||'').slice(0,10);if(d)m[d]=(m[d]||0)+1;});
+  const ent=Object.entries(m).sort((a,b)=>b[1]-a[1])[0];
+  if(!ent)return;
+  const ta=document.createElement('textarea');
+  ta.value='busiest: '+ent[0]+' = '+ent[1]+' eventos';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=ent[0]+' '+ent[1]+'ev';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

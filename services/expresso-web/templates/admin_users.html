@@ -1244,5 +1244,17 @@ window.copyUsersWithoutQuota=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOverQuota=function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-id]')).filter(r=>{const u=parseInt(r.dataset.userUsage||'0',10),q=parseInt(r.dataset.userQuota||'0',10);return q>0&&u>q;});
+  const lines=rows.map(r=>{const u=parseInt(r.dataset.userUsage||'0',10),q=parseInt(r.dataset.userQuota||'0',10);return ((u/q)*100).toFixed(1)+'%\t'+(r.dataset.userEmail||'');}).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' acima da quota';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

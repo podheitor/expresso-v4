@@ -1349,5 +1349,17 @@ window.copyWeekFridayLoad=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekMondayLoad=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]')).filter(r=>{const s=r.dataset.eventStart;return s&&new Date(s).getDay()===1;});
+  const lines=rows.map(r=>(r.dataset.eventStart||'').slice(11,16)+'\t'+(r.dataset.eventTitle||'')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' segundas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

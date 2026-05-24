@@ -1576,5 +1576,19 @@ window.clearPartialDraft=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyRecipientCount=function(){
+  const get=n=>{const el=document.querySelector('[name='+n+']');return el?el.value:'';};
+  const split=v=>v.split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const to=split(get('to')).length,cc=split(get('cc')).length,bcc=split(get('bcc')).length;
+  const v='To: '+to+' / Cc: '+cc+' / Bcc: '+bcc+' = '+(to+cc+bcc);
+  const ta=document.createElement('textarea');
+  ta.value=v; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=(to+cc+bcc)+' destinatários';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
