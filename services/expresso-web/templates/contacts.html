@@ -689,6 +689,24 @@ function toggleContactFav(btn, cid) {
       e.preventDefault();
       showUpcomingBirthdays();
     }
+    else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      window.location.reload();
+    }
+    else if (e.key === 'c' || e.key === 'C') {
+      var hc3 = window._lastHoverContact;
+      if (!hc3) return;
+      var em3 = hc3.dataset.email || ((hc3.querySelector('.contact-card-email') || {}).textContent || '').trim();
+      if (!em3) return;
+      e.preventDefault();
+      if (navigator.clipboard) navigator.clipboard.writeText(em3);
+      else { var ta = document.createElement('textarea'); ta.value = em3; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+      var t = document.createElement('div');
+      t.textContent = '📋 ' + em3;
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1500);
+    }
     else if (e.key === 'm' || e.key === 'M') {
       var hc2 = window._lastHoverContact;
       if (!hc2) return;

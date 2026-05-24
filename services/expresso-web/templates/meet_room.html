@@ -742,7 +742,14 @@ function showMeetRoomHistory() {
     var age = min < 60 ? min + 'min' : Math.floor(min / 60) + 'h';
     return (i + 1) + '. ' + e.name + ' — ' + age + ' atrás';
   });
-  alert('Histórico de salas:\n\n' + lines.join('\n'));
+  var pick = prompt('Histórico de salas (digite n° para copiar link, ou ESC):\n\n' + lines.join('\n'));
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= arr.length) return;
+  var entry = arr[idx];
+  var url = window.location.origin + '/meet/room/' + encodeURIComponent(entry.name);
+  if (navigator.clipboard) navigator.clipboard.writeText(url);
+  else { var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Link copiado: ' + url);
 }
 </script>
 

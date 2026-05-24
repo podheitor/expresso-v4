@@ -106,6 +106,13 @@
         var subj = 'Acesso ao Expresso';
         var body = 'Olá, sua conta está pronta. Acesse: ' + window.location.origin + '/login\n\nEmail: ' + email;
         window.location.href = '/mail/compose?to=' + encodeURIComponent(email) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      } else if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        var tbody = document.querySelector('table tbody');
+        if (!tbody) return;
+        var rows = Array.from(tbody.querySelectorAll('.admin-user-row'));
+        rows.sort(function(a, b){ return (a.dataset.name || '').localeCompare(b.dataset.name || '', 'pt-BR'); });
+        rows.forEach(function(r){ tbody.appendChild(r); });
       } else if (e.key === 'x' || e.key === 'X') {
         e.preventDefault();
         var rows = Array.from(document.querySelectorAll('.admin-user-row')).filter(function(r){ return r.offsetParent !== null; });

@@ -1184,6 +1184,21 @@ function savePresenceMsg(text) {
       bookmarkChatMsg(mid, body, author);
       return;
     }
+    if (e.key === 'w' || e.key === 'W') {
+      var hmw = window._lastHoverChatMsg;
+      if (!hmw) return;
+      var body = ((hmw.querySelector('.chat-msg-body') || {}).textContent || '').trim();
+      if (!body) return;
+      e.preventDefault();
+      var words = body.split(/\s+/).filter(Boolean).length;
+      var chars = body.length;
+      var t = document.createElement('div');
+      t.textContent = words + ' palavra(s), ' + chars + ' caractere(s)';
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1800);
+      return;
+    }
     if (e.key === 'l' || e.key === 'L') {
       var hm2 = window._lastHoverChatMsg;
       if (!hm2) return;

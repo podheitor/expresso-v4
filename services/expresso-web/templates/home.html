@@ -342,6 +342,7 @@
         <input type="text" id="home-task-quick-input" class="search-input-sm" placeholder="Nova tarefa rápida…"
                style="flex:1" onkeydown="if(event.key==='Enter')homeAddTask()">
         <button class="btn btn-primary btn-sm" onclick="homeAddTask()">+</button>
+        <button class="btn btn-ghost btn-sm" onclick="startHomePomodoro(25)" title="Iniciar pomodoro 25min">🍅 25min</button>
       </div>
     </div>
 
@@ -1074,6 +1075,47 @@ document.addEventListener('keydown', function(e) {
   }
   render();
   setInterval(render, 60000);
+})();
+(function homePomoTimer(){
+  var box = document.createElement('div');
+  box.id = 'home-pomo-timer';
+  box.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--surface);border:1px solid var(--border);padding:.5rem .75rem;border-radius:var(--radius);box-shadow:0 2px 8px rgba(0,0,0,.1);font-family:ui-monospace,monospace;font-size:.85rem;z-index:40;display:none;align-items:center;gap:.5rem';
+  box.innerHTML = '<span id="home-pomo-display">🍅 25:00</span> <button class="btn btn-ghost btn-sm" id="home-pomo-stop">Parar</button>';
+  document.body.appendChild(box);
+  var iv = null, endAt = 0;
+  function tick(){
+    var ms = endAt - Date.now();
+    if (ms <= 0) {
+      clearInterval(iv); iv = null;
+      box.style.display = 'none';
+      try {
+        var s = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}');
+        var k = new Date().toISOString().slice(0,10);
+        s[k] = (s[k] || 0) + 1;
+        localStorage.setItem('expresso_pomodoro_stats', JSON.stringify(s));
+      } catch(e) {}
+      try { new Notification('🍅 Pomodoro concluído', { body: 'Faça uma pausa de 5 min.' }); } catch(e) {}
+      alert('🍅 Pomodoro concluído! Faça uma pausa de 5 minutos.');
+      return;
+    }
+    var m = Math.floor(ms / 60000), sec = Math.floor((ms % 60000) / 1000);
+    document.getElementById('home-pomo-display').textContent = '🍅 ' + (m < 10 ? '0' + m : m) + ':' + (sec < 10 ? '0' + sec : sec);
+  }
+  window.startHomePomodoro = function(min){
+    min = min || 25;
+    if (iv) { alert('Pomodoro já em andamento.'); return; }
+    endAt = Date.now() + min * 60000;
+    box.style.display = 'flex';
+    if (Notification && Notification.permission === 'default') Notification.requestPermission();
+    tick();
+    iv = setInterval(tick, 1000);
+  };
+  document.getElementById('home-pomo-stop').onclick = function(){
+    if (!iv) return;
+    if (!confirm('Cancelar pomodoro?')) return;
+    clearInterval(iv); iv = null;
+    box.style.display = 'none';
+  };
 })();
 (function homeFocusMode(){
   var KEY = 'expresso_home_focus_mode_{{ me.user_id }}';

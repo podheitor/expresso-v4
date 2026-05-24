@@ -757,6 +757,15 @@ function copyComposeBody(btn) {
   setInterval(snap, 30000);
   window.addEventListener('beforeunload', snap);
 })();
+document.addEventListener('keydown', function(e){
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    var form = document.querySelector('form.compose-form, form[action*="/mail/send"]');
+    if (!form) return;
+    e.preventDefault();
+    if (typeof form.requestSubmit === 'function') form.requestSubmit();
+    else form.submit();
+  }
+});
 function estimateMessageSize() {
   var ta = document.querySelector('textarea[name="body"], #compose-body, #compose-body-text');
   var ed = document.getElementById('compose-rich-editor');

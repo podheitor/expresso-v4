@@ -26,6 +26,8 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="bccAllGal()" title="Compor com BCC (oculta destinatários)">✉ BCC</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos os e-mails">📋 Copiar</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="bookmarkGalQuery()" title="Salvar busca como favorita">⭐ Salvar busca</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="showGalBookmarks()" title="Buscas favoritas">📚 Favoritas</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsGalGroup()" title="Criar grupo de contatos a partir destes resultados">👥 Salvar grupo</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalResultsCsv()" title="Exportar resultados como CSV">⬇ CSV</button>
@@ -66,14 +68,30 @@ function mailAllGal() {
   if (ems.length > 50 && !confirm('Compor e-mail para ' + ems.length + ' destinatários?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(ems.join(', '));
 }
-function copyAllGalEmails(btn) {
-  var ems = _allGalEmails();
-  if (!ems.length) { alert('Sem e-mails nos resultados.'); return; }
-  var txt = ems.join(', ');
-  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
-    if (btn) { var t = btn.textContent; btn.textContent = '✓ ' + ems.length; setTimeout(function(){ btn.textContent = t; }, 1500); }
-  });
-  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert(ems.length + ' e-mails copiados.'); }
+function bookmarkGalQuery() {
+  var u = new URL(window.location.href);
+  var q = (u.searchParams.get('q') || '').trim();
+  if (!q) { alert('Busca vazia.'); return; }
+  var KEY = 'expresso_gal_bookmarks_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) {}
+  if (arr.indexOf(q) >= 0) { alert('Já está nos favoritos.'); return; }
+  arr.unshift(q);
+  if (arr.length > 50) arr = arr.slice(0, 50);
+  try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch(e) {}
+  alert('⭐ Busca "' + q + '" salva nos favoritos.');
+}
+function showGalBookmarks() {
+  var KEY = 'expresso_gal_bookmarks_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) {}
+  if (!arr.length) { alert('Sem buscas salvas.'); return; }
+  var pick = prompt('Buscas favoritas (n° para reabrir):\n\n' + arr.map(function(s, i){ return (i+1) + '. ' + s; }).join('\n'));
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= arr.length) return;
+  var u = new URL(window.location.href);
+  u.searchParams.set('q', arr[idx]);
+  window.location.href = u.toString();
 }
 function bccAllGal() {
   var ems = _allGalEmails();

@@ -351,6 +351,29 @@ function filterAuditByAction(action) {
   });
   return shown;
 }
+(function localizeAuditTimestamps(){
+  document.querySelectorAll('tr[data-ts] td:first-child, td[data-ts]').forEach(function(td){
+    var ts = td.dataset.ts || (td.closest('tr[data-ts]') && td.closest('tr[data-ts]').dataset.ts);
+    if (!ts) return;
+    var d = new Date(ts);
+    if (!isFinite(d.getTime())) return;
+    td.title = d.toString();
+    var now = Date.now();
+    var diff = now - d.getTime();
+    var rel = '';
+    if (diff < 60000) rel = 'agora';
+    else if (diff < 3600000) rel = Math.floor(diff / 60000) + 'min atrás';
+    else if (diff < 86400000) rel = Math.floor(diff / 3600000) + 'h atrás';
+    else if (diff < 7 * 86400000) rel = Math.floor(diff / 86400000) + 'd atrás';
+    else rel = d.toLocaleDateString('pt-BR');
+    var orig = td.textContent;
+    var span = document.createElement('span');
+    span.className = 'muted small';
+    span.style.marginLeft = '.4rem';
+    span.textContent = '(' + rel + ')';
+    td.appendChild(span);
+  });
+})();
 function promptFilterAuditAction() {
   var act = prompt('Filtrar por ação (vazio = todas):');
   if (act === null) return;

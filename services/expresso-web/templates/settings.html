@@ -1133,6 +1133,21 @@ function importAllPreferences(input) {
   };
   rd.readAsText(f);
 }
+function testBrowserNotification() {
+  if (!('Notification' in window)) { alert('Navegador não suporta notificações.'); return; }
+  function fire() {
+    try {
+      new Notification('🔔 Notificação de teste', {
+        body: 'Se você está vendo isto, notificações estão funcionando.',
+        icon: '/static/favicon.png',
+        tag: 'expresso-test'
+      });
+    } catch(e) { alert('Falha ao disparar: ' + e.message); }
+  }
+  if (Notification.permission === 'granted') fire();
+  else if (Notification.permission === 'denied') alert('Permissão negada. Habilite manualmente no navegador.');
+  else Notification.requestPermission().then(function(p){ if (p === 'granted') fire(); else alert('Permissão: ' + p); });
+}
 function showStorageBreakdown() {
   var groups = {};
   for (var i = 0; i < localStorage.length; i++) {

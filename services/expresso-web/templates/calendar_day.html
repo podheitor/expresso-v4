@@ -250,6 +250,12 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new?date={{ date_iso }}'; }
   if (e.key === 'w' || e.key === 'W') { window.location.href = '{{ week_link }}'; }
   if (e.key === 'm' || e.key === 'M') { window.location.href = '{{ month_link }}'; }
+  if (e.key === 'h' || e.key === 'H') {
+    var now = new Date();
+    var slot = document.querySelector('[data-hour="' + now.getHours() + '"], .day-hour-' + now.getHours());
+    if (slot) { slot.scrollIntoView({ behavior: 'smooth', block: 'center' }); slot.style.transition = 'outline .3s'; slot.style.outline = '3px solid var(--accent)'; setTimeout(function(){ slot.style.outline = ''; }, 1800); }
+    else window.scrollTo({ top: (now.getHours() / 24) * document.body.scrollHeight, behavior: 'smooth' });
+  }
 });
 function copyDayLink(btn) {
   var url = window.location.origin + window.location.pathname + window.location.search;

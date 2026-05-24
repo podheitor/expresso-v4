@@ -532,9 +532,13 @@ function showSnoozeToast(subject, msgId) {
       if (!sel.length) return;
       e.preventDefault();
       if (typeof batchMailAction === 'function') batchMailAction('flag');
+    } else if (e.key === '*') {
+      e.preventDefault();
+      var cb = document.getElementById('mail-select-all-toggle') || document.querySelector('thead .mail-row-check, #select-all-rows');
+      if (cb) { cb.checked = !cb.checked; if (typeof toggleSelectAllMail === 'function') toggleSelectAllMail(cb.checked); }
     } else if (e.key === '?') {
       e.preventDefault();
-      alert('Atalhos do E-mail:\n\nj/k — próximo/anterior\nEnter — abrir\nc — escrever\nr — responder\nf — encaminhar\ne — arquivar\ns — favoritar selecionados\nx — selecionar/deselecionar\n? — esta ajuda');
+      alert('Atalhos do E-mail:\n\nj/k — próximo/anterior\nEnter — abrir\nc — escrever\nr — responder\nf — encaminhar\ne — arquivar\ns — favoritar selecionados\nx — selecionar/deselecionar\n* — alternar selecionar todos\ny — copiar subject (sob mouse)\n? — esta ajuda');
     }
   });
 })();

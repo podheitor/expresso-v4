@@ -441,7 +441,24 @@ document.addEventListener('keydown', function(e) {
   }
   else if (e.key === '?' && !e.target.closest('input,textarea,[contenteditable]')) {
     e.preventDefault();
-    alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\ny — copiar nome(s) selecionado(s)\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\n? — esta ajuda');
+    alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\ny — copiar nome(s) selecionado(s)\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\ni — info do arquivo (sob mouse)\nc — copiar nome (sob mouse)\n* — favoritar (sob mouse)\n? — esta ajuda');
+  }
+  else if ((e.key === 'd' || e.key === 'D') && !e.target.closest('input,textarea,[contenteditable]')) {
+    e.preventDefault();
+    var selD = document.querySelectorAll('.drive-file-check:checked, .drive-row-check:checked');
+    if (!selD.length) { alert('Selecione 1+ arquivo(s) para baixar.'); return; }
+    selD.forEach(function(cb, i){
+      setTimeout(function(){
+        var id = cb.dataset.id;
+        if (!id) return;
+        var a = document.createElement('a');
+        a.href = '/api/v1/drive/files/' + encodeURIComponent(id);
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function(){ a.remove(); }, 100);
+      }, i * 250);
+    });
   }
   else if ((e.key === 'y' || e.key === 'Y') && !e.target.closest('input,textarea,[contenteditable]')) {
     var selY = document.querySelectorAll('.drive-file-check:checked, .drive-row-check:checked');

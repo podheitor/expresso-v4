@@ -10,6 +10,7 @@
       <button class="btn btn-ghost" onclick="exportTasksMarkdown()" title="Exportar tarefas como Markdown checklist">📝 .md</button>
       <button class="btn btn-ghost" onclick="clearDoneTasks()" title="Remover todas as tarefas concluídas">🗑 Limpar concluídas</button>
       <button class="btn btn-ghost" onclick="showPomodoroStats()" title="Estatísticas Pomodoro (14 dias)">🍅 Stats</button>
+      <button class="btn btn-ghost" onclick="showTasksByPriority()" title="Resumo por prioridade">📊 Prioridades</button>
       <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
     </div>
   </div>
@@ -1107,6 +1108,22 @@ function showTasksWeekStats() {
     days.push(iso + ': ' + (n > 0 ? '█'.repeat(Math.min(n, 30)) + ' ' + n : '0'));
   }
   alert('Tarefas concluídas (últimos 7 dias):\n\n' + days.join('\n'));
+}
+function showTasksByPriority() {
+  var arr = typeof loadTasks === 'function' ? loadTasks() : [];
+  var pending = arr.filter(function(t){ return !t.done; });
+  var groups = { high: [], normal: [], low: [] };
+  pending.forEach(function(t){
+    var p = t.priority || 'normal';
+    if (!groups[p]) groups[p] = [];
+    groups[p].push(t);
+  });
+  var out = '📊 Tarefas pendentes por prioridade:\n\n' +
+    '🔴 Alta:    ' + (groups.high.length || 0) + '\n' +
+    '🟡 Normal:  ' + (groups.normal.length || 0) + '\n' +
+    '🔵 Baixa:   ' + (groups.low.length || 0) + '\n\n';
+  if (groups.high.length) out += '\nTop urgentes:\n' + groups.high.slice(0, 5).map(function(t){ return '• ' + t.title; }).join('\n');
+  alert(out);
 }
 function importTasksMarkdown(input) {
   var f = input && input.files && input.files[0];

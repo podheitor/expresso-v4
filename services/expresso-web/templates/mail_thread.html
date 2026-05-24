@@ -226,6 +226,21 @@ function collapseAllThreadMsgs() {
     } else if (key === 'P') {
       e.preventDefault();
       if (typeof printThread === 'function') printThread();
+    } else if (e.key === 'n' || e.key === 'N' || e.key === 'p') {
+      e.preventDefault();
+      var msgs = document.querySelectorAll('.thread-msg-item');
+      if (!msgs.length) return;
+      var idx = -1;
+      for (var i = 0; i < msgs.length; i++) {
+        var r = msgs[i].getBoundingClientRect();
+        if (r.top >= 0 && r.top < window.innerHeight / 2) { idx = i; break; }
+      }
+      var next = e.key === 'p' ? Math.max(0, idx - 1) : Math.min(msgs.length - 1, idx + 1);
+      if (next === idx) next = e.key === 'p' ? 0 : msgs.length - 1;
+      msgs[next].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      msgs[next].style.transition = 'outline .3s';
+      msgs[next].style.outline = '2px solid var(--accent)';
+      setTimeout(function(){ msgs[next].style.outline = ''; }, 1500);
     }
   });
 })();
