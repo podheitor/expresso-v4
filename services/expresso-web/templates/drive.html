@@ -2684,5 +2684,21 @@ window.copyDriveSharedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTotalSize=function(){
+  let sum=0,n=0;
+  document.querySelectorAll('[data-file-name]').forEach(r=>{
+    const s=parseInt(r.getAttribute('data-file-size')||'0',10)||0;
+    sum+=s;if(s)n++;
+  });
+  if(!n){alert('Sem sizes');return;}
+  const fmt=(b)=>b>1e9?(b/1e9).toFixed(2)+'GB':b>1e6?(b/1e6).toFixed(1)+'MB':b>1e3?(b/1e3).toFixed(1)+'KB':b+'B';
+  const out='files: '+n+'\ntotal: '+fmt(sum)+'\navg: '+fmt(sum/n);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=fmt(sum);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
