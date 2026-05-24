@@ -719,5 +719,22 @@ function copyComposeBody(btn) {
   });
   else { var x = document.createElement('textarea'); x.value = txt; document.body.appendChild(x); x.select(); document.execCommand('copy'); document.body.removeChild(x); }
 }
+function estimateMessageSize() {
+  var ta = document.querySelector('textarea[name="body"], #compose-body, #compose-body-text');
+  var ed = document.getElementById('compose-rich-editor');
+  var body = (ed && ed.innerHTML) || (ta && ta.value) || '';
+  var subj = (document.querySelector('input[name="subject"]') || {}).value || '';
+  var to = (document.querySelector('input[name="to"]') || {}).value || '';
+  var cc = (document.querySelector('input[name="cc"]') || {}).value || '';
+  var bcc = (document.querySelector('input[name="bcc"]') || {}).value || '';
+  var attBytes = 0;
+  document.querySelectorAll('input[type="file"]').forEach(function(inp){
+    if (inp.files) for (var i = 0; i < inp.files.length; i++) attBytes += inp.files[i].size || 0;
+  });
+  var bytes = new Blob([body + subj + to + cc + bcc]).size;
+  var total = bytes + Math.round(attBytes * 1.37);
+  function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
+  alert('Estimativa do envio:\n\nCabeçalhos+corpo: ' + fmt(bytes) + '\nAnexos (após base64 ~+37%): ' + fmt(Math.round(attBytes * 1.37)) + '\n\nTOTAL: ' + fmt(total) + (total > 25*1048576 ? '\n\n⚠️ Acima de 25 MB — alguns servidores rejeitam.' : ''));
+}
 </script>
 {% endblock %}

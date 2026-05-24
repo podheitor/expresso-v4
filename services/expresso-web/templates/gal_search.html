@@ -213,5 +213,33 @@ function copyGalContact(btn) {
     }
   });
 })();
+(function galSearchHistory(){
+  var KEY = 'expresso_gal_search_history_{{ me.user_id }}';
+  var url = new URL(window.location.href);
+  var q = (url.searchParams.get('q') || '').trim();
+  if (q) {
+    try {
+      var arr = JSON.parse(localStorage.getItem(KEY) || '[]');
+      arr = arr.filter(function(x){ return x !== q; });
+      arr.unshift(q);
+      if (arr.length > 20) arr = arr.slice(0, 20);
+      localStorage.setItem(KEY, JSON.stringify(arr));
+    } catch(e) {}
+  }
+  window.showGalSearchHistory = function(){
+    var arr = [];
+    try { arr = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) {}
+    if (!arr.length) { alert('Sem histórico ainda.'); return; }
+    var pick = prompt('Histórico (digite n° para reabrir):\n\n' + arr.map(function(s, i){ return (i+1) + '. ' + s; }).join('\n'));
+    var idx = parseInt(pick, 10) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= arr.length) return;
+    var u = new URL(window.location.href); u.searchParams.set('q', arr[idx]); window.location.href = u.toString();
+  };
+  document.addEventListener('keydown', function(e){
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'h' || e.key === 'H') { e.preventDefault(); window.showGalSearchHistory(); }
+  });
+})();
 </script>
 {% endblock %}

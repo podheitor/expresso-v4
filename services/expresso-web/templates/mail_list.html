@@ -96,6 +96,8 @@
         <span class="muted small" id="mail-sel-count">0 selecionadas</span>
         <button class="btn btn-ghost btn-sm" onclick="selectUnreadMail()" title="Selecionar apenas mensagens não lidas">○ Não lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="showTopSenders()" title="Top remetentes nesta pasta">👥 Top</button>
+        <button class="btn btn-ghost btn-sm" onclick="filterMailToday(this)" title="Mostrar somente mensagens de hoje">📆 Hoje</button>
+        <button class="btn btn-ghost btn-sm" onclick="filterMailUnreadOnly(this)" title="Mostrar somente não lidas">👁️ Só não lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('flag')" title="Adicionar estrela ⭐">⭐ Sinalizar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
@@ -979,6 +981,32 @@ function emptySpamFolder(btn) {
     el.textContent = unread > 0 ? '(' + unread + ' não lidas de ' + total + ')' : '(' + total + ')';
   } catch(_) {}
 })();
+function filterMailToday(btn) {
+  var todayIso = new Date().toISOString().slice(0, 10);
+  var rows = document.querySelectorAll('.msg-row-wrap');
+  var shown = 0;
+  rows.forEach(function(r){
+    var dateCell = r.querySelector('.msg-date, .msg-row-date, time, [data-date]');
+    var d = dateCell ? (dateCell.getAttribute('datetime') || dateCell.dataset.date || dateCell.textContent || '') : '';
+    var match = d && (d.indexOf(todayIso) >= 0 || (function(){
+      var hm = /^\d{1,2}:\d{2}/.test((dateCell ? dateCell.textContent : '').trim());
+      return hm;
+    })());
+    r.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  alert(shown + ' mensagem(s) de hoje. Use o filtro padrão para limpar.');
+}
+function filterMailUnreadOnly(btn) {
+  var rows = document.querySelectorAll('.msg-row-wrap');
+  var shown = 0;
+  rows.forEach(function(r){
+    var u = r.dataset.unread === '1';
+    r.style.display = u ? '' : 'none';
+    if (u) shown++;
+  });
+  if (btn) { var t = btn.textContent; btn.textContent = '✓ ' + shown; setTimeout(function(){ btn.textContent = t; }, 1500); }
+}
 function showTopSenders() {
   var rows = document.querySelectorAll('.msg-row-wrap[data-sender]');
   if (!rows.length) { alert('Pasta vazia.'); return; }

@@ -1133,5 +1133,20 @@ function importAllPreferences(input) {
   };
   rd.readAsText(f);
 }
+function clearAvatarCache() {
+  var n = 0;
+  for (var i = localStorage.length - 1; i >= 0; i--) {
+    var k = localStorage.key(i);
+    if (k && (k.indexOf('expresso_avatar_') === 0 || k.indexOf('expresso_gravatar_') === 0)) {
+      localStorage.removeItem(k); n++;
+    }
+  }
+  if (window.caches && caches.keys) {
+    caches.keys().then(function(names){
+      names.filter(function(x){ return x.indexOf('avatar') >= 0; }).forEach(function(x){ caches.delete(x); });
+    });
+  }
+  alert('Cache de avatares limpo: ' + n + ' entrada(s) localStorage.');
+}
 </script>
 {% endblock %}

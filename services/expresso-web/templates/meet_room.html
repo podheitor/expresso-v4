@@ -709,9 +709,17 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 'f' || e.key === 'F') {
     e.preventDefault();
     if (typeof toggleMeetFullscreen === 'function') toggleMeetFullscreen();
+  } else if (e.key === 'p' || e.key === 'P') {
+    e.preventDefault();
+    var ifr = document.querySelector('iframe');
+    var v = ifr && ifr.contentDocument && ifr.contentDocument.querySelector('video');
+    if (v && document.pictureInPictureEnabled) {
+      if (document.pictureInPictureElement) document.exitPictureInPicture();
+      else v.requestPictureInPicture().catch(function(){ alert('PiP não disponível agora.'); });
+    } else { alert('PiP não suportado neste navegador / iframe.'); }
   } else if (e.key === '?') {
     e.preventDefault();
-    alert('Atalhos da sala:\n\nm — alternar microfone\nv — alternar câmera\nc — copiar link da sala\nf — fullscreen\nh — histórico de salas\n? — esta ajuda');
+    alert('Atalhos da sala:\n\nm — alternar microfone\nv — alternar câmera\nc — copiar link da sala\nf — fullscreen\np — picture-in-picture\nh — histórico de salas\n? — esta ajuda');
   }
 });
 (function recordMeetVisit(){

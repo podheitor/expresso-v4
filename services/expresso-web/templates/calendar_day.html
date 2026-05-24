@@ -294,5 +294,22 @@ function copyDayLink(btn) {
   var n = document.querySelectorAll('.cal-day-event, .cal-day-allday-event').length;
   el.textContent = n === 0 ? '(sem eventos)' : '(' + n + ' evento' + (n > 1 ? 's' : '') + ')';
 })();
+(function highlightCurrentEvent(){
+  function tick(){
+    var now = Date.now();
+    document.querySelectorAll('.cal-day-event[data-start][data-end]').forEach(function(ev){
+      var s = Date.parse(ev.dataset.start), e = Date.parse(ev.dataset.end);
+      if (!isFinite(s) || !isFinite(e)) return;
+      if (now >= s && now < e) {
+        ev.style.boxShadow = '0 0 0 2px var(--accent), 0 0 12px var(--accent)';
+        ev.style.zIndex = '5';
+      } else {
+        ev.style.boxShadow = '';
+      }
+    });
+  }
+  tick();
+  setInterval(tick, 60000);
+})();
 </script>
 {% endblock %}

@@ -1711,6 +1711,18 @@ function showChannelMsgStats() {
         'Hoje: ' + todayCount + '\n\n' +
         'Top autores:\n' + top.map(function(a){ return '  ' + byAuthor[a] + '× ' + a; }).join('\n'));
 }
+function toggleChannelMute(btn) {
+  var u = new URL(window.location.href);
+  var ch = u.pathname.split('/').filter(Boolean).pop() || 'default';
+  var KEY = 'expresso_chat_muted_{{ me.user_id }}';
+  var muted = [];
+  try { muted = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e) {}
+  var idx = muted.indexOf(ch);
+  if (idx >= 0) { muted.splice(idx, 1); if (btn) btn.textContent = '🔔 Silenciar'; }
+  else { muted.push(ch); if (btn) btn.textContent = '🔕 No mute'; }
+  try { localStorage.setItem(KEY, JSON.stringify(muted)); } catch(e) {}
+  alert(idx >= 0 ? 'Canal "' + ch + '" reativado.' : 'Canal "' + ch + '" silenciado localmente.');
+}
 function copyChannelLink(btn) {
   var url = window.location.href.split('#')[0].split('?')[0];
   if (navigator.clipboard) {

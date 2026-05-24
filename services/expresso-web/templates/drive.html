@@ -1017,6 +1017,9 @@ function toggleDriveOnlyFavs(btn) {
       var form = tr ? tr.querySelector('form[action$="/trash"]') : null;
       if (form) form.submit();
       else fetch('/drive/' + encodeURIComponent(window._lastHoverDriveId) + '/trash', { method:'POST', credentials:'include' }).then(function(){ window.location.reload(); });
+    } else if (e.key === 'i' && window._lastHoverDriveId) {
+      e.preventDefault();
+      showDriveFileInfo();
     } else if (e.key === '*' && window._lastHoverDriveId && typeof toggleDriveFav === 'function') {
       e.preventDefault();
       toggleDriveFav(window._lastHoverDriveId);
@@ -1043,6 +1046,19 @@ function showFolderTotalSize(btn) {
     return (b/1073741824).toFixed(2) + ' GB';
   }
   alert(n + ' arquivo(s) — total: ' + fmt(total));
+}
+function showDriveFileInfo() {
+  var id = window._lastHoverDriveId;
+  if (!id) { alert('Passe o mouse sobre um arquivo primeiro.'); return; }
+  var tr = document.querySelector('tr[data-file-id="' + id + '"]');
+  if (!tr) return;
+  var name = window._lastHoverDriveFile || '(sem nome)';
+  var size = tr.dataset.size || '?';
+  var mime = tr.dataset.mime || '?';
+  var mtime = tr.dataset.mtime || tr.dataset.modified || '?';
+  var owner = tr.dataset.owner || '?';
+  function fmt(s){ s = +s; if(!isFinite(s)) return '?'; if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; if(s<1073741824) return (s/1048576).toFixed(1)+' MB'; return (s/1073741824).toFixed(2)+' GB'; }
+  alert('📄 ' + name + '\n\nID: ' + id + '\nTamanho: ' + fmt(size) + '\nTipo: ' + mime + '\nModificado: ' + mtime + '\nDono: ' + owner);
 }
 function shareCurrentDriveFolder(btn) {
   var url = window.location.href.split('#')[0];

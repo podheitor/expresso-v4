@@ -1095,6 +1095,26 @@ function showTasksWeekStats() {
   }
   alert('Tarefas concluídas (últimos 7 dias):\n\n' + days.join('\n'));
 }
+function importTasksMarkdown(input) {
+  var f = input && input.files && input.files[0];
+  if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(){
+    var lines = (rd.result || '').split(/\r?\n/);
+    var added = 0;
+    lines.forEach(function(line){
+      var m = line.match(/^\s*-\s*\[( |x|X)\]\s+(.+)$/);
+      if (!m) return;
+      var title = m[2].trim();
+      if (!title) return;
+      if (typeof addTask === 'function') { addTask(title); added++; }
+    });
+    alert(added + ' tarefa(s) importada(s). Recarregando.');
+    if (added > 0) window.location.reload();
+  };
+  rd.readAsText(f);
+  input.value = '';
+}
 // Track last hovered task for priority shortcut
 document.addEventListener('mouseover', function(e) {
   var t = e.target && e.target.closest && e.target.closest('.task-item[data-id]');

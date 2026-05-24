@@ -441,6 +441,31 @@
       </div>
     </div>
 
+    <!-- Bloco de notas -->
+    <div class="home-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon">📝</span>
+        <span class="home-widget-title">Bloco de notas</span>
+        <span class="muted small" id="home-notes-saved" style="margin-left:auto;font-size:.7rem"></span>
+      </div>
+      <textarea id="home-notes-ta" placeholder="Anotações rápidas (salva automaticamente)…" rows="5"
+                style="width:100%;font-family:inherit;font-size:.85rem;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);color:inherit;resize:vertical"></textarea>
+      <script>(function(){
+        var KEY = 'expresso_home_notes_{{ me.user_id }}';
+        var ta = document.getElementById('home-notes-ta');
+        var lbl = document.getElementById('home-notes-saved');
+        if (!ta) return;
+        try { ta.value = localStorage.getItem(KEY) || ''; } catch(_) {}
+        var t;
+        ta.addEventListener('input', function(){
+          clearTimeout(t);
+          t = setTimeout(function(){
+            try { localStorage.setItem(KEY, ta.value); if (lbl) { lbl.textContent = '✓ Salvo'; setTimeout(function(){ lbl.textContent = ''; }, 1200); } } catch(_){}
+          }, 400);
+        });
+      })();</script>
+    </div>
+
   </div>
 </div>
 <style>
@@ -1043,6 +1068,29 @@ document.addEventListener('keydown', function(e) {
   }
   render();
   setInterval(render, 60000);
+})();
+(function homeFocusMode(){
+  var KEY = 'expresso_home_focus_mode_{{ me.user_id }}';
+  function apply(on){
+    var sections = document.querySelectorAll('.home-card, .home-tile');
+    sections.forEach(function(s){
+      var keep = s.classList.contains('home-essentials') || s.querySelector('.home-event-item, [data-task-id]');
+      if (on) { s.style.display = keep ? '' : 'none'; }
+      else { s.style.display = ''; }
+    });
+  }
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-ghost btn-sm';
+  btn.style.cssText = 'position:fixed;bottom:1rem;left:1rem;z-index:50;opacity:.75';
+  function refresh(){ var on = localStorage.getItem(KEY) === '1'; btn.textContent = on ? '🎯 Foco: ON' : '🎯 Foco'; apply(on); }
+  btn.onclick = function(){
+    var on = localStorage.getItem(KEY) === '1';
+    try { localStorage.setItem(KEY, on ? '0' : '1'); } catch(e) {}
+    refresh();
+  };
+  document.body.appendChild(btn);
+  refresh();
 })();
 </script>
 {% endblock %}

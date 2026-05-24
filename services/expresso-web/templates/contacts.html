@@ -689,9 +689,17 @@ function toggleContactFav(btn, cid) {
       e.preventDefault();
       showUpcomingBirthdays();
     }
+    else if (e.key === 'm' || e.key === 'M') {
+      var hc2 = window._lastHoverContact;
+      if (!hc2) return;
+      var em = hc2.dataset.email || ((hc2.querySelector('a[href^="mailto:"]') || {}).textContent || '').trim() || ((hc2.querySelector('.contact-card-email') || {}).textContent || '').trim();
+      if (!em) { alert('Contato sem e-mail.'); return; }
+      e.preventDefault();
+      window.location.href = '/mail/compose?to=' + encodeURIComponent(em);
+    }
     else if (e.key === '?') {
       e.preventDefault();
-      alert('Atalhos contatos:\n\nj/k — navegar\nEnter — abrir\nn — novo\n/ — buscar\ne — editar (hover)\nb — aniversariantes do mês\n? — esta ajuda');
+      alert('Atalhos contatos:\n\nj/k — navegar\nEnter — abrir\nn — novo\n/ — buscar\ne — editar (hover)\nm — escrever (hover)\nb — aniversariantes do mês\ng — grupos\nu — próximos aniversários\n? — esta ajuda');
     }
   });
   document.addEventListener('mouseover', function(e) {

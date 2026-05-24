@@ -26,6 +26,7 @@
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
       <button class="btn btn-ghost" onclick="copyWeekAgenda(this)" title="Copiar agenda da semana como texto">📋 Agenda</button>
       <button class="btn btn-ghost" onclick="showWeekNextEvent()" title="Próximo evento da semana">⏰ Próximo</button>
+      <button class="btn btn-ghost" onclick="printWeekAgenda()" title="Imprimir agenda da semana">🖨 Imprimir</button>
       <button class="btn btn-ghost" onclick="setWorkingHours()" title="Configurar horário comercial (oculta antes/depois)">🕘 Hr. trabalho</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
@@ -382,5 +383,15 @@ function copyWeekAgenda(btn) {
   });
   else alert(txt);
 }
+function printWeekAgenda() {
+  window.print();
+}
 </script>
+<style>
+@media print {
+  #appnav, .page-header, .toolbar, button { display: none !important; }
+  .week-grid { display: block !important; }
+  .event-chip { page-break-inside: avoid; }
+}
+</style>
 {% endblock %}

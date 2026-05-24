@@ -33,6 +33,7 @@
         <span class="muted small">{{ messages.len() }} mensagens</span>
         <div style="display:flex;gap:.4rem;margin-left:auto">
           <button class="btn btn-ghost btn-sm" onclick="printThread()" title="Imprimir conversa">🖨 Imprimir</button>
+          <button class="btn btn-ghost btn-sm" onclick="copyThreadIds()" title="Copiar Message-IDs">🆔 IDs</button>
           <button class="btn btn-ghost btn-sm" onclick="copyThreadLink(this)" title="Copiar link da conversa">🔗 Link</button>
           <button class="btn btn-ghost btn-sm" onclick="expandAllThreadMsgs()" title="Expandir todas as mensagens">⬇ Expandir todas</button>
           <button class="btn btn-ghost btn-sm" onclick="collapseAllThreadMsgs()" title="Recolher todas as mensagens">⬆ Recolher todas</button>
@@ -419,6 +420,17 @@ function findInThread(q) {
     m.style.display = hit ? '' : 'none';
     m.style.outline = hit ? '2px solid var(--accent)' : '';
   });
+}
+function copyThreadIds() {
+  var ids = [];
+  document.querySelectorAll('.thread-msg[id^="tmsg-"]').forEach(function(m){
+    ids.push(m.id.replace('tmsg-', ''));
+  });
+  if (!ids.length) { alert('Nenhuma mensagem.'); return; }
+  var txt = ids.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Copiados ' + ids.length + ' Message-ID(s) ao clipboard.');
 }
 </script>
 {% endblock %}
