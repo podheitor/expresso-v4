@@ -97,9 +97,18 @@
         t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
         document.body.appendChild(t);
         setTimeout(function(){ t.remove(); }, 1500);
+      } else if (e.key === 'i' || e.key === 'I') {
+        var hov = window._lastHoverAdminUser;
+        if (!hov) return;
+        var email = hov.dataset.email || '';
+        if (!email) return;
+        e.preventDefault();
+        var subj = 'Acesso ao Expresso';
+        var body = 'Olá, sua conta está pronta. Acesse: ' + window.location.origin + '/login\n\nEmail: ' + email;
+        window.location.href = '/mail/compose?to=' + encodeURIComponent(email) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
       } else if (e.key === '?') {
         e.preventDefault();
-        alert('Atalhos admin/usuários:\n\n/ — buscar\nn — novo usuário\ne — exportar CSV\nr — recarregar\nc — copiar email (sob mouse)\n? — esta ajuda');
+        alert('Atalhos admin/usuários:\n\n/ — buscar\nn — novo usuário\ne — exportar CSV\nr — recarregar\nc — copiar email (sob mouse)\ni — enviar convite (sob mouse)\n? — esta ajuda');
       }
     });
     document.addEventListener('mouseover', function(e) {

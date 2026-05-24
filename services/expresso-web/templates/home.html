@@ -997,6 +997,35 @@ document.addEventListener('keydown', function(e) {
   update();
   setInterval(update, 30000);
 })();
+(function homeNextHoliday() {
+  // Static list of fixed-date federal Brazilian holidays
+  var fixed = [
+    {m: 1,  d: 1,  name: 'Confraternização Universal'},
+    {m: 4,  d: 21, name: 'Tiradentes'},
+    {m: 5,  d: 1,  name: 'Dia do Trabalho'},
+    {m: 9,  d: 7,  name: 'Independência'},
+    {m: 10, d: 12, name: 'Nossa Senhora Aparecida'},
+    {m: 11, d: 2,  name: 'Finados'},
+    {m: 11, d: 15, name: 'Proclamação da República'},
+    {m: 12, d: 25, name: 'Natal'}
+  ];
+  var now = new Date();
+  var soonest = null;
+  fixed.forEach(function(h){
+    var d = new Date(now.getFullYear(), h.m - 1, h.d);
+    if (d < now) d = new Date(now.getFullYear() + 1, h.m - 1, h.d);
+    if (!soonest || d < soonest.date) soonest = { date: d, name: h.name };
+  });
+  if (!soonest) return;
+  var diff = Math.ceil((soonest.date - now) / 86400000);
+  if (diff > 60) return;
+  var box = document.getElementById('home-snoozed-mails');
+  if (!box || !box.parentNode) return;
+  var hbox = document.createElement('div');
+  hbox.style.cssText = 'font-size:.72rem;color:#10b981;margin-top:.15rem';
+  hbox.textContent = '🇧🇷 Próximo feriado: ' + soonest.name + ' em ' + diff + 'd (' + soonest.date.toLocaleDateString('pt-BR') + ')';
+  box.parentNode.insertBefore(hbox, box.nextSibling);
+})();
 (function homeSessionUptime() {
   var KEY = 'expresso_session_start_{{ me.user_id }}';
   var start;

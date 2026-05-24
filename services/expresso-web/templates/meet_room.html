@@ -706,6 +706,12 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 'h' || e.key === 'H') {
     e.preventDefault();
     showMeetRoomHistory();
+  } else if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    if (typeof toggleMeetFullscreen === 'function') toggleMeetFullscreen();
+  } else if (e.key === '?') {
+    e.preventDefault();
+    alert('Atalhos da sala:\n\nm — alternar microfone\nv — alternar câmera\nc — copiar link da sala\nf — fullscreen\nh — histórico de salas\n? — esta ajuda');
   }
 });
 (function recordMeetVisit(){

@@ -600,6 +600,7 @@
                  onchange="importLocalSettings(this.files[0])">
           <button type="button" class="btn btn-ghost btn-sm" onclick="previewLocalSettings()">👁 Listar chaves</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="purgeOldChatLocalData()">🗑 Limpar dados de chat</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="showDiagnosticInfo()">🛠 Info diagnóstica</button>
           <button type="button" class="btn btn-danger btn-sm" onclick="clearAllLocalSettings()">🗑 Apagar dados locais</button>
         </div>
       </div>
@@ -1071,6 +1072,35 @@ function exportAllPreferences() {
   a.href = url; a.download = 'expresso-preferences-' + new Date().toISOString().slice(0,10) + '.json';
   document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function showDiagnosticInfo() {
+  var info = {
+    userAgent: navigator.userAgent,
+    language: navigator.language,
+    languages: (navigator.languages || []).join(', '),
+    cookieEnabled: navigator.cookieEnabled,
+    onLine: navigator.onLine,
+    screen: screen.width + '×' + screen.height + ' @ ' + window.devicePixelRatio + 'x',
+    viewport: window.innerWidth + '×' + window.innerHeight,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: Intl.DateTimeFormat().resolvedOptions().locale,
+    localStorage: (function(){
+      var n = 0, b = 0;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('expresso_') === 0) { n++; b += (localStorage.getItem(k) || '').length; }
+      }
+      return n + ' keys, ' + (b/1024).toFixed(1) + ' KB';
+    })(),
+    pageUrl: window.location.href,
+    builtAt: new Date().toISOString()
+  };
+  var lines = Object.keys(info).map(function(k){ return k + ': ' + info[k]; });
+  var txt = lines.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    alert('Info diagnóstica copiada:\n\n' + txt);
+  });
+  else alert(txt);
 }
 function purgeOldChatLocalData() {
   var prefixes = ['expresso_chat_pinned_', 'expresso_chat_draft_', 'expresso_chat_reactions_offline_', 'expresso_chat_lastread_'];

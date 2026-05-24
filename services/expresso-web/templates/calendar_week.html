@@ -25,6 +25,7 @@
              oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
       <button class="btn btn-ghost" onclick="copyWeekAgenda(this)" title="Copiar agenda da semana como texto">📋 Agenda</button>
+      <button class="btn btn-ghost" onclick="showWeekNextEvent()" title="Próximo evento da semana">⏰ Próximo</button>
       <button class="btn btn-ghost" onclick="setWorkingHours()" title="Configurar horário comercial (oculta antes/depois)">🕘 Hr. trabalho</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
@@ -341,6 +342,25 @@ function applyWorkingHours(wh) {
     if (wh) applyWorkingHours(wh);
   } catch(e){}
 })();
+function showWeekNextEvent() {
+  var now = new Date();
+  var best = null, bestTitle = '';
+  document.querySelectorAll('.event-chip').forEach(function(ev){
+    var col = ev.closest('.week-col');
+    if (!col) return;
+    var iso = col.dataset.iso || '';
+    var timeText = (ev.querySelector('.ev-time') || {}).textContent || '';
+    var hm = /(\d{1,2}):(\d{2})/.exec(timeText);
+    if (!hm || !iso) return;
+    var d = new Date(iso + 'T' + hm[1].padStart(2,'0') + ':' + hm[2] + ':00');
+    if (isNaN(d.getTime()) || d <= now) return;
+    if (!best || d < best) { best = d; bestTitle = (ev.querySelector('.ev-title') || {}).textContent || ''; }
+  });
+  if (!best) { alert('Nenhum evento futuro nesta semana.'); return; }
+  var diff = Math.floor((best - now) / 60000);
+  var h = Math.floor(diff / 60), m = diff % 60;
+  alert('⏰ Próximo evento em ' + (h > 0 ? h + 'h ' : '') + m + 'min:\n\n' + bestTitle.trim() + '\n' + best.toLocaleString('pt-BR'));
+}
 function copyWeekAgenda(btn) {
   var lines = [];
   document.querySelectorAll('.week-col').forEach(function(col){

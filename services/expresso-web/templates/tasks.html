@@ -7,6 +7,7 @@
     <h1>Tarefas <span class="muted small" id="tasks-header-stats" style="font-weight:400;font-size:.7em"></span></h1>
     <div style="display:flex;gap:.4rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir lista visível">🖨 Imprimir</button>
+      <button class="btn btn-ghost" onclick="exportTasksMarkdown()" title="Exportar tarefas como Markdown checklist">📝 .md</button>
       <button class="btn btn-ghost" onclick="clearDoneTasks()" title="Remover todas as tarefas concluídas">🗑 Limpar concluídas</button>
       <button class="btn btn-ghost" onclick="showPomodoroStats()" title="Estatísticas Pomodoro (14 dias)">🍅 Stats</button>
       <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
@@ -1057,6 +1058,32 @@ document.addEventListener('keydown', function(e) {
     alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (na tarefa sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\nf — filtrar atrasadas\na — todas\ns — estatística semana\n? — esta ajuda');
   }
 });
+function exportTasksMarkdown() {
+  var arr = typeof loadTasks === 'function' ? loadTasks() : [];
+  if (!arr.length) { alert('Nenhuma tarefa.'); return; }
+  var md = '# Tarefas — ' + new Date().toISOString().slice(0, 10) + '\n\n';
+  var pending = arr.filter(function(t){ return !t.done; });
+  var done = arr.filter(function(t){ return t.done; });
+  if (pending.length) {
+    md += '## Pendentes (' + pending.length + ')\n\n';
+    pending.forEach(function(t){
+      md += '- [ ] ' + (t.title || '') + (t.due ? ' _(prazo: ' + t.due + ')_' : '') + (t.priority && t.priority !== 'normal' ? ' **[' + t.priority + ']**' : '') + '\n';
+    });
+    md += '\n';
+  }
+  if (done.length) {
+    md += '## Concluídas (' + done.length + ')\n\n';
+    done.forEach(function(t){
+      md += '- [x] ' + (t.title || '') + (t.done_at ? ' _(em ' + t.done_at.slice(0,10) + ')_' : '') + '\n';
+    });
+  }
+  var blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'tarefas-' + new Date().toISOString().slice(0,10) + '.md';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
 function showTasksWeekStats() {
   var arr = typeof loadTasks === 'function' ? loadTasks() : [];
   var days = [];

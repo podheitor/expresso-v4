@@ -199,9 +199,17 @@ function copyGalContact(btn) {
       document.body.appendChild(a); a.click();
       setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
     }
+    else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault();
+      if (typeof saveAsGalGroup === 'function') saveAsGalGroup();
+    }
+    else if (e.key === 'b' || e.key === 'B') {
+      e.preventDefault();
+      if (typeof bccAllGal === 'function') bccAllGal();
+    }
     else if (e.key === '?') {
       e.preventDefault();
-      alert('Atalhos GAL:\n\nj/k — navegar\nEnter — abrir\nc — copiar\nm — mail\nv — baixar vCard\n/ — buscar\n? — esta ajuda');
+      alert('Atalhos GAL:\n\nj/k — navegar\nEnter — abrir\nc — copiar\nm — mail\nb — BCC todos\nv — baixar vCard\ns — salvar como grupo\n/ — buscar\n? — esta ajuda');
     }
   });
 })();

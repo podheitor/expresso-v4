@@ -123,8 +123,10 @@
           <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
+          <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="copyChannelLink(this)" title="Copiar link do canal">🔗</button>
           <button class="chat-action-btn" onclick="showChatBookmarks()" title="Mensagens salvas">🔖</button>
+          <button class="chat-action-btn" onclick="showChannelMsgStats()" title="Estatística do canal">📊</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
           <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
           <button class="chat-action-btn" onclick="clearChannelLocal('{{ ch.id }}', this)" title="Apagar dados locais deste canal (fixados, rascunhos, reações offline)">🧹</button>
@@ -1558,6 +1560,23 @@ function exportChannelText() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+function exportChannelMarkdown() {
+  var lines = ['# Chat — ' + new Date().toLocaleString('pt-BR'), ''];
+  document.querySelectorAll('.chat-msg').forEach(function(m) {
+    var author = ((m.querySelector('.chat-msg-author') || {}).textContent || '').trim();
+    var time   = ((m.querySelector('.chat-msg-time')   || {}).textContent || '').trim();
+    var body   = ((m.querySelector('.chat-msg-body')   || {}).textContent || '').trim();
+    lines.push('**' + author + '** _(' + time + ')_:  ');
+    lines.push(body.split('\n').map(function(l){ return '> ' + l; }).join('\n'));
+    lines.push('');
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 var CHAT_MUTE_KEY = 'expresso_chat_muted_channels';
 function loadMutedChannels() { try { return JSON.parse(localStorage.getItem(CHAT_MUTE_KEY) || '[]'); } catch(e) { return []; } }
 function toggleChannelMute(cid) {
@@ -1668,6 +1687,29 @@ function showChatBookmarks() {
   alert('Mensagens salvas (' + arr.length + '):\n\n' + arr.slice(0, 10).map(function(b){
     return '• ' + (b.author ? b.author + ': ' : '') + b.body.slice(0, 80);
   }).join('\n'));
+}
+function showChannelMsgStats() {
+  var msgs = document.querySelectorAll('.chat-msg[data-ts]');
+  if (!msgs.length) {
+    msgs = document.querySelectorAll('.chat-msg');
+    if (!msgs.length) { alert('Canal vazio.'); return; }
+    alert('Total: ' + msgs.length + ' mensagens (datas não disponíveis).');
+    return;
+  }
+  var todayIso = new Date().toISOString().slice(0, 10);
+  var byAuthor = {};
+  var todayCount = 0;
+  msgs.forEach(function(m){
+    var ts = m.dataset.ts || '';
+    var author = ((m.querySelector('.chat-msg-author, .chat-msg-name') || {}).textContent || '').trim();
+    if (author) byAuthor[author] = (byAuthor[author] || 0) + 1;
+    if (ts && ts.slice(0, 10) === todayIso) todayCount++;
+  });
+  var top = Object.keys(byAuthor).sort(function(a,b){ return byAuthor[b] - byAuthor[a]; }).slice(0, 5);
+  alert('📊 Estatística do canal:\n\n' +
+        'Total carregado: ' + msgs.length + '\n' +
+        'Hoje: ' + todayCount + '\n\n' +
+        'Top autores:\n' + top.map(function(a){ return '  ' + byAuthor[a] + '× ' + a; }).join('\n'));
 }
 function copyChannelLink(btn) {
   var url = window.location.href.split('#')[0].split('?')[0];

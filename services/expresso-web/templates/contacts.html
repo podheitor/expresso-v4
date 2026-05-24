@@ -324,7 +324,19 @@ function updateContactsCountBadge() {
   el.textContent = (visible === total) ? ('· ' + total + ' contato(s)') : ('· ' + visible + ' / ' + total);
 }
 
+function toggleContactSeparators() {
+  var key = 'expresso_contacts_alpha_sep';
+  var cur = localStorage.getItem(key) !== '0';
+  localStorage.setItem(key, cur ? '0' : '1');
+  buildContactSeparators();
+  alert('Separadores alfabéticos: ' + (cur ? 'OFF' : 'ON'));
+}
 function buildContactSeparators() {
+  if (localStorage.getItem('expresso_contacts_alpha_sep') === '0') {
+    var t = document.querySelector('.data-table tbody');
+    if (t) t.querySelectorAll('tr.contact-alpha-sep').forEach(function(el){ el.remove(); });
+    return;
+  }
   var tbody = document.querySelector('.data-table tbody');
   if (!tbody) return;
   // remove old separators
