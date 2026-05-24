@@ -862,5 +862,16 @@ window.copyGalCommonSurname = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDept = function(){
+  const m={};
+  document.querySelectorAll('[data-contact-dept]').forEach(r=>{const d=r.getAttribute('data-contact-dept').trim()||'(sem dept)';m[d]=(m[d]||0)+1;});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([d,n])=>d+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(m).length+' departamentos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1024,5 +1024,18 @@ window.copyDayTotalHours = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeSlots = function(){
+  const dayStart=9*60,dayEnd=18*60;
+  const evs=Array.from(document.querySelectorAll('[data-event-start][data-event-end]')).map(e=>{const s=new Date(e.getAttribute('data-event-start')),f=new Date(e.getAttribute('data-event-end'));return {s:s.getHours()*60+s.getMinutes(),f:f.getHours()*60+f.getMinutes()};}).sort((a,b)=>a.s-b.s);
+  const out=[];let cur=dayStart;
+  evs.forEach(e=>{if(e.s>cur)out.push(Math.floor(cur/60)+':'+String(cur%60).padStart(2,'0')+'–'+Math.floor(e.s/60)+':'+String(e.s%60).padStart(2,'0'));cur=Math.max(cur,e.f);});
+  if(cur<dayEnd)out.push(Math.floor(cur/60)+':'+String(cur%60).padStart(2,'0')+'–'+Math.floor(dayEnd/60)+':00');
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' slots livres 9-18h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
