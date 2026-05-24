@@ -1805,5 +1805,18 @@ window.countWords=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.linkifyUrls=function(){
+  const body=document.querySelector('textarea[name=body]');
+  if(!body){alert('Sem campo body');return;}
+  const re=/(?<!\]\()\bhttps?:\/\/[^\s)]+/g;
+  let count=0;
+  body.value=body.value.replace(re,u=>{count++;return '['+u+']('+u+')';});
+  if(!count){alert('Sem URLs cruas');return;}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=count+' URLs convertidas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2369,5 +2369,25 @@ window.copyTasksCompletedToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCreatedThisWeek=function(){
+  const cutoff=Date.now()-7*86400000;
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const c=new Date(r.getAttribute('data-task-created'));
+    if(!isNaN(c)&&c.getTime()>=cutoff){
+      const title=r.getAttribute('data-task-title')||(r.querySelector('.title')||r).textContent||'';
+      out.push(r.getAttribute('data-task-created').slice(0,10)+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Nenhuma criada na semana');return;}
+  out.sort().reverse();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' criadas 7d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

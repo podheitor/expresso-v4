@@ -1603,5 +1603,24 @@ window.copyDayConflicts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLongest=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-start][data-event-end]'));
+  if(!rows.length){alert('Sem eventos');return;}
+  let max=null,maxMs=0;
+  rows.forEach(r=>{
+    const s=new Date(r.getAttribute('data-event-start')),e=new Date(r.getAttribute('data-event-end'));
+    if(!isNaN(s)&&!isNaN(e)){const ms=e-s;if(ms>maxMs){maxMs=ms;max=r;}}
+  });
+  if(!max){alert('Datas inválidas');return;}
+  const title=max.getAttribute('data-event-title')||(max.querySelector('.title')||max).textContent||'?';
+  const h=Math.floor(maxMs/3600000),m=Math.floor((maxMs%3600000)/60000);
+  const out=h+'h '+m+'m\t'+title.trim();
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mais longo: '+h+'h '+m+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

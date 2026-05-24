@@ -1653,5 +1653,24 @@ window.copyMonthAllDayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthRecurring=function(){
+  const rows=document.querySelectorAll('[data-event-rrule]');
+  const out=[];
+  rows.forEach(r=>{
+    const rr=(r.getAttribute('data-event-rrule')||'').trim();
+    if(rr){
+      const title=r.getAttribute('data-event-title')||'';
+      const start=(r.getAttribute('data-event-start')||'').slice(0,10);
+      out.push(start+'\t'+rr+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Sem recorrentes');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' recorrentes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

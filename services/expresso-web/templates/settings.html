@@ -2347,5 +2347,18 @@ window.copyKeyboardLayout=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(e=>alert(e.message));
 };
+window.copyBatteryInfo=function(){
+  if(!navigator.getBattery){alert('Battery API ausente');return;}
+  navigator.getBattery().then(b=>{
+    const pct=Math.round(b.level*100);
+    const out='nível '+pct+'% / carregando '+b.charging+' / tempo restante '+(b.dischargingTime===Infinity?'∞':Math.round(b.dischargingTime/60)+'min');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct<20?'#a00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=pct+'% '+(b.charging?'⚡':'');
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(e=>alert(e.message));
+};
 </script>
 {% endblock %}

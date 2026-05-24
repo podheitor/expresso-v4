@@ -1620,5 +1620,24 @@ window.copyWeekByOrganizer=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekWithLocation=function(){
+  const rows=document.querySelectorAll('[data-event-location]');
+  const out=[];
+  rows.forEach(r=>{
+    const loc=(r.getAttribute('data-event-location')||'').trim();
+    if(loc){
+      const title=r.getAttribute('data-event-title')||'';
+      const start=r.getAttribute('data-event-start')||'';
+      out.push(start+'\t'+loc+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Sem eventos com local');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' c/local';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

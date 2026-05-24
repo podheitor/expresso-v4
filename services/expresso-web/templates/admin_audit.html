@@ -1489,5 +1489,26 @@ window.copyAuditByHourHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLast24h=function(){
+  const cutoff=Date.now()-86400000;
+  const rows=document.querySelectorAll('[data-audit-ts]');
+  const out=[];
+  rows.forEach(r=>{
+    const t=new Date(r.getAttribute('data-audit-ts'));
+    if(!isNaN(t)&&t.getTime()>=cutoff){
+      const actor=r.getAttribute('data-audit-actor')||'?';
+      const action=r.getAttribute('data-audit-action')||'?';
+      out.push(r.getAttribute('data-audit-ts')+'\t'+actor+'\t'+action);
+    }
+  });
+  if(!out.length){alert('Sem eventos últimas 24h');return;}
+  out.sort().reverse();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' em 24h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

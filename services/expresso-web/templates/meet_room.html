@@ -2020,5 +2020,17 @@ window.copyMeetMeetingId=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSelfId=function(){
+  if(!window.jitsiApi){alert('Jitsi ausente');return;}
+  try{
+    const id=window.jitsiApi.getMyUserId?window.jitsiApi.getMyUserId():'?';
+    const ta=document.createElement('textarea');ta.value=id;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='self id: '+id.slice(0,12)+'…';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){alert(e.message);}
+};
 </script>
 {% endblock %}

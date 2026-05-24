@@ -2273,5 +2273,19 @@ window.copyDriveRecentWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveBySize=function(){
+  const rows=Array.from(document.querySelectorAll('[data-file-name][data-file-size]'));
+  if(!rows.length){alert('Sem arquivos');return;}
+  const items=rows.map(r=>({n:r.getAttribute('data-file-name')||'?',s:parseInt(r.getAttribute('data-file-size')||'0',10)}));
+  items.sort((a,b)=>b.s-a.s);
+  const top=items.slice(0,10);
+  const out=top.map(x=>(x.s/1048576).toFixed(2)+' MB\t'+x.n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 10 por tamanho';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
