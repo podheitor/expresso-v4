@@ -1602,5 +1602,28 @@ window.copyUsersBy2FAType=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive30d=function(){
+  const now=Date.now();
+  const cutoff=now-30*86400000;
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const last=r.getAttribute('data-user-last-login');
+    if(!last)return;
+    const t=new Date(last).getTime();
+    if(!isNaN(t)&&t<cutoff){
+      const e=r.getAttribute('data-user-email')||'?';
+      const days=Math.floor((now-t)/86400000);
+      out.push(e+'\t'+days+'d');
+    }
+  });
+  if(!out.length){alert('Todos ativos em 30d');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' inativos 30d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

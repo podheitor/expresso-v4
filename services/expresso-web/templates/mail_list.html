@@ -2264,5 +2264,17 @@ window.copyMailSnippets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSubjectsOnly=function(){
+  const rows=document.querySelectorAll('[data-mail-subject]');
+  const out=[];
+  rows.forEach(r=>{const s=(r.getAttribute('data-mail-subject')||'').trim();if(s)out.push(s);});
+  if(!out.length){alert('Sem assuntos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' assuntos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

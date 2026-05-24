@@ -1759,5 +1759,25 @@ window.copyMonthAfterHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestDay=function(){
+  const rows=document.querySelectorAll('[data-event-start]');
+  const buckets={};
+  rows.forEach(r=>{
+    const d=new Date(r.getAttribute('data-event-start'));
+    if(isNaN(d))return;
+    const k=d.toISOString().slice(0,10);
+    buckets[k]=(buckets[k]||0)+1;
+  });
+  const keys=Object.keys(buckets);
+  if(!keys.length){alert('Sem eventos');return;}
+  keys.sort((a,b)=>buckets[b]-buckets[a]);
+  const top5=keys.slice(0,5).map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=top5.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top: '+keys[0]+' ('+buckets[keys[0]]+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

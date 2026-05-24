@@ -1594,5 +1594,24 @@ window.copyAuditUniqueResources=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByHour=function(){
+  const rows=document.querySelectorAll('[data-audit-ts]');
+  const buckets=new Array(24).fill(0);
+  rows.forEach(r=>{
+    const d=new Date(r.getAttribute('data-audit-ts'));
+    if(isNaN(d))return;
+    buckets[d.getHours()]++;
+  });
+  const total=buckets.reduce((a,b)=>a+b,0);
+  if(!total){alert('Sem timestamps');return;}
+  const out=buckets.map((c,h)=>String(h).padStart(2,'0')+'h\t'+c);
+  const peak=buckets.indexOf(Math.max(...buckets));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pico '+String(peak).padStart(2,'0')+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

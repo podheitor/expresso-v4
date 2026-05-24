@@ -3041,5 +3041,21 @@ window.copyChatTodayMsgs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLongestMsg=function(){
+  const rows=document.querySelectorAll('[data-msg-body]');
+  let max=0,best=null,who='';
+  rows.forEach(r=>{
+    const b=r.getAttribute('data-msg-body')||'';
+    if(b.length>max){max=b.length;best=b;who=r.getAttribute('data-msg-author')||'?';}
+  });
+  if(!best){alert('Sem mensagens');return;}
+  const out=who+' ('+max+'c):\n'+best;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=max+'c por '+who;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
