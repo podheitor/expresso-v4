@@ -1685,5 +1685,14 @@ window.toggleTileView = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.kickAll = function(){
+  if(!confirm('expulsar todos exceto eu?'))return;
+  if(window.jitsiApi){window.jitsiApi.executeCommand('endConference');}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='reunião encerrada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

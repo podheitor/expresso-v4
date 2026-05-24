@@ -994,5 +994,16 @@ window.copyAuditByResource = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByTenant = function(){
+  const m={};
+  document.querySelectorAll('[data-audit-tenant]').forEach(r=>{const x=r.getAttribute('data-audit-tenant');m[x]=(m[x]||0)+1;});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([t,n])=>t+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(m).length+' tenants ativos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1161,5 +1161,15 @@ window.copyMonthLocationDist = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLongEvents = function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-start][data-event-end]')).filter(e=>{const s=Date.parse(e.getAttribute('data-event-start')),f=Date.parse(e.getAttribute('data-event-end'));return !isNaN(s)&&!isNaN(f)&&(f-s)>=2*3600000;});
+  const out=rows.map(e=>e.getAttribute('data-event-start').slice(0,16)+'\t'+Math.round((Date.parse(e.getAttribute('data-event-end'))-Date.parse(e.getAttribute('data-event-start')))/60000)+'min\t'+(e.getAttribute('data-event-title')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' eventos ≥2h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

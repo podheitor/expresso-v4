@@ -1870,5 +1870,17 @@ window.copyUserAgentParsed = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDevicesAvailable = function(){
+  if(!navigator.mediaDevices)return;
+  navigator.mediaDevices.enumerateDevices().then(ds=>{
+    const out=ds.map(d=>d.kind+'\t'+(d.label||'(sem permissão)')+'\t'+d.deviceId.slice(0,12)).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=ds.length+' dispositivos';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}
