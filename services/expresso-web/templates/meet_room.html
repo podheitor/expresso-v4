@@ -2117,5 +2117,14 @@ window.toggleAudioMeet=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleVideoMeet=function(){
+  if(!window.jitsiApi){alert('Jitsi não inicializado');return;}
+  try{window.jitsiApi.executeCommand('toggleVideo');}catch(e){alert('Erro: '+e.message);return;}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vídeo alternado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

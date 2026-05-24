@@ -2258,5 +2258,22 @@ window.copyContactsByCountry=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAvgNameLen=function(){
+  const lens=[];
+  document.querySelectorAll('[data-contact-name]').forEach(r=>{
+    const n=(r.getAttribute('data-contact-name')||'').trim();
+    if(n)lens.push(n.length);
+  });
+  if(!lens.length){alert('Sem nomes');return;}
+  const avg=(lens.reduce((a,b)=>a+b,0)/lens.length).toFixed(1);
+  const max=Math.max(...lens),min=Math.min(...lens);
+  const out='n: '+lens.length+'\navg: '+avg+'c\nmax: '+max+'c\nmin: '+min+'c';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

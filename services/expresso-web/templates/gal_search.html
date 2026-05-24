@@ -1560,5 +1560,20 @@ window.copyGalSameInitial=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalUniqueDepartments=function(){
+  const set=new Set();
+  document.querySelectorAll('[data-gal-dept]').forEach(r=>{
+    const d=(r.getAttribute('data-gal-dept')||'').trim();
+    if(d)set.add(d);
+  });
+  if(!set.size){alert('Sem departamentos');return;}
+  const arr=Array.from(set).sort();
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=arr.length+' depts';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

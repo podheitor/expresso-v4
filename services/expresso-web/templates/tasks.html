@@ -2532,5 +2532,24 @@ window.copyTasksWithoutDue=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCreatedThisMonth=function(){
+  const now=new Date();
+  const y=now.getFullYear(),m=now.getMonth();
+  const out=[];
+  document.querySelectorAll('[data-task-created]').forEach(r=>{
+    const d=new Date(r.getAttribute('data-task-created'));
+    if(isNaN(d))return;
+    if(d.getFullYear()===y&&d.getMonth()===m){
+      out.push((r.getAttribute('data-task-title')||'').trim());
+    }
+  });
+  if(!out.length){alert('Sem tasks neste mês');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' criadas no mês';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
