@@ -1840,5 +1840,18 @@ window.toggleMeetVirtualBg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetIcsBlock=function(){
+  const room='{{ room.name|escape }}';
+  const url=location.href;
+  const ics='BEGIN:VEVENT\nSUMMARY:Meet '+room+'\nDESCRIPTION:'+url+'\nLOCATION:'+url+'\nEND:VEVENT';
+  const ta=document.createElement('textarea');
+  ta.value=ics; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ICS block';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

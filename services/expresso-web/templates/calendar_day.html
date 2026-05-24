@@ -1287,5 +1287,19 @@ window.copyDayBackToBack=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMorningAfternoonSplit=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]'));
+  let am=0,pm=0;
+  rows.forEach(r=>{const s=r.dataset.eventStart;if(s){const h=new Date(s).getHours();if(h<12)am++;else pm++;}});
+  const ta=document.createElement('textarea');
+  ta.value='manhã: '+am+'\ntarde: '+pm;
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='AM '+am+' / PM '+pm;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
