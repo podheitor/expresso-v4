@@ -1594,5 +1594,16 @@ window.copyContactsByInitials = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsExportCsvFull = function(){
+  const cols=['name','email','phone','company','title','birthday'];
+  const rows=Array.from(document.querySelectorAll('[data-contact-name]'));
+  const csv=[cols.join(',')].concat(rows.map(r=>cols.map(c=>'"'+((r.getAttribute('data-contact-'+c)||'').replace(/"/g,'""'))+'"').join(','))).join('\n');
+  const blob=new Blob([csv],{type:'text/csv'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='contacts_'+Date.now()+'.csv';a.click();URL.revokeObjectURL(url);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' contatos exportados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

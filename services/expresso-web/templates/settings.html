@@ -1882,5 +1882,17 @@ window.copyDevicesAvailable = function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copyServiceWorkerInfo = function(){
+  if(!navigator.serviceWorker){return;}
+  navigator.serviceWorker.getRegistrations().then(rs=>{
+    const out='SW count: '+rs.length+'\n'+rs.map(r=>(r.scope||'?')+'\tactive: '+!!r.active).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=rs.length+' SWs ativos';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}
