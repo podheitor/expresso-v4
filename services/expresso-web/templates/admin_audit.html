@@ -1578,5 +1578,21 @@ window.copyAuditByResource=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUniqueResources=function(){
+  const rows=document.querySelectorAll('[data-audit-resource]');
+  const set=new Set();
+  rows.forEach(r=>{
+    const res=(r.getAttribute('data-audit-resource')||'').trim();
+    if(res)set.add(res);
+  });
+  if(!set.size){alert('Sem resources');return;}
+  const arr=Array.from(set).sort();
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=arr.length+' resources únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

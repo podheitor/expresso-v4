@@ -2079,5 +2079,16 @@ window.copyMeetSessionDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomName=function(){
+  const el=document.querySelector('[data-meet-name], [data-meet-room]');
+  const name=el?(el.getAttribute('data-meet-name')||el.getAttribute('data-meet-room')||''):(document.title||location.pathname.split('/').pop()||'');
+  if(!name){alert('Sem nome de sala');return;}
+  const ta=document.createElement('textarea');ta.value=name;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sala: '+name.slice(0,30);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1485,6 +1485,28 @@ window.copyGalEmailValidPct=function(){
   const t=document.createElement('div');
   t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>=95?'#0a0':'#a60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
   t.textContent=pct+'% válidos';
+  setTimeout(()=>t.remove(),1500);
+};
+window.copyGalSecondLevelDomain=function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  const buckets={};
+  rows.forEach(r=>{
+    const e=r.getAttribute('data-gal-email')||'';
+    const at=e.indexOf('@');
+    if(at<0)return;
+    const dom=e.slice(at+1).toLowerCase();
+    const parts=dom.split('.');
+    const sld=parts.length>=2?parts.slice(-2).join('.'):dom;
+    buckets[sld]=(buckets[sld]||0)+1;
+  });
+  const keys=Object.keys(buckets);
+  if(!keys.length){alert('Sem dados');return;}
+  keys.sort((a,b)=>buckets[b]-buckets[a]);
+  const out=keys.map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' SLDs';
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };

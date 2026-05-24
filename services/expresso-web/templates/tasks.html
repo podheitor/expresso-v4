@@ -2467,5 +2467,19 @@ window.copyTasksUnassigned=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByStatus=function(){
+  const rows=document.querySelectorAll('[data-task-status]');
+  if(!rows.length){alert('Sem statuses');return;}
+  const buckets={};
+  rows.forEach(r=>{const s=(r.getAttribute('data-task-status')||'?').toLowerCase();buckets[s]=(buckets[s]||0)+1;});
+  const sorted=Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([s,c])=>c+'\t'+s).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=sorted.length+' statuses';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

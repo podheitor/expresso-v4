@@ -2350,5 +2350,25 @@ window.copyDriveByExtension=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSelectionStats=function(){
+  const sel=document.querySelectorAll('input[type=checkbox][data-file-name]:checked, [data-file-selected="1"]');
+  if(!sel.length){alert('Nada selecionado');return;}
+  let total=0,exts={};
+  sel.forEach(s=>{
+    const row=s.closest('[data-file-name]')||s;
+    const sz=parseInt(row.getAttribute('data-file-size')||'0',10);
+    total+=sz;
+    const n=row.getAttribute('data-file-name')||'';
+    const ext=(n.split('.').pop()||'').toLowerCase()||'(sem)';
+    exts[ext]=(exts[ext]||0)+1;
+  });
+  const out=sel.length+' arquivos / '+(total/1048576).toFixed(2)+' MB\n'+Object.entries(exts).sort((a,b)=>b[1]-a[1]).map(([e,c])=>c+'\t.'+e).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=sel.length+' / '+(total/1048576).toFixed(1)+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
