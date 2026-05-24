@@ -1796,5 +1796,17 @@ window.toggleHighContrast = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleDarkPref = function(){
+  const k='expresso_dark_pref_{{ me.user_id }}';
+  const cur=localStorage.getItem(k)==='dark';
+  const next=cur?'light':'dark';
+  localStorage.setItem(k,next);
+  document.documentElement.setAttribute('data-theme',next);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tema: '+next;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

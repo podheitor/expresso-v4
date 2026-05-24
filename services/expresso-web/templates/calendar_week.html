@@ -1237,5 +1237,24 @@ window.copyWeekHourlyMap = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekConflicts = function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id][data-event-start][data-event-end]'));
+  const conf=[];
+  for(let i=0;i<rows.length;i++){
+    for(let j=i+1;j<rows.length;j++){
+      const as=Date.parse(rows[i].getAttribute('data-event-start'));
+      const ae=Date.parse(rows[i].getAttribute('data-event-end'));
+      const bs=Date.parse(rows[j].getAttribute('data-event-start'));
+      const be=Date.parse(rows[j].getAttribute('data-event-end'));
+      if(as<be && bs<ae) conf.push((rows[i].getAttribute('data-event-title')||'?')+' ⚡ '+(rows[j].getAttribute('data-event-title')||'?'));
+    }
+  }
+  const ta=document.createElement('textarea');ta.value=conf.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=conf.length+' conflitos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2041,5 +2041,22 @@ window.requestNotificationPermission = function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.testNotification = function(){
+  if(!('Notification' in window)) return;
+  if(Notification.permission!=='granted'){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='permissão não concedida';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  new Notification('Expresso',{body:'Notificação de teste — '+new Date().toLocaleTimeString(),icon:'/static/favicon.png'});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='notificação enviada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2567,5 +2567,24 @@ window.copyChatCodeBlocks = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.scrollToFirstUnread = function(){
+  const el=document.querySelector('[data-msg-unread="1"], [data-msg-unread="true"]');
+  if(!el){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='sem mensagens não lidas';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  el.scrollIntoView({behavior:'smooth',block:'center'});
+  el.style.outline='2px solid #0a0';
+  setTimeout(()=>{el.style.outline='';},2000);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='primeira não lida';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
