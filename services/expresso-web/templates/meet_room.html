@@ -1299,4 +1299,24 @@ function toggleMeetParticipantsPane() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const pw = (document.querySelector('[data-room-password]') || {}).dataset?.roomPassword || '';
+    const hint = pw ? 'Senha: ' + pw.slice(0,2) + '••••' : 'Sala sem senha';
+    (navigator.clipboard ? navigator.clipboard.writeText(hint) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = hint; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = hint;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1800);
+    });
+  });
+})();
+</script>
 {% endblock %}

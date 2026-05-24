@@ -1330,4 +1330,22 @@ function copyHomeQuickSummary() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const d = new Date();
+    const start = new Date(d.getFullYear(), 0, 1);
+    const day = Math.floor((d - start) / 86400000);
+    const wk = Math.ceil((day + start.getDay() + 1) / 7);
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Semana ' + wk + ' do ano';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  });
+})();
+</script>
 {% endblock %}

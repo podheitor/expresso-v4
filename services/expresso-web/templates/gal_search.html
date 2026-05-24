@@ -476,4 +476,27 @@ function listGalFavoritesLocal() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const first = document.querySelector('[data-email]');
+    if (!first) return;
+    const name = first.dataset.name || first.textContent.trim().split('\n')[0];
+    const email = first.dataset.email;
+    const txt = name + ' <' + email + '>';
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = 'Top hit copiado';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -1089,4 +1089,36 @@ function groupContactsByFirstLetter() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'X') return;
+    const tags = new Set();
+    document.querySelectorAll('.contact-row [data-tag], .contact-row .tag').forEach(n => {
+      const v = n.dataset?.tag || n.textContent;
+      if (v) v.split(',').forEach(x => { const s = x.trim(); if (s) tags.add(s); });
+    });
+    if (!tags.size) {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = 'Sem tags';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+      return;
+    }
+    const txt = [...tags].join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = tags.size + ' tags copiadas';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}

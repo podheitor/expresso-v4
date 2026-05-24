@@ -668,4 +668,24 @@ function printThread() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const bodies = Array.from(document.querySelectorAll('.message-body, [data-message-body]'));
+    let quoted = 0;
+    bodies.forEach(b => {
+      const lines = (b.textContent || '').split('\n');
+      quoted += lines.filter(l => /^\s*>/.test(l)).length;
+    });
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = quoted + ' linhas citadas';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  });
+})();
+</script>
 {% endblock %}

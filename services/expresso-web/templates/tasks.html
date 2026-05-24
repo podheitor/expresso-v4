@@ -1425,4 +1425,26 @@ function highlightAllOverdueTasks() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const tags = new Set();
+    document.querySelectorAll('.task-row [data-tag], .task-row .tag').forEach(n => {
+      const v = n.dataset?.tag || n.textContent;
+      if (v) v.split(',').forEach(x => { const s = x.trim(); if (s) tags.add(s); });
+    });
+    if (!tags.size) return;
+    const csv = 'tag\n' + [...tags].join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'task-tags.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
 {% endblock %}

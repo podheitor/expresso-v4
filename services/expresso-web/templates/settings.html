@@ -1426,6 +1426,14 @@ function countExpressoPrefsByPrefix() {
 }
 </script>
 <script>
+window.printSettingsTab = function(){
+  const main = document.querySelector('.settings-page main, .settings-page') || document.body;
+  const w = window.open('', '_blank');
+  if (!w) return;
+  w.document.write('<!doctype html><html><head><title>Settings</title><style>body{font-family:sans-serif;padding:16px}</style></head><body>' + main.outerHTML + '</body></html>');
+  w.document.close();
+  setTimeout(() => w.print(), 250);
+};
 window.resetUiPrefs = function(){
   if (!confirm('Limpar TODAS as preferências de UI deste navegador?')) return;
   const toRemove = [];

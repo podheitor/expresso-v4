@@ -959,6 +959,16 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.clearAttachmentsAll = function(){
+  const input = document.querySelector('input[type="file"][name="attachments"], input[type="file"]');
+  if (input) input.value = '';
+  document.querySelectorAll('.attachment-chip, .attachment-row').forEach(n => n.remove());
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Anexos limpos';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.wordCountBody = function(){
   const body = document.querySelector('textarea[name="body"]');
   if (!body) return;
