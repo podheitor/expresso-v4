@@ -3455,5 +3455,15 @@ window.copyChatAvgLength=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.scrollChatTop=function(){
+  const c=document.getElementById('chat-messages')||document.querySelector('.chat-messages,[data-chat-scroll]');
+  if(!c){alert('Container não encontrado');return;}
+  c.scrollTop=0;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='↑ topo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

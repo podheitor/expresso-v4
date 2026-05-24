@@ -2756,5 +2756,17 @@ window.copyServiceWorkerInfo=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(e=>alert('Erro: '+e.message));
 };
+window.copyMediaDevices=function(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){alert('MediaDevices indisponível');return;}
+  navigator.mediaDevices.enumerateDevices().then(devs=>{
+    const out=devs.map(d=>d.kind+'\t'+(d.label||'(no label)')+'\t'+d.deviceId.slice(0,8)).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=devs.length+' dev';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(e=>alert('Erro: '+e.message));
+};
 </script>
 {% endblock %}

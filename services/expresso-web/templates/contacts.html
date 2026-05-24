@@ -2639,5 +2639,21 @@ window.copyContactsBirthdays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsNoEmail=function(){
+  const out=[];
+  document.querySelectorAll('[data-contact-id]').forEach(c=>{
+    const em=(c.getAttribute('data-contact-email')||'').trim();
+    if(em)return;
+    const n=(c.getAttribute('data-contact-name')||'').trim()||'?';
+    out.push(n);
+  });
+  if(!out.length){alert('Todos com email');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' s/mail';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

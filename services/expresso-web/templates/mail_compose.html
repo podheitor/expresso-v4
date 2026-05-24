@@ -2184,5 +2184,24 @@ window.uppercaseSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.appendSignature=function(){
+  const f=document.getElementById('body')||document.querySelector('textarea[name="body"]');
+  if(!f){alert('Sem campo body');return;}
+  const sig='\n\n--\n{{ me.email }}';
+  if(f.value.endsWith(sig)){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='já tem';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  f.value+=sig;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='+sig';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

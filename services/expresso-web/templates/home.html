@@ -2423,5 +2423,20 @@ window.copyHomeStorageEstimate=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(e=>alert('Erro: '+e.message));
 };
+window.copyHomePerfTiming=function(){
+  if(!performance||!performance.timing){alert('Timing API indisponível');return;}
+  const p=performance.timing;
+  const ns=p.navigationStart;
+  const dom=p.domContentLoadedEventEnd-ns;
+  const load=p.loadEventEnd-ns;
+  const ttfb=p.responseStart-p.requestStart;
+  const out='ttfb: '+ttfb+'ms\ndomReady: '+dom+'ms\nload: '+load+'ms';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=load+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

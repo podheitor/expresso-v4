@@ -2670,5 +2670,25 @@ window.copyMailFlagged=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailByYear=function(){
+  const a={};
+  document.querySelectorAll('[data-mail-id]').forEach(m=>{
+    const d=(m.getAttribute('data-mail-date')||m.getAttribute('data-mail-ts')||'').trim();
+    if(!d)return;
+    const y=d.slice(0,4);
+    if(!/^\d{4}$/.test(y))return;
+    a[y]=(a[y]||0)+1;
+  });
+  const keys=Object.keys(a);
+  if(!keys.length){alert('Sem datas');return;}
+  keys.sort();
+  const out=keys.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' yr';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

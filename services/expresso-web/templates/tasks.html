@@ -2922,5 +2922,26 @@ window.copyTasksByList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByTag=function(){
+  const a={};
+  document.querySelectorAll('[data-task-id]').forEach(t=>{
+    const tags=(t.getAttribute('data-task-tags')||'').split(/[,;]/);
+    tags.forEach(x=>{
+      const v=x.trim();
+      if(!v)return;
+      a[v]=(a[v]||0)+1;
+    });
+  });
+  const keys=Object.keys(a);
+  if(!keys.length){alert('Sem tags');return;}
+  keys.sort((x,y)=>a[y]-a[x]);
+  const out=keys.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' tg';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

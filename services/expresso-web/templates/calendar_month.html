@@ -2216,5 +2216,24 @@ window.copyMonthEmptyDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByHour=function(){
+  const a={};
+  for(let h=0;h<24;h++)a[h]=0;
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const d=new Date(s);if(isNaN(d))return;
+    a[d.getHours()]++;
+  });
+  let total=0;Object.values(a).forEach(v=>total+=v);
+  if(!total){alert('Sem eventos');return;}
+  const out=Object.keys(a).map(k=>String(k).padStart(2,'0')+'h\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  let peak=0;for(let i=0;i<24;i++)if(a[i]>a[peak])peak=i;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+String(peak).padStart(2,'0')+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
