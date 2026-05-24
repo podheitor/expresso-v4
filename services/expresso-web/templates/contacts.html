@@ -2031,5 +2031,30 @@ window.copyContactsMobilePhones=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdaysSoon=function(){
+  const rows=document.querySelectorAll('[data-contact-bday]');
+  const today=new Date();
+  const out=[];
+  rows.forEach(r=>{
+    const bday=r.getAttribute('data-contact-bday')||'';
+    const m=bday.match(/^\d{4}-(\d{2})-(\d{2})/);
+    if(!m)return;
+    const d=new Date(today.getFullYear(),parseInt(m[1])-1,parseInt(m[2]));
+    if(d<today)d.setFullYear(d.getFullYear()+1);
+    const days=Math.ceil((d-today)/86400000);
+    if(days>=0&&days<=30){
+      const name=r.getAttribute('data-contact-name')||(r.querySelector('.name')||r).textContent||'?';
+      out.push(days+'d\t'+name.trim()+'\t'+m[1]+'-'+m[2]);
+    }
+  });
+  if(!out.length){alert('Sem aniversários próximos');return;}
+  out.sort((a,b)=>parseInt(a)-parseInt(b));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' aniv. <=30d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

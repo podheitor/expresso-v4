@@ -1530,5 +1530,25 @@ window.copyThreadFirstResponse=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAvgResponseTime=function(){
+  const rows=Array.from(document.querySelectorAll('[data-msg-date]'));
+  if(rows.length<2){alert('Sem mensagens suficientes');return;}
+  const sorted=rows.map(r=>({d:new Date(r.getAttribute('data-msg-date')),a:r.getAttribute('data-msg-author')||''}))
+    .filter(x=>!isNaN(x.d)).sort((a,b)=>a.d-b.d);
+  const gaps=[];
+  for(let i=1;i<sorted.length;i++){
+    if(sorted[i].a!==sorted[i-1].a)gaps.push(sorted[i].d-sorted[i-1].d);
+  }
+  if(!gaps.length){alert('Sem trocas entre autores');return;}
+  const avg=gaps.reduce((a,b)=>a+b,0)/gaps.length;
+  const h=Math.floor(avg/3600000),m=Math.floor((avg%3600000)/60000);
+  const out=gaps.length+' trocas, média '+h+'h '+m+'m';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='média '+h+'h '+m+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1571,5 +1571,23 @@ window.copyWeekDeclined=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTentative=function(){
+  const rows=document.querySelectorAll('[data-event-mystatus]');
+  const out=[];
+  rows.forEach(r=>{
+    if(r.getAttribute('data-event-mystatus')==='tentative'){
+      const title=r.getAttribute('data-event-title')||(r.querySelector('.title')||r).textContent||'';
+      const start=r.getAttribute('data-event-start')||'';
+      out.push(start+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Sem tentativos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' tentativos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
