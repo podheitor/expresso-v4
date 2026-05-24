@@ -2533,5 +2533,16 @@ window.copyChatEmojiUsage = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatQuestions = function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const rows=Array.from(msgs).filter(r=>/\?\s*$/.test((r.textContent||'').trim()));
+  const out=rows.map(r=>{const ts=r.getAttribute('data-msg-ts')||'?'; const au=r.getAttribute('data-msg-author')||'?'; return ts+'\t'+au+'\t'+(r.textContent||'').trim().slice(0,120);}).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' perguntas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

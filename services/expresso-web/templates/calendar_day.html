@@ -1176,5 +1176,21 @@ window.copyDayAttendees = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBackToBack = function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id][data-event-start][data-event-end]'));
+  rows.sort((a,b)=>Date.parse(a.getAttribute('data-event-start'))-Date.parse(b.getAttribute('data-event-start')));
+  const pairs=[];
+  for(let i=1;i<rows.length;i++){
+    const prev=Date.parse(rows[i-1].getAttribute('data-event-end'));
+    const cur=Date.parse(rows[i].getAttribute('data-event-start'));
+    if(cur-prev<=300000) pairs.push((rows[i-1].getAttribute('data-event-title')||'?')+' → '+(rows[i].getAttribute('data-event-title')||'?'));
+  }
+  const ta=document.createElement('textarea');ta.value=pairs.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pairs.length+' back-to-back';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

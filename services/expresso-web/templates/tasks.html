@@ -1973,5 +1973,16 @@ window.copyTasksByTag = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksCompletedThisWeek = function(){
+  const cutoff=Date.now()-7*86400000;
+  const rows=Array.from(document.querySelectorAll('[data-task-id][data-task-status="done"][data-task-completed]')).filter(r=>{const t=Date.parse(r.getAttribute('data-task-completed')); return !isNaN(t)&&t>=cutoff;});
+  const out=rows.map(r=>(r.getAttribute('data-task-completed')||'?')+'\t'+(r.getAttribute('data-task-title')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' concluídas 7d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1745,5 +1745,28 @@ window.copyPlatformInfo = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyPerfTimings = function(){
+  if(!window.performance||!performance.timing){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='performance API indisponível';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const t1=performance.timing;
+  const dns=t1.domainLookupEnd-t1.domainLookupStart;
+  const tcp=t1.connectEnd-t1.connectStart;
+  const ttfb=t1.responseStart-t1.requestStart;
+  const dom=t1.domComplete-t1.domLoading;
+  const load=t1.loadEventEnd-t1.navigationStart;
+  const out='dns: '+dns+'ms\ttcp: '+tcp+'ms\tttfb: '+ttfb+'ms\tdom: '+dom+'ms\tload total: '+load+'ms';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='load '+load+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

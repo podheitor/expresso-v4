@@ -1086,5 +1086,16 @@ window.copyAuditLast24h = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.exportAuditNdjson = function(){
+  const rows=document.querySelectorAll('[data-audit-id]');
+  const lines=Array.from(rows).map(r=>JSON.stringify({id:r.getAttribute('data-audit-id')||'',ts:r.getAttribute('data-audit-ts')||'',actor:r.getAttribute('data-audit-actor')||'',action:r.getAttribute('data-audit-action')||'',result:r.getAttribute('data-audit-result')||'',ip:r.getAttribute('data-audit-ip')||''}));
+  const blob=new Blob([lines.join('\n')],{type:'application/x-ndjson'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='audit.ndjson';document.body.appendChild(a);a.click();a.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' linhas NDJSON';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

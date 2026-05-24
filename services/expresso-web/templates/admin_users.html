@@ -1109,5 +1109,16 @@ window.copyUsersByCreatedYear = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithBadgeNew = function(){
+  const cutoff=Date.now()-14*86400000;
+  const rows=Array.from(document.querySelectorAll('[data-user-id][data-user-created]')).filter(r=>{const t=Date.parse(r.getAttribute('data-user-created')); return !isNaN(t)&&t>=cutoff;});
+  const out=rows.map(r=>(r.getAttribute('data-user-created')||'?')+'\t'+(r.getAttribute('data-user-email')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' novos 14d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

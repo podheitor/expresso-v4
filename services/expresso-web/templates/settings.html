@@ -1987,5 +1987,25 @@ window.checkClipboardPermission = function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copyStorageEstimate = function(){
+  if(!navigator.storage||!navigator.storage.estimate){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='storage.estimate indisponível';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  navigator.storage.estimate().then(e=>{
+    const pct=e.quota?((e.usage/e.quota)*100).toFixed(2):'?';
+    const out='usage: '+(e.usage/1048576).toFixed(2)+' MB\nquota: '+(e.quota/1048576).toFixed(2)+' MB\nuso: '+pct+'%';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=pct+'% utilizado';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

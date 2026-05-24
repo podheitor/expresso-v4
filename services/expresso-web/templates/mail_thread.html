@@ -1180,5 +1180,26 @@ window.copyThreadFirstLast = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDurationDays = function(){
+  const rows=Array.from(document.querySelectorAll('[data-msg-id][data-msg-date]'));
+  if(rows.length<2){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='<2 mensagens';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  rows.sort((a,b)=>Date.parse(a.getAttribute('data-msg-date'))-Date.parse(b.getAttribute('data-msg-date')));
+  const span=Date.parse(rows[rows.length-1].getAttribute('data-msg-date'))-Date.parse(rows[0].getAttribute('data-msg-date'));
+  const days=(span/86400000).toFixed(1);
+  const out='duração: '+days+' dias\nmsgs: '+rows.length+'\nfreq: '+(rows.length/Math.max(parseFloat(days),0.1)).toFixed(2)+' msg/dia';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=days+' dias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
