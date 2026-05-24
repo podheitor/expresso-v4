@@ -77,6 +77,7 @@
           <div class="contact-card-actions">
             <a class="btn btn-ghost btn-sm" href="/contacts/{{ bid }}/{{ c.id }}/edit">Editar</a>
             {% if !c.email_display().is_empty() %}<a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ c.email_display() }}">✉</a>{% endif %}
+            <button class="btn btn-ghost btn-sm" onclick="setBirthday('{{ c.id }}', '{{ c.name_display() }}')" title="Definir aniversário">🎂</button>
           </div>
         </div>
         {% when None %}{% endmatch %}
@@ -509,6 +510,22 @@ function shareContactCard(name, email, phone, org) {
     'END:VCARD';
   var subj = 'Contato: ' + (name || email || '—');
   window.location.href = '/mail/compose?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+}
+function setBirthday(id, name) {
+  var raw = {};
+  try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e) {}
+  var existing = (raw[id] && raw[id].date) || '';
+  var v = prompt('Aniversário de ' + name + ' (formato YYYY-MM-DD ou MM-DD):', existing);
+  if (v === null) return;
+  v = v.trim();
+  if (!v) { delete raw[id]; }
+  else if (/^\d{4}-\d{2}-\d{2}$/.test(v) || /^\d{2}-\d{2}$/.test(v)) {
+    raw[id] = { name: name, date: v.length === 5 ? ('1900-' + v) : v };
+  } else {
+    alert('Formato inválido. Use YYYY-MM-DD ou MM-DD.'); return;
+  }
+  try { localStorage.setItem('expresso_birthdays', JSON.stringify(raw)); } catch(e) {}
+  alert(v ? 'Aniversário salvo. Aparecerá no widget de aniversários da home.' : 'Aniversário removido.');
 }
 </script>
 

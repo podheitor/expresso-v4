@@ -18,6 +18,11 @@
       {% match new_token %}{% when Some with (t) %}
         <details style="margin-top:.5rem"><summary>Token bruto</summary><code class="mono">{{ t }}</code></details>
       {% when None %}{% endmatch %}
+      <div style="margin-top:.6rem;display:flex;gap:.4rem;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="showShareQr('{{ u }}')">📱 Mostrar QR</button>
+        <span class="muted small">Para abrir em outro dispositivo</span>
+      </div>
+      <div id="share-qr-box" style="display:none;margin-top:.5rem;text-align:center"></div>
     </div>
   {% when None %}{% endmatch %}
 
@@ -101,5 +106,15 @@ function copyShareLink(shareId) {
 // Auto-copy new link
 navigator.clipboard.writeText('{{ u }}').catch(function(){});
 {% when None %}{% endmatch %}
+function showShareQr(url) {
+  var box = document.getElementById('share-qr-box');
+  if (!box) return;
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  if (box.style.display === 'block' && !box.dataset.loaded) {
+    var src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(url);
+    box.innerHTML = '<img alt="QR" src="' + src + '" style="background:#fff;padding:.3rem;border-radius:var(--radius)">';
+    box.dataset.loaded = '1';
+  }
+}
 </script>
 {% endblock %}

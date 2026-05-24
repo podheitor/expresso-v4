@@ -148,7 +148,8 @@
       {% endif %}
 
       <div class="form-actions" style="justify-content:flex-end">
-        {% match event_id %}{% when Some with (_id) %}
+        {% match event_id %}{% when Some with (id) %}
+        <a class="btn btn-ghost" href="/calendar/{{ calendar.id }}/events/{{ id }}/ical" title="Baixar evento (.ics)">⬇ .ics</a>
         <button type="button" onclick="document.getElementById('delete-form').submit()" class="btn btn-danger">Apagar</button>
         {% when None %}{% endmatch %}
         <button type="submit" class="btn btn-primary">Salvar</button>

@@ -58,6 +58,9 @@
           <a class="day-add" href="#" onclick="openQuickEvent('{{ cell.iso }}', '{{ selected.id }}'); return false;" title="Criar evento">
             {{ cell.day }}
           </a>
+          {% if cell.events.len() > 0 %}
+          <span class="cell-event-count" title="{{ cell.events.len() }} evento(s)" style="position:absolute;top:.2rem;right:.3rem;background:var(--accent);color:#fff;font-size:.65rem;line-height:1;padding:.1rem .3rem;border-radius:.5rem;pointer-events:none">{{ cell.events.len() }}</span>
+          {% endif %}
           {% for ev in cell.events %}
           <a class="event-chip{% if ev.is_recurring() %} event-chip-recurring{% endif %}{% if ev.is_all_day() %} event-chip-allday{% endif %}"
              href="/calendar/{{ selected.id }}/events/{{ ev.id }}/edit"

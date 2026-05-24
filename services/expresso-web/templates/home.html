@@ -257,6 +257,11 @@
 .home-stat-lbl  { margin-top:.1rem }
 </style>
 <script>
+// ── Remember last login (shown on /login page) ───────────────────────────────
+try {
+  localStorage.setItem('expresso_last_login_email', '{{ me.email }}');
+  localStorage.setItem('expresso_last_login_ts', String(Date.now()));
+} catch(e) {}
 // ── Clock widget ──────────────────────────────────────────────────────────────
 (function initClock() {
   var DAYS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];

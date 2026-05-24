@@ -30,12 +30,42 @@
         <dt>Expira</dt>   <dd class="mono">{{ me.expires_at }}</dd>
       </dl>
     </div>
-    <div class="row">
+    <div class="row" style="flex-wrap:wrap;gap:.4rem">
       <a class="btn btn-primary" href="/me/security">Segurança / MFA</a>
-      <a class="btn btn-ghost" href="{{ logout_url }}">Sair</a>
+      <a class="btn btn-ghost" href="/settings">⚙ Configurações</a>
+      <a class="btn btn-ghost" href="/settings?tab=notifications">🔔 Notificações</a>
+      <a class="btn btn-ghost" href="/settings?tab=filters">📨 Regras de email</a>
+      <a class="btn btn-ghost" href="{{ logout_url }}">↪ Sair</a>
+    </div>
+
+    <div class="subcard">
+      <h3 style="margin:0 0 .4rem">Resumo de uso (local)</h3>
+      <dl class="kv" id="me-usage">
+        <dt>Tarefas pendentes</dt><dd id="me-tasks-pending">—</dd>
+        <dt>Drafts de email</dt><dd id="me-mail-drafts">—</dd>
+        <dt>Pesquisas salvas</dt><dd id="me-saved-searches">—</dd>
+        <dt>Modelos de email</dt><dd id="me-mail-tpls">—</dd>
+      </dl>
     </div>
   </div>
 </div>
+<script>
+(function fillMeUsage() {
+  function safeJsonLen(k) {
+    try { var v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v.length : Object.keys(v).length; }
+    catch(e) { return 0; }
+  }
+  var pend = 0;
+  try {
+    var ts = JSON.parse(localStorage.getItem('expresso_tasks_{{ me.user_id }}') || '[]');
+    pend = ts.filter(function(t){ return !t.done; }).length;
+  } catch(e) {}
+  var pmEl = document.getElementById('me-tasks-pending'); if (pmEl) pmEl.textContent = pend;
+  var dr = document.getElementById('me-mail-drafts'); if (dr) dr.textContent = safeJsonLen('expresso_compose_drafts');
+  var ss = document.getElementById('me-saved-searches'); if (ss) ss.textContent = safeJsonLen('expresso_saved_searches');
+  var tp = document.getElementById('me-mail-tpls'); if (tp) tp.textContent = safeJsonLen('expresso_mail_templates');
+})();
+</script>
 <script>
 var ME_AVATAR_KEY = 'expresso_avatar_{{ me.user_id }}';
 (function loadAvatar() {

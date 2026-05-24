@@ -99,6 +99,16 @@
     </div>
   </div>
 
+  <!-- Uptime (client-side, accumulated since first visit) -->
+  <div class="card stack" style="margin-top:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h2 style="margin:0">Uptime do painel (local)</h2>
+      <button class="btn btn-ghost btn-sm" onclick="resetUptimePanel()" title="Resetar contador">↺</button>
+    </div>
+    <p class="muted small">Tempo desde a primeira visita a este painel (apenas neste navegador).</p>
+    <div style="font-size:1.5rem;font-family:monospace" id="admin-uptime-display">--:--:--</div>
+  </div>
+
   <!-- SMTP Delivery Queue -->
   <div class="card stack" style="margin-top:1.5rem" id="admin-smtp-queue">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
@@ -267,5 +277,29 @@
     });
   })();
 })();
+
+// ── Local uptime tracker ──────────────────────────────────────────────────────
+var UPTIME_KEY = 'expresso_admin_uptime_since';
+(function initUptime() {
+  if (!localStorage.getItem(UPTIME_KEY)) localStorage.setItem(UPTIME_KEY, String(Date.now()));
+  setInterval(renderUptime, 1000);
+  renderUptime();
+})();
+function renderUptime() {
+  var el = document.getElementById('admin-uptime-display');
+  if (!el) return;
+  var since = parseInt(localStorage.getItem(UPTIME_KEY) || String(Date.now()), 10);
+  var diff = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  var d = Math.floor(diff / 86400); diff %= 86400;
+  var h = Math.floor(diff / 3600); diff %= 3600;
+  var m = Math.floor(diff / 60); var s = diff % 60;
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  el.textContent = (d > 0 ? d + 'd ' : '') + pad(h) + ':' + pad(m) + ':' + pad(s);
+}
+function resetUptimePanel() {
+  if (!confirm('Resetar contador de uptime?')) return;
+  localStorage.setItem(UPTIME_KEY, String(Date.now()));
+  renderUptime();
+}
 </script>
 {% endblock %}

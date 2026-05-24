@@ -11,5 +11,20 @@
     <div class="alert alert-error" role="alert">{{ e }}</div>
   {% when None %}{% endmatch %}
   <a class="btn btn-primary btn-lg block" href="{{ login_url }}">Entrar com Keycloak</a>
+  <p class="muted small" id="last-login-hint" style="margin-top:.75rem;text-align:center;display:none"></p>
 </section>
+<script>
+(function showLastLoginHint() {
+  try {
+    var hint = document.getElementById('last-login-hint');
+    if (!hint) return;
+    var last = localStorage.getItem('expresso_last_login_email');
+    var ts = localStorage.getItem('expresso_last_login_ts');
+    if (!last) return;
+    var when = ts ? new Date(parseInt(ts, 10)).toLocaleString('pt-BR') : '';
+    hint.textContent = '👤 Último acesso: ' + last + (when ? ' (' + when + ')' : '');
+    hint.style.display = '';
+  } catch(e) {}
+})();
+</script>
 {% endblock %}

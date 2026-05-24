@@ -30,6 +30,15 @@
     </form>
   </div>
 
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-bottom:.5rem">Link de assinatura CardDAV</h2>
+    <p class="muted small">URL para sincronizar este catálogo em apps externos compatíveis com CardDAV.</p>
+    <div style="display:flex;gap:.4rem;align-items:center">
+      <input type="text" id="carddav-url" readonly value="" class="tasks-add-input" style="flex:1;font-family:monospace">
+      <button class="btn btn-ghost btn-sm" onclick="copyCardDavUrl()">Copiar</button>
+    </div>
+  </div>
+
   <h2 style="margin-bottom:.75rem">Compartilhamentos atuais</h2>
   {% if shares.is_empty() %}
   <p class="muted">Nenhum compartilhamento.</p>
@@ -52,4 +61,20 @@
   </table>
   {% endif %}
 </div>
+<script>
+(function initCardDavUrl() {
+  var inp = document.getElementById('carddav-url');
+  if (!inp) return;
+  inp.value = window.location.origin + '/carddav/addressbooks/{{ addressbook.id }}/';
+})();
+function copyCardDavUrl() {
+  var inp = document.getElementById('carddav-url');
+  if (!inp) return;
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(function() {
+    var b = document.querySelector('[onclick="copyCardDavUrl()"]');
+    if (b) { var p = b.textContent; b.textContent = '✓ Copiado'; setTimeout(function(){ b.textContent = p; }, 1200); }
+  });
+}
+</script>
 {% endblock %}

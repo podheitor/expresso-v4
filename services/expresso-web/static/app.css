@@ -528,6 +528,7 @@ select option { background: var(--bg-raised); }
   padding: .3rem .25rem;
   border: 1px solid var(--border);
   transition: background .12s;
+  position: relative;
 }
 .month-cell:hover { background: var(--bg-raised); }
 .month-cell.off-month { opacity: .4; }

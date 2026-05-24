@@ -219,5 +219,21 @@ function jumpToWeekOf(d) {
   if (!d) return;
   window.location.href = '/calendar/{{ selected.id }}/week?date=' + encodeURIComponent(d);
 }
+
+// Mark weekend columns
+(function markWeekendCols() {
+  document.querySelectorAll('.week-col[data-date]').forEach(function(col) {
+    var iso = col.dataset.date;
+    if (!iso) return;
+    try {
+      var d = new Date(iso + 'T12:00:00').getDay();
+      if (d === 0 || d === 6) col.classList.add('cal-weekend');
+    } catch(e) {}
+  });
+})();
 </script>
+<style>
+.week-col.cal-weekend { background: rgba(148,163,184,0.06); }
+.week-col.cal-weekend.today { background: rgba(20,184,166,.08); }
+</style>
 {% endblock %}

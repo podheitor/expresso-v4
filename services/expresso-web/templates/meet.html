@@ -55,6 +55,15 @@
     </div>
   </div>
 
+  <!-- Salas recentes (localStorage) -->
+  <div class="card stack" style="margin-top:1.5rem" id="meet-recent-card" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">Salas recentes</h2>
+      <button class="btn btn-ghost btn-sm" onclick="clearRecentMeets()">Limpar</button>
+    </div>
+    <ul class="meet-list" id="meet-recent-list"></ul>
+  </div>
+
   <!-- Reuniões de hoje -->
   <div class="card stack" style="margin-top:1.5rem" id="meet-today-card">
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -189,6 +198,34 @@ function copyMeetLink(id) {
       '</li>';
   }).join('');
 })();
+
+// ── Recent meets (localStorage) ───────────────────────────────────────────────
+var RECENT_MEETS_KEY = 'expresso_recent_meets_{{ me.user_id }}';
+function loadRecentMeets() {
+  try { return JSON.parse(localStorage.getItem(RECENT_MEETS_KEY) || '[]'); } catch(e) { return []; }
+}
+function clearRecentMeets() {
+  if (!confirm('Limpar histórico de salas recentes?')) return;
+  localStorage.removeItem(RECENT_MEETS_KEY);
+  renderRecentMeets();
+}
+function renderRecentMeets() {
+  var ul = document.getElementById('meet-recent-list');
+  var card = document.getElementById('meet-recent-card');
+  if (!ul || !card) return;
+  var list = loadRecentMeets();
+  if (!list.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  ul.innerHTML = list.slice(0, 8).map(function(m) {
+    var when = m.ts ? new Date(m.ts).toLocaleString('pt-BR') : '';
+    var name = String(m.name || m.id).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; });
+    return '<li class="meet-list-item"><div class="meet-list-info">' +
+      '<span class="meet-list-name">' + name + '</span>' +
+      (when ? '<span class="muted small">' + when + '</span>' : '') +
+      '</div><a class="btn btn-ghost btn-sm" href="/meet/' + encodeURIComponent(m.id) + '">Reabrir</a></li>';
+  }).join('');
+}
+renderRecentMeets();
 
 // ── "Em breve" badge for upcoming meetings ────────────────────────────────────
 (function checkMeetSoon() {

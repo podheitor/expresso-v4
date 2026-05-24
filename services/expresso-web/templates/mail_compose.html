@@ -263,12 +263,23 @@ function removeAttach(idx) {
 function renderAttachList() {
   var ul = document.getElementById('compose-attach-list');
   ul.innerHTML = '';
+  var total = 0;
   _attachFiles.forEach(function(f, i) {
+    total += f.size;
     var kb = (f.size / 1024).toFixed(1);
     ul.innerHTML += '<li class="compose-attach-item">' +
       '<span>📎 ' + escAtt(f.name) + ' <span class="muted small">(' + kb + ' KB)</span></span>' +
       '<button type="button" class="btn btn-ghost btn-sm" onclick="removeAttach(' + i + ')">✕</button></li>';
   });
+  if (_attachFiles.length) {
+    var mb = (total / 1048576).toFixed(2);
+    var warn = total > 25 * 1048576;
+    var color = warn ? 'var(--error, #ef4444)' : 'var(--muted)';
+    var msg = '<li class="compose-attach-summary muted small" style="color:' + color + ';padding:.25rem .5rem">' +
+      'Total: ' + _attachFiles.length + ' arquivo(s) · ' + mb + ' MB' +
+      (warn ? ' ⚠ Excede o limite usual de 25 MB de muitos servidores' : '') + '</li>';
+    ul.innerHTML += msg;
+  }
 }
 function rebuildAttachInput() {
   var form = document.getElementById('compose-form');

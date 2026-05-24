@@ -41,11 +41,11 @@
     <table class="admin-table" id="admin-users-table">
       <thead>
         <tr>
-          <th>Usuário</th>
-          <th>Email</th>
-          <th>Papel</th>
+          <th onclick="sortAdminUsers('name')" style="cursor:pointer" title="Ordenar por nome">Usuário <span id="sort-icon-name"></span></th>
+          <th onclick="sortAdminUsers('email')" style="cursor:pointer" title="Ordenar por email">Email <span id="sort-icon-email"></span></th>
+          <th onclick="sortAdminUsers('role')" style="cursor:pointer" title="Ordenar por papel">Papel <span id="sort-icon-role"></span></th>
           <th>Tenant</th>
-          <th>Status</th>
+          <th onclick="sortAdminUsers('status')" style="cursor:pointer" title="Ordenar por status">Status <span id="sort-icon-status"></span></th>
           <th>Criado em</th>
           <th>Ações</th>
         </tr>
@@ -254,6 +254,28 @@ function bulkImportCsv(file) {
     });
   };
   reader.readAsText(file);
+}
+
+// ── Column sort ───────────────────────────────────────────────────────────────
+var _sortKey = null, _sortDir = 1;
+function sortAdminUsers(key) {
+  if (_sortKey === key) _sortDir = -_sortDir;
+  else { _sortKey = key; _sortDir = 1; }
+  var tbody = document.getElementById('admin-users-tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('.admin-user-row'));
+  rows.sort(function(a, b) {
+    var av = (a.dataset[key] || '').toLowerCase();
+    var bv = (b.dataset[key] || '').toLowerCase();
+    if (av < bv) return -1 * _sortDir;
+    if (av > bv) return 1 * _sortDir;
+    return 0;
+  });
+  rows.forEach(function(r){ tbody.appendChild(r); });
+  ['name','email','role','status'].forEach(function(k) {
+    var el = document.getElementById('sort-icon-' + k);
+    if (el) el.textContent = (k === _sortKey) ? (_sortDir > 0 ? '▲' : '▼') : '';
+  });
 }
 </script>
 {% endblock %}

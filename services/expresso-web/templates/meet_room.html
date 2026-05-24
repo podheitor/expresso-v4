@@ -351,6 +351,16 @@ var _meetChatChannelId = '';
 var _meetMyName = '{{ me.display_name.as_deref().unwrap_or(&me.email) }}';
 var _meetRoomId = '{{ room_id }}';
 
+// Save room to recent-meets list (shown on /meet)
+try {
+  var RKEY = 'expresso_recent_meets_{{ me.user_id }}';
+  var arr = JSON.parse(localStorage.getItem(RKEY) || '[]');
+  arr = arr.filter(function(m){ return m.id !== _meetRoomId; });
+  arr.unshift({ id: _meetRoomId, name: '{{ room_name }}', ts: Date.now() });
+  if (arr.length > 20) arr.length = 20;
+  localStorage.setItem(RKEY, JSON.stringify(arr));
+} catch(e) {}
+
 // Try to find or create a channel named "meet-<room_id>"
 (function initMeetChat() {
   fetch('/chat/channels', { method: 'POST', credentials: 'include',

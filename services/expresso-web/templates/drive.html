@@ -10,7 +10,20 @@
       <span class="drive-crumb-sep">›</span>
       <a class="drive-crumb" href="/drive?parent_id={{ cid }}">{{ cname }}</a>
     {% endfor %}
+    {% if !folder_ancestors.is_empty() %}
+    <button class="btn btn-ghost btn-sm" onclick="copyDrivePath()" title="Copiar caminho" style="margin-left:.4rem;font-size:.75rem">📋</button>
+    {% endif %}
   </nav>
+  <script>
+  function copyDrivePath() {
+    var crumbs = Array.from(document.querySelectorAll('.drive-crumb')).map(function(a){ return a.textContent.trim(); });
+    var path = crumbs.join(' / ');
+    navigator.clipboard.writeText(path).then(function() {
+      var btn = document.querySelector('[onclick="copyDrivePath()"]');
+      if (btn) { var p = btn.textContent; btn.textContent = '✓'; setTimeout(function(){ btn.textContent = p; }, 1200); }
+    });
+  }
+  </script>
 
   <div class="page-header">
     <div>

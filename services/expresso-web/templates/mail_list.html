@@ -34,6 +34,7 @@
       <div class="list-toolbar">
         <h1 class="folder-title">{{ selected }}</h1>
         <div class="toolbar-actions">
+          <button class="btn btn-ghost btn-sm" onclick="toggleMailCompact()" title="Densidade compacta/normal" id="mail-density-btn">≡ Densidade</button>
           <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
           <button class="btn btn-ghost btn-sm" id="sender-filter-btn" onclick="clearSenderFilter()" style="display:none" title="Limpar filtro de remetente">✕ <span id="sender-filter-label"></span></button>
           <button class="btn btn-ghost btn-sm" onclick="toggleMailFilters()" title="Filtros avançados">⚙ Filtros</button>
@@ -779,4 +780,30 @@ function toggleSelectAllMail(checked) {
     </div>
   </div>
 </div>
+<style>
+.mail-shell.mail-compact .msg-row { padding: .35rem .6rem; }
+.mail-shell.mail-compact .msg-row .msg-preview { display: none; }
+.mail-shell.mail-compact .msg-row .msg-meta { font-size: .78rem; }
+.mail-shell.mail-compact .msg-row .msg-subject { font-size: .82rem; }
+</style>
+<script>
+var MAIL_COMPACT_KEY = 'expresso_mail_compact_{{ me.user_id }}';
+function applyMailCompact(on) {
+  var shell = document.querySelector('.mail-shell');
+  if (!shell) return;
+  shell.classList.toggle('mail-compact', !!on);
+  var btn = document.getElementById('mail-density-btn');
+  if (btn) btn.textContent = on ? '≣ Normal' : '≡ Compacto';
+}
+function toggleMailCompact() {
+  var cur = localStorage.getItem(MAIL_COMPACT_KEY) === '1';
+  var next = !cur;
+  localStorage.setItem(MAIL_COMPACT_KEY, next ? '1' : '0');
+  applyMailCompact(next);
+}
+(function initMailCompact() {
+  if (localStorage.getItem(MAIL_COMPACT_KEY) === '1') applyMailCompact(true);
+  else { var btn = document.getElementById('mail-density-btn'); if (btn) btn.textContent = '≡ Compacto'; }
+})();
+</script>
 {% endblock %}

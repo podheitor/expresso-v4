@@ -65,7 +65,9 @@
     </aside>
 
     <main class="tasks-main">
-      <div style="display:flex;justify-content:space-between;margin-bottom:.5rem;align-items:center;gap:.5rem">
+      <div style="display:flex;justify-content:space-between;margin-bottom:.5rem;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <input type="search" id="tasks-search-input" placeholder="🔍 Filtrar tarefas…" class="search-input-sm"
+               oninput="setTasksSearch(this.value)" style="flex:1;min-width:12rem;max-width:18rem">
         <div style="display:flex;gap:.3rem;align-items:center">
           <span class="muted small">Ordenar:</span>
           <select id="tasks-sort-select" class="search-input-sm" onchange="setTasksSort(this.value)" style="width:auto">
@@ -242,21 +244,33 @@ function todayIso() {
   return d.getFullYear() + '-' + (m<10?'0':'')+m + '-' + (day<10?'0':'')+day;
 }
 
+var _tasksSearchQ = '';
+function setTasksSearch(q) { _tasksSearchQ = (q || '').toLowerCase(); render(); }
+function applyTasksSearch(tasks) {
+  if (!_tasksSearchQ) return tasks;
+  return tasks.filter(function(t) {
+    return (t.title || '').toLowerCase().includes(_tasksSearchQ)
+        || (t.notes || '').toLowerCase().includes(_tasksSearchQ)
+        || (t.list || '').toLowerCase().includes(_tasksSearchQ);
+  });
+}
 function filterTasks(tasks) {
   var today = todayIso();
   var weekEnd = (function() {
     var d = new Date(); d.setDate(d.getDate() + (7 - d.getDay())); return d.toISOString().slice(0,10);
   })();
-  if (currentFilter === 'today')      return tasks.filter(function(t){ return !t.done && t.due === today; });
-  if (currentFilter === 'upcoming')   return tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
-  if (currentFilter === 'done')       return tasks.filter(function(t){ return t.done; });
-  if (currentFilter === 'pri-high')   return tasks.filter(function(t){ return !t.done && t.priority === 'high'; });
-  if (currentFilter === 'pri-normal') return tasks.filter(function(t){ return !t.done && (!t.priority || t.priority === 'normal'); });
-  if (currentFilter === 'pri-low')    return tasks.filter(function(t){ return !t.done && t.priority === 'low'; });
-  if (currentFilter === 'overdue')    return tasks.filter(function(t){ return !t.done && t.due && t.due < today; });
-  if (currentFilter === 'week')       return tasks.filter(function(t){ return !t.done && t.due && t.due >= today && t.due <= weekEnd; });
-  if (currentFilter === 'no-due')     return tasks.filter(function(t){ return !t.done && !t.due; });
-  return tasks.filter(function(t){ return !t.done; }); // 'all'
+  var out;
+  if (currentFilter === 'today')           out = tasks.filter(function(t){ return !t.done && t.due === today; });
+  else if (currentFilter === 'upcoming')   out = tasks.filter(function(t){ return !t.done && t.due && t.due > today; });
+  else if (currentFilter === 'done')       out = tasks.filter(function(t){ return t.done; });
+  else if (currentFilter === 'pri-high')   out = tasks.filter(function(t){ return !t.done && t.priority === 'high'; });
+  else if (currentFilter === 'pri-normal') out = tasks.filter(function(t){ return !t.done && (!t.priority || t.priority === 'normal'); });
+  else if (currentFilter === 'pri-low')    out = tasks.filter(function(t){ return !t.done && t.priority === 'low'; });
+  else if (currentFilter === 'overdue')    out = tasks.filter(function(t){ return !t.done && t.due && t.due < today; });
+  else if (currentFilter === 'week')       out = tasks.filter(function(t){ return !t.done && t.due && t.due >= today && t.due <= weekEnd; });
+  else if (currentFilter === 'no-due')     out = tasks.filter(function(t){ return !t.done && !t.due; });
+  else                                     out = tasks.filter(function(t){ return !t.done; }); // 'all'
+  return applyTasksSearch(out);
 }
 
 function exportTasksCsv() {
