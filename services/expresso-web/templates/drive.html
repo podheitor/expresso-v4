@@ -2098,5 +2098,25 @@ window.copyDriveTopLargest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveByExt=function(){
+  const rows=document.querySelectorAll('[data-file-id]');
+  if(!rows.length){alert('Sem arquivos');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const name=r.getAttribute('data-file-name')||'';
+    const dot=name.lastIndexOf('.');
+    const ext=dot>0?name.slice(dot+1).toLowerCase():'(sem ext)';
+    buckets[ext]=(buckets[ext]||0)+1;
+  });
+  const lines=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' extensões';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1893,5 +1893,26 @@ window.copyContactsWithoutPhone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdayThisMonth=function(){
+  const mm=String(new Date().getMonth()+1).padStart(2,'0');
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const bd=r.getAttribute('data-contact-birthday')||'';
+    if(bd.length>=7 && bd.slice(5,7)===mm){
+      const name=r.getAttribute('data-contact-name')||'';
+      out.push(bd+'\t'+name);
+    }
+  });
+  if(!out.length){alert('Nenhum aniversário em '+mm);return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.sort().join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' aniversariantes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

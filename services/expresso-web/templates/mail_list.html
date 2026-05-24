@@ -1989,5 +1989,27 @@ window.copyMailSubjectLengthAvg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailTodayOnly=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const d=(r.getAttribute('data-msg-date')||'').slice(0,10);
+    if(d===today){
+      const from=r.getAttribute('data-msg-from')||'';
+      const subj=r.getAttribute('data-msg-subject')||'';
+      out.push(from+'\t'+subj);
+    }
+  });
+  if(!out.length){alert('Nenhum hoje');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' hoje';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

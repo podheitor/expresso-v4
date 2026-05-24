@@ -1436,5 +1436,25 @@ window.copyWeekBusiestDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekRecurringEvents=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  const out=[];
+  cards.forEach(c=>{
+    if(c.getAttribute('data-event-recurring')==='1'){
+      const t=c.getAttribute('data-event-title')||'';
+      const s=c.getAttribute('data-event-start')||'';
+      out.push(s+'\t'+t);
+    }
+  });
+  if(!out.length){alert('Nenhum recorrente');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' recorrentes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

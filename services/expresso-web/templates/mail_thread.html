@@ -1413,5 +1413,27 @@ window.copyThreadByAuthor=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadQuoteRatio=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  if(!msgs.length){alert('Sem mensagens');return;}
+  let totalLines=0, quoteLines=0;
+  msgs.forEach(m=>{
+    const body=(m.querySelector('.body')||m).textContent||'';
+    body.split('\n').forEach(ln=>{
+      totalLines++;
+      if(ln.trim().startsWith('>'))quoteLines++;
+    });
+  });
+  const pct=Math.round((quoteLines/(totalLines||1))*100);
+  const txt=pct+'% citações ('+quoteLines+'/'+totalLines+' linhas)';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% citação';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
