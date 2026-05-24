@@ -62,6 +62,7 @@
         <button type="button" class="btn btn-ghost" onclick="restoreLastMeetForm()" title="Preencher campos com os dados da última reunião agendada">↻ Repetir última</button>
         <button type="button" class="btn btn-ghost" onclick="clearMeetForm()" title="Limpar todos os campos">⟲ Limpar</button>
         <button type="button" class="btn btn-ghost" onclick="genMeetRoomSlug()" title="Gerar nome aleatório para a sala">🎲 Sugerir nome</button>
+        <button type="button" class="btn btn-ghost" onclick="copyScheduledMeetLink(this)" title="Copiar link da sala">🔗 Copiar link</button>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
         <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
@@ -220,6 +221,16 @@ function genMeetRoomSlug(targetSel) {
   var slug = adj[Math.floor(Math.random()*adj.length)] + '-' + sub[Math.floor(Math.random()*sub.length)] + '-' + Math.floor(Math.random()*1000);
   t.value = slug;
   t.focus(); t.select();
+}
+function copyScheduledMeetLink(btn) {
+  var t = document.querySelector('input[name="room"], input[name="slug"], input[name="name"]');
+  var slug = t && t.value ? t.value.trim() : '';
+  if (!slug) { alert('Defina ou gere o nome da sala primeiro.'); return; }
+  var url = window.location.origin + '/meet/room/' + encodeURIComponent(slug);
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(function(){
+    if (btn) { var x = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = x; }, 1500); }
+  });
+  else { var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert('Link: ' + url); }
 }
 </script>
 {% endblock %}

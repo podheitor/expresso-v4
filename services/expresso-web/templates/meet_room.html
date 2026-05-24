@@ -1051,6 +1051,21 @@ function toggleMeetSelfView(btn) {
   } catch(e){}
   if (btn) btn.textContent = _meetSelfHidden ? '🪞 Mostrar' : '🪞 Self';
 }
+(function meetDurationCounter(){
+  var start = Date.now();
+  var div = document.createElement('div');
+  div.id = 'meet-duration';
+  div.style.cssText = 'position:fixed;top:.5rem;right:1rem;background:rgba(0,0,0,.6);color:#fff;padding:.25rem .6rem;border-radius:var(--radius);font-family:ui-monospace,monospace;font-size:.8rem;z-index:60;pointer-events:none';
+  document.body.appendChild(div);
+  function tick(){
+    var s = Math.floor((Date.now() - start) / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    function pad(n){ return n < 10 ? '0' + n : '' + n; }
+    div.textContent = '🕐 ' + (h > 0 ? pad(h) + ':' : '') + pad(m) + ':' + pad(sec);
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
 </script>
 
 <!-- Invite modal -->

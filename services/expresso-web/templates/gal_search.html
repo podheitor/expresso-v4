@@ -25,6 +25,7 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="bccAllGal()" title="Compor com BCC (oculta destinatários)">✉ BCC</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos os e-mails">📋 Copiar</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsGalGroup()" title="Criar grupo de contatos a partir destes resultados">👥 Salvar grupo</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalResultsCsv()" title="Exportar resultados como CSV">⬇ CSV</button>
@@ -64,6 +65,15 @@ function mailAllGal() {
   if (!ems.length) { alert('Sem destinatários.'); return; }
   if (ems.length > 50 && !confirm('Compor e-mail para ' + ems.length + ' destinatários?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(ems.join(', '));
+}
+function copyAllGalEmails(btn) {
+  var ems = _allGalEmails();
+  if (!ems.length) { alert('Sem e-mails nos resultados.'); return; }
+  var txt = ems.join(', ');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓ ' + ems.length; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); alert(ems.length + ' e-mails copiados.'); }
 }
 function bccAllGal() {
   var ems = _allGalEmails();

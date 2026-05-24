@@ -106,9 +106,18 @@
         var subj = 'Acesso ao Expresso';
         var body = 'Olá, sua conta está pronta. Acesse: ' + window.location.origin + '/login\n\nEmail: ' + email;
         window.location.href = '/mail/compose?to=' + encodeURIComponent(email) + '&subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body);
+      } else if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        var rows = Array.from(document.querySelectorAll('.admin-user-row')).filter(function(r){ return r.offsetParent !== null; });
+        if (!rows.length) { alert('Nenhum usuário visível.'); return; }
+        var lines = rows.map(function(r){ return (r.dataset.email || '').trim(); }).filter(Boolean);
+        var txt = lines.join('\n');
+        if (navigator.clipboard) navigator.clipboard.writeText(txt);
+        else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+        alert('Copiados ' + lines.length + ' email(s) ao clipboard.');
       } else if (e.key === '?') {
         e.preventDefault();
-        alert('Atalhos admin/usuários:\n\n/ — buscar\nn — novo usuário\ne — exportar CSV\nr — recarregar\nc — copiar email (sob mouse)\ni — enviar convite (sob mouse)\n? — esta ajuda');
+        alert('Atalhos admin/usuários:\n\n/ — buscar\nn — novo usuário\ne — exportar CSV\nr — recarregar\nc — copiar email (sob mouse)\ni — enviar convite (sob mouse)\nx — copiar emails visíveis\n? — esta ajuda');
       }
     });
     document.addEventListener('mouseover', function(e) {

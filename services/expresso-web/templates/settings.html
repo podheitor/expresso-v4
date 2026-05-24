@@ -1133,6 +1133,26 @@ function importAllPreferences(input) {
   };
   rd.readAsText(f);
 }
+function showStorageBreakdown() {
+  var groups = {};
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (!k || k.indexOf('expresso_') !== 0) continue;
+    var v = localStorage.getItem(k) || '';
+    var bytes = new Blob([k + v]).size;
+    var parts = k.split('_');
+    var feat = parts.slice(0, 3).join('_');
+    groups[feat] = (groups[feat] || 0) + bytes;
+  }
+  var keys = Object.keys(groups).sort(function(a,b){ return groups[b] - groups[a]; });
+  if (!keys.length) { alert('localStorage vazio.'); return; }
+  function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
+  var total = 0;
+  keys.forEach(function(k){ total += groups[k]; });
+  alert('📦 Uso de localStorage por feature:\n\n' +
+        keys.slice(0, 20).map(function(k){ return fmt(groups[k]) + ' ' + k; }).join('\n') +
+        '\n\nTOTAL: ' + fmt(total));
+}
 function clearAvatarCache() {
   var n = 0;
   for (var i = localStorage.length - 1; i >= 0; i--) {

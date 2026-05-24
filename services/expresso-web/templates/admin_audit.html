@@ -16,6 +16,7 @@
       <button class="btn btn-ghost btn-sm" onclick="copyAuditSummary(this)" title="Copiar resumo (top 5 ações + top 5 usuários)">📊 Resumo</button>
       <button class="btn btn-ghost btn-sm" onclick="copyVisibleAuditIps(this)" title="Copiar IPs únicos das linhas visíveis">🌐 IPs</button>
       <button class="btn btn-ghost btn-sm" onclick="groupAuditByUser(this)" title="Agrupar visíveis por usuário">👥 Por usuário</button>
+      <button class="btn btn-ghost btn-sm" onclick="promptFilterAuditAction()" title="Filtrar por ação">🔍 Filtrar ação</button>
     </div>
   </div>
 
@@ -336,6 +337,25 @@ function copyVisibleAuditIps(btn) {
     if (btn) { var t = btn.textContent; btn.textContent = '✓ ' + list.length; setTimeout(function(){ btn.textContent = t; }, 1500); }
   });
   else alert(txt);
+}
+function filterAuditByAction(action) {
+  var rows = document.querySelectorAll('tbody tr');
+  var shown = 0;
+  rows.forEach(function(r){
+    var cells = r.querySelectorAll('td');
+    var actCell = cells[1] || cells[2];
+    var txt = ((actCell && actCell.textContent) || '').toLowerCase().trim();
+    var match = !action || txt.indexOf(action.toLowerCase()) >= 0;
+    r.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  return shown;
+}
+function promptFilterAuditAction() {
+  var act = prompt('Filtrar por ação (vazio = todas):');
+  if (act === null) return;
+  var n = filterAuditByAction(act);
+  alert(n + ' linha(s) visível(is).');
 }
 </script>
 {% endblock %}

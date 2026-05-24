@@ -958,6 +958,12 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     if (typeof reloadHomeDashboard === 'function') reloadHomeDashboard();
     else window.location.reload();
+  } else if (e.key === 'g' || e.key === 'G') {
+    e.preventDefault();
+    window.location.href = '/contacts/gal';
+  } else if (e.key === '?') {
+    e.preventDefault();
+    alert('Atalhos da home:\n\nn — novo (menu)\nr — recarregar\ng — GAL (busca global)\n? — esta ajuda');
   }
 });
 // ── Follow-up reminders panel (lê de localStorage do compose) ─────────────

@@ -61,6 +61,15 @@
       <button class="btn btn-ghost" onclick="shareCurrentDriveFolder(this)" title="Copiar link da pasta atual">🔗 Link da pasta</button>
       <button class="btn btn-ghost" onclick="showFolderTotalSize(this)" title="Tamanho total dos arquivos visíveis">📏 Total</button>
       <button class="btn btn-ghost" onclick="toggleDriveOnlyFavs(this)" title="Mostrar somente favoritos" id="drive-only-favs-btn">⭐ Só favs</button>
+      <button class="btn btn-ghost" onclick="sortDriveBySize(true)" title="Ordenar por tamanho (maior primeiro)">📏↓ Tamanho</button>
+      <select class="btn btn-ghost" onchange="if(this.value){filterDriveByKind(this.value);}else{clearDriveFilter();}" title="Filtrar por tipo">
+        <option value="">Tipo…</option>
+        <option value="img">🖼️ Imagens</option>
+        <option value="doc">📄 Docs</option>
+        <option value="zip">🗜️ Compactados</option>
+        <option value="media">🎬 Mídia</option>
+        <option value="code">💻 Código</option>
+      </select>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
@@ -1059,6 +1068,39 @@ function showDriveFileInfo() {
   var owner = tr.dataset.owner || '?';
   function fmt(s){ s = +s; if(!isFinite(s)) return '?'; if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; if(s<1073741824) return (s/1048576).toFixed(1)+' MB'; return (s/1073741824).toFixed(2)+' GB'; }
   alert('📄 ' + name + '\n\nID: ' + id + '\nTamanho: ' + fmt(size) + '\nTipo: ' + mime + '\nModificado: ' + mtime + '\nDono: ' + owner);
+}
+function sortDriveBySize(desc) {
+  var tbody = document.querySelector('table tbody');
+  if (!tbody) return;
+  var rows = Array.from(tbody.querySelectorAll('tr[data-file-id]'));
+  rows.sort(function(a, b){
+    var sa = +(a.querySelector('.drive-file-check') || {}).dataset && +a.querySelector('.drive-file-check').dataset.size || 0;
+    var sb = +(b.querySelector('.drive-file-check') || {}).dataset && +b.querySelector('.drive-file-check').dataset.size || 0;
+    return desc ? (sb - sa) : (sa - sb);
+  });
+  rows.forEach(function(r){ tbody.appendChild(r); });
+}
+function filterDriveByKind(kind) {
+  var maps = {
+    img: /\.(png|jpe?g|gif|webp|bmp|svg|ico|tiff?)$/i,
+    doc: /\.(pdf|docx?|odt|rtf|txt|md|odp|pptx?|xlsx?|ods|csv)$/i,
+    zip: /\.(zip|tar|gz|bz2|7z|rar|xz)$/i,
+    media: /\.(mp4|mkv|webm|avi|mov|mp3|wav|flac|ogg|m4a|aac)$/i,
+    code: /\.(rs|py|js|ts|tsx|jsx|html|css|json|yaml|yml|toml|sh|c|cpp|h|hpp|go|java|kt|swift|rb)$/i,
+  };
+  var re = maps[kind];
+  if (!re) { document.querySelectorAll('tr[data-file-id]').forEach(function(r){ r.style.display = ''; }); return; }
+  var shown = 0;
+  document.querySelectorAll('tr[data-file-id]').forEach(function(r){
+    var name = ((r.querySelector('.drive-name') || {}).textContent || '').trim();
+    var match = re.test(name);
+    r.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  alert(shown + ' arquivo(s) do tipo "' + kind + '". Clique "Limpar" para mostrar todos.');
+}
+function clearDriveFilter() {
+  document.querySelectorAll('tr[data-file-id]').forEach(function(r){ r.style.display = ''; });
 }
 function shareCurrentDriveFolder(btn) {
   var url = window.location.href.split('#')[0];

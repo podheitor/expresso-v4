@@ -719,6 +719,44 @@ function copyComposeBody(btn) {
   });
   else { var x = document.createElement('textarea'); x.value = txt; document.body.appendChild(x); x.select(); document.execCommand('copy'); document.body.removeChild(x); }
 }
+(function composeAutosaveLocal(){
+  var KEY = 'expresso_compose_draft_local_{{ me.user_id }}';
+  function snap(){
+    var to = (document.querySelector('input[name="to"]') || {}).value || '';
+    var cc = (document.querySelector('input[name="cc"]') || {}).value || '';
+    var bcc = (document.querySelector('input[name="bcc"]') || {}).value || '';
+    var subj = (document.querySelector('input[name="subject"]') || {}).value || '';
+    var body = (document.getElementById('compose-rich-editor') || {}).innerHTML || (document.querySelector('textarea[name="body"], textarea[name="body_text"]') || {}).value || '';
+    if (!(to || cc || bcc || subj || body.trim())) return;
+    try { localStorage.setItem(KEY, JSON.stringify({ to: to, cc: cc, bcc: bcc, subject: subj, body: body, at: Date.now() })); } catch(e) {}
+    var ind = document.getElementById('compose-autosave-ind');
+    if (!ind) {
+      ind = document.createElement('div');
+      ind.id = 'compose-autosave-ind';
+      ind.style.cssText = 'position:fixed;bottom:.5rem;right:1rem;color:var(--muted);font-size:.72rem;opacity:.7;z-index:50';
+      document.body.appendChild(ind);
+    }
+    ind.textContent = '💾 rascunho local salvo ' + new Date().toLocaleTimeString();
+  }
+  window._composeRestoreLocal = function(){
+    try {
+      var s = localStorage.getItem(KEY);
+      if (!s) { alert('Sem rascunho local salvo.'); return; }
+      var d = JSON.parse(s);
+      if (!confirm('Restaurar rascunho de ' + new Date(d.at).toLocaleString() + '?')) return;
+      function setVal(sel, v){ var el = document.querySelector(sel); if (el) el.value = v || ''; }
+      setVal('input[name="to"]', d.to);
+      setVal('input[name="cc"]', d.cc);
+      setVal('input[name="bcc"]', d.bcc);
+      setVal('input[name="subject"]', d.subject);
+      var ed = document.getElementById('compose-rich-editor');
+      if (ed) ed.innerHTML = d.body || '';
+      else { var ta = document.querySelector('textarea[name="body"], textarea[name="body_text"]'); if (ta) ta.value = d.body || ''; }
+    } catch(e) { alert('Falha ao restaurar.'); }
+  };
+  setInterval(snap, 30000);
+  window.addEventListener('beforeunload', snap);
+})();
 function estimateMessageSize() {
   var ta = document.querySelector('textarea[name="body"], #compose-body, #compose-body-text');
   var ed = document.getElementById('compose-rich-editor');

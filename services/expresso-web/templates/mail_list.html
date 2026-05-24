@@ -784,6 +784,29 @@ function confirmSnooze() {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('snooze-modal').style.display === 'flex') closeSnoozeModal();
 });
+(function copyHoveredSubject(){
+  document.addEventListener('mouseover', function(e){
+    var r = e.target && e.target.closest && e.target.closest('.msg-row-wrap');
+    if (r) window._lastHoverMsgRow = r;
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'y' && e.key !== 'Y') return;
+    var r = window._lastHoverMsgRow;
+    if (!r) return;
+    var subj = ((r.querySelector('.msg-subject, .msg-row-subject') || {}).textContent || '').trim();
+    if (!subj) return;
+    e.preventDefault();
+    if (navigator.clipboard) navigator.clipboard.writeText(subj);
+    else { var ta = document.createElement('textarea'); ta.value = subj; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    var t = document.createElement('div');
+    t.textContent = '📋 ' + subj.slice(0, 60);
+    t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem;max-width:60vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    document.body.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 1500);
+  });
+})();
 
 // "g i / g s / g d / g r" → jump-to-folder (gmail-style)
 (function gFolderJump() {

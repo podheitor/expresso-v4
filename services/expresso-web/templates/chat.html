@@ -1184,6 +1184,22 @@ function savePresenceMsg(text) {
       bookmarkChatMsg(mid, body, author);
       return;
     }
+    if (e.key === 'l' || e.key === 'L') {
+      var hm2 = window._lastHoverChatMsg;
+      if (!hm2) return;
+      e.preventDefault();
+      var mid2 = hm2.dataset.msgId || hm2.id || '';
+      if (!mid2) return;
+      var link = window.location.origin + window.location.pathname + '#msg-' + mid2;
+      if (navigator.clipboard) navigator.clipboard.writeText(link);
+      else { var ta = document.createElement('textarea'); ta.value = link; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+      var t = document.createElement('div');
+      t.textContent = '🔗 Link copiado';
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1500);
+      return;
+    }
     if (e.key !== '/') return;
     var ta = document.getElementById('chat-compose-input');
     if (ta) { e.preventDefault(); ta.focus(); }
@@ -1710,6 +1726,22 @@ function showChannelMsgStats() {
         'Total carregado: ' + msgs.length + '\n' +
         'Hoje: ' + todayCount + '\n\n' +
         'Top autores:\n' + top.map(function(a){ return '  ' + byAuthor[a] + '× ' + a; }).join('\n'));
+}
+function showMostReactedMsgs() {
+  var msgs = document.querySelectorAll('[data-msg-id]');
+  var scored = [];
+  msgs.forEach(function(m){
+    var rxn = m.querySelector('.chat-msg-reactions');
+    if (!rxn) return;
+    var n = rxn.querySelectorAll('.reaction-pill, [data-emoji]').length;
+    if (n === 0) return;
+    var body = ((m.querySelector('.chat-msg-body') || {}).textContent || '').trim().slice(0, 80);
+    var author = ((m.querySelector('.chat-msg-author, .chat-msg-name') || {}).textContent || '').trim();
+    scored.push({ n: n, body: body, author: author });
+  });
+  scored.sort(function(a,b){ return b.n - a.n; });
+  if (!scored.length) { alert('Nenhuma reação no canal.'); return; }
+  alert('🏆 Top mensagens reagidas:\n\n' + scored.slice(0, 10).map(function(s, i){ return (i+1) + '. (' + s.n + '×) ' + s.author + ': ' + s.body; }).join('\n\n'));
 }
 function toggleChannelMute(btn) {
   var u = new URL(window.location.href);

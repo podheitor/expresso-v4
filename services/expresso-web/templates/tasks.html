@@ -1053,9 +1053,22 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 's' || e.key === 'S') {
     e.preventDefault();
     showTasksWeekStats();
+  } else if (e.key === 'y' || e.key === 'Y') {
+    var elY = window._lastHoverTask;
+    if (!elY) return;
+    var titleY = ((elY.querySelector('.task-title, .task-text') || {}).textContent || '').trim();
+    if (!titleY) return;
+    e.preventDefault();
+    if (navigator.clipboard) navigator.clipboard.writeText(titleY);
+    else { var ta = document.createElement('textarea'); ta.value = titleY; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    var tt = document.createElement('div');
+    tt.textContent = '📋 ' + titleY.slice(0, 60);
+    tt.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+    document.body.appendChild(tt);
+    setTimeout(function(){ tt.remove(); }, 1500);
   } else if (e.key === '?') {
     e.preventDefault();
-    alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (na tarefa sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\nf — filtrar atrasadas\na — todas\ns — estatística semana\n? — esta ajuda');
+    alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\ny — copiar título (sob mouse)\nf — filtrar atrasadas\na — todas\ns — estatística semana\n? — esta ajuda');
   }
 });
 function exportTasksMarkdown() {
