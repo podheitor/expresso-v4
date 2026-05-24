@@ -359,5 +359,27 @@ document.addEventListener('keydown', function(e){
     alert('Copiado: ' + txt);
   });
 })();
+// sprint #20769 — tecla e exporta resultados GAL como CSV
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'e') return;
+    var rows = [['name','email']];
+    document.querySelectorAll('.gal-result, [data-gal-email]').forEach(function(r){
+      var name = (r.querySelector('.gal-name, [data-gal-name]') || r).textContent.trim().replace(/\s+/g, ' ');
+      var email = (r.getAttribute('data-gal-email') || (r.querySelector('[data-gal-email], .gal-email') || {}).textContent || '').trim();
+      if (email) rows.push([name, email]);
+    });
+    if (rows.length < 2) { alert('Sem resultados GAL.'); return; }
+    var csv = rows.map(function(r){ return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = 'gal-results-' + (new Date()).toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  });
+})();
 </script>
 {% endblock %}

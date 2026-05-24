@@ -1231,5 +1231,19 @@ document.addEventListener('keydown', function(e){
   else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert(names.length + ' nome(s) copiado(s).');
 });
+// sprint #20759 — tecla e renomeia primeiro arquivo selecionado
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'e') return;
+  var cb = document.querySelector('.file-checkbox:checked, .drive-row input[type="checkbox"]:checked');
+  if (!cb) { alert('Selecione um arquivo primeiro.'); return; }
+  var row = cb.closest('.drive-row, tr, li');
+  if (!row) return;
+  var ren = row.querySelector('a[href*="rename"], button[data-action="rename"]');
+  if (ren && ren.tagName === 'A') window.location.href = ren.getAttribute('href');
+  else if (ren) ren.click();
+  else alert('Botão de renomear não encontrado nesta linha.');
+});
 </script>
 {% endblock %}

@@ -571,5 +571,20 @@ document.addEventListener('keydown', function(e){
     alert('Corpo copiado (' + txt.length + ' chars).');
   });
 })();
+// sprint #20765 — tecla l lista todos os links da thread
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'l') return;
+    var hrefs = [];
+    document.querySelectorAll('.msg-body a[href], .message-body a[href], .thread-msg-body a[href]').forEach(function(a){
+      var h = a.getAttribute('href');
+      if (h && /^https?:/i.test(h) && hrefs.indexOf(h) === -1) hrefs.push(h);
+    });
+    if (!hrefs.length) { alert('Sem links na thread.'); return; }
+    alert(hrefs.length + ' link(s):\n\n' + hrefs.slice(0, 20).join('\n'));
+  });
+})();
 </script>
 {% endblock %}

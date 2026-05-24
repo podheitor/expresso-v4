@@ -452,5 +452,24 @@ document.addEventListener('keydown', function(e){
     else window.location.href = '/calendar/event/new';
   });
 })();
+// sprint #20766 — tecla i info do dia (dia da semana + nº semana ISO)
+(function(){
+  function isoWeek(d) {
+    var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dn = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - dn);
+    var ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    return Math.ceil((((t - ys) / 86400000) + 1) / 7);
+  }
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'i') return;
+    var now = new Date();
+    var dn = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][now.getDay()];
+    var evs = document.querySelectorAll('.event, .calendar-event, [data-event-id]').length;
+    alert('Dia: ' + now.toLocaleDateString() + '\nDia da semana: ' + dn + '\nSemana ISO: ' + isoWeek(now) + '\nEventos visíveis: ' + evs);
+  });
+})();
 </script>
 {% endblock %}

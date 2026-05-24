@@ -1237,5 +1237,18 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 's') return;
   window.location.href = '/settings';
 });
+// sprint #20756 — tecla i mostra info do user/host
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'i') return;
+  var info = 'Host: ' + window.location.host + '\n' +
+             'Path: ' + window.location.pathname + '\n' +
+             'User-Agent: ' + navigator.userAgent + '\n' +
+             'Lang: ' + (navigator.language || 'n/d') + '\n' +
+             'TZ: ' + (Intl.DateTimeFormat().resolvedOptions().timeZone || 'n/d') + '\n' +
+             'Online: ' + navigator.onLine;
+  alert(info);
+});
 </script>
 {% endblock %}

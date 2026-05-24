@@ -1311,5 +1311,20 @@ function copyTasksTitles() {
     alert(next === '1' ? 'Concluídas ocultas.' : 'Concluídas visíveis.');
   });
 })();
+// sprint #20761 — tecla i mostra contadores totais/concluídas/pendentes
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'i') return;
+    var rows = document.querySelectorAll('.task-row, [data-task-id]');
+    var total = rows.length, done = 0;
+    rows.forEach(function(r){
+      if (r.classList.contains('done') || r.classList.contains('completed') || r.querySelector('input[type="checkbox"]:checked')) done++;
+    });
+    var pct = total ? Math.round(100 * done / total) : 0;
+    alert('Total: ' + total + '\nConcluídas: ' + done + '\nPendentes: ' + (total - done) + '\nProgresso: ' + pct + '%');
+  });
+})();
 </script>
 {% endblock %}

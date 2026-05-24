@@ -1216,5 +1216,21 @@ document.addEventListener('keydown', function(e){
     } catch (err) { alert('Erro: ' + err.message); }
   });
 })();
+// sprint #20760 — tecla s mostra stats da reunião
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 's') return;
+    if (!window.jitsiApi || typeof window.jitsiApi.getParticipantsInfo !== 'function') {
+      alert('Jitsi não inicializado.');
+      return;
+    }
+    try {
+      var parts = window.jitsiApi.getParticipantsInfo() || [];
+      alert('Participantes: ' + parts.length + '\nRoom: ' + (window.jitsiApi.getRoomsInfo ? 'ok' : 'n/d'));
+    } catch (err) { alert('Erro: ' + err.message); }
+  });
+})();
 </script>
 {% endblock %}

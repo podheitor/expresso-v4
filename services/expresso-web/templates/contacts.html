@@ -990,5 +990,21 @@ document.addEventListener('keydown', function(e){
     alert(items.length + ' contato(s) ordenado(s) por nome.');
   });
 })();
+// sprint #20762 — tecla v valida sintaxe de emails
+(function(){
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'v') return;
+    var bad = [];
+    document.querySelectorAll('[data-contact-email], .contact-email').forEach(function(el){
+      var v = (el.getAttribute('data-contact-email') || el.textContent || '').trim();
+      if (v && !EMAIL_RE.test(v)) bad.push(v);
+    });
+    if (!bad.length) alert('Todos os e-mails parecem válidos.');
+    else alert(bad.length + ' e-mail(s) inválido(s):\n\n' + bad.slice(0, 20).join('\n'));
+  });
+})();
 </script>
 {% endblock %}

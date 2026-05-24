@@ -1922,5 +1922,15 @@ document.addEventListener('keydown', function(e){
     alert('Atalhos /chat:\n  / → foco busca\n  c → composer\n  b → toggle compact\n  l → list channels\n  t → top\n  w → toggle wide\n  h → home\n  g → top\n  G → bottom\n  s → snippet\n  S → snippets list\n  End/Home+c → composer\n  ? → esta ajuda');
   });
 })();
+// sprint #20758 — tecla e foca editor do composer
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'e') return;
+    var ed = document.querySelector('textarea[name="message"], #chat-composer, .chat-input');
+    if (ed) { e.preventDefault(); ed.focus(); }
+  });
+})();
 </script>
 {% endblock %}

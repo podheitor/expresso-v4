@@ -1366,5 +1366,18 @@ function clearOnlyExpressoSearchHistory() {
   keys.forEach(function(k){ localStorage.removeItem(k); removed++; });
   alert(removed + ' chave(s) de histórico de busca removida(s).');
 }
+// sprint #20763 — showLocalStorageQuota: estimativa de uso localStorage
+function showLocalStorageQuota() {
+  var bytes = 0, expresso = 0, all = 0;
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    var v = localStorage.getItem(k) || '';
+    var sz = (k.length + v.length) * 2; // UTF-16
+    bytes += sz; all++;
+    if (k.indexOf('expresso_') === 0) expresso += sz;
+  }
+  var kb = function(b){ return (b / 1024).toFixed(2) + ' KB'; };
+  alert('localStorage:\n  Chaves totais: ' + all + '\n  Tamanho total: ' + kb(bytes) + '\n  Chaves expresso_*: ' + (expresso > 0 ? kb(expresso) : '0 KB') + '\n\n(Quota típica: 5–10 MB)');
+}
 </script>
 {% endblock %}

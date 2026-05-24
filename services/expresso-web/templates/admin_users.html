@@ -498,5 +498,20 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /admin/users:\n  / → busca\n  x → copia emails visíveis\n  s → ordenar por nome\n  p → top domínios\n  n → contagem\n  e → CSV export\n  ? → esta ajuda');
 });
+// sprint #20770 — tecla t top-N tenants
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 't') return;
+  var counts = {};
+  document.querySelectorAll('[data-tenant-id], .user-tenant').forEach(function(el){
+    var t = (el.getAttribute('data-tenant-id') || el.textContent || '').trim();
+    if (t) counts[t] = (counts[t] || 0) + 1;
+  });
+  var keys = Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a]; });
+  if (!keys.length) { alert('Sem coluna tenant detectada.'); return; }
+  var lines = keys.slice(0, 10).map(function(k){ return k + ': ' + counts[k]; });
+  alert('Top tenants:\n\n' + lines.join('\n'));
+});
 </script>
 {% endblock %}

@@ -518,5 +518,24 @@ document.addEventListener('keydown', function(e){
     else window.location.href = '/calendar/event/new';
   });
 })();
+// sprint #20767 — tecla i info da semana
+(function(){
+  function isoWeek(d) {
+    var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dn = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - dn);
+    var ys = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    return Math.ceil((((t - ys) / 86400000) + 1) / 7);
+  }
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'i') return;
+    var now = new Date();
+    var evs = document.querySelectorAll('.event, .calendar-event, [data-event-id]').length;
+    var days = document.querySelectorAll('.day-col, .week-day-col, [data-day]').length;
+    alert('Semana ISO ' + isoWeek(now) + '\nHoje: ' + now.toLocaleDateString() + '\nDias na grade: ' + days + '\nEventos: ' + evs);
+  });
+})();
 </script>
 {% endblock %}

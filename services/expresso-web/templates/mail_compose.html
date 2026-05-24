@@ -914,5 +914,16 @@ function prependSubjectPrefix(prefix) {
   subj.value = p + ' ' + cur;
   subj.focus();
 }
+// sprint #20764 — countLinksInBody: conta URLs http(s) no body
+function countLinksInBody() {
+  var body = document.querySelector('textarea[name="body"], #compose-body');
+  if (!body) return;
+  var txt = body.value || '';
+  var matches = txt.match(/\bhttps?:\/\/[^\s)]+/gi) || [];
+  if (!matches.length) { alert('Nenhum link http(s) no corpo.'); return; }
+  var unique = {};
+  matches.forEach(function(u){ unique[u] = (unique[u] || 0) + 1; });
+  alert(matches.length + ' link(s) (' + Object.keys(unique).length + ' únicos).\n\nExemplos:\n' + matches.slice(0, 5).join('\n'));
+}
 </script>
 {% endblock %}
