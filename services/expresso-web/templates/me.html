@@ -36,6 +36,7 @@
       <a class="btn btn-ghost" href="/settings?tab=notifications">🔔 Notificações</a>
       <a class="btn btn-ghost" href="/settings?tab=filters">📨 Regras de email</a>
       <button class="btn btn-ghost" onclick="downloadMeJson()" title="Baixar snapshot do perfil">⬇ Meus dados (JSON)</button>
+      <button class="btn btn-ghost" onclick="downloadMeVCard()" title="Baixar como vCard (.vcf)">⬇ vCard</button>
       <a class="btn btn-ghost" href="{{ logout_url }}">↪ Sair</a>
     </div>
 
@@ -116,6 +117,25 @@ function downloadMeJson() {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'expresso-profile-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function downloadMeVCard() {
+  var name = '{{ me.display_name }}'.replace(/\\/g, '\\\\').replace(/[,;]/g, '\\$&');
+  var email = '{{ me.email }}';
+  var vcf = [
+    'BEGIN:VCARD',
+    'VERSION:3.0',
+    'FN:' + name,
+    'EMAIL;TYPE=INTERNET:' + email,
+    'UID:' + email,
+    'REV:' + new Date().toISOString(),
+    'END:VCARD'
+  ].join('\r\n');
+  var blob = new Blob([vcf], { type: 'text/vcard' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (email.split('@')[0] || 'me') + '.vcf';
   a.click();
   URL.revokeObjectURL(a.href);
 }

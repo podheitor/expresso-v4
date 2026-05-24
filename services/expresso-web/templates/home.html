@@ -162,6 +162,10 @@
       <ul class="home-file-list" id="home-meet-today">
         <li class="muted small home-widget-empty">Carregando reuniões…</li>
       </ul>
+      <div id="home-pinned-rooms" style="display:none;margin-top:.4rem;padding-top:.4rem;border-top:1px dashed var(--border)">
+        <span class="muted small" style="font-size:.7rem">★ FIXADAS</span>
+        <ul class="home-file-list" id="home-pinned-rooms-list" style="margin:.2rem 0 0"></ul>
+      </div>
     </div>
 
     <!-- Tarefas -->
@@ -698,6 +702,20 @@ renderWeatherWidget();
     el.style.borderColor = 'var(--accent, #14b8a6)';
     el.title = 'Mais usado (' + hits[top] + ' acessos)';
   }
+})();
+(function loadPinnedMeetRooms() {
+  try {
+    var pins = JSON.parse(localStorage.getItem('expresso_pinned_meet_rooms') || '[]');
+    if (!pins.length) return;
+    var box = document.getElementById('home-pinned-rooms');
+    var list = document.getElementById('home-pinned-rooms-list');
+    if (!box || !list) return;
+    box.style.display = 'block';
+    list.innerHTML = pins.slice(0, 5).map(function(rid) {
+      var safe = String(rid).replace(/[<>"&]/g, '');
+      return '<li><a href="/meet/' + encodeURIComponent(safe) + '">⭐ ' + safe + '</a></li>';
+    }).join('');
+  } catch(e){}
 })();
 </script>
 {% endblock %}

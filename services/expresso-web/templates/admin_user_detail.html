@@ -10,6 +10,8 @@
     <p class="muted small" style="margin:0">{{ user.email }}</p>
   </div>
   <div style="margin-left:auto;display:flex;gap:.5rem">
+    <a class="btn btn-ghost btn-sm" href="mailto:{{ user.email }}" title="Compor e-mail para este usuário">✉ E-mail</a>
+    <button class="btn btn-ghost btn-sm" onclick="impersonateHint('{{ user.email }}')" title="Como assumir esta sessão (instruções)">🎭 Personificar</button>
     <form method="post" action="/admin/users/{{ user.id }}/reset-password">
       <button class="btn btn-ghost btn-sm" type="submit" onclick="return confirm('Enviar e-mail de redefinição de senha?')">🔑 Redefinir senha</button>
     </form>
@@ -224,6 +226,9 @@ function copyToClip(btn, text) {
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
+}
+function impersonateHint(email) {
+  alert('Para personificar ' + email + ':\n\n1. Acesse o console Keycloak admin\n2. Users → ' + email + ' → Impersonate\n\nA personificação é registrada no audit log.');
 }
 </script>
 {% endblock %}

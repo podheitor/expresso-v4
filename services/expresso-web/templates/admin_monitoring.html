@@ -89,7 +89,10 @@
   <div class="card stack" style="margin-top:1.5rem">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
       <h2>Atividade — últimas 24h</h2>
-      <span class="muted small">Simulado (atualiza a cada 30s)</span>
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <span class="muted small">Simulado (atualiza a cada 30s)</span>
+        <button class="btn btn-ghost btn-sm" onclick="exportActivitySvg()" title="Baixar SVG">⬇ SVG</button>
+      </div>
     </div>
     <svg id="admin-activity-chart" width="100%" height="120" viewBox="0 0 480 120" preserveAspectRatio="xMidYMid meet" style="overflow:visible">
       <text id="admin-chart-placeholder" x="240" y="60" text-anchor="middle" fill="var(--text-muted)" font-size="12">Carregando…</text>
@@ -300,6 +303,19 @@ function resetUptimePanel() {
   if (!confirm('Resetar contador de uptime?')) return;
   localStorage.setItem(UPTIME_KEY, String(Date.now()));
   renderUptime();
+}
+function exportActivitySvg() {
+  var svg = document.getElementById('admin-activity-chart');
+  if (!svg) return;
+  var clone = svg.cloneNode(true);
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  var data = new XMLSerializer().serializeToString(clone);
+  var blob = new Blob([data], { type: 'image/svg+xml' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-activity-' + new Date().toISOString().slice(0,10) + '.svg';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 {% endblock %}

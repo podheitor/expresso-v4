@@ -65,15 +65,19 @@
   }
   </script>
 
-  <h2 style="margin-bottom:.75rem">Compartilhamentos atuais</h2>
+  <h2 style="margin-bottom:.75rem">Compartilhamentos atuais {% if !shares.is_empty() %}<span class="badge">{{ shares.len() }}</span>{% endif %}</h2>
   {% if shares.is_empty() %}
   <p class="muted">Nenhum compartilhamento.</p>
   {% else %}
+  <div style="margin-bottom:.5rem">
+    <input type="search" id="cal-share-filter" class="search-input-sm" placeholder="🔍 Filtrar por usuário…"
+           oninput="filterCalShares(this.value)" style="width:18rem">
+  </div>
   <table class="data-table">
     <thead><tr><th>Usuário</th><th>Privilégio</th><th></th></tr></thead>
     <tbody>
       {% for s in shares %}
-      <tr>
+      <tr class="cal-share-row" data-user="{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}">
         <td>{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}</td>
         <td><span class="badge badge-off">{{ s.privilege }}</span></td>
         <td class="row-actions">
@@ -94,6 +98,13 @@
   if (!inp) return;
   inp.value = window.location.origin + '/calendar/{{ calendar.id }}/ical';
 })();
+function filterCalShares(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('.cal-share-row').forEach(function(r) {
+    var u = (r.dataset.user || '').toLowerCase();
+    r.style.display = (!q || u.includes(q)) ? '' : 'none';
+  });
+}
 function copyIcalUrl() {
   var inp = document.getElementById('ical-share-url');
   if (!inp) return;

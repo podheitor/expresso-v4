@@ -186,5 +186,23 @@ function copySearchUrl(btn) {
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
 }
+(function searchResultsKeyNav() {
+  var rows = document.querySelectorAll('.msg-rows .msg-row');
+  if (!rows.length) return;
+  var idx = -1;
+  function highlight() {
+    rows.forEach(function(r, i) {
+      r.style.outline = i === idx ? '2px solid var(--accent, #14b8a6)' : '';
+      if (i === idx) r.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') { idx = Math.min(idx + 1, rows.length - 1); highlight(); e.preventDefault(); }
+    else if (e.key === 'k' || e.key === 'ArrowUp') { idx = Math.max(idx - 1, 0); highlight(); e.preventDefault(); }
+    else if (e.key === 'Enter' && idx >= 0) { window.location.href = rows[idx].href; }
+  });
+})();
 </script>
 {% endblock %}

@@ -20,6 +20,7 @@
       {% else %}
         <span class="muted small" style="display:none" id="part-count-label">👥 <span id="part-count">0</span></span>
       {% endif %}
+      <button class="btn btn-ghost btn-sm" id="meet-pin-btn" onclick="togglePinRoom('{{ room_id }}')" title="Fixar sala (atalho rápido na home)">☆</button>
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
       <button class="btn btn-ghost btn-sm" onclick="showRoomQr()" title="QR code da sala">▦ QR</button>
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
@@ -278,6 +279,22 @@ function copyRoomId(rid) {
     setTimeout(function(){ el.textContent = prev; }, 2000);
   });
 }
+var PINNED_ROOMS_KEY = 'expresso_pinned_meet_rooms';
+function loadPinnedRooms() { try { return JSON.parse(localStorage.getItem(PINNED_ROOMS_KEY) || '[]'); } catch(e) { return []; } }
+function togglePinRoom(rid) {
+  if (!rid) return;
+  var pins = loadPinnedRooms();
+  var i = pins.indexOf(rid);
+  if (i >= 0) pins.splice(i, 1); else pins.push(rid);
+  localStorage.setItem(PINNED_ROOMS_KEY, JSON.stringify(pins));
+  updatePinBtn(rid);
+}
+function updatePinBtn(rid) {
+  var btn = document.getElementById('meet-pin-btn'); if (!btn) return;
+  btn.textContent = loadPinnedRooms().indexOf(rid) >= 0 ? '★' : '☆';
+  btn.style.color = loadPinnedRooms().indexOf(rid) >= 0 ? '#f59e0b' : '';
+}
+(function initPinBtn() { updatePinBtn('{{ room_id }}'); })();
 function shareMeetLink() {
   var url = window.location.href;
   navigator.clipboard.writeText(url).then(function() {

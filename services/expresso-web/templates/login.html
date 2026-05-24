@@ -15,6 +15,7 @@
   </div>
   <a class="btn btn-primary btn-lg block" id="login-btn" href="{{ login_url }}">Entrar com Keycloak</a>
   <p class="muted small" id="last-login-hint" style="margin-top:.75rem;text-align:center;display:none"></p>
+  <p class="muted small" id="login-tenant-hint" style="margin-top:.2rem;text-align:center;display:none;font-size:.7rem"></p>
   <p class="muted small" style="margin-top:.4rem;text-align:center;font-size:.75rem">
     <a href="/healthz" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">● Status</a>
     <span style="opacity:.5">·</span>
@@ -33,6 +34,18 @@
     hint.textContent = '👤 Último acesso: ' + last + (when ? ' (' + when + ')' : '');
     hint.style.display = '';
   } catch(e) {}
+})();
+(function showTenantHint() {
+  try {
+    var hint = document.getElementById('login-tenant-hint');
+    if (!hint) return;
+    var host = window.location.hostname || '';
+    var sub = host.split('.')[0];
+    if (sub && sub !== 'www' && sub !== 'localhost' && !/^\d/.test(sub)) {
+      hint.textContent = '🏢 Tenant: ' + sub;
+      hint.style.display = '';
+    }
+  } catch(e){}
 })();
 (function tickLoginClock() {
   var el = document.getElementById('login-clock'); if (!el) return;

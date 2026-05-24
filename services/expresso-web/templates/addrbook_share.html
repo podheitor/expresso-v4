@@ -57,15 +57,19 @@
   }
   </script>
 
-  <h2 style="margin-bottom:.75rem">Compartilhamentos atuais</h2>
+  <h2 style="margin-bottom:.75rem">Compartilhamentos atuais {% if !shares.is_empty() %}<span class="badge">{{ shares.len() }}</span>{% endif %}</h2>
   {% if shares.is_empty() %}
   <p class="muted">Nenhum compartilhamento.</p>
   {% else %}
+  <div style="margin-bottom:.5rem">
+    <input type="search" id="share-filter" class="search-input-sm" placeholder="🔍 Filtrar por usuário…"
+           oninput="filterShares(this.value)" style="width:18rem">
+  </div>
   <table class="data-table">
     <thead><tr><th>Usuário</th><th>Privilégio</th><th></th></tr></thead>
     <tbody>
       {% for s in shares %}
-      <tr>
+      <tr class="share-row" data-user="{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}">
         <td>{% match s.email %}{% when Some with (e) %}{{ e }}{% when None %}{{ s.grantee_id }}{% endmatch %}</td>
         <td><span class="badge badge-off">{{ s.privilege }}</span></td>
         <td class="row-actions">
@@ -86,6 +90,13 @@
   if (!inp) return;
   inp.value = window.location.origin + '/carddav/addressbooks/{{ addressbook.id }}/';
 })();
+function filterShares(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('.share-row').forEach(function(r) {
+    var u = (r.dataset.user || '').toLowerCase();
+    r.style.display = (!q || u.includes(q)) ? '' : 'none';
+  });
+}
 function copyCardDavUrl() {
   var inp = document.getElementById('carddav-url');
   if (!inp) return;

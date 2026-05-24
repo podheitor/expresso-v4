@@ -54,7 +54,14 @@
   </div>
 
   <div class="card">
-    <h2 style="margin-bottom:1rem">Links existentes</h2>
+    <h2 style="margin-bottom:1rem">Links existentes {% if !shares.is_empty() %}<span class="badge">{{ shares.len() }}</span>{% endif %}</h2>
+    {% if !shares.is_empty() %}
+    <div style="margin-bottom:.5rem;display:flex;gap:.5rem">
+      <button class="btn btn-ghost btn-sm" onclick="filterDriveShares('all')">Todos</button>
+      <button class="btn btn-ghost btn-sm" onclick="filterDriveShares('active')">Ativos</button>
+      <button class="btn btn-ghost btn-sm" onclick="filterDriveShares('revoked')">Revogados</button>
+    </div>
+    {% endif %}
     {% if shares.is_empty() %}
       <div class="empty-state">Nenhum link criado ainda</div>
     {% else %}
@@ -64,7 +71,7 @@
       </thead>
       <tbody>
         {% for s in shares %}
-        <tr>
+        <tr class="drive-share-row" data-status="{% if s.is_active() %}active{% else %}revoked{% endif %}">
           <td class="mono muted">{% match s.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
           <td class="mono muted">{% match s.expires_at %}{% when Some with (d) %}<span class="share-expiry" data-exp="{{ d }}">{{ d }}</span>{% when None %}—{% endmatch %}</td>
           <td>
@@ -149,5 +156,11 @@ function showShareQr(url) {
     else if (diff < 86400) el.style.color = '#f59e0b';
   });
 })();
+function filterDriveShares(mode) {
+  document.querySelectorAll('.drive-share-row').forEach(function(r) {
+    if (mode === 'all') r.style.display = '';
+    else r.style.display = (r.dataset.status === mode) ? '' : 'none';
+  });
+}
 </script>
 {% endblock %}

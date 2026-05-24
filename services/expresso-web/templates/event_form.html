@@ -122,7 +122,9 @@
       </div>
 
       <label>Convidados <span class="muted">(um email por linha ou separados por vírgula)</span>
-        <textarea name="attendees" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local">{{ attendees }}</textarea>
+        <textarea name="attendees" id="event-attendees-ta" rows="3" placeholder="fulano@expresso.local&#10;ciclano@expresso.local"
+                  oninput="updateAttendeeCount(this)">{{ attendees }}</textarea>
+        <span class="muted small" id="event-attendees-count"></span>
       </label>
 
       {% if !attendee_pills.is_empty() %}
@@ -347,5 +349,15 @@ function setEventDuration(mins) {
   e.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
           + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
+function updateAttendeeCount(ta) {
+  var el = document.getElementById('event-attendees-count'); if (!el) return;
+  var raw = (ta.value || '').split(/[\n,;]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+  var unique = Array.from(new Set(raw));
+  el.textContent = unique.length ? unique.length + ' convidado(s)' + (raw.length !== unique.length ? ' · ' + (raw.length - unique.length) + ' duplicado(s)' : '') : '';
+}
+(function initAttendeeCount() {
+  var ta = document.getElementById('event-attendees-ta');
+  if (ta) updateAttendeeCount(ta);
+})();
 </script>
 {% endblock %}

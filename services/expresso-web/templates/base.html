@@ -180,6 +180,26 @@
     window.addEventListener('offline', refresh);
     refresh();
   })();
+  (function idleDetector() {
+    var IDLE_MS = 15 * 60 * 1000;
+    var lastActivity = Date.now();
+    function ensureDot() {
+      var d = document.getElementById('expresso-idle-dot');
+      if (d) return d;
+      d = document.createElement('span');
+      d.id = 'expresso-idle-dot';
+      d.title = 'Sessão inativa há mais de 15 minutos';
+      d.style.cssText = 'position:fixed;bottom:.6rem;left:.6rem;width:.5rem;height:.5rem;background:#f59e0b;border-radius:50%;z-index:9998;display:none;box-shadow:0 0 6px rgba(245,158,11,.6)';
+      document.body.appendChild(d);
+      return d;
+    }
+    ['mousemove','keydown','click','scroll','touchstart'].forEach(function(ev) {
+      window.addEventListener(ev, function() { lastActivity = Date.now(); var d = document.getElementById('expresso-idle-dot'); if (d) d.style.display = 'none'; }, { passive: true });
+    });
+    setInterval(function() {
+      if (Date.now() - lastActivity > IDLE_MS) ensureDot().style.display = 'block';
+    }, 30000);
+  })();
   </script>
 </body>
 </html>

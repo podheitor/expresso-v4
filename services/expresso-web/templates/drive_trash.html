@@ -7,6 +7,7 @@
     <h1>Lixeira {% if !files.is_empty() %}<span class="badge" style="vertical-align:middle">{{ files.len() }}</span>{% endif %}</h1>
     <div style="display:flex;gap:.4rem">
       {% if !files.is_empty() %}
+      <button class="btn btn-amber btn-sm" onclick="bulkRestoreTrash()" title="Restaurar selecionados">↩ Restaurar selecionados</button>
       <button class="btn btn-danger btn-sm" onclick="emptyTrash()" title="Esvaziar lixeira">🗑 Esvaziar tudo</button>
       {% endif %}
       <a class="btn btn-ghost" href="/drive">← Meu Drive</a>
@@ -24,11 +25,12 @@
   </div>
   <table class="data-table">
     <thead>
-      <tr><th></th><th>Nome</th><th>Tamanho</th><th>Excluído</th><th>Ações</th></tr>
+      <tr><th style="width:1.5rem"><input type="checkbox" id="trash-select-all" onchange="toggleAllTrash(this.checked)" title="Selecionar todos"></th><th></th><th>Nome</th><th>Tamanho</th><th>Excluído</th><th>Ações</th></tr>
     </thead>
     <tbody>
       {% for f in files %}
-      <tr class="trash-row" data-name="{{ f.name }}">
+      <tr class="trash-row" data-name="{{ f.name }}" data-fid="{{ f.id }}">
+        <td><input type="checkbox" class="trash-row-cb"></td>
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>{{ f.name }}</td>
         <td class="mono muted">{{ f.size_human() }}</td>
@@ -67,6 +69,19 @@ function emptyTrash() {
     alert('Lixeira esvaziada (' + ids.length + ' arquivos).');
     window.location.reload();
   });
+}
+function toggleAllTrash(checked) {
+  document.querySelectorAll('.trash-row:not([style*="display: none"]) .trash-row-cb').forEach(function(cb) { cb.checked = checked; });
+}
+function bulkRestoreTrash() {
+  var selected = Array.from(document.querySelectorAll('.trash-row .trash-row-cb:checked'))
+    .map(function(cb){ return cb.closest('.trash-row').dataset.fid; })
+    .filter(Boolean);
+  if (!selected.length) { alert('Selecione pelo menos um item.'); return; }
+  if (!confirm('Restaurar ' + selected.length + ' item(ns)?')) return;
+  Promise.all(selected.map(function(id){
+    return fetch('/drive/' + encodeURIComponent(id) + '/restore', { method: 'POST', credentials: 'include' });
+  })).then(function(){ window.location.reload(); });
 }
 function filterTrash(q) {
   q = (q || '').toLowerCase();

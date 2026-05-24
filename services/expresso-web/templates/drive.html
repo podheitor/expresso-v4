@@ -70,7 +70,7 @@
         <input type="hidden" name="parent_id" value="{% match parent_id %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}">
         <input type="file" name="file" required multiple>
         <button class="btn btn-primary" type="submit">Enviar</button>
-        <span class="muted small" style="margin-left:.4rem">⌨ <kbd>U</kbd> upload · <kbd>N</kbd> nova pasta · <kbd>/</kbd> buscar</span>
+        <span class="muted small" style="margin-left:.4rem">⌨ <kbd>U</kbd> upload · <kbd>N</kbd> nova pasta · <kbd>/</kbd> buscar · <kbd>A</kbd> selecionar todos</span>
       </form>
     </div>
   </div>
@@ -374,6 +374,12 @@ document.addEventListener('keydown', function(e) {
     e.preventDefault();
     var si = document.getElementById('drive-search-input');
     if (si) { si.focus(); si.select(); }
+  }
+  else if (e.key === 'a' || e.key === 'A') {
+    e.preventDefault();
+    var cbs = document.querySelectorAll('.drive-row-check');
+    var allChecked = Array.from(cbs).every(function(cb){ return cb.checked; });
+    cbs.forEach(function(cb){ cb.checked = !allChecked; cb.dispatchEvent(new Event('change', { bubbles: true })); });
   }
   else if (e.key === 'Delete' || e.key === 'Backspace') {
     var sel = document.querySelectorAll('.drive-row-check:checked');
