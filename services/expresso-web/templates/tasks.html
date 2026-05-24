@@ -1384,4 +1384,30 @@ function highlightAllOverdueTasks() {
   alert(n + ' tarefa(s) vencida(s) destacada(s).');
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'J') return;
+    const now = Date.now();
+    const rows = Array.from(document.querySelectorAll('.task-row[data-due]'));
+    const upcoming = rows
+      .map(r => ({ r, t: Date.parse(r.dataset.due) }))
+      .filter(x => !isNaN(x.t) && x.t >= now)
+      .sort((a,b) => a.t - b.t);
+    if (!upcoming.length) {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = 'Sem próxima tarefa com prazo';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+      return;
+    }
+    upcoming[0].r.scrollIntoView({behavior:'smooth', block:'center'});
+    upcoming[0].r.style.outline = '2px solid #06c';
+    setTimeout(() => upcoming[0].r.style.outline = '', 1500);
+  });
+})();
+</script>
 {% endblock %}

@@ -494,4 +494,23 @@ function copyAuditAsCsv() {
   alert((rows.length - 1) + ' linha(s) copiada(s) como CSV.');
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'c') return;
+    const url = location.origin + location.pathname + location.search;
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = 'URL do filtro copiada';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}

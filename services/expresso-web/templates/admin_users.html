@@ -527,4 +527,18 @@ function copySuspendedUsersList() {
   alert(emails.length + ' email(s) suspenso(s) copiado(s).');
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'g') return;
+    const first = document.querySelector('tr[data-user-id]');
+    if (!first) return;
+    first.scrollIntoView({behavior:'smooth', block:'start'});
+    first.style.outline = '2px solid #06c';
+    setTimeout(() => first.style.outline = '', 1500);
+  });
+})();
+</script>
 {% endblock %}

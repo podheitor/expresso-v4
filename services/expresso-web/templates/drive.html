@@ -1290,4 +1290,24 @@ function copyDriveBreadcrumbs() {
   alert('Caminho copiado: ' + txt);
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'O') return;
+    const sel = document.querySelectorAll('.drive-row.selected, tr.selected');
+    let opened = 0;
+    sel.forEach(r => {
+      const a = r.querySelector('a[href]');
+      if (a) { window.open(a.href, '_blank'); opened++; }
+    });
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = opened ? 'Abertas ' + opened + ' em novas abas' : 'Nenhuma seleção';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  });
+})();
+</script>
 {% endblock %}

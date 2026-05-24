@@ -1425,4 +1425,22 @@ function countExpressoPrefsByPrefix() {
   alert('Prefs por feature:\n\n' + lines.join('\n'));
 }
 </script>
+<script>
+window.exportPrefsCsv = function(){
+  const rows = [['key','value']];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith('expresso_')) continue;
+    const v = (localStorage.getItem(k) || '').replace(/"/g, '""');
+    rows.push([k, v]);
+  }
+  const csv = rows.map(r => r.map(c => '"' + c + '"').join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-prefs.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+</script>
 {% endblock %}

@@ -958,4 +958,14 @@ function copyDraftAsMarkdown() {
   alert('Draft em markdown copiado (' + md.length + ' chars).');
 }
 </script>
+<script>
+window.appendSignature = function(){
+  const body = document.querySelector('textarea[name="body"]');
+  if (!body) return;
+  const sig = (document.querySelector('meta[name="user-signature"]') || {}).content || '\n\n-- \n{{ me.email }}';
+  if (body.value.includes(sig)) return;
+  body.value = body.value.replace(/\s+$/, '') + '\n\n' + sig;
+  body.focus();
+};
+</script>
 {% endblock %}

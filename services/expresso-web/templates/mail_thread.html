@@ -628,4 +628,25 @@ function printThread() {
   setTimeout(function(){ w.focus(); w.print(); }, 250);
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'K') return;
+    const ids = Array.from(document.querySelectorAll('[data-message-id]')).map(n => n.dataset.messageId).filter(Boolean);
+    if (!ids.length) return;
+    const txt = ids.join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = ids.length + ' Message-IDs copiados';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -429,4 +429,33 @@ function listGalFavoritesLocal() {
   else alert(arr.length + ' favorito(s):\n\n' + arr.join('\n'));
 }
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'g') return;
+    const phones = Array.from(document.querySelectorAll('[data-phone]'))
+      .map(n => n.dataset.phone).filter(Boolean);
+    if (!phones.length) {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = 'Sem telefones';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+      return;
+    }
+    const txt = phones.join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }).finally(() => {
+      const t = document.createElement('div');
+      t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent = phones.length + ' telefones copiados';
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1500);
+    });
+  });
+})();
+</script>
 {% endblock %}
