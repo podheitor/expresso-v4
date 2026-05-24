@@ -1143,6 +1143,15 @@ function savePresenceMsg(text) {
   document.addEventListener('keydown', function(){ _lastActive = Date.now(); });
   // "/" focuses message composer (unless typing in another input)
   document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      // Close any open emoji/gif picker
+      var ep = document.getElementById('chat-emoji-picker');
+      var gp = document.getElementById('chat-gif-picker');
+      var any = false;
+      if (ep && ep.style.display !== 'none') { ep.style.display = 'none'; any = true; }
+      if (gp && gp.style.display !== 'none') { gp.style.display = 'none'; any = true; }
+      if (any) { e.preventDefault(); return; }
+    }
     if (e.key !== '/') return;
     var t = (e.target && e.target.tagName) || '';
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;

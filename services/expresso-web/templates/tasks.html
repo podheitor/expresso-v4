@@ -961,6 +961,11 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === '/') {
     var f = document.getElementById('task-filter') || document.querySelector('input[type="search"]');
     if (f) { e.preventDefault(); f.focus(); }
+  } else if (e.key === 'c' || e.key === 'C') {
+    var elC = window._lastHoverTask || document.querySelector('.task-item[data-id]');
+    if (!elC) return;
+    var idC = elC.dataset.id;
+    if (idC && typeof toggleTask === 'function') { e.preventDefault(); toggleTask(idC); }
   } else if (e.key === 'p' || e.key === 'P') {
     // Cycle priority of the most recently hovered/selected task
     var el = window._lastHoverTask || document.querySelector('.task-item[data-id]');

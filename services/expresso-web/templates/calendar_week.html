@@ -17,6 +17,10 @@
         <input type="checkbox" id="cal-hide-weekend-cb" onchange="toggleWeekend()">
         <span>Ocultar fim de semana</span>
       </label>
+      <label class="muted small" style="display:inline-flex;align-items:center;gap:.3rem">
+        <input type="checkbox" id="cal-hide-empty-cb" onchange="toggleHideEmptyDays()">
+        <span>Ocultar dias vazios</span>
+      </label>
       <input type="search" id="week-event-filter" placeholder="🔍 Filtrar eventos…"
              oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
@@ -265,8 +269,27 @@ function filterWeekEvents(q) {
       var cb = document.getElementById('cal-hide-weekend-cb');
       if (cb) cb.checked = true;
     }
+    if (localStorage.getItem('expresso_cal_hide_empty_{{ me.user_id }}') === '1') {
+      document.body.classList.add('hide-empty-days');
+      applyHideEmptyDays();
+      var cb2 = document.getElementById('cal-hide-empty-cb');
+      if (cb2) cb2.checked = true;
+    }
   } catch(e){}
 })();
+function toggleHideEmptyDays() {
+  var on = document.body.classList.toggle('hide-empty-days');
+  try { localStorage.setItem('expresso_cal_hide_empty_{{ me.user_id }}', on ? '1' : '0'); } catch(e){}
+  applyHideEmptyDays();
+}
+function applyHideEmptyDays() {
+  var hide = document.body.classList.contains('hide-empty-days');
+  document.querySelectorAll('.week-col[data-date]').forEach(function(col) {
+    if (!hide) { col.style.display = ''; return; }
+    var hasEv = !!col.querySelector('.event-chip, .week-event');
+    col.style.display = hasEv ? '' : 'none';
+  });
+}
 </script>
 <style>
 .week-col.cal-weekend { background: rgba(148,163,184,0.06); }

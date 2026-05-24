@@ -64,6 +64,10 @@
         </p>
         <a class="btn btn-primary btn-sm" href="{% if !inbox_id.is_empty() %}/mail?folder={{ inbox_id }}{% else %}/mail{% endif %}">Abrir caixa de entrada</a>
       {% endif %}
+      <div id="home-followup-box" style="display:none;margin-top:.5rem;padding:.4rem .5rem;border-top:1px solid var(--border)">
+        <div class="muted small" style="font-weight:600;margin-bottom:.2rem">⏰ Follow-ups vencidos</div>
+        <ul id="home-followup-list" class="home-file-list" style="margin:0;padding:0;list-style:none"></ul>
+      </div>
     </div>
 
     <!-- Calendário / próximos eventos -->
@@ -803,7 +807,37 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'n' || e.key === 'N') {
     e.preventDefault();
     toggleHomeCreateMenu();
+  } else if (e.key === 'r' || e.key === 'R') {
+    e.preventDefault();
+    if (typeof reloadHomeDashboard === 'function') reloadHomeDashboard();
+    else window.location.reload();
   }
 });
+// ── Follow-up reminders panel (lê de localStorage do compose) ─────────────
+(function renderFollowups() {
+  var FOLLOWUP_KEY = 'expresso_followup_reminders_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(FOLLOWUP_KEY) || '[]'); } catch(e) {}
+  if (!Array.isArray(arr) || !arr.length) return;
+  var now = Date.now();
+  var due = arr.filter(function(f){ return f && f.due && f.due <= now; });
+  if (!due.length) return;
+  var box = document.getElementById('home-followup-box');
+  var ul  = document.getElementById('home-followup-list');
+  if (!box || !ul) return;
+  function escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  ul.innerHTML = due.slice(0, 5).map(function(f) {
+    var url = '/mail/compose?to=' + encodeURIComponent(f.to || '') +
+              '&subject=' + encodeURIComponent('Re: ' + (f.subject || ''));
+    var days = Math.floor((now - (f.sent_at||f.due)) / 86400000);
+    return '<li class="home-file-item">' +
+           '<span>📧</span>' +
+           '<a class="home-file-name" href="' + escH(url) + '" title="Reenviar para ' + escH(f.to) + '">' +
+           escH(f.subject || '(sem assunto)') + ' → ' + escH(f.to) + '</a>' +
+           '<span class="muted small" style="font-size:.72rem;margin-left:auto">' + (days >= 0 ? (days + 'd atrás') : '') + '</span>' +
+           '</li>';
+  }).join('');
+  box.style.display = 'block';
+})();
 </script>
 {% endblock %}

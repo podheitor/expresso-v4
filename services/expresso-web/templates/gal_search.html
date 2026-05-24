@@ -25,6 +25,7 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsGalGroup()" title="Criar grupo de contatos a partir destes resultados">👥 Salvar grupo</button>
         </div>
       </div>
       <div class="contact-grid">
@@ -61,6 +62,22 @@ function mailAllGal() {
   if (!ems.length) { alert('Sem destinatários.'); return; }
   if (ems.length > 50 && !confirm('Compor e-mail para ' + ems.length + ' destinatários?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(ems.join(', '));
+}
+function saveAsGalGroup() {
+  var ems = _allGalEmails();
+  if (!ems.length) { alert('Nenhum e-mail nos resultados.'); return; }
+  var name = prompt('Nome do novo grupo:', 'GAL: {{ query }}');
+  if (!name) return;
+  name = name.trim();
+  if (!name) return;
+  var GROUPS_KEY = 'expresso_contact_groups_{{ me.user_id }}';
+  var groups = [];
+  try { groups = JSON.parse(localStorage.getItem(GROUPS_KEY) || '[]'); } catch(e) {}
+  groups.push({ name: name, members: ems });
+  try { localStorage.setItem(GROUPS_KEY, JSON.stringify(groups)); } catch(e) { alert('Falha ao salvar.'); return; }
+  if (confirm('Grupo "' + name + '" salvo com ' + ems.length + ' membro(s). Abrir lista de grupos?')) {
+    window.location.href = '/contacts';
+  }
 }
 function copyAllGalEmails(btn) {
   var ems = _allGalEmails();

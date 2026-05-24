@@ -24,7 +24,7 @@
 
   <main class="contacts-main">
     <div class="page-header">
-      <h1>Contatos</h1>
+      <h1>Contatos <span class="muted small" id="contacts-count-badge" style="font-weight:normal;font-size:.7em;margin-left:.4rem"></span></h1>
       {% match selected_book %}{% when Some with (bid) %}
         <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
           <input type="search" id="contacts-search" class="tasks-add-input" placeholder="🔍 Filtrar contatos…"
@@ -309,6 +309,16 @@ function filterContacts(q) {
   });
   buildContactSeparators();
   filterContactCards(q);
+  updateContactsCountBadge();
+}
+function updateContactsCountBadge() {
+  var rows = document.querySelectorAll('.data-table tbody tr[data-name]');
+  if (!rows.length) return;
+  var total = rows.length;
+  var visible = Array.from(rows).filter(function(r){ return r.style.display !== 'none'; }).length;
+  var el = document.getElementById('contacts-count-badge');
+  if (!el) return;
+  el.textContent = (visible === total) ? ('· ' + total + ' contato(s)') : ('· ' + visible + ' / ' + total);
 }
 
 function buildContactSeparators() {
@@ -373,6 +383,7 @@ function filterContactCards(q) {
     if (nameCell) row.dataset.name = nameCell.textContent.trim();
   });
   buildContactSeparators();
+  updateContactsCountBadge();
 })();
 
 // ── Merge duplicates ──────────────────────────────────────────────────────────

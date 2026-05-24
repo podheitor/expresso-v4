@@ -63,6 +63,7 @@
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchTrash()" title="Mover selecionados para lixeira">🗑 Lixeira</button>
         <button class="btn btn-ghost btn-sm" onclick="batchCopyLinks(this)" title="Copiar links de download dos selecionados">🔗 Copiar links</button>
+        <button class="btn btn-ghost btn-sm" onclick="invertDriveSelection()" title="Inverter seleção">⇄ Inverter</button>
         <button class="btn btn-ghost btn-sm" onclick="clearDriveSelection()">✕ Cancelar</button>
       </div>
       <form class="upload-form" method="post" title="Atalho: U"
@@ -286,6 +287,15 @@ function clearDriveSelection() {
   if (all) all.checked = false;
   updateDriveSelection();
 }
+function invertDriveSelection() {
+  document.querySelectorAll('.drive-file-check').forEach(function(cb){ cb.checked = !cb.checked; });
+  var all = document.getElementById('drive-select-all');
+  if (all) {
+    var cbs = document.querySelectorAll('.drive-file-check');
+    all.checked = cbs.length > 0 && Array.from(cbs).every(function(cb){ return cb.checked; });
+  }
+  updateDriveSelection();
+}
 function batchTrash() {
   var ids = Array.from(document.querySelectorAll('.drive-file-check:checked')).map(function(cb){ return cb.dataset.id; });
   if (!ids.length) return;
@@ -408,6 +418,19 @@ document.addEventListener('keydown', function(e) {
     var selFav = document.querySelectorAll('.drive-row-check:checked');
     if (!selFav.length) { alert('Selecione um ou mais arquivos para favoritar.'); return; }
     selFav.forEach(function(cb) { if (typeof toggleDriveFav === 'function') toggleDriveFav(cb.dataset.id); });
+  }
+  else if (e.key === 'r' || e.key === 'R') {
+    // Rename the single selected file
+    var selR = document.querySelectorAll('.drive-row-check:checked');
+    if (selR.length !== 1) { alert('Selecione exatamente 1 arquivo para renomear.'); return; }
+    e.preventDefault();
+    var row = selR[0].closest('tr');
+    if (!row) return;
+    var fid = row.dataset.fileId;
+    var el  = row.querySelector('.drive-name');
+    if (fid && el && typeof startRename === 'function') {
+      startRename({ preventDefault:function(){}, stopPropagation:function(){} }, fid, el);
+    }
   }
   else if (e.key === 'Delete' || e.key === 'Backspace') {
     var sel = document.querySelectorAll('.drive-row-check:checked');

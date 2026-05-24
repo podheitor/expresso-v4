@@ -206,6 +206,25 @@
       if (Date.now() - lastActivity > IDLE_MS) ensureDot().style.display = 'block';
     }, 30000);
   })();
+  (function openExtLinksInNewTab() {
+    // Toggle via Settings → Privacidade & dados; default ON
+    if (localStorage.getItem('expresso_open_ext_newtab') === '0') return;
+    var host = location.host;
+    document.addEventListener('click', function(e) {
+      var a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      if (a.target) return;
+      var href = a.getAttribute('href') || '';
+      if (!/^https?:\/\//i.test(href)) return;
+      try {
+        var u = new URL(href);
+        if (u.host && u.host !== host) {
+          a.target = '_blank';
+          a.rel = (a.rel ? a.rel + ' ' : '') + 'noopener noreferrer';
+        }
+      } catch(_) {}
+    }, true);
+  })();
   </script>
 </body>
 </html>

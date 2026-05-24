@@ -59,10 +59,11 @@
 
       <div class="form-actions">
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
+        <button type="button" class="btn btn-ghost" onclick="restoreLastMeetForm()" title="Preencher campos com os dados da última reunião agendada">↻ Repetir última</button>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
         <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
-        <button class="btn btn-primary" type="submit">Agendar reunião</button>
+        <button class="btn btn-primary" type="submit" onclick="saveLastMeetForm()">Agendar reunião</button>
       </div>
     </form>
   </div>
@@ -169,6 +170,33 @@ function openInOutlook() {
     + '&enddt=' + encodeURIComponent(new Date(f.end).toISOString())
     + '&body=' + encodeURIComponent(f.details);
   window.open(u, '_blank', 'noopener');
+}
+// ── Persist last meeting form to localStorage ─────────────────────────────────
+var LAST_MEET_KEY = 'expresso_meet_last_form_{{ me.user_id }}';
+function saveLastMeetForm() {
+  try {
+    var data = {
+      name:        (document.querySelector('input[name="name"]')      || {}).value || '',
+      description: (document.querySelector('textarea[name="description"]') || {}).value || '',
+      invitees:    (document.querySelector('textarea[name="invitees"]') || {}).value || '',
+    };
+    localStorage.setItem(LAST_MEET_KEY, JSON.stringify(data));
+  } catch(e) {}
+}
+function restoreLastMeetForm() {
+  var raw = '';
+  try { raw = localStorage.getItem(LAST_MEET_KEY) || ''; } catch(e) {}
+  if (!raw) { alert('Nenhuma reunião anterior encontrada.'); return; }
+  var data = {};
+  try { data = JSON.parse(raw); } catch(e) {}
+  if (!data.name) { alert('Dados da última reunião inválidos.'); return; }
+  if (!confirm('Preencher campos com a última reunião agendada ("' + data.name + '")?')) return;
+  var setVal = function(sel, v) { var el = document.querySelector(sel); if (el) el.value = v || ''; };
+  setVal('input[name="name"]', data.name);
+  setVal('textarea[name="description"]', data.description);
+  setVal('textarea[name="invitees"]', data.invitees);
+  var ic = document.getElementById('meet-invitees-ta');
+  if (ic && typeof updateMeetInviteeCount === 'function') updateMeetInviteeCount(ic);
 }
 </script>
 {% endblock %}

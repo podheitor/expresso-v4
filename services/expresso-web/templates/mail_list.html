@@ -520,6 +520,12 @@ function showSnoozeToast(subject, msgId) {
       if (archive) archive.click();
     } else if (e.key === 'c') {
       window.location.href = '/mail/compose';
+    } else if (e.key === 's' || e.key === 'S') {
+      // Toggle star/flag on the currently selected (checked) messages
+      var sel = document.querySelectorAll('.msg-checkbox:checked, .row-checkbox:checked');
+      if (!sel.length) return;
+      e.preventDefault();
+      if (typeof batchMailAction === 'function') batchMailAction('flag');
     }
   });
 })();

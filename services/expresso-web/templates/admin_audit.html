@@ -39,6 +39,7 @@
     <button type="button" class="btn btn-ghost btn-sm" onclick="auditQuickRange(7)" title="Últimos 7 dias">7d</button>
     <button type="button" class="btn btn-ghost btn-sm" onclick="auditQuickRange(30)" title="Últimos 30 dias">30d</button>
     <button type="button" class="btn btn-ghost btn-sm" onclick="auditClearRange()" title="Limpar datas">×</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="auditClearAllFilters()" title="Limpar todos os filtros (busca, ação, datas)">⟲ Limpar tudo</button>
   </div>
 
   <div class="card" style="margin-top:.75rem;overflow:auto">
@@ -166,6 +167,11 @@ function auditClearRange() {
   var f = document.getElementById('audit-date-from'); if (f) f.value = '';
   var t = document.getElementById('audit-date-to'); if (t) t.value = '';
   filterAudit((document.getElementById('audit-search') || {}).value || '');
+}
+function auditClearAllFilters() {
+  var s = document.getElementById('audit-search'); if (s) s.value = '';
+  var a = document.getElementById('audit-action-filter'); if (a) a.selectedIndex = 0;
+  auditClearRange();
 }
 
 // Click row to copy full event as JSON

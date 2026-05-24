@@ -75,6 +75,12 @@
       } else if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         if (typeof showModal === 'function') showModal('admin-user-modal');
+      } else if (e.key === 'e' || e.key === 'E') {
+        e.preventDefault();
+        if (typeof exportUsersCsv === 'function') exportUsersCsv();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        window.location.reload();
       }
     });
   })();

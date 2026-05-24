@@ -604,6 +604,10 @@
           <input type="checkbox" id="pref-block-trackers" onchange="setBlockTrackers(this.checked)">
           <span>Avisar quando um e-mail contém possíveis pixels de rastreio</span>
         </label>
+        <label class="checkbox-row" style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
+          <input type="checkbox" id="pref-open-ext-newtab" onchange="setOpenExtNewTab(this.checked)">
+          <span>Abrir links externos em nova aba (padrão: sim)</span>
+        </label>
       </div>
 
       {% endif %}
@@ -968,6 +972,12 @@ function setBlockTrackers(v) { try { localStorage.setItem(TRK_KEY, v ? '1' : '0'
   var b = document.getElementById('pref-block-trackers');
   if (a) a.checked = localStorage.getItem(EXT_IMG_KEY) === '1';
   if (b) b.checked = localStorage.getItem(TRK_KEY) !== '0';
+})();
+var EXT_NEWTAB_KEY = 'expresso_open_ext_newtab';
+function setOpenExtNewTab(v) { try { localStorage.setItem(EXT_NEWTAB_KEY, v ? '1' : '0'); } catch(e){} }
+(function initOpenExtNewTab() {
+  var c = document.getElementById('pref-open-ext-newtab');
+  if (c) c.checked = localStorage.getItem(EXT_NEWTAB_KEY) !== '0';
 })();
 // ── Shortcuts filter ────────────────────────────────────────────────────────
 function filterShortcuts(q) {

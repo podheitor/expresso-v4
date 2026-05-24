@@ -146,6 +146,8 @@
         </div>
         <input type="hidden" name="send_at" id="compose-send-at">
         <span id="compose-send-at-label" class="muted small" style="margin-left:.5rem"></span>
+        <button type="button" class="btn btn-ghost" onclick="setFollowupReminder()" title="Lembrar de seguir esta mensagem se não houver resposta">⏰ Lembrete</button>
+        <span id="compose-followup-label" class="muted small"></span>
         <a href="/mail" class="btn btn-ghost" style="margin-left:auto">Cancelar</a>
       </div>
     </form>
@@ -592,5 +594,39 @@ function insertComposeSignature() {
     ta.dispatchEvent(new Event('input'));
   }
 }
+// ── Follow-up reminder (cliente-side, persistido em localStorage) ──────────
+var FOLLOWUP_KEY = 'expresso_followup_reminders_{{ me.user_id }}';
+function loadFollowups() {
+  try { return JSON.parse(localStorage.getItem(FOLLOWUP_KEY) || '[]'); } catch(e) { return []; }
+}
+function saveFollowups(arr) {
+  try { localStorage.setItem(FOLLOWUP_KEY, JSON.stringify(arr)); } catch(e) {}
+}
+function setFollowupReminder() {
+  var days = prompt('Lembrar de fazer follow-up em quantos dias? (1–30; 0 cancela)', '3');
+  if (days === null) return;
+  var n = parseInt(days, 10);
+  if (isNaN(n) || n < 0 || n > 30) { alert('Valor inválido. Use 0 a 30.'); return; }
+  var lbl = document.getElementById('compose-followup-label');
+  if (n === 0) { if (lbl) lbl.textContent = ''; window._composeFollowup = null; return; }
+  var to = (document.querySelector('input[name="to"]') || {}).value || '';
+  var subj = (document.querySelector('input[name="subject"]') || {}).value || '';
+  var dueAt = Date.now() + n * 86400000;
+  window._composeFollowup = { to: to, subject: subj, due: dueAt, days: n };
+  if (lbl) lbl.textContent = '⏰ Lembrar em ' + n + ' dia(s)';
+}
+// On submit, persist the follow-up record
+(function bindComposeFollowup() {
+  var f = document.getElementById('compose-form');
+  if (!f) return;
+  f.addEventListener('submit', function() {
+    if (!window._composeFollowup) return;
+    var arr = loadFollowups();
+    var to = (document.querySelector('input[name="to"]') || {}).value || window._composeFollowup.to;
+    var subj = (document.querySelector('input[name="subject"]') || {}).value || window._composeFollowup.subject;
+    arr.push({ to: to, subject: subj, due: window._composeFollowup.due, sent_at: Date.now() });
+    saveFollowups(arr);
+  });
+})();
 </script>
 {% endblock %}
