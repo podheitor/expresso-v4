@@ -2032,5 +2032,15 @@ window.copyMeetSelfId=function(){
     setTimeout(()=>t.remove(),1500);
   }catch(e){alert(e.message);}
 };
+window.hangupMeet=function(){
+  if(!window.jitsiApi){alert('Jitsi ausente');return;}
+  if(!confirm('Encerrar a chamada?'))return;
+  try{window.jitsiApi.executeCommand('hangup');}catch(e){alert(e.message);return;}
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hangup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

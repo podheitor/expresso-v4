@@ -1424,5 +1424,24 @@ window.copyGalByPhone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalNoTitle=function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const title=(r.getAttribute('data-gal-title')||'').trim();
+    if(!title){
+      const name=r.getAttribute('data-gal-name')||'?';
+      const email=r.getAttribute('data-gal-email')||'';
+      out.push(name+'\t'+email);
+    }
+  });
+  if(!out.length){alert('Todos têm cargo');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' sem cargo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

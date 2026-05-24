@@ -2065,5 +2065,17 @@ window.pingHomeApi=function(){
     setTimeout(()=>t.remove(),1800);
   }).catch(e=>alert(e.message));
 };
+window.copyLocaleInfo=function(){
+  const langs=(navigator.languages||[navigator.language||'?']).join(',');
+  const fmt=new Intl.NumberFormat().resolvedOptions();
+  const tz=Intl.DateTimeFormat().resolvedOptions().timeZone||'?';
+  const out='languages: '+langs+'\nlocale: '+fmt.locale+'\nnumberingSystem: '+fmt.numberingSystem+'\ntz: '+tz;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=fmt.locale+' / '+tz;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

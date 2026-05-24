@@ -2360,5 +2360,17 @@ window.copyBatteryInfo=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(e=>alert(e.message));
 };
+window.copyClipboardLength=function(){
+  if(!navigator.clipboard||!navigator.clipboard.readText){alert('Clipboard read API ausente');return;}
+  navigator.clipboard.readText().then(txt=>{
+    const lines=txt.split('\n').length;
+    const out='clipboard: '+txt.length+' chars / '+lines+' linhas';
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=out;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1800);
+  }).catch(e=>alert(e.message));
+};
 </script>
 {% endblock %}

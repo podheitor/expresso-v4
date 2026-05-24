@@ -2389,5 +2389,27 @@ window.copyTasksCreatedThisWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByLabel=function(){
+  const label=prompt('Label a filtrar:','');
+  if(label===null)return;
+  const q=label.trim().toLowerCase();
+  if(!q){alert('Vazio');return;}
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const labels=(r.getAttribute('data-task-labels')||'').toLowerCase();
+    if(labels.split(/[,;]/).map(x=>x.trim()).includes(q)){
+      const title=r.getAttribute('data-task-title')||(r.querySelector('.title')||r).textContent||'';
+      out.push(title.trim());
+    }
+  });
+  if(!out.length){alert('Nenhuma com '+q);return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' c/'+q;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
