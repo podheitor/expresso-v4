@@ -1277,5 +1277,15 @@ window.copyAddressBook = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.removeDuplicateRecipients = function(){
+  const f=['to','cc','bcc'];
+  let total=0;
+  f.forEach(n=>{const el=document.querySelector('[name="'+n+'"]');if(!el)return;const arr=(el.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);const set=[...new Set(arr.map(x=>x.toLowerCase()))].map(x=>arr.find(y=>y.toLowerCase()===x));total+=(arr.length-set.length);el.value=set.join(', ');});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total+' duplicatas removidas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

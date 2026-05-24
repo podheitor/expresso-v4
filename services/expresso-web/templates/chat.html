@@ -2349,5 +2349,17 @@ window.copyEmojiUsage = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMsgsByFirstWord = function(){
+  const msgs=document.querySelectorAll('[data-msg-text]');
+  const m={};
+  msgs.forEach(x=>{const t=(x.getAttribute('data-msg-text')||'').trim();const w=t.split(/\s+/)[0].toLowerCase();if(w)m[w]=(m[w]||0)+1;});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([w,n])=>w+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 20 primeiras palavras';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

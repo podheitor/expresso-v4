@@ -1794,5 +1794,18 @@ window.copyTasksByTag = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyOverdueDays = function(){
+  const now=Date.now();
+  const rows=document.querySelectorAll('[data-task-due][data-task-done="false"]');
+  const out=[];
+  rows.forEach(r=>{const d=Date.parse(r.getAttribute('data-task-due'));if(!isNaN(d)&&d<now){const dd=Math.floor((now-d)/86400000);out.push((r.getAttribute('data-task-title')||'?')+'\t'+dd+'d atraso');}});
+  out.sort((a,b)=>parseInt(b.split('\t')[1])-parseInt(a.split('\t')[1]));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' atrasadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

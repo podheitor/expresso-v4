@@ -1034,5 +1034,16 @@ window.copyWeekShortest = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetingCount = function(){
+  const evs=document.querySelectorAll('[data-event-attendees]');
+  let meetings=0,solo=0;
+  evs.forEach(e=>{const a=(e.getAttribute('data-event-attendees')||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean).length;if(a>1)meetings++;else solo++;});
+  const ta=document.createElement('textarea');ta.value='meetings\t'+meetings+'\nsolo\t'+solo;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=meetings+' meetings / '+solo+' solo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
 </script>
 {% endblock %}

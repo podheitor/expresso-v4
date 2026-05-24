@@ -1001,5 +1001,18 @@ window.copyThreadAttachments = function(){
   document.body.appendChild(ti);
   setTimeout(()=>ti.remove(),1500);
 };
+window.copyThreadStats = function(){
+  const msgs=document.querySelectorAll('[data-msg-from]');
+  const set=new Set();
+  let chars=0;
+  msgs.forEach(m=>{set.add(m.getAttribute('data-msg-from')||'?');chars+=(m.getAttribute('data-msg-text')||'').length;});
+  const txt='msgs\t'+msgs.length+'\nremetentes\t'+set.size+'\nchars\t'+chars;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const ti=document.createElement('div');
+  ti.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  ti.textContent=msgs.length+' msgs, '+set.size+' senders';
+  document.body.appendChild(ti);
+  setTimeout(()=>ti.remove(),1800);
+};
 </script>
 {% endblock %}
