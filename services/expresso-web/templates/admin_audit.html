@@ -928,5 +928,15 @@ window.copyAuditByHour = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFailedActions = function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-status="failed"],[data-audit-status="error"]'));
+  const out=rows.map(r=>r.getAttribute('data-audit-ts')+'\t'+r.getAttribute('data-audit-actor')+'\t'+r.getAttribute('data-audit-action')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' falhas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

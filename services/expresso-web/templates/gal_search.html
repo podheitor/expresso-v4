@@ -851,5 +851,16 @@ window.copyGalNoPhone = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalCommonSurname = function(){
+  const m={};
+  document.querySelectorAll('[data-contact-name]').forEach(r=>{const p=r.getAttribute('data-contact-name').trim().split(/\s+/);const ln=p[p.length-1];if(ln)m[ln]=(m[ln]||0)+1;});
+  const out=Object.entries(m).filter(([_,n])=>n>1).sort((a,b)=>b[1]-a[1]).map(([s,n])=>s+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sobrenomes comuns';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

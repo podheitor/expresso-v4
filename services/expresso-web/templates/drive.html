@@ -1730,5 +1730,16 @@ window.copyFilesByOwner = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyFilesStaleYear = function(){
+  const cutoff=Date.now()-365*86400000;
+  const rows=Array.from(document.querySelectorAll('[data-file-modified]')).filter(r=>{const v=Date.parse(r.getAttribute('data-file-modified'));return !isNaN(v)&&v<cutoff;});
+  const out=rows.map(r=>r.getAttribute('data-file-name')+'\t'+r.getAttribute('data-file-modified')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' arquivos >1ano';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

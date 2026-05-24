@@ -1056,5 +1056,16 @@ window.copyWeekFocusBlocks = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDailyLoad = function(){
+  const m={};
+  document.querySelectorAll('[data-event-start][data-event-end]').forEach(e=>{const d=e.getAttribute('data-event-start').slice(0,10);const s=Date.parse(e.getAttribute('data-event-start')),f=Date.parse(e.getAttribute('data-event-end'));if(!isNaN(s)&&!isNaN(f))m[d]=(m[d]||0)+(f-s)/60000;});
+  const out=Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,n])=>d+'\t'+(n/60).toFixed(1)+'h').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='carga diária copiada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
