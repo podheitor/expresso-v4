@@ -1312,4 +1312,22 @@ function copyHomeQuickSummary() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'D') return;
+    const k = 'expresso_dark_{{ me.user_id }}';
+    const next = localStorage.getItem(k) !== '1';
+    localStorage.setItem(k, next ? '1' : '0');
+    document.documentElement.dataset.theme = next ? 'dark' : 'light';
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Dark mode: ' + (next ? 'ON' : 'OFF');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  });
+})();
+</script>
 {% endblock %}

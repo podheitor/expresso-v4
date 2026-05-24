@@ -1426,6 +1426,20 @@ function countExpressoPrefsByPrefix() {
 }
 </script>
 <script>
+window.resetUiPrefs = function(){
+  if (!confirm('Limpar TODAS as preferências de UI deste navegador?')) return;
+  const toRemove = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('expresso_')) toRemove.push(k);
+  }
+  toRemove.forEach(k => localStorage.removeItem(k));
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = toRemove.length + ' chaves removidas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.exportPrefsCsv = function(){
   const rows = [['key','value']];
   for (let i = 0; i < localStorage.length; i++) {

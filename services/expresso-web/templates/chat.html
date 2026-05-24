@@ -1988,4 +1988,26 @@ function copyChatLastN(n) {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'D') return;
+    const msgs = Array.from(document.querySelectorAll('.chat-msg'));
+    const lines = msgs.map(m => {
+      const author = (m.querySelector('.author') || {}).textContent || '';
+      const time = (m.querySelector('.time') || {}).textContent || '';
+      const body = (m.querySelector('.body') || m).textContent || '';
+      return '[' + time.trim() + '] ' + author.trim() + ': ' + body.trim();
+    }).join('\n');
+    const blob = new Blob([lines], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'chat-transcript-' + Date.now() + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
 {% endblock %}

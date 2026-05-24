@@ -959,6 +959,18 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.wordCountBody = function(){
+  const body = document.querySelector('textarea[name="body"]');
+  if (!body) return;
+  const txt = (body.value || '').trim();
+  const words = txt ? txt.split(/\s+/).length : 0;
+  const chars = txt.length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = words + ' palavras · ' + chars + ' caracteres';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.appendSignature = function(){
   const body = document.querySelector('textarea[name="body"]');
   if (!body) return;

@@ -1071,4 +1071,22 @@ function groupContactsByFirstLetter() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Z') return;
+    const k = 'expresso_contacts_zoom_{{ me.user_id }}';
+    const next = localStorage.getItem(k) !== '1';
+    localStorage.setItem(k, next ? '1' : '0');
+    document.querySelectorAll('.contact-row').forEach(r => r.style.fontSize = next ? '1.15em' : '');
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Zoom: ' + (next ? 'ON' : 'OFF');
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  });
+})();
+</script>
 {% endblock %}

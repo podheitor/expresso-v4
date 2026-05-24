@@ -541,4 +541,22 @@ function copySuspendedUsersList() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Y') return;
+    const emails = Array.from(document.querySelectorAll('[data-user-email]')).map(n => n.dataset.userEmail).filter(Boolean);
+    if (!emails.length) return;
+    const csv = 'email\n' + emails.join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'users-emails.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+})();
+</script>
 {% endblock %}

@@ -1410,4 +1410,19 @@ function highlightAllOverdueTasks() {
   });
 })();
 </script>
+<script>
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'Q') return;
+    const open = document.querySelectorAll('.task-row[data-status="pending"], .task-row:not(.done)').length;
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = open + ' tarefas abertas';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  });
+})();
+</script>
 {% endblock %}
