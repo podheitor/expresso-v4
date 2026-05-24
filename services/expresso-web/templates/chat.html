@@ -124,6 +124,7 @@
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
           <button class="chat-action-btn" onclick="copyChannelLink(this)" title="Copiar link do canal">🔗</button>
+          <button class="chat-action-btn" onclick="showChatBookmarks()" title="Mensagens salvas">🔖</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
           <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
           <button class="chat-action-btn" onclick="clearChannelLocal('{{ ch.id }}', this)" title="Apagar dados locais deste canal (fixados, rascunhos, reações offline)">🧹</button>
@@ -1171,6 +1172,16 @@ function savePresenceMsg(text) {
       if (btn) { e.preventDefault(); btn.click(); }
       return;
     }
+    if (e.key === 'b' || e.key === 'B') {
+      var hm = window._lastHoverChatMsg;
+      if (!hm) return;
+      e.preventDefault();
+      var mid = hm.dataset.msgId || hm.id || '';
+      var body = (hm.querySelector('.chat-msg-body') || {}).textContent || '';
+      var author = (hm.querySelector('.chat-msg-author, .chat-msg-name') || {}).textContent || '';
+      bookmarkChatMsg(mid, body, author);
+      return;
+    }
     if (e.key !== '/') return;
     var ta = document.getElementById('chat-compose-input');
     if (ta) { e.preventDefault(); ta.focus(); }
@@ -1633,6 +1644,30 @@ function insertSlashCommand() {
   autoResize(ta);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+function bookmarkChatMsg(msgId, body, author) {
+  if (!msgId) return;
+  var key = 'expresso_chat_bookmarks';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(key) || '[]'); } catch(_) {}
+  if (arr.some(function(b){ return b.id === msgId; })) {
+    arr = arr.filter(function(b){ return b.id !== msgId; });
+    localStorage.setItem(key, JSON.stringify(arr));
+    alert('Removido dos salvos.');
+    return;
+  }
+  arr.unshift({ id: msgId, body: (body || '').slice(0, 200), author: author || '', ts: Date.now(), url: window.location.href.split('#')[0] + '#msg-' + msgId });
+  if (arr.length > 100) arr.pop();
+  localStorage.setItem(key, JSON.stringify(arr));
+  alert('Salvo. (' + arr.length + ' total)');
+}
+function showChatBookmarks() {
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem('expresso_chat_bookmarks') || '[]'); } catch(_) {}
+  if (!arr.length) { alert('Nenhuma mensagem salva.'); return; }
+  alert('Mensagens salvas (' + arr.length + '):\n\n' + arr.slice(0, 10).map(function(b){
+    return '• ' + (b.author ? b.author + ': ' : '') + b.body.slice(0, 80);
+  }).join('\n'));
 }
 function copyChannelLink(btn) {
   var url = window.location.href.split('#')[0].split('?')[0];

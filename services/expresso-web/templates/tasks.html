@@ -1049,11 +1049,25 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 'a' || e.key === 'A') {
     e.preventDefault();
     if (typeof setFilter === 'function') setFilter('all');
+  } else if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    showTasksWeekStats();
   } else if (e.key === '?') {
     e.preventDefault();
-    alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (na tarefa sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\nf — filtrar atrasadas\na — todas\n? — esta ajuda');
+    alert('Atalhos de Tarefas:\n\nn — focar nova tarefa\n/ — buscar\nc — marcar concluída (na tarefa sob mouse)\nd — duplicar (sob mouse)\np — ciclar prioridade (sob mouse)\nf — filtrar atrasadas\na — todas\ns — estatística semana\n? — esta ajuda');
   }
 });
+function showTasksWeekStats() {
+  var arr = typeof loadTasks === 'function' ? loadTasks() : [];
+  var days = [];
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date(); d.setDate(d.getDate() - i);
+    var iso = d.toISOString().slice(0, 10);
+    var n = arr.filter(function(t){ return t.done && (t.done_at || '').slice(0,10) === iso; }).length;
+    days.push(iso + ': ' + (n > 0 ? '█'.repeat(Math.min(n, 30)) + ' ' + n : '0'));
+  }
+  alert('Tarefas concluídas (últimos 7 dias):\n\n' + days.join('\n'));
+}
 // Track last hovered task for priority shortcut
 document.addEventListener('mouseover', function(e) {
   var t = e.target && e.target.closest && e.target.closest('.task-item[data-id]');

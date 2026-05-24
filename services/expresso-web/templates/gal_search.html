@@ -24,6 +24,7 @@
         <div style="display:flex;gap:.4rem">
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="bccAllGal()" title="Compor com BCC (oculta destinatários)">✉ BCC</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsGalGroup()" title="Criar grupo de contatos a partir destes resultados">👥 Salvar grupo</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalResultsCsv()" title="Exportar resultados como CSV">⬇ CSV</button>
@@ -63,6 +64,12 @@ function mailAllGal() {
   if (!ems.length) { alert('Sem destinatários.'); return; }
   if (ems.length > 50 && !confirm('Compor e-mail para ' + ems.length + ' destinatários?')) return;
   window.location.href = '/mail/compose?to=' + encodeURIComponent(ems.join(', '));
+}
+function bccAllGal() {
+  var ems = _allGalEmails();
+  if (!ems.length) { alert('Sem destinatários.'); return; }
+  if (ems.length > 50 && !confirm('Compor e-mail BCC para ' + ems.length + ' destinatários?')) return;
+  window.location.href = '/mail/compose?bcc=' + encodeURIComponent(ems.join(', '));
 }
 function saveAsGalGroup() {
   var ems = _allGalEmails();

@@ -703,8 +703,33 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'c' || e.key === 'C') {
     e.preventDefault();
     if (typeof shareMeetLink === 'function') shareMeetLink();
+  } else if (e.key === 'h' || e.key === 'H') {
+    e.preventDefault();
+    showMeetRoomHistory();
   }
 });
+(function recordMeetVisit(){
+  try {
+    var key = 'expresso_meet_history';
+    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+    var entry = { id: '{{ room_id }}', name: '{{ room_name }}', url: window.location.pathname, ts: Date.now() };
+    arr = arr.filter(function(e){ return e.id !== entry.id; });
+    arr.unshift(entry);
+    if (arr.length > 20) arr.length = 20;
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch(_) {}
+})();
+function showMeetRoomHistory() {
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem('expresso_meet_history') || '[]'); } catch(_) {}
+  if (!arr.length) { alert('Nenhuma sala recente.'); return; }
+  var lines = arr.slice(0, 10).map(function(e, i){
+    var min = Math.floor((Date.now() - e.ts) / 60000);
+    var age = min < 60 ? min + 'min' : Math.floor(min / 60) + 'h';
+    return (i + 1) + '. ' + e.name + ' — ' + age + ' atrás';
+  });
+  alert('Histórico de salas:\n\n' + lines.join('\n'));
+}
 </script>
 
 <!-- Room settings modal -->

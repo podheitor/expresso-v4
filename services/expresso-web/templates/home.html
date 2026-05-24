@@ -97,9 +97,10 @@
       {% if events.is_empty() %}
         <p class="muted small home-widget-empty">Nenhum evento próximo.</p>
       {% else %}
+        <div id="home-next-meeting-countdown" style="font-size:.78rem;color:var(--accent);margin-bottom:.4rem"></div>
         <ul class="home-event-list">
           {% for ev in events %}
-          <li class="home-event-item">
+          <li class="home-event-item" data-starts="{{ ev.starts }}">
             <span class="home-event-time">{{ ev.starts }}</span>
             <span class="home-event-name">{{ ev.summary }}</span>
             {% if ev.is_meet %}
@@ -362,6 +363,31 @@
         <a class="home-quick-item" href="/tasks">✅ Tarefas</a>
         <a class="home-quick-item" href="/me/security">🔒 Segurança</a>
       </div>
+      <div id="home-custom-quicklinks" style="display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.5rem"></div>
+      <button class="btn btn-ghost btn-sm" onclick="addHomeQuicklink()" style="margin-top:.4rem;font-size:.7rem">+ Adicionar atalho</button>
+      <script>(function(){
+        function load(){ try { return JSON.parse(localStorage.getItem('expresso_quicklinks_{{ me.user_id }}') || '[]'); } catch(_) { return []; } }
+        function save(a){ localStorage.setItem('expresso_quicklinks_{{ me.user_id }}', JSON.stringify(a)); }
+        function escH(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        window.addHomeQuicklink = function(){
+          var label = prompt('Nome do atalho:'); if (!label) return;
+          var url = prompt('URL:', 'https://'); if (!url) return;
+          var arr = load(); arr.push({label: label, url: url}); save(arr); render();
+        };
+        window.removeHomeQuicklink = function(i){
+          if (!confirm('Remover atalho?')) return;
+          var arr = load(); arr.splice(i, 1); save(arr); render();
+        };
+        function render(){
+          var box = document.getElementById('home-custom-quicklinks'); if (!box) return;
+          var arr = load();
+          box.innerHTML = arr.map(function(q, i){
+            return '<a class="home-quick-item" href="' + escH(q.url) + '" target="_blank" rel="noopener" style="position:relative;padding-right:1.4rem">🔗 ' + escH(q.label) +
+              '<span onclick="event.preventDefault();event.stopPropagation();removeHomeQuicklink(' + i + ')" style="position:absolute;right:.3rem;top:50%;transform:translateY(-50%);opacity:.5;cursor:pointer" title="Remover">×</span></a>';
+          }).join('');
+        }
+        render();
+      })();</script>
     </div>
 
     <!-- Atividade recente -->
@@ -934,6 +960,42 @@ document.addEventListener('keydown', function(e) {
            '</li>';
   }).join('');
   box.style.display = 'block';
+})();
+(function homeNextMeetingCountdown() {
+  var box = document.getElementById('home-next-meeting-countdown');
+  if (!box) return;
+  var items = document.querySelectorAll('.home-event-item[data-starts]');
+  if (!items.length) return;
+  function parseStarts(s) {
+    s = (s || '').trim();
+    // Try ISO first, then HH:MM today
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+    var m = /^(\d{1,2}):(\d{2})/.exec(s);
+    if (m) {
+      var today = new Date();
+      today.setHours(parseInt(m[1], 10), parseInt(m[2], 10), 0, 0);
+      return today;
+    }
+    return null;
+  }
+  function update() {
+    var now = Date.now();
+    var soonest = null, soonestName = '';
+    items.forEach(function(li){
+      var d = parseStarts(li.dataset.starts);
+      if (!d) return;
+      if (d.getTime() <= now) return;
+      if (!soonest || d < soonest) { soonest = d; soonestName = (li.querySelector('.home-event-name') || {}).textContent || ''; }
+    });
+    if (!soonest) { box.style.display = 'none'; return; }
+    var diff = Math.floor((soonest - now) / 1000);
+    var h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60);
+    box.style.display = '';
+    box.textContent = '⏰ Próxima em ' + (h > 0 ? h + 'h ' : '') + m + 'min: ' + soonestName.trim();
+  }
+  update();
+  setInterval(update, 30000);
 })();
 (function homeSessionUptime() {
   var KEY = 'expresso_session_start_{{ me.user_id }}';

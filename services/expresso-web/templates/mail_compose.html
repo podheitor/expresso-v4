@@ -678,6 +678,32 @@ function checkComposeSpelling() {
     alert('Spellcheck: ' + (ta.spellcheck ? 'on' : 'off'));
   }
 }
+function insertQuickReplyTemplate() {
+  var choices = [
+    'Confirmado, obrigado!',
+    'Vou verificar e retorno em breve.',
+    'Recebido, vou analisar.',
+    'Combinado.',
+    'Estou em reunião agora, retorno mais tarde.',
+    'Pode me passar mais detalhes?',
+    'Aprovado de minha parte.',
+    'Vou ficar de olho.',
+    'Sem problemas.',
+    'Fico no aguardo.'
+  ];
+  var pick = prompt('Escolha:\n\n' + choices.map(function(c, i){ return (i+1) + '. ' + c; }).join('\n') + '\n\nDigite o número:');
+  var idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= choices.length) return;
+  var ta = document.getElementById('compose-body-text') || document.querySelector('textarea[name="body_text"], textarea[name="body"]');
+  var ed = document.getElementById('compose-rich-editor');
+  if (ed && ed.isContentEditable) {
+    ed.innerHTML = choices[idx] + '<br><br>' + (ed.innerHTML || '');
+    if (typeof syncRichToText === 'function') syncRichToText();
+  } else if (ta) {
+    ta.value = choices[idx] + '\n\n' + (ta.value || '');
+  }
+  if (typeof updateComposeStats === 'function') updateComposeStats();
+}
 function copyComposeBody(btn) {
   var ta = document.querySelector('textarea[name="body"], #compose-body');
   var txt = ta ? ta.value : (document.querySelector('[contenteditable]') || {}).textContent || '';

@@ -15,6 +15,7 @@
       <button class="btn btn-ghost btn-sm" onclick="exportAuditJson()">⬇ JSON</button>
       <button class="btn btn-ghost btn-sm" onclick="copyAuditSummary(this)" title="Copiar resumo (top 5 ações + top 5 usuários)">📊 Resumo</button>
       <button class="btn btn-ghost btn-sm" onclick="copyVisibleAuditIps(this)" title="Copiar IPs únicos das linhas visíveis">🌐 IPs</button>
+      <button class="btn btn-ghost btn-sm" onclick="groupAuditByUser(this)" title="Agrupar visíveis por usuário">👥 Por usuário</button>
     </div>
   </div>
 
@@ -297,6 +298,27 @@ function copyAuditSummary(btn) {
     if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
   });
   else alert(txt);
+}
+function groupAuditByUser(btn) {
+  var rows = document.querySelectorAll('.audit-row');
+  var byUser = {};
+  rows.forEach(function(r){
+    if (r.style.display === 'none') return;
+    var u = (r.cells[1] && r.cells[1].textContent || '').trim();
+    var a = (r.cells[2] && r.cells[2].textContent || '').trim();
+    if (!u) return;
+    byUser[u] = byUser[u] || {};
+    byUser[u][a] = (byUser[u][a] || 0) + 1;
+  });
+  var users = Object.keys(byUser);
+  if (!users.length) { alert('Nenhuma linha visível.'); return; }
+  var lines = users.sort().map(function(u){
+    var acts = byUser[u];
+    var total = Object.keys(acts).reduce(function(s, k){ return s + acts[k]; }, 0);
+    var actsList = Object.keys(acts).map(function(k){ return k + '×' + acts[k]; }).join(', ');
+    return u + ' (' + total + '): ' + actsList;
+  });
+  alert('Agrupado por usuário:\n\n' + lines.join('\n\n'));
 }
 function copyVisibleAuditIps(btn) {
   var rows = document.querySelectorAll('.audit-row');

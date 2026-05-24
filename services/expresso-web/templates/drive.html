@@ -59,6 +59,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <button class="btn btn-ghost" onclick="shareCurrentDriveFolder(this)" title="Copiar link da pasta atual">🔗 Link da pasta</button>
+      <button class="btn btn-ghost" onclick="showFolderTotalSize(this)" title="Tamanho total dos arquivos visíveis">📏 Total</button>
       <button class="btn btn-ghost" onclick="toggleDriveOnlyFavs(this)" title="Mostrar somente favoritos" id="drive-only-favs-btn">⭐ Só favs</button>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
@@ -1016,6 +1017,22 @@ function toggleDriveOnlyFavs(btn) {
     }
   });
 })();
+function showFolderTotalSize(btn) {
+  var cbs = document.querySelectorAll('.drive-file-check[data-size]');
+  if (!cbs.length) { alert('Pasta sem arquivos.'); return; }
+  var total = 0, n = 0;
+  cbs.forEach(function(cb){
+    var s = parseInt(cb.dataset.size || '0', 10);
+    if (!isNaN(s)) { total += s; n++; }
+  });
+  function fmt(b) {
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+    return (b/1073741824).toFixed(2) + ' GB';
+  }
+  alert(n + ' arquivo(s) — total: ' + fmt(total));
+}
 function shareCurrentDriveFolder(btn) {
   var url = window.location.href.split('#')[0];
   if (navigator.clipboard) {

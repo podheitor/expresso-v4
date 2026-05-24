@@ -17,6 +17,7 @@
       <button class="btn btn-ghost btn-sm" onclick="showImportIcsModal()" title="Importar arquivo .ics">↑ Importar .ics</button>
       <button class="btn btn-ghost btn-sm" onclick="window.print()" title="Imprimir mês">🖨</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleCalWeekends(this)" title="Ocultar/mostrar fim de semana" id="cal-weekend-btn">📅 FDS</button>
+      <input type="date" id="cal-month-jump" class="search-input-sm" style="width:8rem" title="Ir para data" onchange="if(this.value){var p=this.value.split('-');window.location.href='/calendar/{{ selected.id }}?year='+p[0]+'&month='+parseInt(p[1],10);}">
     </div>
   </div>
 

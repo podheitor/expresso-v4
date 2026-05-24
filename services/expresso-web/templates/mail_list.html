@@ -94,6 +94,7 @@
         </label>
         <span class="muted small" id="mail-sel-count">0 selecionadas</span>
         <button class="btn btn-ghost btn-sm" onclick="selectUnreadMail()" title="Selecionar apenas mensagens não lidas">○ Não lidas</button>
+        <button class="btn btn-ghost btn-sm" onclick="showTopSenders()" title="Top remetentes nesta pasta">👥 Top</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('flag')" title="Adicionar estrela ⭐">⭐ Sinalizar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
@@ -964,5 +965,18 @@ function emptyTrashFolder(btn) {
     el.textContent = unread > 0 ? '(' + unread + ' não lidas de ' + total + ')' : '(' + total + ')';
   } catch(_) {}
 })();
+function showTopSenders() {
+  var rows = document.querySelectorAll('.msg-row-wrap[data-sender]');
+  if (!rows.length) { alert('Pasta vazia.'); return; }
+  var tally = {};
+  rows.forEach(function(r){
+    var s = (r.dataset.sender || '').trim();
+    if (!s) return;
+    tally[s] = (tally[s] || 0) + 1;
+  });
+  var top = Object.keys(tally).sort(function(a,b){ return tally[b] - tally[a]; }).slice(0, 10);
+  if (!top.length) { alert('Sem remetentes.'); return; }
+  alert('Top remetentes nesta pasta:\n\n' + top.map(function(s){ return tally[s] + '× ' + s; }).join('\n'));
+}
 </script>
 {% endblock %}

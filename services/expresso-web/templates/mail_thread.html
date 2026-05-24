@@ -41,6 +41,9 @@
           <button class="btn btn-ghost btn-sm" onclick="markThreadRead()" title="Marcar todas as mensagens como lidas">✓ Tudo lido</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadUnread()" title="Marcar a primeira mensagem como não lida">○ Não lida</button>
           <button class="btn btn-ghost btn-sm" onclick="snoozeThread()" title="Adiar — esconder até data/hora escolhida">💤 Snooze</button>
+          <button class="btn btn-ghost btn-sm" onclick="snoozeThread(24)" title="Adiar 1 dia">+1d</button>
+          <button class="btn btn-ghost btn-sm" onclick="snoozeThread(72)" title="Adiar 3 dias">+3d</button>
+          <button class="btn btn-ghost btn-sm" onclick="snoozeThread(168)" title="Adiar 1 semana">+1sem</button>
           <input type="search" id="thread-find" placeholder="Buscar na conversa…" oninput="findInThread(this.value)" style="width:11rem" class="search-input-sm">
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -385,11 +388,16 @@ function markMsgSpam(mid, btn) {
     }
   }).catch(function(){ btn.disabled = false; btn.textContent = '🚫 Spam'; alert('Erro de conexão.'); });
 }
-function snoozeThread() {
-  var when = prompt('Lembrar desta conversa em quantas horas? (ex: 2, 8, 24)', '4');
-  if (!when) return;
-  var hrs = parseFloat(when);
-  if (!isFinite(hrs) || hrs <= 0) { alert('Valor inválido.'); return; }
+function snoozeThread(presetHrs) {
+  var hrs;
+  if (typeof presetHrs === 'number' && presetHrs > 0) {
+    hrs = presetHrs;
+  } else {
+    var when = prompt('Lembrar desta conversa em quantas horas? (ex: 2, 8, 24)', '4');
+    if (!when) return;
+    hrs = parseFloat(when);
+    if (!isFinite(hrs) || hrs <= 0) { alert('Valor inválido.'); return; }
+  }
   var firstMsg = document.querySelector('.thread-msg');
   var tid = (firstMsg && firstMsg.dataset && firstMsg.dataset.msgId) || window.location.pathname.split('/').pop();
   var subj = (document.querySelector('h1, .thread-subject') || {}).textContent || 'Conversa';

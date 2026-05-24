@@ -673,6 +673,10 @@ function toggleContactFav(btn, cid) {
       e.preventDefault();
       if (typeof showGroupsModal === 'function') showGroupsModal();
     }
+    else if (e.key === 'u' || e.key === 'U') {
+      e.preventDefault();
+      showUpcomingBirthdays();
+    }
     else if (e.key === '?') {
       e.preventDefault();
       alert('Atalhos contatos:\n\nj/k — navegar\nEnter — abrir\nn — novo\n/ — buscar\ne — editar (hover)\nb — aniversariantes do mês\n? — esta ajuda');
@@ -725,6 +729,32 @@ function showBirthdaysThisMonth() {
     return '  ' + h.day + ' — ' + name;
   });
   alert('🎂 Aniversariantes deste mês (' + hits.length + '):\n\n' + lines.join('\n'));
+}
+function showUpcomingBirthdays() {
+  var raw = {};
+  try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e){}
+  var now = new Date();
+  var hits = [];
+  Object.keys(raw).forEach(function(k) {
+    var v = raw[k] || '';
+    var parts = v.split('-');
+    if (parts.length < 2) return;
+    var mon = parseInt(parts.length === 3 ? parts[1] : parts[0], 10);
+    var day = parseInt(parts.length === 3 ? parts[2] : parts[1], 10);
+    if (!mon || !day) return;
+    var bd = new Date(now.getFullYear(), mon - 1, day);
+    if (bd < now) bd = new Date(now.getFullYear() + 1, mon - 1, day);
+    var diff = Math.floor((bd - now) / 86400000);
+    if (diff <= 30) hits.push({ id: k, day: day, mon: mon, diff: diff });
+  });
+  if (!hits.length) { alert('Nenhum aniversário nos próximos 30 dias.'); return; }
+  hits.sort(function(a,b){ return a.diff - b.diff; });
+  var lines = hits.map(function(h){
+    var row = document.querySelector('[data-id="'+h.id+'"]');
+    var name = row ? (row.dataset.name || row.textContent.trim().split('\n')[0]) : h.id;
+    return '  ' + String(h.day).padStart(2,'0') + '/' + String(h.mon).padStart(2,'0') + ' (em ' + h.diff + 'd) — ' + name;
+  });
+  alert('🎂 Próximos 30 dias (' + hits.length + '):\n\n' + lines.join('\n'));
 }
 function printVisibleContacts() {
   var rows = [];
