@@ -1052,5 +1052,17 @@ window.copyAdminsOnly = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByQuotaUsed = function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-id][data-user-quota-used]'));
+  rows.sort((a,b)=>parseInt(b.getAttribute('data-user-quota-used'))-parseInt(a.getAttribute('data-user-quota-used')));
+  const top=rows.slice(0,15);
+  const out=top.map(r=>(parseInt(r.getAttribute('data-user-quota-used'))/1048576|0)+'MB\t'+(r.getAttribute('data-user-email')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+top.length+' por quota';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1029,5 +1029,17 @@ window.copyAuditByAction = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyAuditTopActors = function(){
+  const rows=document.querySelectorAll('[data-audit-actor]');
+  const m={};
+  rows.forEach(r=>{const a=r.getAttribute('data-audit-actor')||'?'; m[a]=(m[a]||0)+1;});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([a,n])=>a+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top atores copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

@@ -1826,5 +1826,16 @@ window.groupFilesByMime = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyEmptyFolders = function(){
+  const folders=document.querySelectorAll('[data-folder-id][data-folder-children]');
+  const rows=Array.from(folders).filter(r=>parseInt(r.getAttribute('data-folder-children')||'0')===0);
+  const out=rows.map(r=>(r.getAttribute('data-folder-path')||r.getAttribute('data-folder-name')||r.textContent.trim().slice(0,80))).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' pastas vazias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
