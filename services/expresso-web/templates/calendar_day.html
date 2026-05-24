@@ -418,5 +418,13 @@ document.addEventListener('keydown', function(e){
   var d = u.searchParams.get('date');
   window.location.href = '/calendar/week' + (d ? '?date=' + d : '');
 });
+// sprint #20721 — tecla `M` muda pra view month
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'M' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var u = new URL(window.location.href);
+  var d = u.searchParams.get('date');
+  window.location.href = '/calendar/month' + (d ? '?date=' + d : '');
+});
 </script>
 {% endblock %}

@@ -317,5 +317,11 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 2200);
 });
+// sprint #20724 — tecla `?` ajuda gal
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /contacts/gal:\n  / → busca\n  h → histórico\n  B → bookmarks\n  c → copia todos emails\n  n → contagem\n  r → reload\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}

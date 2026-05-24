@@ -882,5 +882,16 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 1500);
 });
+// sprint #20719 — countAttachmentsTotalSize() mostra tamanho agregado dos anexos selecionados
+function countAttachmentsTotalSize() {
+  var total = 0, n = 0;
+  document.querySelectorAll('input[type="file"]').forEach(function(inp){
+    if (!inp.files) return;
+    for (var i = 0; i < inp.files.length; i++) { total += inp.files[i].size; n++; }
+  });
+  if (!n) { alert('Nenhum anexo selecionado.'); return; }
+  function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
+  alert(n + ' anexo(s) · ' + fmt(total) + ' total');
+}
 </script>
 {% endblock %}

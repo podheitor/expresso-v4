@@ -1145,5 +1145,18 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/';
 });
+// sprint #20712 — tecla `/` foca busca de mail (se a página tiver)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('input[name="q"], #mail-search, input[type="search"]');
+  if (!inp) {
+    window.location.href = '/mail/search';
+    return;
+  }
+  e.preventDefault();
+  inp.focus();
+  inp.select();
+});
 </script>
 {% endblock %}

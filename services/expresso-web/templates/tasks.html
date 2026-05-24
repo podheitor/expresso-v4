@@ -1258,6 +1258,12 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.reload();
 });
+// sprint #20716 — tecla `h` /home
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'h' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.href = '/';
+});
 </script>
 <style>
 @media print {

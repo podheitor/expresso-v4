@@ -535,5 +535,20 @@ document.addEventListener('keydown', function(e){
   var path = e.key === 'd' ? '/calendar/day' : '/calendar/week';
   window.location.href = path + (dt ? '?date=' + dt : '');
 });
+// sprint #20723 — tecla `n` próximo evento futuro do mês
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'n' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var now = new Date();
+  var next = null, nextStart = null;
+  document.querySelectorAll('.event-chip[data-start], .event-allday[data-start]').forEach(function(ev){
+    var s = new Date(ev.dataset.start);
+    if (!isNaN(s) && s >= now && (!nextStart || s < nextStart)) { next = ev; nextStart = s; }
+  });
+  if (!next) { alert('Sem eventos futuros no mês.'); return; }
+  next.scrollIntoView({behavior:'smooth', block:'center'});
+  next.style.outline = '2px solid #f59e0b';
+  setTimeout(function(){ next.style.outline = ''; }, 2000);
+});
 </script>
 {% endblock %}

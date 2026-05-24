@@ -1213,5 +1213,14 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'k' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/tasks';
 });
+// sprint #20711 — tecla `s` foca campo de busca global (se existir)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('#home-search, input[name="q"], input[type="search"]');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+});
 </script>
 {% endblock %}

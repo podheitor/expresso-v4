@@ -1152,6 +1152,19 @@ document.addEventListener('keydown', function(e){
     }
   }
 });
+// sprint #20715 — tecla `v` toggle video (jitsi)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'v' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (typeof window.jitsiApi !== 'undefined' && window.jitsiApi.executeCommand) {
+    window.jitsiApi.executeCommand('toggleVideo');
+  } else {
+    var iframe = document.querySelector('iframe[src*="jitsi"]');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({type:'toggleVideo'}, '*');
+    }
+  }
+});
 </script>
 
 <!-- Invite modal -->

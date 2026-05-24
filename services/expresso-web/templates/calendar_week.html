@@ -472,6 +472,14 @@ document.addEventListener('keydown', function(e){
   var dt = u.searchParams.get('date');
   window.location.href = '/calendar/day' + (dt ? '?date=' + dt : '');
 });
+// sprint #20722 — tecla `M` muda pra view month
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'M' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var u = new URL(window.location.href);
+  var dt = u.searchParams.get('date');
+  window.location.href = '/calendar/month' + (dt ? '?date=' + dt : '');
+});
 </script>
 <style>
 @media print {

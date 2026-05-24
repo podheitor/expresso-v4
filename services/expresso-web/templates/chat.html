@@ -1889,6 +1889,16 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /chat:\n  / → foco input\n  c → copia body (hover)\n  l → copia link msg\n  w → word count\n  s → salva snippet\n  S → lista snippets\n  g/G → topo/fim\n  Home/End → scroll stream\n  ? → esta ajuda');
 });
+// sprint #20713 — clearChatSnippets() apaga snippets salvos
+function clearChatSnippets() {
+  var K = 'expresso_chat_snippets_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(K) || '[]'); } catch(e) {}
+  if (!arr.length) { alert('Sem snippets salvos.'); return; }
+  if (!confirm('Apagar ' + arr.length + ' snippet(s)?')) return;
+  localStorage.removeItem(K);
+  alert('Snippets apagados.');
+}
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

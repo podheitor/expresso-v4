@@ -1319,5 +1319,29 @@ function copyCurrentSessionInfo() {
   else { var ta = document.createElement('textarea'); ta.value = info; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert('Info da sessão copiada para clipboard:\n\n' + info);
 }
+// sprint #20718 — showRecentPageVisits() mostra últimas URLs visitadas (cache local)
+(function trackVisits(){
+  try {
+    var K = 'expresso_recent_visits_{{ me.user_id }}';
+    var arr = JSON.parse(localStorage.getItem(K) || '[]');
+    var path = window.location.pathname;
+    if (arr.length === 0 || arr[0].path !== path) {
+      arr.unshift({path: path, ts: Date.now()});
+      if (arr.length > 30) arr = arr.slice(0, 30);
+      localStorage.setItem(K, JSON.stringify(arr));
+    }
+  } catch(e) {}
+})();
+function showRecentPageVisits() {
+  var K = 'expresso_recent_visits_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(K) || '[]'); } catch(e) {}
+  if (!arr.length) { alert('Sem histórico local.'); return; }
+  var lines = arr.map(function(x){
+    var d = new Date(x.ts);
+    return d.toLocaleString() + ' · ' + x.path;
+  });
+  alert('Últimas visitas:\n\n' + lines.join('\n'));
+}
 </script>
 {% endblock %}

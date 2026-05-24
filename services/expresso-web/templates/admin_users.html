@@ -492,5 +492,11 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 2200);
 });
+// sprint #20725 — tecla `?` ajuda admin-users
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /admin/users:\n  / → busca\n  x → copia emails visíveis\n  s → ordenar por nome\n  p → top domínios\n  n → contagem\n  e → CSV export\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}

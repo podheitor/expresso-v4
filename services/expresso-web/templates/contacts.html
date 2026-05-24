@@ -924,6 +924,15 @@ document.addEventListener('keydown', function(e){
   if (!top.length) { alert('Sem domínios.'); return; }
   alert('Top domínios:\n\n' + top.map(function(d){ return tally[d] + '× ' + d; }).join('\n'));
 });
+// sprint #20717 — tecla `+` abre formulário de novo contato
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== '+' && e.key !== '=') return;
+  var addLink = document.querySelector('a[href*="/contacts/new"], a[href*="/contacts/add"], button[onclick*="newContact"]');
+  if (addLink && addLink.href) { window.location.href = addLink.href; return; }
+  window.location.href = '/contacts/new';
+});
 </script>
 
 <!-- Groups modal -->
