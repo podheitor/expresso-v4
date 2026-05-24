@@ -877,6 +877,12 @@ document.addEventListener('keydown', function(e){
   e.preventDefault();
   inp.focus();
 });
+// sprint #20672 — tecla `?` ajuda contatos
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /contacts:\n  / → busca\n  m → mailto\n  c → copia email (hover)\n  t → copia tel (hover)\n  r → reload\n  n → contagem\n  e → CSV export\n  ? → esta ajuda');
+});
 </script>
 
 <!-- Groups modal -->

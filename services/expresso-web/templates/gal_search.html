@@ -296,5 +296,15 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 1800);
 });
+// sprint #20679 — tecla `/` foca campo de busca GAL
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var inp = document.querySelector('input[name="q"], #gal-query, input[type="search"]');
+  if (!inp) return;
+  e.preventDefault();
+  inp.focus();
+  inp.select();
+});
 </script>
 {% endblock %}

@@ -1867,6 +1867,14 @@ document.addEventListener('keydown', function(e){
   e.preventDefault();
   inp.focus();
 });
+// sprint #20668 — tecla `g` rola pro topo do stream (oldest msg)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'g' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var stream = document.querySelector('.chat-stream, #chat-messages, .chat-messages');
+  if (!stream) return;
+  stream.scrollTop = 0;
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

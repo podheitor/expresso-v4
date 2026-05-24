@@ -508,5 +508,18 @@ document.addEventListener('keydown', function(e){
   ta.focus();
   ta.scrollIntoView({block:'center'});
 });
+// sprint #20675 — tecla `f` extrai todos os participantes únicos da thread
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'f' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var emails = new Set();
+  document.querySelectorAll('.thread-msg [data-from], .thread-msg .from-email, .thread-msg [data-email]').forEach(function(el){
+    var v = el.dataset.from || el.dataset.email || el.textContent.trim();
+    var m = v.match(/[\w.\-+]+@[\w\-]+\.[\w.\-]+/);
+    if (m) emails.add(m[0].toLowerCase());
+  });
+  if (!emails.size) { alert('Sem participantes identificados.'); return; }
+  alert('Participantes (' + emails.size + '):\n\n' + Array.from(emails).join('\n'));
+});
 </script>
 {% endblock %}

@@ -1126,6 +1126,13 @@ document.addEventListener('keydown', function(e){
     window.location.href = '/meet';
   }
 });
+// sprint #20670 — tecla `i` abre modal de convite
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'i' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (typeof showInviteModal === 'function') showInviteModal();
+  else { var btn = document.querySelector('[onclick*="showInviteModal"]'); if (btn) btn.click(); }
+});
 </script>
 
 <!-- Invite modal -->

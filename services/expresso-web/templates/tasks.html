@@ -1233,6 +1233,12 @@ document.addEventListener('keydown', function(e){
   inp.focus();
   inp.scrollIntoView({block:'center'});
 });
+// sprint #20671 — tecla `?` ajuda com atalhos do tasks
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /tasks:\n  / → foco campo adicionar\n  y → copia título (hover)\n  o → primeiro atrasado\n  t → filtra hoje\n  e → exporta MD\n  s → estatísticas\n  ? → esta ajuda');
+});
 </script>
 <style>
 @media print {

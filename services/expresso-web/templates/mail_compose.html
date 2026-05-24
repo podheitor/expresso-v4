@@ -847,5 +847,16 @@ function resetComposeSignature() {
   localStorage.removeItem(K);
   alert('Assinatura local removida. Próxima inserção pedirá uma nova.');
 }
+// sprint #20674 — Ctrl+K limpa apenas To/Cc/Bcc
+document.addEventListener('keydown', function(e){
+  if (!e.ctrlKey || e.shiftKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'k' && e.key !== 'K') return;
+  e.preventDefault();
+  if (!confirm('Limpar destinatários (To/Cc/Bcc)?')) return;
+  ['to','cc','bcc'].forEach(function(n){
+    var inp = document.querySelector('input[name="' + n + '"]');
+    if (inp) inp.value = '';
+  });
+});
 </script>
 {% endblock %}

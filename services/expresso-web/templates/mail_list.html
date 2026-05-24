@@ -1113,5 +1113,11 @@ document.addEventListener('keydown', function(e){
     }
   });
 })();
+// sprint #20667 — tecla `?` lista atalhos do mail list
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /mail:\n  j/k → próxima/anterior\n  Enter → abrir\n  f → primeira não lida\n  u → marca selecionadas como lidas\n  y → copia subject (hover)\n  * → toggle select all\n  i → estatísticas pasta\n  📅 ↑↓ → ordenar\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}

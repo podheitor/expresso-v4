@@ -1177,5 +1177,11 @@ document.addEventListener('keydown', function(e){
     window.location.href = '/drive';
   }
 });
+// sprint #20669 — tecla `t` abre lixeira
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey) return;
+  window.location.href = '/drive/trash';
+});
 </script>
 {% endblock %}

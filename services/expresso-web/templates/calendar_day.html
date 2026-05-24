@@ -396,5 +396,13 @@ document.addEventListener('keydown', function(e){
   u.searchParams.set('date', base.toISOString().slice(0,10));
   window.location.href = u.toString();
 });
+// sprint #20676 — tecla `T` volta pra hoje
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'T' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var u = new URL(window.location.href);
+  u.searchParams.delete('date');
+  window.location.href = u.toString();
+});
 </script>
 {% endblock %}

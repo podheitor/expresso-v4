@@ -1278,5 +1278,21 @@ function wipeExpressoPrefs() {
   } catch(e) {}
   alert(n + ' chave(s) removida(s).');
 }
+// sprint #20673 — showBrowserCapabilities() lista features do navegador
+function showBrowserCapabilities() {
+  var caps = [];
+  caps.push('Notification: ' + (typeof Notification !== 'undefined' ? Notification.permission : 'N/A'));
+  caps.push('Clipboard API: ' + (navigator.clipboard ? 'sim' : 'não'));
+  caps.push('Service Worker: ' + (navigator.serviceWorker ? 'sim' : 'não'));
+  caps.push('Storage estimate: ' + (navigator.storage && navigator.storage.estimate ? 'sim' : 'não'));
+  caps.push('Push Manager: ' + ('PushManager' in window ? 'sim' : 'não'));
+  caps.push('IndexedDB: ' + (window.indexedDB ? 'sim' : 'não'));
+  caps.push('Web Share: ' + (navigator.share ? 'sim' : 'não'));
+  caps.push('Fullscreen: ' + (document.documentElement.requestFullscreen ? 'sim' : 'não'));
+  caps.push('Idioma: ' + navigator.language);
+  caps.push('Online: ' + (navigator.onLine ? 'sim' : 'não'));
+  caps.push('UA: ' + navigator.userAgent.slice(0, 100));
+  alert('Capabilities do navegador:\n\n' + caps.join('\n'));
+}
 </script>
 {% endblock %}
