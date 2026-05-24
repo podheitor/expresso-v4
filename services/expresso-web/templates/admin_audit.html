@@ -51,11 +51,12 @@
           <th>Recurso</th>
           <th>IP</th>
           <th>Detalhe</th>
+          <th></th>
         </tr>
       </thead>
       <tbody id="audit-tbody">
         {% if events.is_empty() %}
-          <tr><td colspan="6" class="muted" style="text-align:center;padding:2rem">Nenhum evento de auditoria.</td></tr>
+          <tr><td colspan="7" class="muted" style="text-align:center;padding:2rem">Nenhum evento de auditoria.</td></tr>
         {% else %}
           {% for ev in events %}
           <tr class="audit-row"
@@ -69,6 +70,7 @@
             <td class="mono small muted">{% match ev.resource_id %}{% when Some with (r) %}{{ r }}{% when None %}—{% endmatch %}</td>
             <td class="mono small muted">{% match ev.ip %}{% when Some with (i) %}{{ i }}{% when None %}—{% endmatch %}</td>
             <td class="small muted">{% match ev.detail %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}</td>
+            <td><button type="button" class="btn btn-ghost btn-sm" onclick="copyAuditRow(this)" title="Copiar linha">📋</button></td>
           </tr>
           {% endfor %}
         {% endif %}
@@ -244,5 +246,15 @@ function exportAuditJson() {
     if (r !== raw) td.textContent = r;
   });
 })();
+function copyAuditRow(btn) {
+  var tr = btn.closest('tr'); if (!tr) return;
+  var cells = Array.from(tr.querySelectorAll('td')).slice(0, 6);
+  var line = cells.map(function(c){ return (c.textContent || '').trim(); }).join('\t');
+  navigator.clipboard.writeText(line).then(function() {
+    var orig = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = orig; }, 1200);
+  }).catch(function(){ prompt('Linha:', line); });
+}
 </script>
 {% endblock %}

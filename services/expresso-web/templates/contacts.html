@@ -587,6 +587,10 @@ function toggleContactFav(btn, cid) {
       var a = list[idx].querySelector('a.btn-ghost, a.btn-primary');
       if (a) window.location.href = a.href;
     }
+    else if (e.key === 'n' || e.key === 'N') {
+      var nb = document.querySelector('a.btn-primary[href*="/new"]');
+      if (nb) { e.preventDefault(); window.location.href = nb.href; }
+    }
   });
 })();
 </script>

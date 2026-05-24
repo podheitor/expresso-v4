@@ -116,6 +116,10 @@
       <span>Tamanho: <strong>{{ file.size_human() }}</strong></span>
       {% match file.created_at %}{% when Some with (d) %}<span style="margin-left:1rem">Data: <strong>{{ d }}</strong></span>{% when None %}{% endmatch %}
       {% match file.mime_type %}{% when Some with (m) %}<span style="margin-left:1rem">Tipo: <strong>{{ m }}</strong></span>{% when None %}{% endmatch %}
+      <span style="margin-left:1rem">ID: <code style="font-size:.7rem">{{ file.id }}</code>
+        <button class="btn btn-ghost btn-sm" onclick="copyToClip(this,'{{ file.id }}')" title="Copiar ID" style="padding:0 .3rem;font-size:.7rem">📋</button>
+      </span>
+      <button class="btn btn-ghost btn-sm" onclick="copyDirectLink(this)" data-url="{{ download_url }}" title="Copiar link de download" style="margin-left:1rem;padding:0 .4rem;font-size:.7rem">🔗 Copiar link</button>
     </div>
   </div>
 </div>
@@ -126,6 +130,20 @@ function copyFileName(btn) {
     var prev = btn.textContent;
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+function copyToClip(btn, text) {
+  navigator.clipboard.writeText(text).then(function() {
+    var prev = btn.textContent; btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+function copyDirectLink(btn) {
+  var url = btn.dataset.url || '';
+  var full = url.indexOf('http') === 0 ? url : (window.location.origin + url);
+  navigator.clipboard.writeText(full).then(function() {
+    var prev = btn.textContent; btn.textContent = '✓ Copiado';
+    setTimeout(function(){ btn.textContent = prev; }, 1500);
   });
 }
 </script>

@@ -768,6 +768,23 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('snooze-modal').style.display === 'flex') closeSnoozeModal();
 });
 
+// "g i / g s / g d / g r" → jump-to-folder (gmail-style)
+(function gFolderJump() {
+  var pending = false;
+  document.addEventListener('keydown', function(e) {
+    var t = e.target.tagName; if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'g') { pending = true; setTimeout(function(){ pending = false; }, 1500); return; }
+    if (!pending) return;
+    pending = false;
+    var map = { i: 'INBOX', s: 'Sent', d: 'Drafts', r: 'Spam', t: 'Trash', a: 'Archive' };
+    var folder = map[e.key];
+    if (folder) {
+      e.preventDefault();
+      window.location.href = '/mail?folder=' + encodeURIComponent(folder);
+    }
+  });
+})();
 function toggleSelectAllMail(checked) {
   var boxes = document.querySelectorAll('.mail-row-check');
   boxes.forEach(function(b) {

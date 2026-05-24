@@ -34,6 +34,9 @@
           <span class="version-date muted small">{% match v.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</span>
         </div>
         <div class="version-mime muted small">{% match v.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}</div>
+        <div class="version-note muted small">
+          <input type="text" class="version-note-input" data-vno="{{ v.version_no }}" placeholder="✎ Nota desta versão (local)…" oninput="saveVersionNote(this)" style="width:100%;border:none;background:transparent;font-size:.78rem">
+        </div>
         <div class="version-actions">
           <a class="btn btn-ghost btn-sm"
              href="/api/v1/drive/files/{{ file.id }}/versions/{{ v.version_no }}"
@@ -120,5 +123,20 @@ function toggleVersionsCompact() {
     el.style.display = el.style.display === 'none' ? '' : 'none';
   });
 }
+var VER_NOTE_KEY = 'expresso_version_notes_{{ file.id }}';
+function loadVersionNotes() { try { return JSON.parse(localStorage.getItem(VER_NOTE_KEY) || '{}'); } catch(e) { return {}; } }
+function saveVersionNote(inp) {
+  var notes = loadVersionNotes();
+  var k = inp.dataset.vno;
+  if (inp.value.trim()) notes[k] = inp.value;
+  else delete notes[k];
+  try { localStorage.setItem(VER_NOTE_KEY, JSON.stringify(notes)); } catch(e){}
+}
+(function paintVersionNotes() {
+  var notes = loadVersionNotes();
+  document.querySelectorAll('.version-note-input').forEach(function(inp) {
+    if (notes[inp.dataset.vno]) inp.value = notes[inp.dataset.vno];
+  });
+})();
 </script>
 {% endblock %}

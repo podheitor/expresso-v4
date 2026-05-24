@@ -42,6 +42,14 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleCardDavQr()" title="QR code">📱</button>
     </div>
     <div id="carddav-qr-box" style="display:none;margin-top:.5rem;text-align:center"></div>
+    <details style="margin-top:.6rem">
+      <summary class="muted small" style="cursor:pointer">📘 Como configurar (Apple / Android / Thunderbird)</summary>
+      <div class="muted small" style="margin-top:.4rem;line-height:1.5">
+        <strong>Apple (iOS/macOS)</strong>: Ajustes › Contatos › Contas › Adicionar Conta › Outra › Adicionar Conta CardDAV. Cole o URL acima como "Servidor".<br>
+        <strong>Android</strong>: instale <em>DAVx⁵</em>, escolha "Login com URL e nome de usuário", cole o URL e use suas credenciais Expresso.<br>
+        <strong>Thunderbird (≥102)</strong>: Contatos › Novo Endereço CardDAV. Cole o URL acima e autentique com suas credenciais.
+      </div>
+    </details>
   </div>
   <script>
   function toggleCardDavQr() {

@@ -59,6 +59,10 @@
             <div class="meet-prejoin-controls">
               <button class="btn btn-ghost btn-sm" id="pj-cam-btn" onclick="togglePjCam()" title="Câmera">🎥 Câm.</button>
               <button class="btn btn-ghost btn-sm" id="pj-mic-btn" onclick="togglePjMic()" title="Microfone">🎤 Mic.</button>
+              <button class="btn btn-ghost btn-sm" id="pj-test-mic" onclick="testPjMic(this)" title="Teste de microfone">🔊 Testar áudio</button>
+            </div>
+            <div id="pj-mic-meter" style="display:none;height:.5rem;background:var(--surface-2,#eee);margin-top:.4rem;border-radius:.25rem;overflow:hidden">
+              <div id="pj-mic-fill" style="height:100%;width:0%;background:#22c55e;transition:width .1s"></div>
             </div>
             <div class="meet-prejoin-name">
               <input type="text" id="pj-name" placeholder="Seu nome" value="{{ me.display_name.as_deref().unwrap_or(&me.email) }}" class="tasks-add-input" style="text-align:center">
@@ -872,6 +876,51 @@ function copyMeetChat(btn) {
     var prev = btn.textContent;
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+function testPjMic(btn) {
+  var meter = document.getElementById('pj-mic-meter');
+  var fill = document.getElementById('pj-mic-fill');
+  if (!meter || !fill) return;
+  if (btn.dataset.running === '1') return;
+  btn.dataset.running = '1';
+  var origText = btn.textContent;
+  btn.textContent = '🎙 Capturando…';
+  meter.style.display = 'block';
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    var ctx = new Ctx();
+    var src = ctx.createMediaStreamSource(stream);
+    var an = ctx.createAnalyser();
+    an.fftSize = 512;
+    src.connect(an);
+    var buf = new Uint8Array(an.frequencyBinCount);
+    var start = Date.now();
+    function tick() {
+      an.getByteTimeDomainData(buf);
+      var sum = 0;
+      for (var i = 0; i < buf.length; i++) { var v = (buf[i] - 128) / 128; sum += v * v; }
+      var rms = Math.sqrt(sum / buf.length);
+      var pct = Math.min(100, Math.round(rms * 200));
+      fill.style.width = pct + '%';
+      fill.style.background = pct > 70 ? '#ef4444' : pct > 35 ? '#f59e0b' : '#22c55e';
+      if (Date.now() - start < 3000) requestAnimationFrame(tick);
+      else {
+        stream.getTracks().forEach(function(t){ t.stop(); });
+        ctx.close();
+        fill.style.width = '0%';
+        meter.style.display = 'none';
+        btn.textContent = '✓ OK';
+        btn.dataset.running = '';
+        setTimeout(function(){ btn.textContent = origText; }, 1500);
+      }
+    }
+    tick();
+  }).catch(function(err) {
+    btn.textContent = '✗ Sem acesso';
+    btn.dataset.running = '';
+    meter.style.display = 'none';
+    setTimeout(function(){ btn.textContent = origText; }, 2000);
   });
 }
 </script>

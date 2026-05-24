@@ -102,6 +102,14 @@ function copyGalContact(btn) {
       var a = cards[idx].querySelector('a.btn-ghost');
       if (a) a.click();
     }
+    else if ((e.key === 'c' || e.key === 'C') && idx >= 0) {
+      var btn = cards[idx].querySelector('button[onclick^="copyGalContact"]');
+      if (btn) { e.preventDefault(); btn.click(); }
+    }
+    else if ((e.key === 'm' || e.key === 'M') && idx >= 0) {
+      var ml = cards[idx].querySelector('a[href*="/mail/compose"]');
+      if (ml) { e.preventDefault(); window.location.href = ml.href; }
+    }
   });
 })();
 </script>

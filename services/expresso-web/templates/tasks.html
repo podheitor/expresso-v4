@@ -950,6 +950,19 @@ if (_tasksView === 'kanban') {
 } else {
   renderAll();
 }
+// "n" → focus new task input, "/" → focus filter
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  var t = (e.target && e.target.tagName) || '';
+  if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+  if (e.key === 'n' || e.key === 'N') {
+    var inp = document.getElementById('new-task-title');
+    if (inp) { e.preventDefault(); inp.focus(); inp.scrollIntoView({behavior:'smooth',block:'center'}); }
+  } else if (e.key === '/') {
+    var f = document.getElementById('task-filter') || document.querySelector('input[type="search"]');
+    if (f) { e.preventDefault(); f.focus(); }
+  }
+});
 </script>
 <style>
 @media print {

@@ -27,8 +27,17 @@
         </div>
       </div>
       <button class="btn btn-ghost btn-sm" onclick="toggleFocusMode()" id="focus-mode-btn" title="Modo foco (esconde notificações e chat)">🎯 Foco</button>
+      <button class="btn btn-ghost btn-sm" onclick="reloadHomeDashboard(this)" title="Atualizar todos os widgets agora">🔄 Atualizar</button>
     </div>
   </header>
+  <script>
+  function reloadHomeDashboard(btn) {
+    var orig = btn.textContent;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+    setTimeout(function(){ window.location.reload(); }, 200);
+  }
+  </script>
   <div id="focus-mode-banner" style="display:none;padding:.5rem 1rem;background:#0ea5e9;color:#fff;text-align:center;border-radius:var(--radius);margin-bottom:1rem">
     🎯 <strong>Modo foco ativo</strong> — notificações silenciadas. <button onclick="toggleFocusMode()" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:4px;padding:.1rem .5rem;cursor:pointer;margin-left:.5rem">Desativar</button>
   </div>

@@ -87,6 +87,7 @@
           <span class="muted small">{{ messages.len() }} resultado{% if messages.len() != 1 %}s{% endif %} para "{{ query }}"</span>
           <input type="search" id="mail-results-refine" placeholder="🔎 refinar nestes resultados…" oninput="refineSearchResults(this.value)" style="margin-left:auto;width:14rem;font-size:.85rem;padding:.2rem .4rem">
           <span class="muted small" id="mail-results-visible"></span>
+          <button class="btn btn-ghost btn-sm" onclick="exportSearchCsv()" title="Exportar visíveis como CSV">⤓ CSV</button>
         </div>
         <ul class="msg-rows">
           {% for msg in messages %}
@@ -217,6 +218,30 @@ function refineSearchResults(q) {
   });
   var v = document.getElementById('mail-results-visible');
   if (v) v.textContent = q ? '· ' + visible + ' visível(eis)' : '';
+}
+function exportSearchCsv() {
+  var rows = [['from','date','subject','preview']];
+  document.querySelectorAll('.msg-rows li').forEach(function(li) {
+    if (li.style.display === 'none') return;
+    var f = (li.querySelector('.msg-from') || {}).textContent || '';
+    var d = (li.querySelector('.msg-date') || {}).textContent || '';
+    var s = (li.querySelector('.msg-subject') || {}).textContent || '';
+    var p = (li.querySelector('.msg-preview') || {}).textContent || '';
+    rows.push([f, d, s, p]);
+  });
+  if (rows.length === 1) { alert('Sem resultados visíveis.'); return; }
+  var csv = rows.map(function(r) {
+    return r.map(function(c) {
+      var v = (c || '').trim().replace(/"/g, '""');
+      return '"' + v + '"';
+    }).join(',');
+  }).join('\r\n');
+  var blob = new Blob(['﻿' + csv], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mail-search-' + Date.now() + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
 }
 </script>
 {% endblock %}

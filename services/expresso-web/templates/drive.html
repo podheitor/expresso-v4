@@ -62,6 +62,7 @@
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchTrash()" title="Mover selecionados para lixeira">🗑 Lixeira</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchCopyLinks(this)" title="Copiar links de download dos selecionados">🔗 Copiar links</button>
         <button class="btn btn-ghost btn-sm" onclick="clearDriveSelection()">✕ Cancelar</button>
       </div>
       <form class="upload-form" method="post" title="Atalho: U"
@@ -793,6 +794,23 @@ function saveSharing() {
 }
 
 // ── Bulk download (sequential, browser-native, no zipping) ──────────────────
+function batchCopyLinks(btn) {
+  var checks = Array.from(document.querySelectorAll('.drive-row-check:checked'));
+  if (!checks.length) { alert('Nenhum arquivo selecionado.'); return; }
+  var origin = window.location.origin;
+  var lines = checks.map(function(b) {
+    var id = b.dataset.id;
+    var row = b.closest('tr, li, .drive-file-item');
+    var nameEl = row ? row.querySelector('.drive-name, .drive-file-name, td.drive-name') : null;
+    var name = nameEl ? nameEl.textContent.trim() : id;
+    return name + '\t' + origin + '/api/v1/drive/files/' + encodeURIComponent(id);
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓ ' + lines.length + ' link(s)';
+    setTimeout(function(){ btn.textContent = prev; }, 1800);
+  }).catch(function() { prompt('Links:', lines.join('\n')); });
+}
 function batchDownload() {
   var ids = Array.from(document.querySelectorAll('.drive-row-check:checked')).map(function(b){ return b.dataset.id; });
   if (!ids.length) { alert('Nenhum arquivo selecionado.'); return; }

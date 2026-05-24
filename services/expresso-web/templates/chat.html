@@ -1139,6 +1139,14 @@ function savePresenceMsg(text) {
   var _lastActive = Date.now();
   document.addEventListener('mousemove', function(){ _lastActive = Date.now(); });
   document.addEventListener('keydown', function(){ _lastActive = Date.now(); });
+  // "/" focuses message composer (unless typing in another input)
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== '/') return;
+    var t = (e.target && e.target.tagName) || '';
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    var ta = document.getElementById('chat-compose-input');
+    if (ta) { e.preventDefault(); ta.focus(); }
+  });
   setInterval(function() {
     var current = localStorage.getItem(PRESENCE_KEY) || 'online';
     if (current !== 'online') return;

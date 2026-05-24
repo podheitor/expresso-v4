@@ -32,7 +32,14 @@
       <div class="row" style="gap:.75rem">
         <label style="flex:1">
           <span>Expira (horas)</span>
-          <input type="number" name="ttl_hours" value="168" min="1" max="720" required placeholder="máx 720 = 30 dias">
+          <input id="share-ttl-input" type="number" name="ttl_hours" value="168" min="1" max="720" required placeholder="máx 720 = 30 dias">
+          <div style="display:flex;gap:.3rem;margin-top:.3rem;flex-wrap:wrap">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setShareTtl(1)">1h</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setShareTtl(24)">1 dia</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setShareTtl(72)">3 dias</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setShareTtl(168)">1 semana</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setShareTtl(720)">30 dias</button>
+          </div>
         </label>
         <label style="flex:1">
           <span>Permissão</span>
@@ -161,6 +168,10 @@ function filterDriveShares(mode) {
     if (mode === 'all') r.style.display = '';
     else r.style.display = (r.dataset.status === mode) ? '' : 'none';
   });
+}
+function setShareTtl(hours) {
+  var inp = document.getElementById('share-ttl-input');
+  if (inp) { inp.value = hours; inp.focus(); }
 }
 </script>
 {% endblock %}
