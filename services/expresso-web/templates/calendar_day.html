@@ -944,5 +944,16 @@ window.copyFreeSlots = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyEventLocations = function(){
+  const evs=document.querySelectorAll('[data-event-location]');
+  const set=new Set();
+  evs.forEach(e=>{const l=(e.getAttribute('data-event-location')||'').trim();if(l)set.add(l);});
+  const ta=document.createElement('textarea');ta.value=[...set].join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=set.size+' locais únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

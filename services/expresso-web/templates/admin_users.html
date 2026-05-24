@@ -889,5 +889,16 @@ window.copyUsersByTenant = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copy2faUsers = function(){
+  const rows=document.querySelectorAll('[data-user-2fa]');
+  const out=[];
+  rows.forEach(r=>{const x=(r.getAttribute('data-user-2fa')||'').toLowerCase();if(x==='true'||x==='1'||x==='yes')out.push(r.getAttribute('data-user-email')||r.getAttribute('data-user')||'?');});
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' com 2FA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
