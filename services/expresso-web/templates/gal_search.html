@@ -1213,5 +1213,23 @@ window.copyGalByOffice=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalManagers=function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const mgrs=new Set();
+  rows.forEach(r=>{
+    const m=r.getAttribute('data-contact-manager')||'';
+    if(m.trim())mgrs.add(m.trim().toLowerCase());
+  });
+  if(!mgrs.size){alert('Sem managers');return;}
+  const ta=document.createElement('textarea');
+  ta.value=Array.from(mgrs).sort().join('\n');
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=mgrs.size+' managers únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

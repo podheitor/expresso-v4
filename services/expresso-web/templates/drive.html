@@ -2077,5 +2077,26 @@ window.copyDriveByOwner=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTopLargest=function(){
+  const n=parseInt(prompt('Top N maiores:','10')||'10',10);
+  if(!n)return;
+  const rows=Array.from(document.querySelectorAll('[data-file-id]'));
+  if(!rows.length){alert('Sem arquivos');return;}
+  rows.sort((a,b)=>(parseInt(b.getAttribute('data-file-size')||'0',10))-(parseInt(a.getAttribute('data-file-size')||'0',10)));
+  const top=rows.slice(0,n).map(r=>{
+    const name=r.getAttribute('data-file-name')||'';
+    const sz=parseInt(r.getAttribute('data-file-size')||'0',10);
+    const mb=(sz/1048576).toFixed(2);
+    return mb+' MB\t'+name;
+  });
+  const ta=document.createElement('textarea');
+  ta.value=top.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

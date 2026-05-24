@@ -1464,5 +1464,25 @@ window.copyMonthByWeekday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventDensity=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  if(!cards.length){alert('Sem eventos');return;}
+  const days=new Set();
+  cards.forEach(c=>{
+    const d=(c.getAttribute('data-event-start')||'').split('T')[0];
+    if(d)days.add(d);
+  });
+  const total=cards.length, busy=days.size;
+  const density=(total/(busy||1)).toFixed(2);
+  const txt=total+' eventos / '+busy+' dias = '+density+' por dia';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=density+'/dia';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

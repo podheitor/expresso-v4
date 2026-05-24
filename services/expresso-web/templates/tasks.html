@@ -2171,5 +2171,31 @@ window.copyTasksByPriority=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const now=new Date();
+  const day=now.getDay();
+  const monday=new Date(now); monday.setDate(now.getDate()-((day+6)%7)); monday.setHours(0,0,0,0);
+  const sunday=new Date(monday); sunday.setDate(monday.getDate()+7);
+  const rows=document.querySelectorAll('[data-task-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const due=r.getAttribute('data-task-due')||'';
+    if(!due)return;
+    const d=new Date(due); if(isNaN(d))return;
+    if(d>=monday && d<sunday){
+      const title=r.getAttribute('data-task-title')||'';
+      out.push(due+'\t'+title);
+    }
+  });
+  if(!out.length){alert('Sem tarefas esta semana');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' esta semana';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

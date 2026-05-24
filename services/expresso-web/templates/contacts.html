@@ -1872,5 +1872,26 @@ window.copyContactsByCompany=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithoutPhone=function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const phone=r.getAttribute('data-contact-phone')||'';
+    if(!phone.trim()){
+      const name=r.getAttribute('data-contact-name')||'';
+      const email=r.getAttribute('data-contact-email')||'';
+      out.push(name+'\t'+email);
+    }
+  });
+  if(!out.length){alert('Todos têm telefone');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' sem telefone';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

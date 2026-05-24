@@ -2741,5 +2741,26 @@ window.copyChatPinnedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMentions=function(){
+  const me='{{ me.user_id }}';
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const mentions=[];
+  rows.forEach(r=>{
+    const body=(r.querySelector('.body')||r).textContent||'';
+    if(body.includes('@'+me)){
+      const author=r.getAttribute('data-msg-author')||'';
+      mentions.push(author+': '+body.trim().slice(0,150));
+    }
+  });
+  if(!mentions.length){alert('Sem menções a @'+me);return;}
+  const ta=document.createElement('textarea');
+  ta.value=mentions.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=mentions.length+' menções';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

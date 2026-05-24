@@ -1415,5 +1415,26 @@ window.copyWeekTotalHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekBusiestDay=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  if(!cards.length){alert('Sem eventos');return;}
+  const buckets={};
+  cards.forEach(c=>{
+    const s=c.getAttribute('data-event-start')||'';
+    const d=s.split('T')[0]; if(!d)return;
+    buckets[d]=(buckets[d]||0)+1;
+  });
+  const top=Object.entries(buckets).sort((a,b)=>b[1]-a[1])[0];
+  if(!top){alert('Sem datas');return;}
+  const txt=top[0]+' — '+top[1]+' eventos';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pico '+top[0]+' ('+top[1]+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1392,5 +1392,30 @@ window.copyDayBackToBack=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLongestEvent=function(){
+  const cards=document.querySelectorAll('[data-event-start][data-event-end]');
+  if(!cards.length){alert('Sem eventos');return;}
+  let longest=null, longestMs=0;
+  cards.forEach(c=>{
+    const s=new Date(c.getAttribute('data-event-start')||'');
+    const e=new Date(c.getAttribute('data-event-end')||'');
+    if(!isNaN(s)&&!isNaN(e)){
+      const dur=e-s;
+      if(dur>longestMs){longestMs=dur; longest=c;}
+    }
+  });
+  if(!longest){alert('Sem durações válidas');return;}
+  const title=longest.getAttribute('data-event-title')||'';
+  const h=Math.floor(longestMs/3600000), m=Math.floor((longestMs%3600000)/60000);
+  const txt=h+'h '+m+'m — '+title;
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='maior '+h+'h '+m+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
