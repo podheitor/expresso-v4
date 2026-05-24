@@ -1800,5 +1800,15 @@ window.copyMailByMonth = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.markAllRead = function(){
+  if(!confirm('Marcar todos os e-mails visíveis como lidos?')) return;
+  const rows=document.querySelectorAll('[data-mail-id][data-mail-unread="1"], [data-mail-id][data-mail-unread="true"]');
+  rows.forEach(r=>{r.setAttribute('data-mail-unread','0'); r.classList.remove('unread'); r.classList.add('read');});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' marcados como lidos (UI)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

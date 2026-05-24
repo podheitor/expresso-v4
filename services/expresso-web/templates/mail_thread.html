@@ -1213,5 +1213,16 @@ window.copyThreadParticipantsList = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAsTxt = function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const lines=Array.from(msgs).map(r=>{const date=r.getAttribute('data-msg-date')||'?'; const from=r.getAttribute('data-msg-from')||'?'; const txt=(r.textContent||'').trim(); return '['+date+'] '+from+':\n'+txt+'\n';}).join('\n---\n');
+  const blob=new Blob([lines],{type:'text/plain'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='thread.txt';document.body.appendChild(a);a.click();a.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thread.txt baixado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

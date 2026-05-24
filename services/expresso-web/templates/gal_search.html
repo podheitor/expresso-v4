@@ -1028,5 +1028,19 @@ window.copyGalDeptBreakdown = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSelectedVcard = function(){
+  let rows=document.querySelectorAll('[data-gal-email][data-gal-selected="1"]');
+  if(rows.length===0){
+    rows=document.querySelectorAll('[data-gal-email]');
+    if(rows.length===0) return;
+  }
+  const cards=Array.from(rows).map(r=>'BEGIN:VCARD\nVERSION:3.0\nFN:'+(r.getAttribute('data-gal-name')||'?')+'\nEMAIL:'+(r.getAttribute('data-gal-email')||'')+'\nORG:'+(r.getAttribute('data-gal-dept')||'')+'\nTITLE:'+(r.getAttribute('data-gal-title')||'')+'\nTEL:'+(r.getAttribute('data-gal-phone')||'')+'\nEND:VCARD').join('\n\n');
+  const ta=document.createElement('textarea');ta.value=cards;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' vcards';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1279,5 +1279,15 @@ window.copyMonthAllDayList = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLightDays = function(){
+  const cells=document.querySelectorAll('[data-day]');
+  const out=Array.from(cells).filter(c=>{const n=c.querySelectorAll('[data-event-id]').length; return n>=1&&n<=2;}).map(c=>c.getAttribute('data-day')+'\t'+c.querySelectorAll('[data-event-id]').length+' eventos').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dias leves copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

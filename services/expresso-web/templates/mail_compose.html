@@ -1475,5 +1475,18 @@ window.copyDraftSnapshot = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.listSnapshots = function(){
+  const prefix='expresso_draft_snap_{{ me.user_id }}_';
+  const keys=[];
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i); if(k && k.startsWith(prefix)) keys.push(k);}
+  keys.sort();
+  const out=keys.map(k=>{try{const o=JSON.parse(localStorage.getItem(k)); return o.ts+'\t'+(o.subject||'(sem subj)');}catch(e){return k+'\t(parse err)';}}).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' snapshots';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
