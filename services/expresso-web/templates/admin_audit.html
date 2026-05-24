@@ -1564,5 +1564,19 @@ window.copyAuditPeakBurst=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByResource=function(){
+  const rows=document.querySelectorAll('[data-audit-resource]');
+  if(!rows.length){alert('Sem resources');return;}
+  const buckets={};
+  rows.forEach(r=>{const res=r.getAttribute('data-audit-resource')||'?';buckets[res]=(buckets[res]||0)+1;});
+  const sorted=Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([r,c])=>c+'\t'+r).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=sorted.length+' resources';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

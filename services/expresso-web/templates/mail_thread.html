@@ -1648,5 +1648,23 @@ window.copyThreadSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadOldestReply=function(){
+  const rows=Array.from(document.querySelectorAll('[data-msg-date]'));
+  if(rows.length<2){alert('Sem respostas');return;}
+  const items=rows.map(r=>({d:new Date(r.getAttribute('data-msg-date')),a:r.getAttribute('data-msg-author')||'?'}))
+    .filter(x=>!isNaN(x.d)).sort((a,b)=>a.d-b.d);
+  const first=items[0];
+  const reply=items.find(x=>x.a!==first.a);
+  if(!reply){alert('Sem resposta de outro autor');return;}
+  const ms=reply.d-first.d;
+  const days=Math.floor(ms/86400000),h=Math.floor((ms%86400000)/3600000);
+  const out='primeira: '+first.d.toISOString()+' ('+first.a+')\nprimeira resposta: '+reply.d.toISOString()+' ('+reply.a+')\ndelta: '+days+'d '+h+'h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='delta '+days+'d '+h+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

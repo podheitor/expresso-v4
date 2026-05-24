@@ -2097,5 +2097,16 @@ window.copyHomeUrl=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyCookiesEnabled=function(){
+  const enabled=navigator.cookieEnabled;
+  const count=document.cookie?document.cookie.split(';').length:0;
+  const out='cookies enabled: '+enabled+' / count: '+count;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(enabled?'#0a0':'#a00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=enabled?count+' cookies':'cookies disabled';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

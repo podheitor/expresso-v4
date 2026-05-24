@@ -3007,5 +3007,19 @@ window.copyChatDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadCount=function(){
+  const rows=document.querySelectorAll('[data-msg-thread]');
+  if(!rows.length){alert('Sem threads');return;}
+  const buckets={};
+  rows.forEach(r=>{const tid=r.getAttribute('data-msg-thread')||'';if(tid)buckets[tid]=(buckets[tid]||0)+1;});
+  const sorted=Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([tid,c])=>c+'\t'+tid).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=sorted.length+' threads';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

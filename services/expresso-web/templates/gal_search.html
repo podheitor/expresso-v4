@@ -1470,5 +1470,23 @@ window.copyGalCountTotal=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailValidPct=function(){
+  const re=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const rows=document.querySelectorAll('[data-gal-email]');
+  if(!rows.length){alert('Sem resultados');return;}
+  let valid=0,invalid=[];
+  rows.forEach(r=>{
+    const e=(r.getAttribute('data-gal-email')||'').trim();
+    if(re.test(e))valid++;else invalid.push(r.getAttribute('data-gal-name')+'\t'+e);
+  });
+  const pct=Math.round(valid*100/rows.length);
+  const out=valid+'/'+rows.length+' válidos ('+pct+'%)\n\nInválidos:\n'+invalid.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>=95?'#0a0':'#a60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% válidos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

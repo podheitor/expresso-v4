@@ -2164,5 +2164,22 @@ window.copyContactsDuplicateNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAlphaCounts=function(){
+  const rows=document.querySelectorAll('[data-contact-name]');
+  if(!rows.length){alert('Sem contatos');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const n=(r.getAttribute('data-contact-name')||'').trim().toUpperCase();
+    const letter=n.charAt(0).match(/[A-Z]/)?n.charAt(0):'#';
+    buckets[letter]=(buckets[letter]||0)+1;
+  });
+  const lines=Object.entries(buckets).sort().map(([l,c])=>l+'\t'+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=lines;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' letras';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

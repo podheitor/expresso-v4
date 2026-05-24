@@ -2229,5 +2229,24 @@ window.copyMailSenderFreq=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailReplyAllCount=function(){
+  const rows=document.querySelectorAll('[data-mail-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const recip=(r.getAttribute('data-mail-recipients')||'').split(/[,;]/).filter(x=>x.trim()).length;
+    if(recip>3){
+      const s=r.getAttribute('data-mail-subject')||'';
+      out.push(recip+'\t'+s.trim());
+    }
+  });
+  if(!out.length){alert('Nenhuma c/>3 destinatários');return;}
+  out.sort((a,b)=>parseInt(b)-parseInt(a));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' reply-all';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

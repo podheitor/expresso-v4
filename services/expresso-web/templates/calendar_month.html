@@ -1720,5 +1720,23 @@ window.copyMonthFirstLastEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthHourHistogram=function(){
+  const rows=document.querySelectorAll('[data-event-start]');
+  if(!rows.length){alert('Sem eventos');return;}
+  const buckets=new Array(24).fill(0);
+  rows.forEach(r=>{
+    const d=new Date(r.getAttribute('data-event-start'));
+    if(!isNaN(d))buckets[d.getHours()]++;
+  });
+  const max=Math.max(...buckets)||1;
+  const out=buckets.map((c,h)=>String(h).padStart(2,'0')+'h '+'█'.repeat(Math.round(c*20/max))+' '+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const peak=buckets.indexOf(max);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pico '+String(peak).padStart(2,'0')+'h ('+max+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
