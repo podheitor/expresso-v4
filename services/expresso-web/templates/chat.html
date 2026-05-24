@@ -82,6 +82,10 @@
           <option value="offline">Invisible</option>
         </select>
       </div>
+      <div style="display:flex;gap:.3rem;align-items:center;padding:.2rem .4rem 0">
+        <input type="text" id="presence-msg-input" class="search-input-sm" placeholder="💬 Status…" maxlength="60"
+               style="flex:1;font-size:.75rem" onchange="savePresenceMsg(this.value)" onkeydown="if(event.key==='Enter')this.blur()">
+      </div>
       <a href="/settings" class="sidebar-settings-link">⚙</a>
     </footer>
   </aside>
@@ -251,6 +255,7 @@
               <ul class="mention-list" id="mention-list" style="display:none"></ul>
             </div>
             <button type="button" class="btn btn-ghost chat-send-btn" id="chat-mic-btn" onclick="toggleVoiceRecord()" title="Gravar áudio">🎤</button>
+            <button type="button" class="btn btn-ghost chat-send-btn" onclick="toggleChatEnterSends()" title="Alternar modo Enter (envia/quebra linha)">⏎</button>
             <button type="submit" class="btn btn-primary chat-send-btn" title="Enviar (Enter)">➤</button>
           </div>
           <div id="chat-voice-status" style="display:none;align-items:center;gap:.5rem;padding:.4rem .6rem;background:var(--bg-raised);border-radius:var(--radius);margin-top:.3rem">
@@ -1088,6 +1093,14 @@ function updatePresenceUI(status) {
   if (dot) dot.style.background = PRESENCE_COLORS[status] || '#94a3b8';
   if (lbl) lbl.textContent = PRESENCE_LABELS[status] || status;
 }
+var PRESENCE_MSG_KEY = 'expresso_presence_msg_{{ me.user_id }}';
+function savePresenceMsg(text) {
+  try { localStorage.setItem(PRESENCE_MSG_KEY, (text || '').trim().slice(0, 60)); } catch(e){}
+}
+(function initPresenceMsg() {
+  var inp = document.getElementById('presence-msg-input'); if (!inp) return;
+  try { inp.value = localStorage.getItem(PRESENCE_MSG_KEY) || ''; } catch(e){}
+})();
 (function initPresence() {
   var saved = localStorage.getItem(PRESENCE_KEY) || 'online';
   var sel = document.getElementById('presence-select');

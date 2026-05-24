@@ -95,6 +95,7 @@
         </div>
         <div style="display:flex;gap:.4rem;align-items:center">
           <button class="btn btn-ghost btn-sm" onclick="copyMeetLink('{{ m.id }}')" title="Copiar link">🔗</button>
+          <button class="btn btn-ghost btn-sm" onclick="showMeetQr('{{ m.id }}')" title="QR code da reunião">▦</button>
           <a class="btn btn-primary btn-sm" href="/meet/{{ m.id }}">Entrar</a>
         </div>
       </li>
@@ -142,6 +143,17 @@ function copyMeetLink(id) {
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 2000);
   });
+}
+function showMeetQr(id) {
+  var url = window.location.origin + '/meet/' + id;
+  var qr = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+  var w = window.open('', '_blank', 'width=320,height=420');
+  if (!w) { alert('Bloqueador de pop-up impediu o QR.'); return; }
+  w.document.write('<html><head><title>QR · Meet</title>' +
+    '<style>body{font-family:sans-serif;text-align:center;padding:1rem}p{font-size:.8rem;color:#666;word-break:break-all}</style>' +
+    '</head><body><img src="' + qr + '" alt="QR" width="240" height="240">' +
+    '<p>' + url + '</p></body></html>');
+  w.document.close();
 }
 (function() {
   function pad(n) { return n < 10 ? '0' + n : '' + n; }

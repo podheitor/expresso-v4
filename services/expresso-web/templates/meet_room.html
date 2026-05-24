@@ -21,6 +21,7 @@
         <span class="muted small" style="display:none" id="part-count-label">👥 <span id="part-count">0</span></span>
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="shareMeetLink()" title="Copiar link da sala">🔗 Compartilhar</button>
+      <button class="btn btn-ghost btn-sm" onclick="showRoomQr()" title="QR code da sala">▦ QR</button>
       <button class="btn btn-ghost btn-sm" onclick="showInviteModal()" title="Convidar por e-mail">✉ Convidar</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
       <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
@@ -284,6 +285,17 @@ function shareMeetLink() {
     btn.textContent = '✓ Copiado!';
     setTimeout(function(){ btn.textContent = prev; }, 2200);
   });
+}
+function showRoomQr() {
+  var url = window.location.href;
+  var qr = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
+  var w = window.open('', '_blank', 'width=320,height=420');
+  if (!w) { alert('Bloqueador de pop-up impediu o QR.'); return; }
+  w.document.write('<html><head><title>QR · Sala</title>' +
+    '<style>body{font-family:sans-serif;text-align:center;padding:1rem}p{font-size:.8rem;color:#666;word-break:break-all}</style>' +
+    '</head><body><h3>{{ room_name }}</h3><img src="' + qr + '" alt="QR" width="240" height="240">' +
+    '<p>' + url + '</p></body></html>');
+  w.document.close();
 }
 function toggleRecording() {
   var api = window._jitsiApi;

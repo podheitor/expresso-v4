@@ -23,9 +23,9 @@
     <div class="subcard">
       <dl class="kv">
         <dt>Usuário</dt>  <dd>{% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}—{% endmatch %}</dd>
-        <dt>Email</dt>    <dd>{{ me.email }}</dd>
-        <dt>User ID</dt>  <dd class="mono">{{ me.user_id }}</dd>
-        <dt>Tenant</dt>   <dd class="mono">{{ me.tenant_id }}</dd>
+        <dt>Email</dt>    <dd>{{ me.email }} <button class="btn btn-ghost btn-sm" onclick="copyMeField(this,'{{ me.email }}')" title="Copiar">📋</button></dd>
+        <dt>User ID</dt>  <dd class="mono">{{ me.user_id }} <button class="btn btn-ghost btn-sm" onclick="copyMeField(this,'{{ me.user_id }}')" title="Copiar">📋</button></dd>
+        <dt>Tenant</dt>   <dd class="mono">{{ me.tenant_id }} <button class="btn btn-ghost btn-sm" onclick="copyMeField(this,'{{ me.tenant_id }}')" title="Copiar">📋</button></dd>
         <dt>Roles</dt>    <dd>{% if me.roles.is_empty() %}—{% else %}{{ me.roles|join(", ") }}{% endif %}</dd>
         <dt>Expira</dt>   <dd class="mono">{{ me.expires_at }}</dd>
       </dl>
@@ -94,6 +94,13 @@ function previewMyAvatar(input) {
 function removeMyAvatar() {
   try { localStorage.removeItem(ME_AVATAR_KEY); } catch(e){}
   window.location.reload();
+}
+function copyMeField(btn, text) {
+  navigator.clipboard.writeText(text).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
 }
 </script>
 {% endblock %}

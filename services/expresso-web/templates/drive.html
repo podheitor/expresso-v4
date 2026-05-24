@@ -306,11 +306,17 @@ function startRename(e, fileId, el) {
 }
 
 // ── Table sort ────────────────────────────────────────────────────────────────
+var DRIVE_SORT_KEY = 'expresso_drive_sort';
 var _driveSortCol = null;
 var _driveSortDir = 1;
+try {
+  var _ds = JSON.parse(localStorage.getItem(DRIVE_SORT_KEY) || 'null');
+  if (_ds && _ds.col) { _driveSortCol = _ds.col; _driveSortDir = _ds.dir || 1; }
+} catch(e) {}
 function driveSort(col) {
   if (_driveSortCol === col) { _driveSortDir *= -1; }
   else { _driveSortCol = col; _driveSortDir = 1; }
+  try { localStorage.setItem(DRIVE_SORT_KEY, JSON.stringify({col: _driveSortCol, dir: _driveSortDir})); } catch(e) {}
   ['name','size','date'].forEach(function(c) {
     var el = document.getElementById('sort-' + c);
     if (el) el.textContent = c === col ? (_driveSortDir > 0 ? '▲' : '▼') : '';
@@ -339,6 +345,13 @@ function driveSort(col) {
   });
   rows.forEach(function(r){ tbody.appendChild(r); });
 }
+(function applyInitialDriveSort() {
+  if (_driveSortCol) {
+    var saved = _driveSortCol; var dir = _driveSortDir;
+    _driveSortCol = null; _driveSortDir = -dir;
+    driveSort(saved);
+  }
+})();
 
 function showDriveNewFolder() {
   document.getElementById('drive-new-folder-modal').style.display = 'flex';

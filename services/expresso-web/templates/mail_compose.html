@@ -28,6 +28,7 @@
           <ul class="autocomplete-list" id="to-suggestions"></ul>
         </div>
         <input type="hidden" name="to" id="to-hidden" value="{{ prefill_to }}">
+        <span class="muted small mono" id="compose-recipient-count" style="font-size:.7rem"></span>
         <button type="button" class="btn btn-ghost btn-sm" onclick="toggleCcBcc()" id="cc-toggle-btn" style="flex-shrink:0;font-size:.75rem">Cc/Bcc</button>
       </div>
       <div id="cc-bcc-area" style="display:none">
@@ -527,5 +528,20 @@ function updateComposeStats() {
   if (el) el.textContent = words + ' palavras · ' + chars + ' caracteres · ' + lbl;
 }
 updateComposeStats();
+function updateComposeRecipientCount() {
+  var el = document.getElementById('compose-recipient-count'); if (!el) return;
+  var n = 0;
+  ['to-pills','cc-pills','bcc-pills'].forEach(function(id) {
+    var w = document.getElementById(id); if (w) n += w.querySelectorAll('.compose-pill').length;
+  });
+  el.textContent = n > 0 ? '· ' + n + ' destinatário' + (n === 1 ? '' : 's') : '';
+}
+(function watchPills() {
+  ['to-pills','cc-pills','bcc-pills'].forEach(function(id) {
+    var w = document.getElementById(id); if (!w) return;
+    new MutationObserver(updateComposeRecipientCount).observe(w, { childList: true, subtree: true });
+  });
+  updateComposeRecipientCount();
+})();
 </script>
 {% endblock %}

@@ -152,6 +152,7 @@
             <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ d.id }}&folder={{ selected }}">↩ Responder</a>
             <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ d.id }}&folder={{ selected }}">→ Encaminhar</a>
             <button class="btn btn-ghost btn-sm mail-print-btn" onclick="window.print()" title="Imprimir mensagem">🖨</button>
+            <button class="btn btn-ghost btn-sm" onclick="copyMsgLink(this)" title="Copiar link permanente desta mensagem">🔗</button>
             <div class="detail-dropdown">
               <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯</button>
               <div class="dropdown-menu">
@@ -179,6 +180,7 @@
                 <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','trabalho','🔵')">🔵 Trabalho</button>
                 <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','pessoal','🟢')">🟢 Pessoal</button>
                 <button class="dropdown-item" type="button" onclick="toggleMailLabel('{{ d.id }}','aguardando','🟡')">🟡 Aguardando</button>
+                <button class="dropdown-item" type="button" onclick="clearMailLabels('{{ d.id }}')">✕ Limpar etiquetas</button>
                 <hr class="dropdown-sep">
                 <form method="post" action="/mail/{{ d.id }}/move">
                   <input type="hidden" name="target_folder" value="Spam">
@@ -595,6 +597,12 @@ function toggleMailLabel(msgId, name, icon) {
   saveLabels(map);
   renderAllLabels();
 }
+function clearMailLabels(msgId) {
+  var map = loadLabels();
+  delete map[msgId];
+  saveLabels(map);
+  renderAllLabels();
+}
 var LABEL_COLORS = {
   'importante': '#ef4444',
   'trabalho':   '#3b82f6',
@@ -805,5 +813,13 @@ function toggleMailCompact() {
   if (localStorage.getItem(MAIL_COMPACT_KEY) === '1') applyMailCompact(true);
   else { var btn = document.getElementById('mail-density-btn'); if (btn) btn.textContent = '≡ Compacto'; }
 })();
+function copyMsgLink(btn) {
+  var url = window.location.href;
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 {% endblock %}

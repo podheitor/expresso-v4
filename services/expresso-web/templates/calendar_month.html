@@ -368,4 +368,13 @@ function importIcsFile(input) {
   h1 { font-size: 1.2rem !important; }
 }
 </style>
+<script>
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'ArrowLeft')  { window.location.href = '{{ prev_link }}'; }
+  if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
+  if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
+});
+</script>
 {% endblock %}

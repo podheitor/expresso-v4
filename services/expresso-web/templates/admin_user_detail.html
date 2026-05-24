@@ -32,8 +32,8 @@
   <div class="card stack">
     <h3>Informações</h3>
     <dl class="kv">
-      <dt>ID</dt><dd class="mono small">{{ user.id }}</dd>
-      <dt>E-mail</dt><dd class="mono">{{ user.email }}</dd>
+      <dt>ID</dt><dd class="mono small">{{ user.id }} <button class="btn btn-ghost btn-sm" onclick="copyToClip(this,'{{ user.id }}')" title="Copiar ID">📋</button></dd>
+      <dt>E-mail</dt><dd class="mono">{{ user.email }} <button class="btn btn-ghost btn-sm" onclick="copyToClip(this,'{{ user.email }}')" title="Copiar e-mail">📋</button></dd>
       <dt>Papel</dt><dd><span class="admin-role-badge admin-role-{{ user.role }}">{{ user.role }}</span></dd>
       <dt>Status</dt><dd><span class="admin-status-badge admin-status-{{ user.status }}">{{ user.status }}</span></dd>
       <dt>Tenant</dt><dd class="mono small">{{ user.tenant_id }}</dd>
@@ -217,5 +217,12 @@ function clearAdminNotes() {
   renderAdminNotes();
 }
 renderAdminNotes();
+function copyToClip(btn, text) {
+  navigator.clipboard.writeText(text).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 {% endblock %}
