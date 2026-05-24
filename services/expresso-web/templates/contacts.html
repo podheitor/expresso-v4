@@ -971,5 +971,24 @@ document.addEventListener('keydown', function(e){
     alert(emails.length + ' e-mail(s) copiado(s).');
   });
 })();
+// sprint #20747 — tecla s sort contatos por nome (DOM)
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 's') return;
+    var list = document.querySelector('.contacts-list, .contact-list, ul.contacts');
+    if (!list) { alert('Lista de contatos não encontrada.'); return; }
+    var items = Array.prototype.slice.call(list.querySelectorAll(':scope > li, :scope > .contact-row'));
+    if (!items.length) { alert('Sem contatos para ordenar.'); return; }
+    items.sort(function(a, b){
+      var an = (a.querySelector('.contact-name, [data-name]') || a).textContent.trim().toLowerCase();
+      var bn = (b.querySelector('.contact-name, [data-name]') || b).textContent.trim().toLowerCase();
+      return an.localeCompare(bn);
+    });
+    items.forEach(function(it){ list.appendChild(it); });
+    alert(items.length + ' contato(s) ordenado(s) por nome.');
+  });
+})();
 </script>
 {% endblock %}

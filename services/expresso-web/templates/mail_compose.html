@@ -903,5 +903,16 @@ function appendQuotedBlock(text) {
   body.value = (body.value || '') + (body.value ? '\n\n' : '') + quoted + '\n';
   body.focus();
 }
+// sprint #20749 — prependSubjectPrefix: adiciona Re:/Fwd: ao subject se faltar
+function prependSubjectPrefix(prefix) {
+  var subj = document.querySelector('input[name="subject"], #compose-subject');
+  if (!subj) return;
+  var p = (prefix || 'Re:').trim();
+  var cur = (subj.value || '').trim();
+  var re = new RegExp('^' + p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  if (re.test(cur)) { alert('Prefixo já presente.'); return; }
+  subj.value = p + ' ' + cur;
+  subj.focus();
+}
 </script>
 {% endblock %}

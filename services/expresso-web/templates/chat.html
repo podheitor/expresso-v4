@@ -1912,4 +1912,15 @@ document.addEventListener('keydown', function(e){
 .chat-compact .chat-msg-body { font-size: .8rem !important; line-height: 1.25 !important; }
 .chat-compact .chat-msg-avatar { width: 1.4rem !important; height: 1.4rem !important; font-size: .65rem !important; }
 </style>
+<script>
+// sprint #20743 — tecla ? mostra atalhos chat
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== '?') return;
+    alert('Atalhos /chat:\n  / → foco busca\n  c → composer\n  b → toggle compact\n  l → list channels\n  t → top\n  w → toggle wide\n  h → home\n  g → top\n  G → bottom\n  s → snippet\n  S → snippets list\n  End/Home+c → composer\n  ? → esta ajuda');
+  });
+})();
+</script>
 {% endblock %}

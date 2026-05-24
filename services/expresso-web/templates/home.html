@@ -1230,5 +1230,12 @@ document.addEventListener('keydown', function(e){
   alert('Estado das notificações: ' + Notification.permission +
     (Notification.permission === 'default' ? '\n\nDica: vá em /settings para conceder permissão.' : ''));
 });
+// sprint #20741 — tecla s vai pra /settings
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 's') return;
+  window.location.href = '/settings';
+});
 </script>
 {% endblock %}

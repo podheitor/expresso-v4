@@ -1214,5 +1214,22 @@ document.addEventListener('keydown', function(e){
   var allChecked = Array.prototype.every.call(boxes, function(b){ return b.checked; });
   boxes.forEach(function(b){ b.checked = !allChecked; });
 });
+// sprint #20744 — tecla x copia nomes dos arquivos selecionados
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'x') return;
+  var names = [];
+  document.querySelectorAll('.file-checkbox:checked, .drive-row input[type="checkbox"]:checked').forEach(function(cb){
+    var row = cb.closest('.drive-row, tr, li') || cb.parentElement;
+    var n = (row && (row.querySelector('.file-name, [data-name]') || row).textContent || '').trim().replace(/\s+/g, ' ');
+    if (n) names.push(n);
+  });
+  if (!names.length) { alert('Nada selecionado.'); return; }
+  var txt = names.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(names.length + ' nome(s) copiado(s).');
+});
 </script>
 {% endblock %}

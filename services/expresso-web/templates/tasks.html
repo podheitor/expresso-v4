@@ -1288,4 +1288,28 @@ function copyTasksTitles() {
   body { background: #fff; color: #000; }
 }
 </style>
+<script>
+// sprint #20746 — tecla x toggle hide-completed (per-user localStorage)
+(function(){
+  var KEY = 'expresso_tasks_hide_done_{{ me.user_id }}';
+  function apply(hide) {
+    document.querySelectorAll('.task-row, [data-task-id]').forEach(function(r){
+      var done = r.classList.contains('done') || r.classList.contains('completed') || r.querySelector('input[type="checkbox"]:checked');
+      if (done) r.style.display = hide ? 'none' : '';
+    });
+  }
+  try { if (localStorage.getItem(KEY) === '1') apply(true); } catch (_) {}
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'x') return;
+    var cur = '0';
+    try { cur = localStorage.getItem(KEY) || '0'; } catch (_) {}
+    var next = cur === '1' ? '0' : '1';
+    try { localStorage.setItem(KEY, next); } catch (_) {}
+    apply(next === '1');
+    alert(next === '1' ? 'Concluídas ocultas.' : 'Concluídas visíveis.');
+  });
+})();
+</script>
 {% endblock %}

@@ -1200,4 +1200,21 @@ document.addEventListener('keydown', function(e){
     </div>
   </div>
 </div>
+<script>
+// sprint #20745 — tecla l toggle tile-view Jitsi
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'l') return;
+    try {
+      if (window.jitsiApi && typeof window.jitsiApi.executeCommand === 'function') {
+        window.jitsiApi.executeCommand('toggleTileView');
+      } else {
+        alert('Jitsi não inicializado ainda.');
+      }
+    } catch (err) { alert('Erro: ' + err.message); }
+  });
+})();
+</script>
 {% endblock %}

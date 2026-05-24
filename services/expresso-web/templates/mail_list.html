@@ -1169,5 +1169,14 @@ document.addEventListener('keydown', function(e){
   var arch = document.querySelector('.dropdown-item[href*="archive"], button[data-action="archive"]');
   if (arch) arch.click();
 });
+// sprint #20742 — tecla d aciona ação delete em bulk
+document.addEventListener('keydown', function(e){
+  if (/input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key !== 'd') return;
+  var del = document.querySelector('button[name="bulk_action"][value="delete"], button[name="bulk_action"][value="trash"]') ||
+            document.querySelector('.dropdown-item[href*="trash"], button[data-action="delete"]');
+  if (del) del.click();
+});
 </script>
 {% endblock %}

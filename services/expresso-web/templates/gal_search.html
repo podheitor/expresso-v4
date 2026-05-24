@@ -343,5 +343,21 @@ document.addEventListener('keydown', function(e){
     alert('Top domínios GAL:\n\n' + lines.join('\n'));
   });
 })();
+// sprint #20754 — tecla t copia primeiro nome+email
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 't') return;
+    var row = document.querySelector('.gal-result, [data-gal-email]');
+    if (!row) { alert('Sem resultados GAL.'); return; }
+    var name = (row.querySelector('.gal-name, [data-gal-name]') || row).textContent.trim().replace(/\s+/g, ' ');
+    var email = (row.getAttribute('data-gal-email') || (row.querySelector('[data-gal-email], .gal-email') || {}).textContent || '').trim();
+    var txt = email ? (name + ' <' + email + '>') : name;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt);
+    else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+    alert('Copiado: ' + txt);
+  });
+})();
 </script>
 {% endblock %}

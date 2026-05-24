@@ -440,5 +440,17 @@ document.addEventListener('keydown', function(e){
     alert('Título copiado: ' + t.slice(0, 60));
   });
 })();
+// sprint #20751 — tecla a vai pra criar evento
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'a') return;
+    var link = document.querySelector('a[href*="/calendar/event/new"], a[href*="/calendar/new"], button[data-action="new-event"]');
+    if (link && link.tagName === 'A') window.location.href = link.getAttribute('href');
+    else if (link) link.click();
+    else window.location.href = '/calendar/event/new';
+  });
+})();
 </script>
 {% endblock %}

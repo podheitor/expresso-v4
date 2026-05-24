@@ -452,5 +452,17 @@ document.addEventListener('keydown', function(e){
     window.location.href = '/admin';
   });
 })();
+// sprint #20755 — tecla n conta entradas de auditoria visíveis
+(function(){
+  document.addEventListener('keydown', function(e){
+    if (/input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key !== 'n') return;
+    var rows = document.querySelectorAll('.audit-row, tbody tr, [data-audit-id]');
+    var n = 0;
+    rows.forEach(function(r){ if (r.offsetParent !== null) n++; });
+    alert(n + ' entrada(s) de auditoria visível(eis).');
+  });
+})();
 </script>
 {% endblock %}
