@@ -2568,5 +2568,26 @@ window.copyTasksByAssignee=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksRecentlyCompleted=function(){
+  const cutoff=Date.now()-7*86400000;
+  const out=[];
+  document.querySelectorAll('[data-task-completed-at]').forEach(r=>{
+    const ts=r.getAttribute('data-task-completed-at');
+    if(!ts)return;
+    const t=new Date(ts).getTime();
+    if(!isNaN(t)&&t>=cutoff){
+      const title=(r.getAttribute('data-task-title')||'').trim();
+      out.push(ts.slice(0,10)+'\t'+title);
+    }
+  });
+  if(!out.length){alert('Nada concluído em 7d');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' concluídas 7d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

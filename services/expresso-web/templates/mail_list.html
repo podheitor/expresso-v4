@@ -2346,5 +2346,20 @@ window.copyMailMarkedImportant=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailStarred=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-starred="true"], [data-mail-flag-star="true"]').forEach(r=>{
+    const s=(r.getAttribute('data-mail-subject')||'').trim();
+    const f=r.getAttribute('data-mail-from')||'';
+    out.push(s+'\t'+f);
+  });
+  if(!out.length){alert('Sem favoritos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#fc0;color:#000;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='★ '+out.length+' favoritos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

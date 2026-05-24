@@ -1949,5 +1949,18 @@ window.copyDraftBcc=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.clearSubjectField=function(){
+  const sub=document.querySelector('[name=subject], input[name=subject], #compose-subject');
+  if(!sub){alert('Sem subject');return;}
+  if(!sub.value){alert('Já vazio');return;}
+  if(!confirm('Limpar assunto?'))return;
+  sub.value='';
+  sub.focus();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='subject limpo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

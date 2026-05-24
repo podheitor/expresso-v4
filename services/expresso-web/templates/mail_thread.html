@@ -1763,5 +1763,21 @@ window.copyThreadFirstUrl=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAvgMsgLen=function(){
+  const lens=[];
+  document.querySelectorAll('[data-msg-body]').forEach(r=>{
+    const b=r.getAttribute('data-msg-body')||'';
+    lens.push(b.length);
+  });
+  if(!lens.length){alert('Sem mensagens');return;}
+  const avg=(lens.reduce((a,b)=>a+b,0)/lens.length).toFixed(1);
+  const out='n: '+lens.length+'\navg: '+avg+'c\nmax: '+Math.max(...lens)+'c\nmin: '+Math.min(...lens)+'c';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3130,5 +3130,20 @@ window.copyChatAvgMsgLen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatEmptyMsgs=function(){
+  let count=0;
+  document.querySelectorAll('[data-msg-body]').forEach(r=>{
+    const b=(r.getAttribute('data-msg-body')||'').trim();
+    if(!b)count++;
+  });
+  const total=document.querySelectorAll('[data-msg-body]').length;
+  const out='vazias: '+count+'/'+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=count+' vazias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
