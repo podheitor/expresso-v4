@@ -140,6 +140,20 @@
         <div class="muted small" style="font-weight:600;margin-bottom:.2rem">Abertos recentemente</div>
         <ul class="home-file-list" id="home-drive-recents-list"></ul>
       </div>
+      <div id="home-drive-quota" class="muted small" style="margin-top:.3rem;font-size:.72rem"></div>
+      <script>(function(){
+        fetch('/api/v1/drive/quota', {credentials:'include'})
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(q){
+            if (!q || !q.total) return;
+            var pct = Math.round((q.used / q.total) * 100);
+            var humU = (q.used / 1024 / 1024).toFixed(1) + ' MB';
+            var humT = (q.total / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+            var el = document.getElementById('home-drive-quota');
+            if (el) el.innerHTML = '📊 ' + humU + ' / ' + humT + ' usado (' + pct + '%)' + (pct >= 90 ? ' ⚠' : '');
+          })
+          .catch(function(){});
+      })();</script>
       <div id="home-drive-favs" style="margin-top:.4rem;display:none">
         <div class="muted small" style="font-weight:600;margin-bottom:.2rem">⭐ Favoritos</div>
         <ul class="home-file-list" id="home-drive-favs-list"></ul>
@@ -280,6 +294,23 @@
       </div>
       <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
       <div id="home-pomo-today" style="font-size:.72rem;color:var(--muted);margin-top:.15rem"></div>
+      <div id="home-snoozed-mails" style="font-size:.72rem;color:#ef4444;margin-top:.15rem;display:none"></div>
+      <script>(function(){
+        try {
+          var arr = JSON.parse(localStorage.getItem('expresso_snoozed_threads') || '[]');
+          var now = Date.now();
+          var due = arr.filter(function(s){ return s.due <= now; });
+          var future = arr.filter(function(s){ return s.due > now; });
+          if (due.length) {
+            var el = document.getElementById('home-snoozed-mails');
+            if (el) {
+              el.style.display = '';
+              el.innerHTML = '⏰ ' + due.length + ' conversa(s) adiada(s) vencida(s) — <a href="' + due[0].url + '" class="link">abrir primeira</a>';
+            }
+            try { localStorage.setItem('expresso_snoozed_threads', JSON.stringify(future)); } catch(e){}
+          }
+        } catch(e){}
+      })();</script>
       <script>(function(){
         try {
           var s = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}');

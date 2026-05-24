@@ -32,7 +32,7 @@
   <main class="mail-main">
     <section class="msg-list" aria-label="Mensagens">
       <div class="list-toolbar">
-        <h1 class="folder-title">{{ selected }}</h1>
+        <h1 class="folder-title">{{ selected }} <span id="folder-unread-count" class="muted" style="font-size:.7em;font-weight:400"></span></h1>
         <div class="toolbar-actions">
           <button class="btn btn-ghost btn-sm" onclick="toggleMailCompact()" title="Densidade compacta/normal" id="mail-density-btn">≡ Densidade</button>
           <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
@@ -93,6 +93,7 @@
           <span class="muted small">Todas</span>
         </label>
         <span class="muted small" id="mail-sel-count">0 selecionadas</span>
+        <button class="btn btn-ghost btn-sm" onclick="selectUnreadMail()" title="Selecionar apenas mensagens não lidas">○ Não lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('flag')" title="Adicionar estrela ⭐">⭐ Sinalizar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
@@ -807,6 +808,20 @@ function toggleSelectAllMail(checked) {
     boxes.forEach(function(b){ b.dispatchEvent(new Event('change', { bubbles: true })); });
   }
 }
+function selectUnreadMail() {
+  var n = 0;
+  document.querySelectorAll('.msg-row-wrap').forEach(function(w) {
+    var unread = w.querySelector('.msg-row.unread') || w.classList.contains('unread');
+    var cb = w.querySelector('.mail-row-check, .msg-checkbox, .row-checkbox');
+    if (cb) {
+      cb.checked = !!unread;
+      cb.style.display = unread ? 'block' : '';
+      if (unread) n++;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  });
+  if (!n) alert('Nenhuma mensagem não lida nesta página.');
+}
 </script>
 
 <!-- Snooze picker modal -->
@@ -939,5 +954,15 @@ function emptyTrashFolder(btn) {
     })
     .catch(function(){ alert('Falha ao esvaziar lixeira.'); if (btn){btn.disabled=false;btn.textContent='🗑 Esvaziar lixeira';} });
 }
+(function updateFolderUnreadCount(){
+  try {
+    var el = document.getElementById('folder-unread-count');
+    if (!el) return;
+    var unread = document.querySelectorAll('.msg-row.unread').length;
+    var total = document.querySelectorAll('.msg-row').length;
+    if (!total) { el.textContent = '(vazia)'; return; }
+    el.textContent = unread > 0 ? '(' + unread + ' não lidas de ' + total + ')' : '(' + total + ')';
+  } catch(_) {}
+})();
 </script>
 {% endblock %}

@@ -120,6 +120,9 @@
             <input type="checkbox" id="reduce-motion-input" onchange="applyReduceMotion(this.checked)">
             <span>Reduzir animações (acessibilidade)</span>
           </label>
+          <div style="margin-top:.6rem">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="resetAppearanceDefaults()" title="Voltar ao tema escuro, densidade normal e animações padrão">↺ Restaurar padrões</button>
+          </div>
         </div>
 
         <div class="subcard stack" style="margin-top:1rem">
@@ -995,6 +998,17 @@ function filterShortcuts(q) {
     var text = tr.textContent.toLowerCase();
     tr.style.display = (!lq || text.indexOf(lq) >= 0) ? '' : 'none';
   });
+}
+// ── Restore appearance defaults ────────────────────────────────────────────
+function resetAppearanceDefaults() {
+  if (!confirm('Restaurar tema escuro, densidade normal e animações padrão?')) return;
+  try {
+    ['expresso_theme', 'expresso_density', REDUCE_MOTION_KEY, 'expresso_theme_schedule'].forEach(function(k){ localStorage.removeItem(k); });
+  } catch(e){}
+  document.documentElement.classList.remove('density-compact', 'reduce-motion');
+  document.documentElement.setAttribute('data-theme', 'dark');
+  alert('Padrões restaurados. Recarregando…');
+  window.location.reload();
 }
 // ── Quiet hours ────────────────────────────────────────────────────────────
 var QUIET_HOURS_KEY = 'expresso_quiet_hours';

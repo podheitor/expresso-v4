@@ -15,6 +15,7 @@
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bulk-csv-input').click()" title="Importar lista de usuários (CSV)">📥 Importar CSV</button>
       <input type="file" id="bulk-csv-input" accept=".csv,text/csv" style="display:none" onchange="bulkImportCsv(this.files[0])">
       <button class="btn btn-ghost btn-sm" onclick="exportUsersCsv()" title="Exportar usuários para CSV">📤 Exportar CSV</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportUsersJson()" title="Exportar usuários como JSON (para integração com outros sistemas)">📤 JSON</button>
       <button class="btn btn-ghost btn-sm" onclick="copyVisibleEmails(this)" title="Copiar emails visíveis (separados por vírgula)">📋 Emails</button>
       <button class="btn btn-primary btn-sm" onclick="showModal('admin-user-modal')">+ Convidar usuário</button>
     </div>
@@ -276,6 +277,25 @@ function exportUsersCsv() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url; a.download = 'expresso-users-' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function exportUsersJson() {
+  var rows = document.querySelectorAll('.admin-user-row');
+  if (!rows.length) { alert('Nenhum usuário para exportar.'); return; }
+  var arr = [];
+  rows.forEach(function(r) {
+    arr.push({
+      email: r.dataset.email || '',
+      name: r.dataset.name || '',
+      role: r.dataset.role || 'user',
+      status: r.dataset.status || 'active'
+    });
+  });
+  var blob = new Blob([JSON.stringify(arr, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'expresso-users-' + new Date().toISOString().slice(0,10) + '.json';
   document.body.appendChild(a); a.click();
   setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
 }

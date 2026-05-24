@@ -24,6 +24,7 @@
       <input type="search" id="week-event-filter" placeholder="🔍 Filtrar eventos…"
              oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
+      <button class="btn btn-ghost" onclick="setWorkingHours()" title="Configurar horário comercial (oculta antes/depois)">🕘 Hr. trabalho</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
   </div>
@@ -309,5 +310,35 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'j' || e.key === 'k') { window.location.href = (e.key === 'j' ? '{{ next_link }}' : '{{ prev_link }}'); }
   if (e.key === '?') { e.preventDefault(); alert('Atalhos semana:\n\n← → ou j k — semana anterior/próxima\nt — hoje\nn — novo evento\nd — dia\nm — mês\n? — esta ajuda'); }
 });
+function setWorkingHours() {
+  var WH_KEY = 'expresso_working_hours_{{ me.user_id }}';
+  var cur = {};
+  try { cur = JSON.parse(localStorage.getItem(WH_KEY) || '{}'); } catch(e){}
+  var s = prompt('Horário comercial (formato HH-HH, ex: 8-18). Vazio = remover filtro.', (cur.start != null && cur.end != null) ? (cur.start + '-' + cur.end) : '8-18');
+  if (s === null) return;
+  if (!s.trim()) {
+    try { localStorage.removeItem(WH_KEY); } catch(e){}
+    applyWorkingHours(null);
+    return;
+  }
+  var parts = s.split('-').map(function(n){ return parseInt(n,10); });
+  if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1]) || parts[0] >= parts[1]) { alert('Formato inválido.'); return; }
+  var wh = { start: parts[0], end: parts[1] };
+  try { localStorage.setItem(WH_KEY, JSON.stringify(wh)); } catch(e){}
+  applyWorkingHours(wh);
+}
+function applyWorkingHours(wh) {
+  document.querySelectorAll('.week-hour-row, .week-hour, [data-hour]').forEach(function(el) {
+    var h = parseInt(el.dataset.hour || el.getAttribute('data-hour'), 10);
+    if (isNaN(h)) return;
+    el.style.display = (!wh || (h >= wh.start && h < wh.end)) ? '' : 'none';
+  });
+}
+(function initWorkingHours(){
+  try {
+    var wh = JSON.parse(localStorage.getItem('expresso_working_hours_{{ me.user_id }}') || 'null');
+    if (wh) applyWorkingHours(wh);
+  } catch(e){}
+})();
 </script>
 {% endblock %}

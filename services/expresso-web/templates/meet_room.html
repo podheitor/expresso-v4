@@ -29,6 +29,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetFullscreen(this)" title="Tela cheia (F11)" id="meet-fs-btn">⛶</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetSelfView(this)" title="Ocultar/mostrar meu vídeo (self-view)" id="meet-selfview-btn">🪞 Self</button>
       <button class="btn btn-ghost btn-sm" onclick="setMeetPassword(this)" title="Definir senha para entrar na sala" id="meet-pwd-btn">🔒 Senha</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleMeetBlur(this)" title="Desfocar fundo (virtual background)" id="meet-blur-btn">🌫 Blur</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
@@ -957,6 +958,18 @@ document.addEventListener('fullscreenchange', function() {
   var b = document.getElementById('meet-fs-btn');
   if (b) b.textContent = document.fullscreenElement ? '⛶ Sair' : '⛶';
 });
+// ── Background blur ────────────────────────────────────────────────────────
+var _meetBlurOn = false;
+function toggleMeetBlur(btn) {
+  if (typeof api === 'undefined' || !api) { alert('Aguarde a reunião carregar.'); return; }
+  _meetBlurOn = !_meetBlurOn;
+  try {
+    api.executeCommand('setVideoEffect', { effectType: _meetBlurOn ? 'blur' : 'none' });
+  } catch(e) {
+    try { api.executeCommand('toggleVirtualBackgroundDialog'); } catch(err) { alert('Blur não disponível: ' + e.message); _meetBlurOn = false; return; }
+  }
+  if (btn) btn.style.color = _meetBlurOn ? 'var(--accent)' : '';
+}
 // ── Meeting password ────────────────────────────────────────────────────────
 function setMeetPassword(btn) {
   if (typeof api === 'undefined' || !api) { alert('Aguarde a reunião carregar.'); return; }

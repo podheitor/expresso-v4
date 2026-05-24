@@ -125,6 +125,7 @@
           <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
           <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
+          <button class="chat-action-btn" onclick="clearChannelLocal('{{ ch.id }}', this)" title="Apagar dados locais deste canal (fixados, rascunhos, reações offline)">🧹</button>
         </div>
       </header>
 
@@ -1499,6 +1500,15 @@ function exportChannelMarkdown() {
   a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.md';
   a.click();
   URL.revokeObjectURL(a.href);
+}
+function clearChannelLocal(cid, btn) {
+  if (!confirm('Apagar dados locais (fixados, rascunho, reações offline) deste canal?\n\nAs mensagens no servidor não são afetadas.')) return;
+  try {
+    var keys = ['expresso_chat_pinned_' + cid, 'expresso_chat_draft_' + cid, 'expresso_chat_reactions_offline_' + cid, 'expresso_chat_lastread_' + cid];
+    keys.forEach(function(k){ try { localStorage.removeItem(k); } catch(e){} });
+    var pinned = document.getElementById('chat-pinned'); if (pinned) pinned.style.display = 'none';
+    if (btn) { var t = btn.textContent; btn.textContent = '✓'; setTimeout(function(){ btn.textContent = t; }, 1200); }
+  } catch(e) { alert('Falha: ' + e.message); }
 }
 function toggleChatTimestamps(btn) {
   var on = !document.documentElement.classList.contains('chat-ts-verbose');

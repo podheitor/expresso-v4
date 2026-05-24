@@ -64,6 +64,7 @@
           <input type="file" accept="application/json" style="display:none" onchange="importTasksJson(this)">
         </label>
         <button class="btn btn-ghost btn-sm" onclick="archiveCompletedTasks()" style="width:100%;font-size:.78rem" title="Mover concluídas para arquivo (oculta da lista)">🗄 Arquivar concluídas</button>
+        <button class="btn btn-ghost btn-sm" onclick="showTasksArchive()" style="width:100%;font-size:.78rem" title="Ver tarefas arquivadas">👁 Ver arquivo</button>
       </div>
 
       <div style="padding:.75rem 1rem;border-top:1px solid var(--border);margin-top:.5rem">
@@ -858,6 +859,22 @@ function startPomodoroResume() {
       } catch(e){}
     }
   }, 1000);
+}
+function showTasksArchive() {
+  var arch = [];
+  try { arch = JSON.parse(localStorage.getItem('expresso_tasks_archive') || '[]'); } catch(e){}
+  if (!arch.length) { alert('Nenhuma tarefa arquivada ainda.'); return; }
+  var lines = arch.slice(-30).reverse().map(function(t) {
+    return '  ✓ ' + (t.title || '?') + (t.archived_at ? '  (' + new Date(t.archived_at).toLocaleDateString('pt-BR') + ')' : '');
+  });
+  var ok = confirm('🗄 Arquivo de tarefas (' + arch.length + ' total, mostrando últimas 30):\n\n' + lines.join('\n') + '\n\nDeseja restaurar TODAS para a lista ativa?');
+  if (!ok) return;
+  var active = loadTasks();
+  arch.forEach(function(t){ t.done = false; delete t.archived_at; active.push(t); });
+  saveTasks(active);
+  try { localStorage.removeItem('expresso_tasks_archive'); } catch(e){}
+  renderAll();
+  alert('Restauradas ' + arch.length + ' tarefa(s).');
 }
 function showPomodoroStats() {
   var stats = {};

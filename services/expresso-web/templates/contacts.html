@@ -659,6 +659,24 @@ function toggleContactFav(btn, cid) {
       var s = document.getElementById('contacts-search');
       if (s) { e.preventDefault(); s.focus(); s.select(); }
     }
+    else if (e.key === 'e' || e.key === 'E') {
+      var hc = window._lastHoverContact;
+      if (!hc) return;
+      var ed = hc.querySelector('a[href*="/edit"], a[href*="/contacts/"][href$="/edit"]');
+      if (ed) { e.preventDefault(); window.location.href = ed.href; }
+    }
+    else if (e.key === 'b' || e.key === 'B') {
+      e.preventDefault();
+      if (typeof showBirthdaysThisMonth === 'function') showBirthdaysThisMonth();
+    }
+    else if (e.key === '?') {
+      e.preventDefault();
+      alert('Atalhos contatos:\n\nj/k — navegar\nEnter — abrir\nn — novo\n/ — buscar\ne — editar (hover)\nb — aniversariantes do mês\n? — esta ajuda');
+    }
+  });
+  document.addEventListener('mouseover', function(e) {
+    var c = e.target && e.target.closest && e.target.closest('.contact-card, .contact-row');
+    if (c) window._lastHoverContact = c;
   });
 })();
 function exportGoogleContactsCsv() {

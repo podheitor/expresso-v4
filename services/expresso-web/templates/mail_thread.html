@@ -40,6 +40,7 @@
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadRead()" title="Marcar todas as mensagens como lidas">✓ Tudo lido</button>
           <button class="btn btn-ghost btn-sm" onclick="markThreadUnread()" title="Marcar a primeira mensagem como não lida">○ Não lida</button>
+          <button class="btn btn-ghost btn-sm" onclick="snoozeThread()" title="Adiar — esconder até data/hora escolhida">💤 Snooze</button>
           <input type="search" id="thread-find" placeholder="Buscar na conversa…" oninput="findInThread(this.value)" style="width:11rem" class="search-input-sm">
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -380,6 +381,24 @@ function markMsgSpam(mid, btn) {
       alert('Falha ao mover (' + r.status + ').');
     }
   }).catch(function(){ btn.disabled = false; btn.textContent = '🚫 Spam'; alert('Erro de conexão.'); });
+}
+function snoozeThread() {
+  var when = prompt('Lembrar desta conversa em quantas horas? (ex: 2, 8, 24)', '4');
+  if (!when) return;
+  var hrs = parseFloat(when);
+  if (!isFinite(hrs) || hrs <= 0) { alert('Valor inválido.'); return; }
+  var firstMsg = document.querySelector('.thread-msg');
+  var tid = (firstMsg && firstMsg.dataset && firstMsg.dataset.msgId) || window.location.pathname.split('/').pop();
+  var subj = (document.querySelector('h1, .thread-subject') || {}).textContent || 'Conversa';
+  var due = Date.now() + Math.round(hrs * 3600 * 1000);
+  try {
+    var key = 'expresso_snoozed_threads';
+    var arr = JSON.parse(localStorage.getItem(key) || '[]');
+    arr.push({ id: tid, subject: subj.trim().slice(0, 80), due: due, url: window.location.pathname + window.location.search });
+    localStorage.setItem(key, JSON.stringify(arr));
+    alert('Conversa adiada por ' + hrs + 'h. Você verá um lembrete na home.');
+    window.location.href = '/mail';
+  } catch(e) { alert('Falha ao adiar: ' + e.message); }
 }
 function findInThread(q) {
   q = (q || '').trim().toLowerCase();

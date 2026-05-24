@@ -59,6 +59,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
       <button class="btn btn-ghost" onclick="shareCurrentDriveFolder(this)" title="Copiar link da pasta atual">🔗 Link da pasta</button>
+      <button class="btn btn-ghost" onclick="toggleDriveOnlyFavs(this)" title="Mostrar somente favoritos" id="drive-only-favs-btn">⭐ Só favs</button>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
@@ -965,6 +966,44 @@ function applyDriveColor(btn, color) {
   var ids = Array.from(document.querySelectorAll('.drive-row-check')).map(function(b){ return b.dataset.id; }).filter(Boolean);
   if (!ids.length) return;
   try { sessionStorage.setItem('expresso_drive_preview_list', JSON.stringify(ids)); } catch(e){}
+})();
+function toggleDriveOnlyFavs(btn) {
+  var on = !document.documentElement.classList.contains('drive-only-favs');
+  document.documentElement.classList.toggle('drive-only-favs', on);
+  var favs = [];
+  try { favs = JSON.parse(localStorage.getItem('expresso_drive_favs_{{ me.user_id }}') || '[]').map(function(f){return typeof f==='string'?f:(f.id||'');}); } catch(e){}
+  var hits = 0;
+  document.querySelectorAll('tr[data-file-id]').forEach(function(tr) {
+    var id = tr.dataset.fileId;
+    var keep = !on || favs.indexOf(id) >= 0;
+    tr.style.display = keep ? '' : 'none';
+    if (keep) hits++;
+  });
+  if (btn) btn.style.color = on ? 'var(--accent)' : '';
+  if (on && !hits) alert('Nenhum favorito nesta pasta. Marque com a estrela ⭐ primeiro.');
+}
+(function(){
+  window._lastHoverDriveFile = null;
+  document.addEventListener('mouseover', function(e){
+    var tr = e.target.closest && e.target.closest('tr[data-file-id]');
+    if (tr) {
+      var nameCell = tr.querySelector('.drive-name, td a, td');
+      window._lastHoverDriveFile = nameCell ? (nameCell.textContent || '').trim() : '';
+    }
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey && window._lastHoverDriveFile) {
+      var name = window._lastHoverDriveFile;
+      if (navigator.clipboard) navigator.clipboard.writeText(name);
+      else { var ta = document.createElement('textarea'); ta.value = name; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+      var t = document.createElement('div');
+      t.textContent = '📋 ' + name;
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1500);
+    }
+  });
 })();
 function shareCurrentDriveFolder(btn) {
   var url = window.location.href.split('#')[0];
