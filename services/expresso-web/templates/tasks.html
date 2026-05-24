@@ -2943,5 +2943,25 @@ window.copyTasksByTag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueSoon=function(){
+  const cutoff=Date.now()+3*86400000;
+  const now=Date.now();
+  const out=[];
+  document.querySelectorAll('[data-task-id]').forEach(t=>{
+    const d=(t.getAttribute('data-task-due')||'').trim();
+    if(!d)return;
+    const dt=new Date(d);if(isNaN(dt))return;
+    if(dt.getTime()<now||dt.getTime()>cutoff)return;
+    out.push(d+'\t'+(t.getAttribute('data-task-title')||''));
+  });
+  if(!out.length){alert('Sem due /3d');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' /3d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
