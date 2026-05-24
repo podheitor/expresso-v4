@@ -1542,5 +1542,23 @@ window.copyGalLongestName=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSameInitial=function(){
+  const map={};
+  document.querySelectorAll('[data-gal-name]').forEach(r=>{
+    const n=(r.getAttribute('data-gal-name')||'').trim();
+    if(!n)return;
+    const c=n[0].toUpperCase();
+    (map[c]=map[c]||[]).push(n);
+  });
+  const keys=Object.keys(map).sort();
+  if(!keys.length){alert('Sem nomes');return;}
+  const out=keys.map(k=>k+': '+map[k].length+'\n  '+map[k].slice(0,5).join(', ')+(map[k].length>5?', …':'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' iniciais';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

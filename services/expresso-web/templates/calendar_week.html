@@ -1760,5 +1760,23 @@ window.copyWeekTopOrganizers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekMeetingsByDuration=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-start][data-event-end]'));
+  const items=rows.map(r=>{
+    const s=new Date(r.getAttribute('data-event-start'));
+    const e=new Date(r.getAttribute('data-event-end'));
+    if(isNaN(s)||isNaN(e))return null;
+    return {t:r.getAttribute('data-event-title')||'',min:Math.round((e-s)/60000)};
+  }).filter(Boolean);
+  if(!items.length){alert('Sem eventos');return;}
+  items.sort((a,b)=>b.min-a.min);
+  const out=items.map(x=>x.min+'min\t'+x.t).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=items.length+' por duração';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

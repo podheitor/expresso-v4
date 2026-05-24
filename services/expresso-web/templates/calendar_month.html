@@ -1797,5 +1797,23 @@ window.copyMonthEmptyDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsByDow=function(){
+  const dows=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const buckets=new Array(7).fill(0);
+  document.querySelectorAll('[data-event-start]').forEach(r=>{
+    const d=new Date(r.getAttribute('data-event-start'));
+    if(!isNaN(d))buckets[d.getDay()]++;
+  });
+  const total=buckets.reduce((a,b)=>a+b,0);
+  if(!total){alert('Sem eventos');return;}
+  const out=buckets.map((c,i)=>dows[i]+'\t'+c);
+  const peak=buckets.indexOf(Math.max(...buckets));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pico '+dows[peak];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

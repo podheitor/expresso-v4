@@ -2240,5 +2240,23 @@ window.copyContactsBirthdayThisMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByCountry=function(){
+  const rows=document.querySelectorAll('[data-contact-country]');
+  const buckets={};
+  rows.forEach(r=>{
+    const c=(r.getAttribute('data-contact-country')||'??').toUpperCase();
+    buckets[c]=(buckets[c]||0)+1;
+  });
+  const keys=Object.keys(buckets);
+  if(!keys.length){alert('Sem países');return;}
+  keys.sort((a,b)=>buckets[b]-buckets[a]);
+  const out=keys.map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' países';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1745,5 +1745,25 @@ window.copyDayTotalBusy=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMorningEvents=function(){
+  const rows=document.querySelectorAll('[data-event-start]');
+  const out=[];
+  rows.forEach(r=>{
+    const d=new Date(r.getAttribute('data-event-start'));
+    if(isNaN(d))return;
+    if(d.getHours()<12){
+      const title=r.getAttribute('data-event-title')||'';
+      out.push(d.toISOString().slice(11,16)+'\t'+title.trim());
+    }
+  });
+  if(!out.length){alert('Sem eventos pela manhã');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' manhã';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
