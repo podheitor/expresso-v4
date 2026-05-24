@@ -1840,5 +1840,22 @@ window.copyDayUniqueColors=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyHours=function(){
+  const busy=new Set();
+  document.querySelectorAll('[data-event-start][data-event-end]').forEach(e=>{
+    const s=new Date(e.getAttribute('data-event-start'));
+    const en=new Date(e.getAttribute('data-event-end'));
+    if(isNaN(s)||isNaN(en))return;
+    for(let h=s.getHours();h<=en.getHours()&&h<24;h++)busy.add(h);
+  });
+  const out=Array.from(busy).sort((a,b)=>a-b).map(h=>String(h).padStart(2,'0')+'h');
+  if(!out.length){alert('Sem horas ocupadas');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+'h busy';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

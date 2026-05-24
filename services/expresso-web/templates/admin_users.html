@@ -1730,5 +1730,24 @@ window.copyUsersWithoutPhoto=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByQuotaRange=function(){
+  const buckets={'<1GB':0,'1-5GB':0,'5-20GB':0,'20-100GB':0,'>100GB':0,'sem quota':0};
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const q=parseFloat(r.getAttribute('data-user-quota-mb')||'');
+    if(!isFinite(q))buckets['sem quota']++;
+    else if(q<1024)buckets['<1GB']++;
+    else if(q<5120)buckets['1-5GB']++;
+    else if(q<20480)buckets['5-20GB']++;
+    else if(q<102400)buckets['20-100GB']++;
+    else buckets['>100GB']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quota dist';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

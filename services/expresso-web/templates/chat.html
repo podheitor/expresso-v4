@@ -3162,5 +3162,19 @@ window.copyChatQuestions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatLongestMsg=function(){
+  let best=null,blen=0;
+  document.querySelectorAll('[data-msg-body]').forEach(m=>{
+    const b=(m.getAttribute('data-msg-body')||m.textContent||'').trim();
+    if(b.length>blen){blen=b.length;best=b;}
+  });
+  if(!best){alert('Sem mensagens');return;}
+  const ta=document.createElement('textarea');ta.value=best;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='longest '+blen+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
