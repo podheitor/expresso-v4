@@ -2456,5 +2456,28 @@ window.copyMonthUrlsOnly=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAttendeeStats=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  let solo=0,small=0,big=0,huge=0;
+  evs.forEach(e=>{
+    const n=(e.dataset.attendees||'').split(',').map(s=>s.trim()).filter(Boolean).length;
+    if(n===0)solo++;
+    else if(n<=3)small++;
+    else if(n<=10)big++;
+    else huge++;
+  });
+  const txt='solo: '+solo+'\nsmall (1-3): '+small+'\nmedium (4-10): '+big+'\nlarge (>10): '+huge;
+  const ta=document.createElement('textarea');
+  ta.value=txt;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='S'+solo+'/M'+small+'/B'+big+'/H'+huge;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2858,5 +2858,27 @@ window.copyContactsByCountry=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecentEdit=function(){
+  const rows=document.querySelectorAll('[data-contact-id]');
+  const arr=[];
+  rows.forEach(r=>{
+    const m=Date.parse(r.dataset.updated||r.dataset.modified||'');
+    const n=r.dataset.name||r.querySelector('.contact-name')?.textContent.trim()||r.dataset.contactId;
+    if(!isNaN(m))arr.push({m,n});
+  });
+  arr.sort((a,b)=>b.m-a.m);
+  const out=arr.slice(0,15).map(x=>new Date(x.m).toISOString().slice(0,16)+'\t'+x.n);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='last '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

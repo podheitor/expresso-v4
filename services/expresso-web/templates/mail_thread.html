@@ -2292,5 +2292,28 @@ window.copyThreadFirstParagraph=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadQuoteOnly=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const body=m.querySelector('.msg-body')?.textContent||'';
+    const lines=body.split('\n').filter(l=>/^\s*[>|]/.test(l));
+    if(lines.length>0){
+      out.push('--- '+(m.dataset.from||'')+' ---');
+      out.push(lines.join('\n'));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' qt';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

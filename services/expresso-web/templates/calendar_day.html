@@ -2407,5 +2407,34 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAvgDuration=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const durs=[];
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const en=Date.parse(e.dataset.end||'');
+    if(!isNaN(s)&&!isNaN(en))durs.push((en-s)/60000);
+  });
+  if(durs.length===0){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='0';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const avg=(durs.reduce((a,b)=>a+b,0)/durs.length).toFixed(1);
+  const ta=document.createElement('textarea');
+  ta.value='avg: '+avg+'m em '+durs.length+' eventos';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

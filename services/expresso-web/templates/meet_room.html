@@ -2508,5 +2508,21 @@ window.toggleFullscreenRoom=function(){
     setTimeout(()=>t.remove(),1500);
   }
 };
+window.copyMeetInvite=function(){
+  const url=window.location.href;
+  const subj=document.querySelector('.meet-subject')?.textContent.trim()||document.title||'Meet';
+  const txt='Você está convidado para: '+subj+'\n\nLink: '+url+'\n\nHora: '+new Date().toISOString();
+  const ta=document.createElement('textarea');
+  ta.value=txt;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='invite';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

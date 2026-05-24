@@ -3015,5 +3015,29 @@ window.copyDrivePathTree=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveOlderThanY=function(){
+  const y=parseInt(prompt('Arquivos não modificados há quantos anos?','1'),10)||1;
+  const cut=Date.now()-y*365*86400000;
+  const rows=document.querySelectorAll('[data-file-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const mt=Date.parse(r.dataset.mtime||'');
+    if(!isNaN(mt)&&mt<cut){
+      const n=r.dataset.name||r.querySelector('.file-name')?.textContent.trim()||r.dataset.fileId;
+      out.push(new Date(mt).toISOString().slice(0,10)+'\t'+n);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' >'+y+'y';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

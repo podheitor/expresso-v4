@@ -2396,5 +2396,32 @@ window.uppercaseSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleBodyMarkdown=function(){
+  const body=document.querySelector('[name=body]');
+  if(!body){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no body';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const v=body.value||'';
+  if(v.startsWith('---md---\n')){
+    body.value=v.slice(9);
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='md off';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }else{
+    body.value='---md---\n'+v;
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='md on';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }
+};
 </script>
 {% endblock %}
