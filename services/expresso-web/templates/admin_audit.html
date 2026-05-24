@@ -1416,5 +1416,26 @@ window.copyAuditAdminActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUniqueIpPerActor=function(){
+  const rows=document.querySelectorAll('[data-audit-actor][data-audit-ip]');
+  if(!rows.length){alert('Sem dados');return;}
+  const byActor={};
+  rows.forEach(r=>{
+    const a=r.getAttribute('data-audit-actor')||'?';
+    const ip=r.getAttribute('data-audit-ip')||'';
+    if(!byActor[a])byActor[a]=new Set();
+    if(ip)byActor[a].add(ip);
+  });
+  const lines=Object.entries(byActor).map(([a,s])=>s.size+'\t'+a).sort((a,b)=>parseInt(b)-parseInt(a)).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const multi=Object.values(byActor).filter(s=>s.size>1).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(multi?'#a60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=multi+' multi-IP';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2086,5 +2086,25 @@ window.copyMailEmptySubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSizeStats=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  let total=0, max=0;
+  rows.forEach(r=>{
+    const sz=parseInt(r.getAttribute('data-msg-size')||'0',10);
+    total+=sz;
+    if(sz>max)max=sz;
+  });
+  const avg=Math.round(total/rows.length);
+  const txt='total '+(total/1048576).toFixed(2)+' MB\navg '+(avg/1024).toFixed(2)+' KB\nmax '+(max/1024).toFixed(2)+' KB';
+  const ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=(total/1048576).toFixed(1)+' MB total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

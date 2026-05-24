@@ -1423,5 +1423,28 @@ window.copyUsersByEmailDomain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersStorageUsage=function(){
+  const rows=document.querySelectorAll('[data-user-email]');
+  if(!rows.length){alert('Sem usuários');return;}
+  const out=[];
+  let total=0;
+  rows.forEach(r=>{
+    const bytes=parseInt(r.getAttribute('data-user-storage')||'0',10);
+    total+=bytes;
+    const e=r.getAttribute('data-user-email')||'';
+    out.push(e+'\t'+(bytes/1048576).toFixed(2)+' MB');
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[1])-parseFloat(a.split('\t')[1]));
+  out.push('---');
+  out.push('total\t'+(total/1073741824).toFixed(2)+' GB');
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=(total/1073741824).toFixed(1)+' GB total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

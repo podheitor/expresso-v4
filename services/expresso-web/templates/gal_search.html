@@ -1331,5 +1331,26 @@ window.copyGalNoTitle=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSeniorTitles=function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const title=(r.getAttribute('data-contact-title')||'').toLowerCase();
+    if(/director|diretor|head|chief|c[ftoeim]o|vp|senior|lead|principal/.test(title)){
+      const n=r.getAttribute('data-contact-name')||'';
+      const t=r.getAttribute('data-contact-title')||'';
+      out.push(t+'\t'+n);
+    }
+  });
+  if(!out.length){alert('Sem cargos senior');return;}
+  const ta=document.createElement('textarea');
+  ta.value=out.sort().join('\n'); document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' senior';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

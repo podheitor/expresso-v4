@@ -1579,5 +1579,23 @@ window.copyMonthTopOrganizer=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthCalendarsUsed=function(){
+  const cards=document.querySelectorAll('[data-event-start]');
+  const buckets={};
+  cards.forEach(c=>{
+    const cal=c.getAttribute('data-event-calendar')||'(default)';
+    buckets[cal]=(buckets[cal]||0)+1;
+  });
+  if(!Object.keys(buckets).length){alert('Sem eventos');return;}
+  const lines=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(buckets).length+' calendários';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

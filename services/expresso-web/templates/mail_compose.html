@@ -1745,5 +1745,21 @@ window.boldSelection=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.italicSelection=function(){
+  const body=document.querySelector('[name="body"]');
+  if(!body){alert('Sem campo body');return;}
+  const s=body.selectionStart, e=body.selectionEnd;
+  if(s===e){alert('Selecione texto primeiro');return;}
+  const sel=body.value.slice(s,e);
+  body.value=body.value.slice(0,s)+'*'+sel+'*'+body.value.slice(e);
+  body.focus();
+  body.selectionStart=s;
+  body.selectionEnd=e+2;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='italic ('+sel.length+'c)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
