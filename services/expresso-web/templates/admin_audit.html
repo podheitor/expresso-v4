@@ -582,6 +582,19 @@ function copyAuditAsCsv() {
 })();
 </script>
 <script>
+window.countLast24h = function(){
+  const cut = Date.now() - 86400000;
+  const n = Array.from(document.querySelectorAll('[data-audit-ts]'))
+    .filter(r => {
+      const ts = Date.parse(r.dataset.auditTs);
+      return !isNaN(ts) && ts >= cut;
+    }).length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = n + ' eventos nas últimas 24h';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.countByEventType = function(){
   const counts = {};
   document.querySelectorAll('[data-event-type]').forEach(n => {

@@ -2047,6 +2047,19 @@ function copyChatLastN(n) {
 })();
 </script>
 <script>
+window.copyRoomMembers = function(){
+  const members = Array.from(document.querySelectorAll('.member-row [data-user-email], [data-channel-member]'))
+    .map(n => n.dataset.userEmail || n.dataset.channelMember).filter(Boolean);
+  const uniq = [...new Set(members)];
+  if (!uniq.length) return;
+  const txt = uniq.join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = uniq.length + ' membros copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countMentions = function(){
   const me = '{{ me.user_id }}';
   const n = document.querySelectorAll('.chat-msg .mention[data-user="' + me + '"], .chat-msg [data-mentions*="' + me + '"]').length;

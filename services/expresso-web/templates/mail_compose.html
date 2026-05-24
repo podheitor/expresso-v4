@@ -959,6 +959,15 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.insertDateLine = function(){
+  const body = document.querySelector('textarea[name="body"]');
+  if (!body) return;
+  const pos = body.selectionStart || body.value.length;
+  const line = new Date().toISOString().slice(0,10) + ' — ';
+  body.value = body.value.slice(0, pos) + line + body.value.slice(pos);
+  body.focus();
+  body.selectionStart = body.selectionEnd = pos + line.length;
+};
 window.lowercaseSubject = function(){
   const s = document.querySelector('input[name="subject"]');
   if (!s) return;

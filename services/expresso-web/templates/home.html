@@ -1359,6 +1359,21 @@ function copyHomeQuickSummary() {
 })();
 </script>
 <script>
+window.copyEnvInfo = function(){
+  const info = [
+    'UA: ' + navigator.userAgent,
+    'Lang: ' + navigator.language,
+    'Screen: ' + screen.width + 'x' + screen.height,
+    'TZ: ' + Intl.DateTimeFormat().resolvedOptions().timeZone,
+    'User: {{ me.email }}',
+  ].join('\n');
+  navigator.clipboard?.writeText(info).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Info do ambiente copiada';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyTodayShortDate = function(){
   const d = new Date();
   const s = d.toISOString().slice(0,10);

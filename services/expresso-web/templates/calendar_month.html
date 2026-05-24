@@ -731,6 +731,15 @@ function printMonthOverview() {
 })();
 </script>
 <script>
+window.highlightToday = function(){
+  const today = new Date().toISOString().slice(0,10);
+  const cell = document.querySelector('.cal-cell[data-date="' + today + '"], [data-date="' + today + '"]');
+  if (cell) {
+    cell.scrollIntoView({behavior:'smooth', block:'center'});
+    cell.style.outline = '3px solid #f80';
+    setTimeout(() => cell.style.outline = '', 2000);
+  }
+};
 window.countMonthEvents = function(){
   const n = document.querySelectorAll('[data-event-id]').length;
   const t = document.createElement('div');

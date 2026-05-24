@@ -1469,6 +1469,24 @@ function highlightAllOverdueTasks() {
 })();
 </script>
 <script>
+window.copyOverdueTitles = function(){
+  const now = Date.now();
+  const overdue = Array.from(document.querySelectorAll('.task-row[data-due]'))
+    .filter(r => {
+      const due = Date.parse(r.dataset.due);
+      const done = r.classList.contains('done') || r.dataset.status === 'done';
+      return !done && !isNaN(due) && due < now;
+    })
+    .map(r => r.dataset.title || '').filter(Boolean);
+  if (!overdue.length) return;
+  const txt = overdue.map(t => '⚠ ' + t).join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = overdue.length + ' atrasadas copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyDoneTasks = function(){
   const done = Array.from(document.querySelectorAll('.task-row.done, .task-row[data-status="done"]'))
     .map(r => r.dataset.title || (r.querySelector('.title')||{}).textContent || '').filter(Boolean);

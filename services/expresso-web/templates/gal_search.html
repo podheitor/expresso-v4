@@ -529,6 +529,19 @@ function listGalFavoritesLocal() {
 })();
 </script>
 <script>
+window.copyFirstNHits = function(){
+  const n = parseInt(prompt('Quantos primeiros hits copiar?', '10'), 10);
+  if (!n || n < 1) return;
+  const hits = Array.from(document.querySelectorAll('[data-email]')).slice(0, n);
+  if (!hits.length) return;
+  const txt = hits.map(h => (h.dataset.name || '') + ' <' + h.dataset.email + '>').join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = hits.length + ' hits copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countGalDomains = function(){
   const counts = {};
   document.querySelectorAll('[data-email]').forEach(n => {

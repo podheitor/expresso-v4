@@ -670,6 +670,16 @@ function printWeekAgenda() {
 })();
 </script>
 <script>
+window.copyWeekStartIso = function(){
+  const start = (document.querySelector('[data-week-start]') || {}).dataset?.weekStart
+    || new Date().toISOString().slice(0,10);
+  navigator.clipboard?.writeText(start).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Início da semana copiado';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.findBusiestDay = function(){
   const counts = {};
   document.querySelectorAll('[data-event-id][data-start]').forEach(e => {

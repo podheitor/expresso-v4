@@ -607,6 +607,22 @@ function copySuspendedUsersList() {
 })();
 </script>
 <script>
+window.copyEmailsByDomain = function(){
+  const dom = prompt('Domínio (ex: empresa.com):');
+  if (!dom) return;
+  const emails = Array.from(document.querySelectorAll('[data-user-email]'))
+    .map(n => n.dataset.userEmail).filter(e => e && e.endsWith('@' + dom));
+  if (!emails.length) {
+    alert('Nenhum email em ' + dom);
+    return;
+  }
+  navigator.clipboard?.writeText(emails.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = emails.length + ' emails de ' + dom + ' copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countUsersByRole = function(){
   const counts = {};
   document.querySelectorAll('[data-user-role]').forEach(n => {

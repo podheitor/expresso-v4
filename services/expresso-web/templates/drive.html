@@ -1373,6 +1373,18 @@ function copyDriveBreadcrumbs() {
 })();
 </script>
 <script>
+window.copySelectedPaths = function(){
+  const sel = Array.from(document.querySelectorAll('.drive-row.selected, tr.selected'));
+  const paths = sel.map(r => r.dataset.path || r.dataset.name).filter(Boolean);
+  if (!paths.length) return;
+  const txt = paths.map(p => location.pathname + '/' + p).join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = paths.length + ' caminhos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countFolderItems = function(){
   const files = document.querySelectorAll('.drive-row[data-type="file"]').length;
   const dirs = document.querySelectorAll('.drive-row[data-type="dir"]').length;

@@ -607,6 +607,27 @@ function printDayAgenda() {
 })();
 </script>
 <script>
+window.copyFreeSlots = function(){
+  const evs = Array.from(document.querySelectorAll('[data-event-id][data-start][data-end]'))
+    .map(e => ({ s: Date.parse(e.dataset.start), e: Date.parse(e.dataset.end) }))
+    .filter(x => !isNaN(x.s) && !isNaN(x.e))
+    .sort((a,b) => a.s - b.s);
+  if (!evs.length) return;
+  const slots = [];
+  for (let i = 1; i < evs.length; i++) {
+    if (evs[i].s > evs[i-1].e) {
+      const gap = Math.round((evs[i].s - evs[i-1].e) / 60000);
+      if (gap >= 15) slots.push(new Date(evs[i-1].e).toISOString().slice(11,16) + '–' + new Date(evs[i].s).toISOString().slice(11,16) + ' (' + gap + 'min)');
+    }
+  }
+  const txt = slots.length ? slots.join('\n') : 'sem janelas livres';
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = slots.length + ' janelas livres copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.sumDayDuration = function(){
   let total = 0;
   document.querySelectorAll('[data-event-id][data-start][data-end]').forEach(e => {
