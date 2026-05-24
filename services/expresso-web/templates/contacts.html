@@ -1144,6 +1144,26 @@ function groupContactsByFirstLetter() {
 })();
 </script>
 <script>
+window.copyBirthdaysThisMonth = function(){
+  const m = (new Date().getMonth() + 1).toString().padStart(2, '0');
+  const items = Array.from(document.querySelectorAll('.contact-row[data-bday]'))
+    .filter(r => (r.dataset.bday || '').slice(5,7) === m)
+    .map(r => (r.dataset.name || '') + ' — ' + r.dataset.bday);
+  if (!items.length) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Sem aniversários este mês';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+    return;
+  }
+  navigator.clipboard?.writeText(items.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = items.length + ' aniversários copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countWithPhone = function(){
   const total = document.querySelectorAll('.contact-row').length;
   const with_phone = document.querySelectorAll('.contact-row[data-has-phone="1"], .contact-row [data-phone]').length;

@@ -731,6 +731,21 @@ function printMonthOverview() {
 })();
 </script>
 <script>
+window.copyEmptyDays = function(){
+  const days = new Set();
+  document.querySelectorAll('.cal-cell[data-date]').forEach(c => {
+    if (c.querySelectorAll('.event, [data-event-id]').length === 0) {
+      days.add(c.dataset.date);
+    }
+  });
+  if (!days.size) return;
+  navigator.clipboard?.writeText([...days].sort().join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = days.size + ' dias sem eventos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyDaysWithEvents = function(){
   const days = new Set();
   document.querySelectorAll('[data-event-id][data-start]').forEach(e => {

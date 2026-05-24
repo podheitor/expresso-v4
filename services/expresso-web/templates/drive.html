@@ -1373,6 +1373,18 @@ function copyDriveBreadcrumbs() {
 })();
 </script>
 <script>
+window.sortBySize = function(){
+  const list = document.querySelector('.drive-list') || document.querySelector('tbody');
+  if (!list) return;
+  const rows = Array.from(list.querySelectorAll('.drive-row, tr'));
+  rows.sort((a,b) => (parseInt(b.dataset.size,10)||0) - (parseInt(a.dataset.size,10)||0));
+  rows.forEach(r => list.appendChild(r));
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Ordenado por tamanho';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.sortByName = function(){
   const list = document.querySelector('.drive-list') || document.querySelector('tbody');
   if (!list) return;

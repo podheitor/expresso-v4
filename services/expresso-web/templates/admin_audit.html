@@ -582,6 +582,19 @@ function copyAuditAsCsv() {
 })();
 </script>
 <script>
+window.copyOldestEntry = function(){
+  const rows = Array.from(document.querySelectorAll('[data-audit-ts]'));
+  if (!rows.length) return;
+  rows.sort((a,b) => (a.dataset.auditTs || '').localeCompare(b.dataset.auditTs || ''));
+  const oldest = rows[0];
+  const txt = oldest.dataset.auditTs + ' — ' + oldest.dataset.actor + ' — ' + oldest.dataset.eventType;
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Mais antigo: ' + oldest.dataset.auditTs;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.copyJsonRows = function(){
   const rows = Array.from(document.querySelectorAll('[data-audit-id]'));
   const out = rows.map(r => ({

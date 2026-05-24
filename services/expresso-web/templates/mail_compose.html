@@ -959,6 +959,24 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.copyDraftStats = function(){
+  const subj = (document.querySelector('input[name="subject"]') || {}).value || '';
+  const body = (document.querySelector('textarea[name="body"]') || {}).value || '';
+  const to = (document.querySelector('input[name="to"]') || {}).value || '';
+  const cc = (document.querySelector('input[name="cc"]') || {}).value || '';
+  const stats = [
+    'Subject: ' + subj.length + ' chars',
+    'Body: ' + body.length + ' chars / ' + (body.trim() ? body.trim().split(/\s+/).length : 0) + ' words',
+    'To: ' + to.split(/[,;]/).filter(s=>s.trim()).length,
+    'Cc: ' + cc.split(/[,;]/).filter(s=>s.trim()).length,
+  ].join('\n');
+  navigator.clipboard?.writeText(stats).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Stats do draft copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.countRecipients = function(){
   const get = (n) => (document.querySelector('input[name="' + n + '"]') || {}).value || '';
   const split = (v) => v.split(/[,;]/).map(s => s.trim()).filter(Boolean);

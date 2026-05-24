@@ -715,6 +715,17 @@ function printThread() {
 })();
 </script>
 <script>
+window.threadSpanDays = function(){
+  const ts = Array.from(document.querySelectorAll('[data-message-date]'))
+    .map(n => Date.parse(n.dataset.messageDate)).filter(x => !isNaN(x));
+  if (ts.length < 2) return;
+  const span = Math.round((Math.max(...ts) - Math.min(...ts)) / 86400000);
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Thread cobre ' + span + ' dias';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.copyHeadersFirstMsg = function(){
   const first = document.querySelector('[data-message-id]');
   if (!first) return;

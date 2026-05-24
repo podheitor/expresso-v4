@@ -1426,6 +1426,17 @@ function countExpressoPrefsByPrefix() {
 }
 </script>
 <script>
+window.pingDriveApi = function(){
+  const start = performance.now();
+  fetch('/api/v1/drive/health').then(r => {
+    const ms = Math.round(performance.now() - start);
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:' + (r.ok?'#0a0':'#a00') + ';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = (r.ok ? 'Drive OK' : 'Drive erro') + ' (' + ms + 'ms)';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  }).catch(() => {});
+};
 window.pingChatApi = function(){
   const start = performance.now();
   fetch('/api/v1/chat/health').then(r => {

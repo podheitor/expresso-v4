@@ -1469,6 +1469,23 @@ function highlightAllOverdueTasks() {
 })();
 </script>
 <script>
+window.copyDueThisWeek = function(){
+  const now = Date.now();
+  const wk = now + 7*86400000;
+  const items = Array.from(document.querySelectorAll('.task-row[data-due]'))
+    .filter(r => {
+      const d = Date.parse(r.dataset.due);
+      return !isNaN(d) && d >= now && d <= wk;
+    })
+    .map(r => r.dataset.due.slice(0,10) + ' — ' + (r.dataset.title || ''));
+  if (!items.length) return;
+  navigator.clipboard?.writeText(items.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = items.length + ' tarefas desta semana copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.percentDone = function(){
   const all = document.querySelectorAll('.task-row').length;
   const done = document.querySelectorAll('.task-row.done, .task-row[data-status="done"]').length;

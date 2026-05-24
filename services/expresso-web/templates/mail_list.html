@@ -1304,6 +1304,19 @@ function toggleMailListDensity() {
 })();
 </script>
 <script>
+window.toggleRowStripes = function(){
+  const k = 'expresso_mail_stripes_{{ me.user_id }}';
+  const next = localStorage.getItem(k) !== '1';
+  localStorage.setItem(k, next ? '1' : '0');
+  document.querySelectorAll('.mail-row').forEach((r, i) => {
+    r.style.background = next && i % 2 ? '#f6f6f6' : '';
+  });
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#222;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Stripes: ' + (next ? 'ON' : 'OFF');
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyMsgIdsPage = function(){
   const ids = Array.from(document.querySelectorAll('.mail-row[data-id]')).map(r => r.dataset.id);
   if (!ids.length) return;

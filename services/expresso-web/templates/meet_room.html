@@ -1339,6 +1339,21 @@ function toggleMeetParticipantsPane() {
 })();
 </script>
 <script>
+window.copyRoomElapsed = function(){
+  const startAttr = (document.querySelector('[data-room-start]') || {}).dataset?.roomStart;
+  if (!startAttr) return;
+  const start = Date.parse(startAttr);
+  if (isNaN(start)) return;
+  const elapsed = Date.now() - start;
+  const m = Math.floor(elapsed / 60000);
+  const txt = m + ' min na sala';
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = txt;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.toggleLowBandwidth = function(){
   try { window.jitsiApi && window.jitsiApi.executeCommand('toggleLowBandwidth'); } catch (_) {}
   const t = document.createElement('div');

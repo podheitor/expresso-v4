@@ -607,6 +607,20 @@ function printDayAgenda() {
 })();
 </script>
 <script>
+window.copyEventLocations = function(){
+  const locs = new Set();
+  document.querySelectorAll('[data-location]').forEach(n => {
+    const v = (n.dataset.location || '').trim();
+    if (v) locs.add(v);
+  });
+  if (!locs.size) return;
+  navigator.clipboard?.writeText([...locs].join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = locs.size + ' locais copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyNextEventTitle = function(){
   const now = Date.now();
   const next = Array.from(document.querySelectorAll('[data-event-id][data-start]'))

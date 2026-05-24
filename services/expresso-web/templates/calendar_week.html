@@ -670,6 +670,20 @@ function printWeekAgenda() {
 })();
 </script>
 <script>
+window.sumWeekDuration = function(){
+  let total = 0;
+  document.querySelectorAll('[data-event-id][data-start][data-end]').forEach(e => {
+    const a = Date.parse(e.dataset.start), b = Date.parse(e.dataset.end);
+    if (!isNaN(a) && !isNaN(b)) total += (b - a);
+  });
+  const h = Math.floor(total / 3600000);
+  const m = Math.floor((total % 3600000) / 60000);
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = h + 'h' + (m ? m + 'm' : '') + ' agendadas na semana';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.copyEventTitles = function(){
   const titles = Array.from(document.querySelectorAll('[data-event-id]')).map(e => e.dataset.title).filter(Boolean);
   if (!titles.length) return;
