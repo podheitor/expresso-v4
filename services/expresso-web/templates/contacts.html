@@ -1144,6 +1144,28 @@ function groupContactsByFirstLetter() {
 })();
 </script>
 <script>
+window.copyDuplicateEmails = function(){
+  const counts = {};
+  document.querySelectorAll('[data-email]').forEach(n => {
+    const e = (n.dataset.email || '').toLowerCase();
+    if (e) counts[e] = (counts[e] || 0) + 1;
+  });
+  const dups = Object.entries(counts).filter(([_, c]) => c > 1).map(([e,c]) => c + 'x ' + e);
+  if (!dups.length) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Sem emails duplicados';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+    return;
+  }
+  navigator.clipboard?.writeText(dups.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = dups.length + ' emails duplicados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyTopCompanies = function(){
   const counts = {};
   document.querySelectorAll('.contact-row[data-company]').forEach(r => {

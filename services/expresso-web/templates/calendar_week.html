@@ -670,6 +670,33 @@ function printWeekAgenda() {
 })();
 </script>
 <script>
+window.copyOverlappingPairs = function(){
+  const evs = Array.from(document.querySelectorAll('[data-event-id][data-start][data-end]'))
+    .map(e => ({ id: e.dataset.eventId, title: e.dataset.title || '', s: Date.parse(e.dataset.start), e: Date.parse(e.dataset.end) }))
+    .filter(x => !isNaN(x.s) && !isNaN(x.e));
+  const pairs = [];
+  for (let i = 0; i < evs.length; i++) {
+    for (let j = i + 1; j < evs.length; j++) {
+      if (evs[i].s < evs[j].e && evs[j].s < evs[i].e) {
+        pairs.push(evs[i].title + ' ⇄ ' + evs[j].title);
+      }
+    }
+  }
+  if (!pairs.length) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = 'Sem conflitos';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+    return;
+  }
+  navigator.clipboard?.writeText(pairs.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = pairs.length + ' conflitos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyWeekIcal = function(){
   const evs = Array.from(document.querySelectorAll('[data-event-id]'));
   if (!evs.length) return;

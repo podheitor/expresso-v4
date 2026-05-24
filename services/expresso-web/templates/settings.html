@@ -1426,6 +1426,17 @@ function countExpressoPrefsByPrefix() {
 }
 </script>
 <script>
+window.pingTasksApi = function(){
+  const start = performance.now();
+  fetch('/api/v1/tasks/health').then(r => {
+    const ms = Math.round(performance.now() - start);
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:' + (r.ok?'#0a0':'#a00') + ';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = (r.ok ? 'Tasks OK' : 'Tasks erro') + ' (' + ms + 'ms)';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  }).catch(() => {});
+};
 window.pingCalApi = function(){
   const start = performance.now();
   fetch('/api/v1/cal/health').then(r => {

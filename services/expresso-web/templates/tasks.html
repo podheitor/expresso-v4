@@ -1469,6 +1469,17 @@ function highlightAllOverdueTasks() {
 })();
 </script>
 <script>
+window.copyHighPriority = function(){
+  const items = Array.from(document.querySelectorAll('.task-row[data-priority="high"]'))
+    .map(r => r.dataset.title || '').filter(Boolean);
+  if (!items.length) return;
+  navigator.clipboard?.writeText(items.map(t => '! ' + t).join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = items.length + ' alta prioridade copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyTasksWithoutDue = function(){
   const items = Array.from(document.querySelectorAll('.task-row'))
     .filter(r => !r.dataset.due)

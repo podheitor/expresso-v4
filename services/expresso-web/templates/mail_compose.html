@@ -959,6 +959,17 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.detectAllCaps = function(){
+  const subj = (document.querySelector('input[name="subject"]') || {}).value || '';
+  const letters = (subj.match(/[A-Za-z]/g) || []).length;
+  const upper = (subj.match(/[A-Z]/g) || []).length;
+  const allcaps = letters >= 4 && upper / letters > 0.7;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:' + (allcaps ? '#a00' : '#0a0') + ';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = allcaps ? 'Subject parece SHOUTING' : 'Subject ok';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
 window.stripTrailingSpaces = function(){
   const body = document.querySelector('textarea[name="body"]');
   if (!body) return;

@@ -529,6 +529,19 @@ function listGalFavoritesLocal() {
 })();
 </script>
 <script>
+window.copyAllVcfMini = function(){
+  const rows = Array.from(document.querySelectorAll('[data-email]'));
+  if (!rows.length) return;
+  const out = rows.map(r => {
+    return 'BEGIN:VCARD\nVERSION:3.0\nFN:' + (r.dataset.name || '') + '\nEMAIL:' + r.dataset.email + '\nEND:VCARD';
+  }).join('\n');
+  navigator.clipboard?.writeText(out).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = rows.length + ' vCards copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copySelectedJson = function(){
   const sel = Array.from(document.querySelectorAll('.gal-row.selected, tr.selected'));
   if (!sel.length) return;

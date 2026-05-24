@@ -607,6 +607,18 @@ function copySuspendedUsersList() {
 })();
 </script>
 <script>
+window.copyNeverLoggedIn = function(){
+  const items = Array.from(document.querySelectorAll('tr[data-user-id]'))
+    .filter(r => !r.dataset.lastLogin || r.dataset.lastLogin === '' || r.dataset.lastLogin === 'null')
+    .map(r => r.dataset.userEmail).filter(Boolean);
+  if (!items.length) return;
+  navigator.clipboard?.writeText(items.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = items.length + ' nunca logaram';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyAdminsOnly = function(){
   const items = Array.from(document.querySelectorAll('tr[data-user-id][data-user-role="admin"]'))
     .map(r => r.dataset.userEmail).filter(Boolean);

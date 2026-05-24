@@ -731,6 +731,20 @@ function printMonthOverview() {
 })();
 </script>
 <script>
+window.copyHolidayDays = function(){
+  const days = new Set();
+  document.querySelectorAll('[data-event-id][data-holiday="true"]').forEach(e => {
+    const d = (e.dataset.start || '').slice(0,10);
+    if (d) days.add(d);
+  });
+  if (!days.size) return;
+  navigator.clipboard?.writeText([...days].sort().join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = days.size + ' feriados copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.exportMonthIcal = function(){
   const evs = Array.from(document.querySelectorAll('[data-event-id]'));
   if (!evs.length) return;

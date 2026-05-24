@@ -1373,6 +1373,18 @@ function copyDriveBreadcrumbs() {
 })();
 </script>
 <script>
+window.copyRecentFiles = function(){
+  const rows = Array.from(document.querySelectorAll('.drive-row[data-type="file"][data-mtime]'));
+  if (!rows.length) return;
+  rows.sort((a,b) => (b.dataset.mtime || '').localeCompare(a.dataset.mtime || ''));
+  const top = rows.slice(0, 10).map(r => r.dataset.mtime.slice(0,10) + ' — ' + r.dataset.name);
+  navigator.clipboard?.writeText(top.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = top.length + ' recentes copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyLargestFile = function(){
   const rows = Array.from(document.querySelectorAll('.drive-row[data-type="file"][data-size]'));
   if (!rows.length) return;
