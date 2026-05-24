@@ -2345,5 +2345,23 @@ window.copyContactsByCompany=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdays=function(){
+  const out=[];
+  document.querySelectorAll('[data-contact-row]').forEach(r=>{
+    const b=(r.getAttribute('data-contact-birthday')||'').trim();
+    if(b){
+      const n=(r.getAttribute('data-contact-name')||r.getAttribute('data-contact-email')||'').trim();
+      out.push(b+'\t'+n);
+    }
+  });
+  if(!out.length){alert('Sem aniversários');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' aniv';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

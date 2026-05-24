@@ -3176,5 +3176,21 @@ window.copyChatLongestMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMentions=function(){
+  const mentions=new Set();
+  document.querySelectorAll('[data-msg-body]').forEach(m=>{
+    const txt=(m.getAttribute('data-msg-body')||m.textContent||'');
+    const matches=txt.match(/@[A-Za-z0-9._-]+/g)||[];
+    matches.forEach(mn=>mentions.add(mn));
+  });
+  const out=Array.from(mentions).sort();
+  if(!out.length){alert('Sem menções');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' menções';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

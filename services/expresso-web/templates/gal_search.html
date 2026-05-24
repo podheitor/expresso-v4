@@ -1638,5 +1638,20 @@ window.copyGalDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDepartments=function(){
+  const freq={};
+  document.querySelectorAll('[data-gal-dept]').forEach(e=>{
+    const d=(e.getAttribute('data-gal-dept')||'').trim()||'(sem dept)';
+    freq[d]=(freq[d]||0)+1;
+  });
+  const out=Object.entries(freq).sort((a,b)=>b[1]-a[1]).map(([k,v])=>v+'\t'+k);
+  if(!out.length){alert('Sem departamentos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' depts';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

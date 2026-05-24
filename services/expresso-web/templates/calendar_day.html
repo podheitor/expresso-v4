@@ -1857,5 +1857,23 @@ window.copyDayBusyHours=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFreeSlots=function(){
+  const busy=new Set();
+  document.querySelectorAll('[data-event-start][data-event-end]').forEach(e=>{
+    const s=new Date(e.getAttribute('data-event-start'));
+    const en=new Date(e.getAttribute('data-event-end'));
+    if(isNaN(s)||isNaN(en))return;
+    for(let h=s.getHours();h<=en.getHours()&&h<24;h++)busy.add(h);
+  });
+  const out=[];
+  for(let h=8;h<19;h++)if(!busy.has(h))out.push(String(h).padStart(2,'0')+':00-'+String(h+1).padStart(2,'0')+':00');
+  if(!out.length){alert('Sem slots livres 8-19h');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' livres';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

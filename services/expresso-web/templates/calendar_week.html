@@ -1856,5 +1856,21 @@ window.copyWeekDayCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalHours=function(){
+  let total=0;
+  document.querySelectorAll('[data-event-start][data-event-end]').forEach(e=>{
+    const s=new Date(e.getAttribute('data-event-start'));
+    const en=new Date(e.getAttribute('data-event-end'));
+    if(isNaN(s)||isNaN(en))return;
+    total+=(en-s)/3600000;
+  });
+  const out='Total: '+total.toFixed(2)+' horas\nDias úteis: '+(total/5).toFixed(2)+' h/dia';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total.toFixed(1)+'h total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
