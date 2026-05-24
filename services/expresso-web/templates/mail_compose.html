@@ -1790,5 +1790,20 @@ window.codeSelection=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.countWords=function(){
+  const body=document.querySelector('textarea[name=body]');
+  if(!body){alert('Sem campo body');return;}
+  const txt=(body.value||'').trim();
+  const words=txt?txt.split(/\s+/).length:0;
+  const chars=txt.length;
+  const lines=txt?txt.split('\n').length:0;
+  const out=words+' palavras, '+chars+' chars, '+lines+' linhas';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=words+' palavras';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

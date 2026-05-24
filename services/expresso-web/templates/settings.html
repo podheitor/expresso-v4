@@ -2334,5 +2334,18 @@ window.copyScreenResolution=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyKeyboardLayout=function(){
+  if(!navigator.keyboard||!navigator.keyboard.getLayoutMap){alert('Keyboard API ausente');return;}
+  navigator.keyboard.getLayoutMap().then(map=>{
+    const sample=['KeyQ','KeyW','KeyE','KeyR','KeyT','KeyY','KeyA','KeyZ'];
+    const out=sample.map(k=>k+'='+map.get(k)).join('\n');
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='layout: '+map.get('KeyQ')+map.get('KeyW')+map.get('KeyE')+'...';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(e=>alert(e.message));
+};
 </script>
 {% endblock %}

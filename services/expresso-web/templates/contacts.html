@@ -2074,5 +2074,23 @@ window.copyContactsNoEmail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsWithNotes=function(){
+  const rows=document.querySelectorAll('[data-contact-name]');
+  const out=[];
+  rows.forEach(r=>{
+    const notes=(r.getAttribute('data-contact-notes')||'').trim();
+    if(notes){
+      const name=r.getAttribute('data-contact-name')||'?';
+      out.push(name+'\t'+notes.slice(0,60).replace(/\n/g,' '));
+    }
+  });
+  if(!out.length){alert('Nenhum tem notas');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' com notas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

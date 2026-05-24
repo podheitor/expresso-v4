@@ -1636,5 +1636,22 @@ window.copyMonthWeekendEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAllDayEvents=function(){
+  const rows=document.querySelectorAll('[data-event-allday="1"], [data-event-allday="true"]');
+  if(!rows.length){alert('Sem eventos de dia inteiro');return;}
+  const out=[];
+  rows.forEach(r=>{
+    const title=r.getAttribute('data-event-title')||(r.querySelector('.title')||r).textContent||'';
+    const start=(r.getAttribute('data-event-start')||'').slice(0,10);
+    out.push(start+'\t'+title.trim());
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' dia inteiro';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2136,5 +2136,25 @@ window.copyMailFromDomain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailToday=function(){
+  const today=new Date().toISOString().slice(0,10);
+  const rows=document.querySelectorAll('[data-mail-id]');
+  const out=[];
+  rows.forEach(r=>{
+    const d=(r.getAttribute('data-mail-date')||'').slice(0,10);
+    if(d===today){
+      const s=r.getAttribute('data-mail-subject')||(r.querySelector('.subject')||r).textContent||'';
+      const from=r.getAttribute('data-mail-from')||'';
+      out.push(from+'\t'+s.trim());
+    }
+  });
+  if(!out.length){alert('Sem mensagens de hoje');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' hoje';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

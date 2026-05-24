@@ -1483,5 +1483,22 @@ window.copyUsersInactive30d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithoutMFA=function(){
+  const rows=document.querySelectorAll('[data-user-email]');
+  const out=[];
+  rows.forEach(r=>{
+    const mfa=(r.getAttribute('data-user-mfa')||'').toLowerCase();
+    if(mfa!=='1'&&mfa!=='true'&&mfa!=='yes'){
+      out.push(r.getAttribute('data-user-email')||'?');
+    }
+  });
+  if(!out.length){alert('Todos com MFA');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' sem MFA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
