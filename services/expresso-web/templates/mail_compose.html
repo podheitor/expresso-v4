@@ -1206,5 +1206,19 @@ window.countRecipients = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.bccSelf = function(){
+  const me=document.body.getAttribute('data-me-email')||'';
+  if(!me){alert('email não detectado');return;}
+  const el=document.querySelector('[name="bcc"]');
+  if(!el){alert('campo bcc não encontrado');return;}
+  const cur=(el.value||'').trim();
+  if(cur.toLowerCase().includes(me.toLowerCase())){alert('já incluído');return;}
+  el.value=cur?cur+', '+me:me;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='BCC: '+me;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

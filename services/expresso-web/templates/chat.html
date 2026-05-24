@@ -2273,5 +2273,18 @@ window.copyMsgsByHour = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMentionsOfMe = function(){
+  const me=document.body.getAttribute('data-me-handle')||'';
+  if(!me){alert('handle não encontrado');return;}
+  const msgs=document.querySelectorAll('[data-msg-text]');
+  const out=[];
+  msgs.forEach(m=>{const t=m.getAttribute('data-msg-text')||'';if(t.includes('@'+me))out.push((m.getAttribute('data-msg-from')||'?')+': '+t);});
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' menções a você';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

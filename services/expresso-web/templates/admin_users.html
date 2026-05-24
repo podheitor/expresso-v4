@@ -866,5 +866,16 @@ window.copyUsersByRole = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAdminUsers = function(){
+  const rows=document.querySelectorAll('[data-user-role]');
+  const admins=[];
+  rows.forEach(r=>{const x=(r.getAttribute('data-user-role')||'').toLowerCase();if(x.includes('admin')||x.includes('root'))admins.push(r.getAttribute('data-user-email')||r.getAttribute('data-user')||'?');});
+  const ta=document.createElement('textarea');ta.value=admins.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=admins.length+' admins copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

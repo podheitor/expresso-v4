@@ -1425,5 +1425,17 @@ window.copyContactsByDomain = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDuplicateEmails = function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const seen={};
+  rows.forEach(r=>{const e=(r.getAttribute('data-contact-email')||'').trim().toLowerCase();if(e)seen[e]=(seen[e]||0)+1;});
+  const dups=Object.entries(seen).filter(([,n])=>n>1).map(([e,n])=>e+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=dups;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=(dups?dups.split('\n').length:0)+' emails duplicados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

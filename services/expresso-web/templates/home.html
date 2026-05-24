@@ -1529,5 +1529,18 @@ window.copyPageStats = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyExternalLinks = function(){
+  const links=document.querySelectorAll('a[href]');
+  const out=[];
+  const host=location.hostname;
+  links.forEach(a=>{try{const u=new URL(a.href,location.href);if(u.hostname&&u.hostname!==host)out.push(u.href);}catch(_){}});
+  const uniq=[...new Set(out)];
+  const ta=document.createElement('textarea');ta.value=uniq.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=uniq.length+' links externos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
