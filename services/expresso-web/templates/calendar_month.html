@@ -1206,5 +1206,19 @@ window.copyWeekendEvents = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyBusiestDay = function(){
+  const rows=document.querySelectorAll('[data-event-id][data-event-start]');
+  const m={};
+  rows.forEach(r=>{const d=r.getAttribute('data-event-start'); if(!d) return; const day=d.slice(0,10); m[day]=(m[day]||0)+1;});
+  const sorted=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  const top=sorted[0]||['',0];
+  const out='dia mais ocupado: '+top[0]+'\t'+top[1]+' eventos';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=top[0]+': '+top[1];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

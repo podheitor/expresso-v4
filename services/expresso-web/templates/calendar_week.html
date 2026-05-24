@@ -1160,5 +1160,15 @@ window.copyMorningEvents = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAfternoonWeek = function(){
+  const rows=document.querySelectorAll('[data-event-id][data-event-start]');
+  const out=Array.from(rows).filter(r=>{const d=new Date(r.getAttribute('data-event-start')); return !isNaN(d)&&d.getHours()>=12&&d.getHours()<18;}).map(r=>(r.getAttribute('data-event-start')||'?')+'\t'+(r.getAttribute('data-event-title')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='eventos tarde copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

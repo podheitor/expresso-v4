@@ -1404,5 +1404,17 @@ window.copyRecipients = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.appendSignatureBlock = function(){
+  const ta=document.querySelector('textarea[name="body"]');
+  if(!ta) return;
+  const sig='\n\n-- \n{{ me.email }}\nExpresso v4';
+  if(ta.value.includes(sig.trim())) return;
+  ta.value=(ta.value||'')+sig;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='assinatura anexada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

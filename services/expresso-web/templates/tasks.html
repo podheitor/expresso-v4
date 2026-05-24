@@ -1926,5 +1926,16 @@ window.copyTasksHighPriority = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAssignedToMe = function(){
+  const me='{{ me.email }}';
+  const rows=Array.from(document.querySelectorAll('[data-task-id][data-task-assignee]')).filter(r=>(r.getAttribute('data-task-assignee')||'').toLowerCase()===me.toLowerCase());
+  const out=rows.map(r=>(r.getAttribute('data-task-title')||r.textContent.trim().slice(0,80))).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' minhas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

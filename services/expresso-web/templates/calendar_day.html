@@ -1123,5 +1123,18 @@ window.copyEventsWithVideo = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.totalDayHours = function(){
+  const rows=document.querySelectorAll('[data-event-id][data-event-start][data-event-end]');
+  let total=0;
+  rows.forEach(r=>{const s=Date.parse(r.getAttribute('data-event-start')); const e=Date.parse(r.getAttribute('data-event-end')); if(!isNaN(s)&&!isNaN(e)) total+=(e-s);});
+  const h=(total/3600000).toFixed(1);
+  const out='total horas do dia: '+h;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=h+'h ocupadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
