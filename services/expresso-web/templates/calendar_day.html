@@ -2132,5 +2132,20 @@ window.copyDayLocations=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAttendees=function(){
+  const s=new Set();
+  document.querySelectorAll('[data-event-attendees]').forEach(e=>{
+    const list=(e.getAttribute('data-event-attendees')||'').split(/[,;]/);
+    list.forEach(x=>{const t=x.trim();if(t)s.add(t);});
+  });
+  if(!s.size){alert('Sem participantes');return;}
+  const arr=Array.from(s).sort();
+  const ta=document.createElement('textarea');ta.value=arr.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=arr.length+' att';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

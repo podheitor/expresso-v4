@@ -2136,5 +2136,21 @@ window.copyWeekAllDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekRecurring=function(){
+  const out=[];
+  document.querySelectorAll('[data-event-id]').forEach(e=>{
+    const r=(e.getAttribute('data-event-rrule')||e.getAttribute('data-event-recurring')||'').trim();
+    if(!r)return;
+    const t=(e.getAttribute('data-event-title')||e.textContent||'').trim().slice(0,80);
+    out.push(t+'\t'+r);
+  });
+  if(!out.length){alert('Sem recorrentes');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' rec';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

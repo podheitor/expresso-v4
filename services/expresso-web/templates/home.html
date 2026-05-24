@@ -2396,5 +2396,18 @@ window.copyHomeUserAgent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeOnlineStatus=function(){
+  const on=navigator.onLine;
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection;
+  const eff=c?c.effectiveType:'?';
+  const dl=c?c.downlink:'?';
+  const out='online: '+on+'\neffectiveType: '+eff+'\ndownlink: '+dl+'Mbps';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999;background:'+(on?'#069':'#c00');
+  t.textContent=on?(eff+' '+dl):'offline';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

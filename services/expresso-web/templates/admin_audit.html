@@ -2005,5 +2005,24 @@ window.copyAuditByAction=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByDay=function(){
+  const a={};
+  document.querySelectorAll('[data-audit-id]').forEach(r=>{
+    const ts=(r.getAttribute('data-audit-ts')||'').trim();
+    if(!ts)return;
+    const d=ts.slice(0,10);
+    a[d]=(a[d]||0)+1;
+  });
+  const keys=Object.keys(a);
+  if(!keys.length){alert('Sem entradas');return;}
+  keys.sort();
+  const out=keys.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' day';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
