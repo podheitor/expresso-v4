@@ -1937,5 +1937,17 @@ window.copyDraftCc=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDraftBcc=function(){
+  const bcc=document.querySelector('[name=bcc], input[name=bcc], #compose-bcc');
+  if(!bcc){alert('Sem campo BCC');return;}
+  const v=(bcc.value||'').trim();
+  if(!v){alert('BCC vazio');return;}
+  const ta=document.createElement('textarea');ta.value=v;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='BCC ('+v.length+'c)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

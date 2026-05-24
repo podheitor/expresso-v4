@@ -1746,5 +1746,22 @@ window.copyThreadDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstUrl=function(){
+  const re=/https?:\/\/\S+/;
+  let first=null;
+  document.querySelectorAll('[data-msg-body]').forEach(r=>{
+    if(first)return;
+    const b=r.getAttribute('data-msg-body')||'';
+    const m=b.match(re);
+    if(m)first=m[0];
+  });
+  if(!first){alert('Sem URLs');return;}
+  const ta=document.createElement('textarea');ta.value=first;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=first.slice(0,40);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
