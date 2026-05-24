@@ -1097,5 +1097,16 @@ window.copyWeekLongest = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekMorningAfternoon = function(){
+  let am=0,pm=0;
+  document.querySelectorAll('[data-event-start]').forEach(e=>{const d=new Date(e.getAttribute('data-event-start'));if(!isNaN(d)){if(d.getHours()<12)am++;else pm++;}});
+  const out='manhã: '+am+'\ttarde: '+pm+'\tratio: '+(am+pm?Math.round(am*100/(am+pm)):0)+'% manhã';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

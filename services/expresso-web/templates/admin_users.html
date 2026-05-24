@@ -1000,5 +1000,15 @@ window.copyUsersWithMfa = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithoutMfa = function(){
+  const rows=Array.from(document.querySelectorAll('[data-user-email][data-user-mfa]')).filter(r=>{const v=r.getAttribute('data-user-mfa');return v!=='1'&&v!=='true';});
+  const out=rows.map(r=>r.getAttribute('data-user-email')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' sem MFA';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
