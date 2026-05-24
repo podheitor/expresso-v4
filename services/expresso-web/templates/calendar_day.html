@@ -246,6 +246,9 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowLeft')  { window.location.href = '{{ prev_link }}'; }
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
+  if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new?date={{ date_iso }}'; }
+  if (e.key === 'w' || e.key === 'W') { window.location.href = '{{ week_link }}'; }
+  if (e.key === 'm' || e.key === 'M') { window.location.href = '{{ month_link }}'; }
 });
 function copyDayLink(btn) {
   var url = window.location.origin + window.location.pathname + window.location.search;

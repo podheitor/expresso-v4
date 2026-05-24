@@ -81,7 +81,10 @@
   <!-- Próximas reuniões -->
   {% if !upcoming.is_empty() %}
   <div class="card stack" style="margin-top:1.5rem">
-    <h2>Próximas reuniões</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;flex-wrap:wrap">
+      <h2 style="margin:0">Próximas reuniões</h2>
+      <input id="meet-filter" type="search" placeholder="🔎 filtrar por título…" oninput="filterMeetLists(this.value)" style="flex:0 0 240px;padding:.3rem .5rem;font-size:.85rem">
+    </div>
     <ul class="meet-list">
       {% for m in upcoming %}
       <li class="meet-list-item" data-meet-id="{{ m.id }}"
@@ -265,6 +268,13 @@ function exportRecentMeets() {
     a.click();
     URL.revokeObjectURL(a.href);
   } catch(e) { alert('Erro ao exportar.'); }
+}
+function filterMeetLists(q) {
+  q = (q || '').toLowerCase().trim();
+  document.querySelectorAll('.meet-list-item').forEach(function(li) {
+    var n = (li.querySelector('.meet-list-name') || {}).textContent || '';
+    li.style.display = (!q || n.toLowerCase().includes(q)) ? '' : 'none';
+  });
 }
 </script>
 {% endblock %}

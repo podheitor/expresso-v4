@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Admin · Expresso{% endblock %}</title>
   <link rel="stylesheet" href="/static/app.css">
+  <style>
+    @media print {
+      .admin-sidebar, .admin-sidebar-footer { display: none !important; }
+      .admin-shell { display: block; }
+      .admin-main { padding: 0; }
+      .btn, button, .admin-actions { display: none !important; }
+      body { background: #fff !important; color: #000 !important; }
+    }
+  </style>
 </head>
 <body>
   <div class="admin-shell">

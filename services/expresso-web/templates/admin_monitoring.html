@@ -178,6 +178,20 @@
     if (sel) sel.value = String(saved);
     window.setMonitorInterval(saved);
   })();
+  // Pause auto-refresh when tab is hidden to save battery/quota
+  document.addEventListener('visibilitychange', function() {
+    var sel = document.getElementById('monitor-interval-sel');
+    if (!sel) return;
+    if (document.hidden) {
+      if (_monitorTimer) { clearInterval(_monitorTimer); _monitorTimer = null; }
+    } else {
+      var n = parseInt(sel.value, 10);
+      if (n > 0 && !_monitorTimer) {
+        _monitorTimer = setInterval(function(){ checkServices(); renderActivityChart(); }, n);
+        refreshMonitorNow();
+      }
+    }
+  });
 
   // Load stats from API
   fetch('/admin/api/stats', {credentials:'include'})

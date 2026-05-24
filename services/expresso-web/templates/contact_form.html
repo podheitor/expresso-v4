@@ -37,6 +37,10 @@
         <input id="contact-bday" type="date" placeholder="YYYY-MM-DD">
         <span class="muted small">Salvo localmente para lembretes (sincronização CardDAV opcional)</span>
       </label>
+      <label>📝 Notas privadas
+        <textarea id="contact-notes" rows="3" placeholder="Anotações pessoais sobre este contato…"></textarea>
+        <span class="muted small">Visível apenas para você neste navegador.</span>
+      </label>
 
       <div class="form-actions" style="justify-content:flex-end">
         {% match contact_id %}{% when Some with (_id) %}
@@ -55,7 +59,21 @@
 <script>
 (function() {
   var key = 'expresso_birthdays';
+  var notesKey = 'expresso_contact_notes';
   var contactKey = '{% match contact_id %}{% when Some with (id) %}{{ id }}{% when None %}{% endmatch %}';
+  function loadNotes() { try { return JSON.parse(localStorage.getItem(notesKey) || '{}'); } catch(e) { return {}; } }
+  function saveNotes(o) { try { localStorage.setItem(notesKey, JSON.stringify(o)); } catch(e){} }
+  var nt = document.getElementById('contact-notes');
+  if (nt && contactKey) {
+    var allN = loadNotes();
+    if (allN[contactKey]) nt.value = allN[contactKey];
+    nt.addEventListener('input', function() {
+      var an = loadNotes();
+      if (nt.value.trim()) an[contactKey] = nt.value;
+      else delete an[contactKey];
+      saveNotes(an);
+    });
+  }
   function loadBdays() { try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch(e) { return {}; } }
   function saveBdays(o) { try { localStorage.setItem(key, JSON.stringify(o)); } catch(e){} }
   var inp = document.getElementById('contact-bday');

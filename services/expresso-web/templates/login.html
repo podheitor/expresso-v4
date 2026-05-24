@@ -20,6 +20,8 @@
     <a href="/healthz" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">● Status</a>
     <span style="opacity:.5">·</span>
     <span id="login-clock" class="mono"></span>
+    <span style="opacity:.5">·</span>
+    <span id="login-tz" class="mono" title="Fuso horário do navegador"></span>
   </p>
 </section>
 <script>
@@ -51,6 +53,13 @@
   var el = document.getElementById('login-clock'); if (!el) return;
   function tick(){ el.textContent = new Date().toLocaleTimeString('pt-BR'); }
   tick(); setInterval(tick, 1000);
+})();
+(function showTz() {
+  try {
+    var el = document.getElementById('login-tz'); if (!el) return;
+    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    el.textContent = tz;
+  } catch(e){}
 })();
 (function networkStatus() {
   var banner = document.getElementById('login-offline-banner');

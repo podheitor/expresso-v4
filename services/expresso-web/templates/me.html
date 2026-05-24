@@ -47,6 +47,9 @@
         <dt>Drafts de email</dt><dd id="me-mail-drafts">—</dd>
         <dt>Pesquisas salvas</dt><dd id="me-saved-searches">—</dd>
         <dt>Modelos de email</dt><dd id="me-mail-tpls">—</dd>
+        <dt>Salas Meet fixadas</dt><dd id="me-pinned-rooms">—</dd>
+        <dt>Canais silenciados</dt><dd id="me-muted-channels">—</dd>
+        <dt>Arquivos editados recentes</dt><dd id="me-recent-edits">—</dd>
       </dl>
     </div>
   </div>
@@ -66,6 +69,9 @@
   var dr = document.getElementById('me-mail-drafts'); if (dr) dr.textContent = safeJsonLen('expresso_compose_drafts');
   var ss = document.getElementById('me-saved-searches'); if (ss) ss.textContent = safeJsonLen('expresso_saved_searches');
   var tp = document.getElementById('me-mail-tpls'); if (tp) tp.textContent = safeJsonLen('expresso_mail_templates');
+  var pr = document.getElementById('me-pinned-rooms'); if (pr) pr.textContent = safeJsonLen('expresso_pinned_meet_rooms');
+  var mc = document.getElementById('me-muted-channels'); if (mc) mc.textContent = safeJsonLen('expresso_chat_muted_channels');
+  var re = document.getElementById('me-recent-edits'); if (re) re.textContent = safeJsonLen('expresso_recent_edits');
 })();
 </script>
 <script>

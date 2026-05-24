@@ -280,6 +280,9 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowLeft')  { window.location.href = '{{ prev_link }}'; }
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
+  if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new'; }
+  if (e.key === 'd' || e.key === 'D') { window.location.href = '{{ day_link }}'; }
+  if (e.key === 'm' || e.key === 'M') { window.location.href = '{{ month_link }}'; }
 });
 </script>
 {% endblock %}

@@ -35,6 +35,10 @@
     </select>
     <input type="date" id="audit-date-from" class="search-input-sm" onchange="filterAudit(document.getElementById('audit-search').value)">
     <input type="date" id="audit-date-to" class="search-input-sm" onchange="filterAudit(document.getElementById('audit-search').value)">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="auditQuickRange(1)" title="Últimas 24h">24h</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="auditQuickRange(7)" title="Últimos 7 dias">7d</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="auditQuickRange(30)" title="Últimos 30 dias">30d</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="auditClearRange()" title="Limpar datas">×</button>
   </div>
 
   <div class="card" style="margin-top:.75rem;overflow:auto">
@@ -148,6 +152,19 @@ function pollAuditLog() {
     }).catch(function(){});
 }
 function escAudit(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function auditQuickRange(days) {
+  var to = new Date();
+  var from = new Date(to.getTime() - days * 86400000);
+  var fmt = function(d){ return d.toISOString().slice(0,10); };
+  var f = document.getElementById('audit-date-from'); if (f) f.value = fmt(from);
+  var t = document.getElementById('audit-date-to'); if (t) t.value = fmt(to);
+  filterAudit((document.getElementById('audit-search') || {}).value || '');
+}
+function auditClearRange() {
+  var f = document.getElementById('audit-date-from'); if (f) f.value = '';
+  var t = document.getElementById('audit-date-to'); if (t) t.value = '';
+  filterAudit((document.getElementById('audit-search') || {}).value || '');
+}
 
 // Click row to copy full event as JSON
 document.addEventListener('click', function(e) {

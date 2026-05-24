@@ -378,6 +378,7 @@ document.addEventListener('keydown', function(e) {
   if (e.key === 'ArrowLeft')  { window.location.href = '{{ prev_link }}'; }
   if (e.key === 'ArrowRight') { window.location.href = '{{ next_link }}'; }
   if (e.key === 't' || e.key === 'T') { window.location.href = '{{ today_link }}'; }
+  if (e.key === 'n' || e.key === 'N') { window.location.href = '/calendar/{{ selected.id }}/events/new'; }
 });
 (function sumMonthEvents() {
   var total = 0;

@@ -29,9 +29,11 @@
           {% endmatch %}
           <a class="folder-item {% if is_active == "active" %}active{% endif %}"
              href="/chat/channels/{{ ch.id }}"
+             data-chid="{{ ch.id }}"
              aria-current="{% if is_active == "active" %}page{% endif %}">
             <span class="folder-icon chat-ch-icon">{{ ch.icon() }}</span>
             <span class="folder-name">{{ ch.name }}</span>
+            <span class="chat-mute-indicator" style="display:none;font-size:.7rem;margin-left:.2rem">🔕</span>
             {% if ch.unread_count > 0 %}
               <span class="chat-unread-badge">{{ ch.unread_count }}</span>
             {% endif %}
@@ -55,9 +57,11 @@
           {% endmatch %}
           <a class="folder-item {% if is_active == "active" %}active{% endif %}"
              href="/chat/channels/{{ ch.id }}"
+             data-chid="{{ ch.id }}"
              aria-current="{% if is_active == "active" %}page{% endif %}">
             <span class="folder-icon chat-ch-icon">{{ ch.icon() }}</span>
             <span class="folder-name">{{ ch.name }}</span>
+            <span class="chat-mute-indicator" style="display:none;font-size:.7rem;margin-left:.2rem">🔕</span>
             {% if ch.unread_count > 0 %}
               <span class="chat-unread-badge">{{ ch.unread_count }}</span>
             {% endif %}
@@ -1480,6 +1484,17 @@ function updateMuteBtn(cid) {
 }
 (function initMuteBtn() {
   {% match active_channel %}{% when Some with (ac) %}updateMuteBtn('{{ ac.id }}');{% when None %}{% endmatch %}
+})();
+(function paintMutedSidebarChannels() {
+  var muted = loadMutedChannels();
+  if (!muted.length) return;
+  document.querySelectorAll('.folder-item[data-chid]').forEach(function(a) {
+    if (muted.indexOf(a.dataset.chid) >= 0) {
+      var ind = a.querySelector('.chat-mute-indicator');
+      if (ind) ind.style.display = '';
+      a.style.opacity = '.65';
+    }
+  });
 })();
 function updateChatCharCount(ta) {
   var el = document.getElementById('chat-char-count');

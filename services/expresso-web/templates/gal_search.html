@@ -19,7 +19,10 @@
     {% else if contacts.is_empty() %}
       <p class="muted">Nenhum resultado para "{{ query }}".</p>
     {% else %}
-      <p class="muted small" style="margin:0 0 .5rem"><strong>{{ contacts.len() }}</strong> resultado(s) para "{{ query }}"</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;margin:0 0 .5rem">
+        <p class="muted small" style="margin:0"><strong>{{ contacts.len() }}</strong> resultado(s) para "{{ query }}"</p>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalVcf()" title="Baixar todos resultados (.vcf)">⬇ vCard</button>
+      </div>
       <div class="contact-grid">
         {% for c in contacts %}
         <div class="contact-card">
@@ -41,6 +44,24 @@
   </div>
 </div>
 <script>
+function exportGalVcf() {
+  var cards = document.querySelectorAll('.contact-card');
+  if (!cards.length) { alert('Nenhum resultado para exportar.'); return; }
+  var lines = [];
+  cards.forEach(function(c) {
+    var nm = (c.querySelector('.contact-name') || {}).textContent || '';
+    var em = (c.querySelector('.contact-email') || {}).textContent || '';
+    if (!em.trim()) return;
+    var escName = nm.replace(/\\/g,'\\\\').replace(/[,;]/g,'\\$&');
+    lines.push('BEGIN:VCARD','VERSION:3.0','FN:' + escName,'EMAIL;TYPE=INTERNET:' + em.trim(),'UID:' + em.trim(),'END:VCARD');
+  });
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/vcard' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gal-' + new Date().toISOString().slice(0,10) + '.vcf';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function copyGalContact(btn) {
   var name = btn.dataset.name || '';
   var email = btn.dataset.email || '';

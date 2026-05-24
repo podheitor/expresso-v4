@@ -369,6 +369,12 @@
             </div>
             <p id="dnd-status" class="muted small" style="margin-top:.4rem"></p>
           </div>
+          <div class="subcard stack">
+            <h3>Canais de chat silenciados</h3>
+            <p class="muted small">Lista local de canais sem notificação. Gerencie pelo botão 🔔/🔕 no cabeçalho de cada canal.</p>
+            <div id="muted-channels-list" class="muted small">Carregando…</div>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="clearMutedChannels()" style="margin-top:.4rem;width:fit-content">🔔 Reativar todos</button>
+          </div>
           <div class="form-actions">
             <button class="btn btn-primary" type="submit">Salvar</button>
           </div>
@@ -873,6 +879,23 @@ function importLocalSettings(file) {
     } catch(x) { alert('Arquivo JSON inválido.'); }
   };
   reader.readAsText(file);
+}
+(function renderMutedChannels() {
+  var el = document.getElementById('muted-channels-list'); if (!el) return;
+  try {
+    var arr = JSON.parse(localStorage.getItem('expresso_chat_muted_channels') || '[]');
+    if (!arr.length) { el.textContent = '(nenhum canal silenciado)'; return; }
+    el.innerHTML = arr.map(function(c) {
+      var safe = String(c).replace(/[<>"&]/g, '');
+      return '<span style="display:inline-block;padding:.15rem .4rem;background:var(--surface-2);border-radius:.3rem;margin:.1rem">🔕 ' + safe + '</span>';
+    }).join('');
+  } catch(e) { el.textContent = '(erro ao ler)'; }
+})();
+function clearMutedChannels() {
+  if (!confirm('Reativar notificações de todos os canais silenciados?')) return;
+  localStorage.removeItem('expresso_chat_muted_channels');
+  var el = document.getElementById('muted-channels-list');
+  if (el) el.textContent = '(nenhum canal silenciado)';
 }
 function clearAllLocalSettings() {
   if (!confirm('Apagar TODOS os dados locais do Expresso (preferências, rascunhos, fixados, etc.)?\nEsta ação não pode ser desfeita.')) return;

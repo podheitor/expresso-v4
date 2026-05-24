@@ -43,6 +43,19 @@
       </div>
     </div>
 
+    <div class="subcard">
+      <h2>Testador de senha</h2>
+      <p class="muted small">Avalie força de uma senha antes de defini-la. Nada é enviado para o servidor.</p>
+      <input id="pw-test-input" type="password" placeholder="Digite a senha…" oninput="testPwStrength(this.value)" style="width:100%;font-family:monospace">
+      <label style="display:inline-flex;align-items:center;gap:.3rem;margin-top:.4rem">
+        <input type="checkbox" onchange="document.getElementById('pw-test-input').type = this.checked ? 'text' : 'password'"> Mostrar senha
+      </label>
+      <div id="pw-test-bar" style="height:.5rem;background:var(--surface-2,#eee);margin-top:.4rem;border-radius:.25rem;overflow:hidden">
+        <div id="pw-test-fill" style="height:100%;width:0%;transition:width .2s,background .2s"></div>
+      </div>
+      <p id="pw-test-label" class="muted small" style="margin:.3rem 0 0">—</p>
+    </div>
+
     <p><a class="link-sm" href="/me">← Voltar ao perfil</a></p>
   </div>
 </div>
@@ -98,5 +111,28 @@ function printBackupCodes() {
   w.document.close();
 }
 renderBackupCodes();
+function testPwStrength(pw) {
+  var fill = document.getElementById('pw-test-fill');
+  var lbl  = document.getElementById('pw-test-label');
+  if (!fill || !lbl) return;
+  pw = pw || '';
+  if (!pw) { fill.style.width = '0%'; lbl.textContent = '—'; return; }
+  var score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (pw.length >= 16) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (/(.)\1{2,}/.test(pw)) score--;
+  if (/^(123|abc|qwer|password|senha)/i.test(pw)) score = Math.min(score, 1);
+  score = Math.max(0, Math.min(6, score));
+  var pct = Math.round(score / 6 * 100);
+  var colors = ['#dc2626','#ea580c','#f59e0b','#ca8a04','#65a30d','#16a34a','#15803d'];
+  var labels = ['Muito fraca','Fraca','Razoável','Média','Boa','Forte','Excelente'];
+  fill.style.width = pct + '%';
+  fill.style.background = colors[score];
+  lbl.textContent = labels[score] + ' (' + pw.length + ' caracteres)';
+}
 </script>
 {% endblock %}
