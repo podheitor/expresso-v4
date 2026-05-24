@@ -58,6 +58,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveView()" id="drive-view-btn" title="Alternar lista/grade">⊞ Grade</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleDriveFavs()" id="drive-favs-btn" title="Mostrar favoritos">⭐ Favoritos</button>
       <button class="btn btn-ghost" onclick="showDriveNewFolder()">📁+ Nova pasta</button>
+      <button class="btn btn-ghost" onclick="shareCurrentDriveFolder(this)" title="Copiar link da pasta atual">🔗 Link da pasta</button>
       <div id="drive-batch-bar" style="display:none;align-items:center;gap:.4rem">
         <span class="muted small" id="drive-sel-count">0 selecionados</span>
         <button class="btn btn-ghost btn-sm" onclick="batchDownload()" title="Baixar selecionados sequencialmente">↓ Baixar</button>
@@ -965,5 +966,16 @@ function applyDriveColor(btn, color) {
   if (!ids.length) return;
   try { sessionStorage.setItem('expresso_drive_preview_list', JSON.stringify(ids)); } catch(e){}
 })();
+function shareCurrentDriveFolder(btn) {
+  var url = window.location.href.split('#')[0];
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function(){
+      if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+    });
+  } else {
+    var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Link copiado: ' + url);
+  }
+}
 </script>
 {% endblock %}

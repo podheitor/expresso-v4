@@ -8,6 +8,7 @@
     <div style="display:flex;gap:.4rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir lista visível">🖨 Imprimir</button>
       <button class="btn btn-ghost" onclick="clearDoneTasks()" title="Remover todas as tarefas concluídas">🗑 Limpar concluídas</button>
+      <button class="btn btn-ghost" onclick="showPomodoroStats()" title="Estatísticas Pomodoro (14 dias)">🍅 Stats</button>
       <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
     </div>
   </div>
@@ -846,8 +847,26 @@ function startPomodoroResume() {
   _pomodoroTimer = setInterval(function() {
     _pomodoroSeconds--;
     updatePomodoroDisplay();
-    if (_pomodoroSeconds <= 0) { clearInterval(_pomodoroTimer); _pomodoroTimer = null; }
+    if (_pomodoroSeconds <= 0) {
+      clearInterval(_pomodoroTimer); _pomodoroTimer = null;
+      // Record completed pomodoro session
+      try {
+        var stats = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}');
+        var key = new Date().toISOString().slice(0,10);
+        stats[key] = (stats[key] || 0) + 1;
+        localStorage.setItem('expresso_pomodoro_stats', JSON.stringify(stats));
+      } catch(e){}
+    }
   }, 1000);
+}
+function showPomodoroStats() {
+  var stats = {};
+  try { stats = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}'); } catch(e){}
+  var days = Object.keys(stats).sort().reverse().slice(0, 14);
+  if (!days.length) { alert('Nenhum Pomodoro concluído ainda.'); return; }
+  var total = days.reduce(function(s,d){ return s + stats[d]; }, 0);
+  var lines = days.map(function(d){ return '  ' + d + ' — ' + stats[d] + ' × 25min (' + (stats[d]*25) + 'min)'; });
+  alert('🍅 Pomodoros (últimos 14 dias):\n\nTotal: ' + total + ' sessões (' + (total*25) + 'min)\n\n' + lines.join('\n'));
 }
 function stopPomodoro() {
   if (_pomodoroTimer) { clearInterval(_pomodoroTimer); _pomodoroTimer = null; }

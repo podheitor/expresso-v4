@@ -16,6 +16,7 @@
       <a class="btn btn-ghost btn-sm" href="/calendar/{{ selected.id }}/export.ics" title="Exportar como iCalendar">↓ .ics</a>
       <button class="btn btn-ghost btn-sm" onclick="showImportIcsModal()" title="Importar arquivo .ics">↑ Importar .ics</button>
       <button class="btn btn-ghost btn-sm" onclick="window.print()" title="Imprimir mês">🖨</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleCalWeekends(this)" title="Ocultar/mostrar fim de semana" id="cal-weekend-btn">📅 FDS</button>
     </div>
   </div>
 
@@ -358,8 +359,22 @@ function importIcsFile(input) {
     if (dow === 0 || dow === 6) td.classList.add('cal-weekend');
   });
 })();
+function toggleCalWeekends(btn) {
+  var hide = !document.documentElement.classList.contains('cal-hide-weekend');
+  document.documentElement.classList.toggle('cal-hide-weekend', hide);
+  try { localStorage.setItem('expresso_cal_hide_weekend', hide ? '1' : '0'); } catch(e){}
+  if (btn) btn.style.color = hide ? 'var(--accent)' : '';
+}
+(function initCalWeekend() {
+  if (localStorage.getItem('expresso_cal_hide_weekend') === '1') {
+    document.documentElement.classList.add('cal-hide-weekend');
+    var b = document.getElementById('cal-weekend-btn');
+    if (b) b.style.color = 'var(--accent)';
+  }
+})();
 </script>
 <style>
+html.cal-hide-weekend .cal-weekend { display: none !important; }
 .cal-weekend { background: var(--bg-raised, rgba(0,0,0,.03)) }
 .cal-weekend.today { background: var(--accent-soft, #ecfeff) }
 @media print {

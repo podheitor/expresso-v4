@@ -13,6 +13,7 @@
       <span class="muted small" id="audit-live-status" style="display:none">⏺ ao vivo</span>
       <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="exportAuditJson()">⬇ JSON</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyAuditSummary(this)" title="Copiar resumo (top 5 ações + top 5 usuários)">📊 Resumo</button>
     </div>
   </div>
 
@@ -274,5 +275,27 @@ document.addEventListener('keydown', function(e) {
     if (f) f.focus();
   }
 });
+function copyAuditSummary(btn) {
+  var rows = document.querySelectorAll('#audit-tbody tr:not([style*="display: none"])');
+  if (!rows.length) { alert('Sem linhas visíveis.'); return; }
+  var actions = {}, users = {};
+  rows.forEach(function(r) {
+    var cells = r.querySelectorAll('td');
+    if (cells.length < 4) return;
+    var user = cells[1].textContent.trim();
+    var act  = cells[2].textContent.trim();
+    actions[act] = (actions[act] || 0) + 1;
+    users[user]  = (users[user] || 0) + 1;
+  });
+  function top(obj) {
+    return Object.keys(obj).sort(function(a,b){return obj[b]-obj[a];}).slice(0,5)
+      .map(function(k){ return '  ' + obj[k] + '× ' + k; }).join('\n');
+  }
+  var txt = 'Resumo de auditoria (' + rows.length + ' eventos)\n\nTop ações:\n' + top(actions) + '\n\nTop usuários:\n' + top(users);
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+  else alert(txt);
+}
 </script>
 {% endblock %}

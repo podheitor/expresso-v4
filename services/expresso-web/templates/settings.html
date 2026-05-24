@@ -357,6 +357,9 @@
               </select>
               <button type="button" class="btn btn-ghost btn-sm" onclick="playNotifSound()">▶ Testar</button>
             </div>
+            <label class="checkbox-row" style="margin-top:.5rem">
+              <input type="checkbox" id="pref-quiet-hours" onchange="saveQuietHours()"> Silenciar entre 22h e 7h (horário noturno)
+            </label>
           </div>
           <div class="subcard stack">
             <h3>Não perturbe (horário silencioso)</h3>
@@ -993,6 +996,17 @@ function filterShortcuts(q) {
     tr.style.display = (!lq || text.indexOf(lq) >= 0) ? '' : 'none';
   });
 }
+// ── Quiet hours ────────────────────────────────────────────────────────────
+var QUIET_HOURS_KEY = 'expresso_quiet_hours';
+function saveQuietHours() {
+  var c = document.getElementById('pref-quiet-hours');
+  if (!c) return;
+  try { localStorage.setItem(QUIET_HOURS_KEY, c.checked ? '1' : '0'); } catch(e){}
+}
+(function initQuietHours() {
+  var c = document.getElementById('pref-quiet-hours');
+  if (c) c.checked = localStorage.getItem(QUIET_HOURS_KEY) === '1';
+})();
 // ── Reduce motion ──────────────────────────────────────────────────────────
 var REDUCE_MOTION_KEY = 'expresso_reduce_motion';
 function applyReduceMotion(on) {

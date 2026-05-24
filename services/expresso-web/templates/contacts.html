@@ -44,6 +44,7 @@
           <button class="btn btn-ghost btn-sm" onclick="exportVisibleContactsVcf()" title="Baixar .vcf dos contatos visíveis">⬇ vCard visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="printVisibleContacts()" title="Imprimir contatos visíveis">🖨 Imprimir</button>
           <button class="btn btn-ghost btn-sm" onclick="showBirthdaysThisMonth()" title="Aniversariantes deste mês">🎂 Mês</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportGoogleContactsCsv()" title="Exportar como CSV compatível com Google Contacts">⬇ Google CSV</button>
           <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
@@ -660,6 +661,28 @@ function toggleContactFav(btn, cid) {
     }
   });
 })();
+function exportGoogleContactsCsv() {
+  var rows = [['Name','Given Name','Family Name','E-mail 1 - Value','Phone 1 - Value','Organization 1 - Name']];
+  document.querySelectorAll('.contact-card, .contact-row').forEach(function(el) {
+    if (el.offsetParent === null) return;
+    var nameFull = (el.querySelector('.contact-name, .contact-card-name') || el).textContent.trim().split('\n')[0];
+    var parts = nameFull.split(/\s+/);
+    var given = parts[0] || '';
+    var family = parts.slice(1).join(' ');
+    var email = el.dataset.email || ((el.querySelector('a[href^="mailto:"]') || {}).textContent || '').trim();
+    var tel = el.dataset.tel || '';
+    var org = el.dataset.org || '';
+    rows.push([nameFull, given, family, email, tel, org]);
+  });
+  if (rows.length <= 1) { alert('Sem contatos visíveis.'); return; }
+  var csv = rows.map(function(r){ return r.map(function(c){ c = String(c||'').replace(/"/g,'""'); return /[",\n]/.test(c) ? '"'+c+'"' : c; }).join(','); }).join('\n');
+  var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'contatos-google-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function showBirthdaysThisMonth() {
   var raw = {};
   try { raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}'); } catch(e){}

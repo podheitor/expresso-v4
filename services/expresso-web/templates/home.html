@@ -11,6 +11,22 @@
       <script>(function(){var h=new Date().getHours();var p=h<5?'Boa madrugada':h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';var el=document.getElementById('home-greet-prefix');if(el)el.textContent=p;})();</script>
       <span class="muted small" id="home-date-label">Plataforma Expresso — visão geral do dia</span>
       <div class="muted small" id="home-last-visit" style="font-size:.72rem;margin-top:.15rem;display:none"></div>
+      <div class="muted small" id="home-tip" style="font-size:.72rem;margin-top:.15rem"></div>
+      <script>(function(){
+        var tips = [
+          '💡 Pressione <kbd>?</kbd> em qualquer tela para ver atalhos.',
+          '💡 No e-mail, <kbd>j</kbd>/<kbd>k</kbd> navega entre mensagens.',
+          '💡 No Drive, <kbd>y</kbd> copia os nomes dos arquivos selecionados.',
+          '💡 No Meet, <kbd>m</kbd>/<kbd>v</kbd> alterna microfone/câmera.',
+          '💡 Tarefas: <kbd>p</kbd> cicla prioridade da tarefa sob o cursor.',
+          '💡 Chat: <kbd>/</kbd> insere comandos como /me e /shrug.',
+          '💡 Calendário: <kbd>t</kbd> volta para hoje em qualquer visualização.',
+          '💡 Configurações → Privacidade exporta todas suas preferências.'
+        ];
+        var idx = Math.floor((Date.now() / 86400000)) % tips.length;
+        var el = document.getElementById('home-tip');
+        if (el) el.innerHTML = tips[idx];
+      })();</script>
     </div>
     <div class="home-clock-widget">
       <div class="home-clock-time" id="home-clock" onclick="toggleClockFormat()" title="Clique para alternar 12h/24h" style="cursor:pointer">--:--</div>
@@ -263,6 +279,16 @@
         <p class="muted small">Carregando tarefas…</p>
       </div>
       <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
+      <div id="home-pomo-today" style="font-size:.72rem;color:var(--muted);margin-top:.15rem"></div>
+      <script>(function(){
+        try {
+          var s = JSON.parse(localStorage.getItem('expresso_pomodoro_stats') || '{}');
+          var key = new Date().toISOString().slice(0,10);
+          var n = s[key] || 0;
+          var el = document.getElementById('home-pomo-today');
+          if (el && n > 0) el.textContent = '🍅 ' + n + ' pomodoro(s) hoje (' + (n*25) + 'min)';
+        } catch(e){}
+      })();</script>
       <div style="display:flex;gap:.4rem;margin-top:.5rem">
         <input type="text" id="home-task-quick-input" class="search-input-sm" placeholder="Nova tarefa rápida…"
                style="flex:1" onkeydown="if(event.key==='Enter')homeAddTask()">

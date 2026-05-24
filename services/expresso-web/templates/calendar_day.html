@@ -15,6 +15,7 @@
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir agenda do dia">🖨</button>
       <button class="btn btn-ghost" onclick="copyDayLink(this)" title="Copiar link deste dia">🔗</button>
       <a class="btn btn-ghost" href="/calendar/{{ selected.id }}/ical?date={{ date_iso }}" title="Baixar .ics do dia">⬇ .ics</a>
+      <input type="date" value="{{ date_iso }}" onchange="if(this.value)window.location.href='/calendar/{{ selected.id }}/day?date='+this.value" title="Ir para data" class="search-input-sm" style="width:9rem">
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
     </div>
   </div>

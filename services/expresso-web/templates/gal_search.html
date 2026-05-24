@@ -26,6 +26,7 @@
           <button type="button" class="btn btn-ghost btn-sm" onclick="mailAllGal()" title="Compor e-mail para todos resultados">✉ Mail todos</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="copyAllGalEmails(this)" title="Copiar todos e-mails">📋 E-mails</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsGalGroup()" title="Criar grupo de contatos a partir destes resultados">👥 Salvar grupo</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="exportGalResultsCsv()" title="Exportar resultados como CSV">⬇ CSV</button>
         </div>
       </div>
       <div class="contact-grid">
@@ -87,6 +88,24 @@ function copyAllGalEmails(btn) {
     btn.textContent = '✓ ' + ems.length;
     setTimeout(function(){ btn.textContent = p; }, 1500);
   }).catch(function(){ prompt('Copie:', ems.join(', ')); });
+}
+function exportGalResultsCsv() {
+  var cards = document.querySelectorAll('.contact-card');
+  if (!cards.length) { alert('Nenhum resultado para exportar.'); return; }
+  var rows = ['Nome,Email,Telefone'];
+  cards.forEach(function(c) {
+    var nm = ((c.querySelector('.contact-name') || {}).textContent || '').trim().replace(/"/g, '""');
+    var em = ((c.querySelector('.contact-email') || {}).textContent || '').trim();
+    var tel = (c.dataset.tel || '').replace(/"/g, '""');
+    if (!nm && !em) return;
+    rows.push('"' + nm + '","' + em + '","' + tel + '"');
+  });
+  var blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gal-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 function exportGalVcf() {
   var cards = document.querySelectorAll('.contact-card');

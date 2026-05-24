@@ -9,7 +9,8 @@
 {% block body %}
 <div class="admin-page">
   <div class="admin-page-header">
-    <h1>Usuários {% if !users.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ users.len() }}</span>{% endif %}</h1>
+    <h1>Usuários {% if !users.is_empty() %}<span class="badge" style="vertical-align:middle;font-size:.7rem">{{ users.len() }}</span>{% endif %} <span class="muted small" id="admin-users-breakdown" style="font-weight:400;font-size:.7em;margin-left:.4rem"></span></h1>
+    <script>(function(){var rows=document.querySelectorAll('.admin-user-row');var act=0,sus=0,adm=0;rows.forEach(function(r){if(r.dataset.status==='suspended')sus++;else act++;if(r.dataset.role==='admin')adm++;});var el=document.getElementById('admin-users-breakdown');if(el)el.textContent='('+act+' ativos · '+sus+' suspensos · '+adm+' admins)';})();</script>
     <div class="admin-header-actions">
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('bulk-csv-input').click()" title="Importar lista de usuários (CSV)">📥 Importar CSV</button>
       <input type="file" id="bulk-csv-input" accept=".csv,text/csv" style="display:none" onchange="bulkImportCsv(this.files[0])">

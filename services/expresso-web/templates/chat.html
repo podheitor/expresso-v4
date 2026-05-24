@@ -124,6 +124,7 @@
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
+          <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
         </div>
       </header>
 
@@ -1499,6 +1500,27 @@ function exportChannelMarkdown() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+function toggleChatTimestamps(btn) {
+  var on = !document.documentElement.classList.contains('chat-ts-verbose');
+  document.documentElement.classList.toggle('chat-ts-verbose', on);
+  try { localStorage.setItem('expresso_chat_ts_verbose', on ? '1' : '0'); } catch(e){}
+  document.querySelectorAll('.chat-msg-time').forEach(function(el){
+    if (on) {
+      if (!el.dataset.origText) el.dataset.origText = el.textContent;
+      var iso = el.getAttribute('title') || el.dataset.iso;
+      el.textContent = iso || el.dataset.origText;
+    } else if (el.dataset.origText) {
+      el.textContent = el.dataset.origText;
+    }
+  });
+  if (btn) btn.style.color = on ? 'var(--accent)' : '';
+}
+(function initChatTs(){
+  if (localStorage.getItem('expresso_chat_ts_verbose') === '1') {
+    var b = document.getElementById('chat-ts-btn');
+    if (b) toggleChatTimestamps(b);
+  }
+})();
 function exportChannelText() {
   var lines = ['Chat — ' + new Date().toLocaleString('pt-BR'), ''];
   document.querySelectorAll('.chat-msg').forEach(function(m) {

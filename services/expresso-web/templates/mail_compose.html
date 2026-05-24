@@ -108,6 +108,7 @@
           <span class="compose-rich-sep"></span>
           <button type="button" class="compose-rich-btn" onclick="rfmt('removeFormat')" title="Limpar formatação">✕ fmt</button>
           <button type="button" class="compose-rich-btn" onclick="insertComposeSignature()" title="Inserir assinatura salva">✍ Assinatura</button>
+          <button type="button" class="compose-rich-btn" onclick="checkComposeRecipients()" title="Verificar destinatários duplicados em To/CC/BCC">👥 Verificar</button>
           <label class="compose-rich-toggle muted small">
             <input type="checkbox" id="toggle-rich" checked onchange="toggleRichMode(this.checked)"> Rich text
           </label>
@@ -629,6 +630,23 @@ function setFollowupReminder() {
     saveFollowups(arr);
   });
 })();
+function checkComposeRecipients() {
+  function emails(name) {
+    var el = document.querySelector('[name="'+name+'"]');
+    if (!el) return [];
+    return el.value.split(/[;,\s]+/).map(function(s){return s.trim().toLowerCase();}).filter(function(s){return s.indexOf('@')>0;});
+  }
+  var to = emails('to'), cc = emails('cc'), bcc = emails('bcc');
+  var seen = {}, dups = [];
+  to.concat(cc).concat(bcc).forEach(function(e){
+    if (seen[e]) { if (dups.indexOf(e) < 0) dups.push(e); }
+    seen[e] = true;
+  });
+  var total = to.length + cc.length + bcc.length;
+  if (!total) { alert('Nenhum destinatário ainda.'); return; }
+  if (dups.length) alert('⚠ Duplicado(s) entre To/CC/BCC:\n\n' + dups.join('\n') + '\n\nTotal: ' + total + ' (' + (total-dups.length) + ' únicos)');
+  else alert('✓ Sem duplicados. ' + total + ' destinatário(s) no total.');
+}
 function saveComposeDraft(btn) {
   var f = document.getElementById('compose-form');
   if (!f) return;
