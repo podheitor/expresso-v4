@@ -122,6 +122,7 @@
           <span class="muted small" id="chat-search-result"></span>
           <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
+          <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
         </div>
       </header>
@@ -1142,6 +1143,11 @@ function savePresenceMsg(text) {
   document.addEventListener('mousemove', function(){ _lastActive = Date.now(); });
   document.addEventListener('keydown', function(){ _lastActive = Date.now(); });
   // "/" focuses message composer (unless typing in another input)
+  // Track last hovered chat message for keyboard shortcuts
+  document.addEventListener('mouseover', function(e) {
+    var m = e.target && e.target.closest && e.target.closest('[data-msg-id]');
+    if (m) window._lastHoverChatMsg = m;
+  });
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
       // Close any open emoji/gif picker
@@ -1152,9 +1158,17 @@ function savePresenceMsg(text) {
       if (gp && gp.style.display !== 'none') { gp.style.display = 'none'; any = true; }
       if (any) { e.preventDefault(); return; }
     }
-    if (e.key !== '/') return;
     var t = (e.target && e.target.tagName) || '';
     if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.key === 't' || e.key === 'T') {
+      // Open thread for hovered message
+      var m = window._lastHoverChatMsg;
+      if (!m) return;
+      var btn = m.querySelector('button[onclick^="openThread"]');
+      if (btn) { e.preventDefault(); btn.click(); }
+      return;
+    }
+    if (e.key !== '/') return;
     var ta = document.getElementById('chat-compose-input');
     if (ta) { e.preventDefault(); ta.focus(); }
   });
@@ -1482,6 +1496,21 @@ function exportChannelMarkdown() {
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportChannelText() {
+  var lines = ['Chat — ' + new Date().toLocaleString('pt-BR'), ''];
+  document.querySelectorAll('.chat-msg').forEach(function(m) {
+    var author = ((m.querySelector('.chat-msg-author') || {}).textContent || '').trim();
+    var time   = ((m.querySelector('.chat-msg-time')   || {}).textContent || '').trim();
+    var body   = ((m.querySelector('.chat-msg-body')   || {}).textContent || '').trim();
+    lines.push('[' + time + '] ' + author + ': ' + body);
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.txt';
   a.click();
   URL.revokeObjectURL(a.href);
 }

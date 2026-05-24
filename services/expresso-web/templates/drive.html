@@ -419,6 +419,18 @@ document.addEventListener('keydown', function(e) {
     if (!selFav.length) { alert('Selecione um ou mais arquivos para favoritar.'); return; }
     selFav.forEach(function(cb) { if (typeof toggleDriveFav === 'function') toggleDriveFav(cb.dataset.id); });
   }
+  else if (e.key === 'Backspace' && !e.target.closest('input,textarea,[contenteditable]')) {
+    // Navigate to parent breadcrumb
+    var crumbs = document.querySelectorAll('.drive-crumb');
+    if (crumbs.length >= 2) {
+      e.preventDefault();
+      window.location.href = crumbs[crumbs.length - 2].href;
+    }
+  }
+  else if (e.key === '?' && !e.target.closest('input,textarea,[contenteditable]')) {
+    e.preventDefault();
+    alert('Atalhos do Drive:\n\n/ — busca\nn — novo\nu — upload\nf — favoritar selecionados\nr — renomear\n⇄ — inverter seleção\nDel/⌫ — apagar selecionados (ou subir pasta)\n? — esta ajuda');
+  }
   else if (e.key === 'r' || e.key === 'R') {
     // Rename the single selected file
     var selR = document.querySelectorAll('.drive-row-check:checked');

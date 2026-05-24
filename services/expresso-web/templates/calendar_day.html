@@ -258,5 +258,34 @@ function copyDayLink(btn) {
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
 }
+// ── j/k navigation between events of the day ─────────────────────────────
+(function dayEventKeyNav() {
+  var idx = -1;
+  function events() {
+    return Array.from(document.querySelectorAll('.cal-day-event, .event-chip-allday'));
+  }
+  function focusEvent() {
+    var list = events();
+    list.forEach(function(e, i) {
+      e.style.outline = i === idx ? '2px solid var(--accent, #14b8a6)' : '';
+      if (i === idx) e.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    var t = (e.target && e.target.tagName) || '';
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    var list = events();
+    if (!list.length) return;
+    if (e.key === 'j' || e.key === 'ArrowDown') {
+      idx = Math.min(idx + 1, list.length - 1); focusEvent(); e.preventDefault();
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      idx = Math.max(idx - 1, 0); focusEvent(); e.preventDefault();
+    } else if (e.key === 'Enter' && idx >= 0 && idx < list.length) {
+      var href = list[idx].getAttribute('href');
+      if (href) { e.preventDefault(); window.location.href = href; }
+    }
+  });
+})();
 </script>
 {% endblock %}

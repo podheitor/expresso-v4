@@ -989,5 +989,26 @@ function filterShortcuts(q) {
     tr.style.display = (!lq || text.indexOf(lq) >= 0) ? '' : 'none';
   });
 }
+// ── Profile unsaved-changes warning ────────────────────────────────────────
+(function profileUnsavedGuard() {
+  var f = document.querySelector('form[action="/settings/profile"]');
+  if (!f) return;
+  var snap = {};
+  Array.prototype.forEach.call(f.elements, function(el) {
+    if (el.name) snap[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  var submitted = false;
+  f.addEventListener('submit', function() { submitted = true; });
+  window.addEventListener('beforeunload', function(e) {
+    if (submitted) return;
+    var dirty = false;
+    Array.prototype.forEach.call(f.elements, function(el) {
+      if (!el.name) return;
+      var cur = el.type === 'checkbox' ? el.checked : el.value;
+      if (cur !== snap[el.name]) dirty = true;
+    });
+    if (dirty) { e.preventDefault(); e.returnValue = ''; return ''; }
+  });
+})();
 </script>
 {% endblock %}

@@ -7,6 +7,7 @@
     <h1>Tarefas <span class="muted small" id="tasks-header-stats" style="font-weight:400;font-size:.7em"></span></h1>
     <div style="display:flex;gap:.4rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir lista visível">🖨 Imprimir</button>
+      <button class="btn btn-ghost" onclick="clearDoneTasks()" title="Remover todas as tarefas concluídas">🗑 Limpar concluídas</button>
       <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
     </div>
   </div>
@@ -604,6 +605,14 @@ function deleteTaskById(id) {
   hideModal('task-edit-modal');
   renderAll();
 }
+function clearDoneTasks() {
+  var all = loadTasks();
+  var done = all.filter(function(t){ return t.done; });
+  if (!done.length) { alert('Nenhuma tarefa concluída para remover.'); return; }
+  if (!confirm('Remover ' + done.length + ' tarefa(s) concluída(s)?')) return;
+  saveTasks(all.filter(function(t){ return !t.done; }));
+  renderAll();
+}
 
 // ── Filter ────────────────────────────────────────────────────────────────────
 function setFilter(f) {
@@ -966,6 +975,24 @@ document.addEventListener('keydown', function(e) {
     if (!elC) return;
     var idC = elC.dataset.id;
     if (idC && typeof toggleTask === 'function') { e.preventDefault(); toggleTask(idC); }
+  } else if (e.key === 'd' || e.key === 'D') {
+    // Duplicate hovered task
+    var elD = window._lastHoverTask || document.querySelector('.task-item[data-id]');
+    if (!elD) return;
+    var idD = elD.dataset.id;
+    if (!idD) return;
+    e.preventDefault();
+    var arrD = loadTasks();
+    var orig = arrD.find(function(x){ return x.id === idD; });
+    if (!orig) return;
+    var copy = Object.assign({}, orig);
+    copy.id = 't' + Date.now() + Math.random().toString(36).slice(2,6);
+    copy.title = orig.title + ' (cópia)';
+    copy.done = false;
+    delete copy.done_at;
+    arrD.push(copy);
+    saveTasks(arrD);
+    renderAll();
   } else if (e.key === 'p' || e.key === 'P') {
     // Cycle priority of the most recently hovered/selected task
     var el = window._lastHoverTask || document.querySelector('.task-item[data-id]');

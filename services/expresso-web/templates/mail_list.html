@@ -526,6 +526,9 @@ function showSnoozeToast(subject, msgId) {
       if (!sel.length) return;
       e.preventDefault();
       if (typeof batchMailAction === 'function') batchMailAction('flag');
+    } else if (e.key === '?') {
+      e.preventDefault();
+      alert('Atalhos do E-mail:\n\nj/k — próximo/anterior\nEnter — abrir\nc — escrever\nr — responder\nf — encaminhar\ne — arquivar\ns — favoritar selecionados\nx — selecionar/deselecionar\n? — esta ajuda');
     }
   });
 })();

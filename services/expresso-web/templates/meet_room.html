@@ -27,6 +27,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleWhiteboard()" title="Quadro branco colaborativo">🖊 Quadro</button>
       <button class="btn btn-ghost btn-sm" onclick="cycleMeetLayout(this)" title="Alternar layout (grid/spotlight/sidebar)" id="meet-layout-btn">▦ Grid</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetFullscreen(this)" title="Tela cheia (F11)" id="meet-fs-btn">⛶</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleMeetSelfView(this)" title="Ocultar/mostrar meu vídeo (self-view)" id="meet-selfview-btn">🪞 Self</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
@@ -275,6 +276,16 @@ function togglePanel(id) {
   var el = document.getElementById(id);
   el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
+// Esc closes any open side-panel (chat/participants/whiteboard/recordings)
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var t = (e.target && e.target.tagName) || '';
+  if (t === 'INPUT' || t === 'TEXTAREA') return;
+  ['panel-chat','panel-participants','panel-whiteboard','panel-recordings','panel-polls'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.style.display === 'flex') el.style.display = 'none';
+  });
+});
 function copyRoomId(rid) {
   navigator.clipboard.writeText(rid).then(function() {
     var el = document.getElementById('room-id-label');
@@ -940,6 +951,31 @@ document.addEventListener('fullscreenchange', function() {
   var b = document.getElementById('meet-fs-btn');
   if (b) b.textContent = document.fullscreenElement ? '⛶ Sair' : '⛶';
 });
+// ── Self-view toggle ────────────────────────────────────────────────────────
+var _meetSelfHidden = false;
+function toggleMeetSelfView(btn) {
+  if (typeof api === 'undefined' || !api) { alert('Aguarde a reunião carregar.'); return; }
+  _meetSelfHidden = !_meetSelfHidden;
+  try { api.executeCommand('toggleTileView'); } catch(e){}
+  try { api.executeCommand('setTileView', false); } catch(e){}
+  try { api.executeCommand('setVideoQuality', _meetSelfHidden ? 180 : 720); } catch(e){}
+  // Use CSS to hide the local video tile if Jitsi DOM is reachable
+  try {
+    var iframe = document.querySelector('#jitsi-container iframe');
+    if (iframe && iframe.contentDocument) {
+      var st = iframe.contentDocument.getElementById('expresso-selfview-css');
+      if (_meetSelfHidden && !st) {
+        st = iframe.contentDocument.createElement('style');
+        st.id = 'expresso-selfview-css';
+        st.textContent = '#localVideoContainer,#localVideoWrapper{display:none !important}';
+        iframe.contentDocument.head.appendChild(st);
+      } else if (!_meetSelfHidden && st) {
+        st.remove();
+      }
+    }
+  } catch(e){}
+  if (btn) btn.textContent = _meetSelfHidden ? '🪞 Mostrar' : '🪞 Self';
+}
 </script>
 
 <!-- Invite modal -->

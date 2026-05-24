@@ -7,7 +7,8 @@
   <!-- Saudação + relógio -->
   <header class="home-greeting">
     <div>
-      <h1>Olá, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
+      <h1 id="home-greet-h1"><span id="home-greet-prefix">Olá</span>, {% match me.display_name %}{% when Some with (n) %}{{ n }}{% when None %}{{ me.email }}{% endmatch %}!</h1>
+      <script>(function(){var h=new Date().getHours();var p=h<5?'Boa madrugada':h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';var el=document.getElementById('home-greet-prefix');if(el)el.textContent=p;})();</script>
       <span class="muted small" id="home-date-label">Plataforma Expresso — visão geral do dia</span>
       <div class="muted small" id="home-last-visit" style="font-size:.72rem;margin-top:.15rem;display:none"></div>
     </div>

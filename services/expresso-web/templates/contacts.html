@@ -42,6 +42,7 @@
           <button class="btn btn-ghost btn-sm" onclick="detectDuplicates('{{ bid }}')" title="Detectar e mesclar contatos duplicados">⊞ Mesclar dupl.</button>
           <button class="btn btn-ghost btn-sm" onclick="emailVisibleContacts()" title="Escrever email para todos os contatos visíveis">✉ Email p/ visíveis</button>
           <button class="btn btn-ghost btn-sm" onclick="exportVisibleContactsVcf()" title="Baixar .vcf dos contatos visíveis">⬇ vCard visíveis</button>
+          <button class="btn btn-ghost btn-sm" onclick="printVisibleContacts()" title="Imprimir contatos visíveis">🖨 Imprimir</button>
           <button class="btn btn-ghost btn-sm" onclick="showGroupsModal()" title="Grupos de contatos">👥 Grupos</button>
           <div class="view-switch" style="gap:0">
             <button class="btn btn-primary btn-sm" id="contacts-view-list" onclick="setContactsView('list')">☰</button>
@@ -652,8 +653,26 @@ function toggleContactFav(btn, cid) {
       var nb = document.querySelector('a.btn-primary[href*="/new"]');
       if (nb) { e.preventDefault(); window.location.href = nb.href; }
     }
+    else if (e.key === '/') {
+      var s = document.getElementById('contacts-search');
+      if (s) { e.preventDefault(); s.focus(); s.select(); }
+    }
   });
 })();
+function printVisibleContacts() {
+  var rows = [];
+  document.querySelectorAll('.contact-card, .contact-row').forEach(function(el) {
+    if (el.offsetParent === null) return;
+    var name = (el.querySelector('.contact-name, .contact-card-name') || el).textContent.trim().split('\n')[0];
+    var email = el.dataset.email || (el.querySelector('a[href^="mailto:"]') || {}).textContent || '';
+    var tel = el.dataset.tel || '';
+    rows.push('<tr><td>'+name+'</td><td>'+email+'</td><td>'+tel+'</td></tr>');
+  });
+  var w = window.open('', '_blank');
+  if (!w) { alert('Bloqueador de pop-ups impediu impressão'); return; }
+  w.document.write('<!DOCTYPE html><html><head><title>Contatos</title><style>body{font-family:sans-serif;padding:1rem}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:.3rem .5rem;font-size:.85rem;text-align:left}h1{font-size:1.1rem}</style></head><body><h1>Contatos ('+rows.length+')</h1><table><thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th></tr></thead><tbody>'+rows.join('')+'</tbody></table><script>window.onload=function(){window.print();};<\/script></body></html>');
+  w.document.close();
+}
 </script>
 
 <!-- Groups modal -->
