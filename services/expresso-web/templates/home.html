@@ -11,7 +11,7 @@
       <span class="muted small" id="home-date-label">Plataforma Expresso — visão geral do dia</span>
     </div>
     <div class="home-clock-widget">
-      <div class="home-clock-time" id="home-clock">--:--</div>
+      <div class="home-clock-time" id="home-clock" onclick="toggleClockFormat()" title="Clique para alternar 12h/24h" style="cursor:pointer">--:--</div>
       <div class="home-clock-date muted small" id="home-date"></div>
     </div>
     <div style="display:flex;gap:.5rem;align-items:center">
@@ -261,14 +261,28 @@
 (function initClock() {
   var DAYS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
   var MONTHS = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  var CLOCK_FMT_KEY = 'expresso_clock_format_{{ me.user_id }}';
+  function clockFormat() { return localStorage.getItem(CLOCK_FMT_KEY) || '24'; }
+  window.toggleClockFormat = function() {
+    var cur = clockFormat();
+    localStorage.setItem(CLOCK_FMT_KEY, cur === '24' ? '12' : '24');
+    tick();
+  };
   function tick() {
     var now = new Date();
-    var h = String(now.getHours()).padStart(2,'0');
+    var fmt = clockFormat();
+    var hh = now.getHours();
+    var ampm = '';
+    if (fmt === '12') {
+      ampm = hh >= 12 ? ' PM' : ' AM';
+      hh = hh % 12; if (hh === 0) hh = 12;
+    }
+    var h = String(hh).padStart(2,'0');
     var m = String(now.getMinutes()).padStart(2,'0');
     var s = String(now.getSeconds()).padStart(2,'0');
     var clockEl = document.getElementById('home-clock');
     var dateEl  = document.getElementById('home-date');
-    if (clockEl) clockEl.textContent = h + ':' + m + ':' + s;
+    if (clockEl) clockEl.textContent = h + ':' + m + ':' + s + ampm;
     if (dateEl) dateEl.textContent = DAYS[now.getDay()] + ', ' + now.getDate() + ' de ' + MONTHS[now.getMonth()];
   }
   tick();

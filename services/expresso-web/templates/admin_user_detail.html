@@ -110,6 +110,20 @@
   </div>
 </div>
 
+<!-- Notas internas do admin sobre este usuário -->
+<div class="card stack" style="margin-top:1rem">
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <h3 style="margin:0">Notas administrativas</h3>
+    <button class="btn btn-ghost btn-sm" onclick="clearAdminNotes()" title="Limpar todas as notas">Limpar</button>
+  </div>
+  <p class="muted small">Anotações locais (não enviadas ao servidor). Visíveis somente neste navegador.</p>
+  <div style="display:flex;gap:.4rem">
+    <input id="admin-note-input" class="tasks-add-input" type="text" placeholder="Nova nota..." style="flex:1" onkeydown="if(event.key==='Enter'){addAdminNote();}">
+    <button class="btn btn-primary btn-sm" onclick="addAdminNote()">Adicionar</button>
+  </div>
+  <ul id="admin-notes-list" style="list-style:none;padding:0;margin:.5rem 0 0;display:flex;flex-direction:column;gap:.25rem"></ul>
+</div>
+
 <!-- Capabilities (granular per-user feature toggles, client-side) -->
 <div class="card stack" style="margin-top:1rem">
   <h3>Capacidades por módulo</h3>
@@ -158,5 +172,50 @@ function resetCaps() {
   renderCaps();
 }
 renderCaps();
+
+// ── Admin notes (per user) ────────────────────────────────────────────────────
+var NOTES_KEY = 'expresso_admin_notes_{{ user.id }}';
+function loadAdminNotes() {
+  try { return JSON.parse(localStorage.getItem(NOTES_KEY) || '[]'); } catch(e) { return []; }
+}
+function persistAdminNotes(list) {
+  try { localStorage.setItem(NOTES_KEY, JSON.stringify(list)); } catch(e) {}
+}
+function escNote(s) { return String(s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+function renderAdminNotes() {
+  var ul = document.getElementById('admin-notes-list');
+  if (!ul) return;
+  var list = loadAdminNotes();
+  if (!list.length) { ul.innerHTML = '<li class="muted small">Nenhuma nota.</li>'; return; }
+  ul.innerHTML = list.map(function(n, i) {
+    return '<li style="display:flex;gap:.4rem;align-items:flex-start;padding:.3rem .5rem;background:var(--surface-2);border-radius:var(--radius)">' +
+      '<span class="muted small mono" style="min-width:9rem">' + escNote(n.ts) + '</span>' +
+      '<span style="flex:1">' + escNote(n.text) + '</span>' +
+      '<button class="btn btn-ghost btn-sm" onclick="removeAdminNote(' + i + ')" title="Remover">✕</button>' +
+      '</li>';
+  }).join('');
+}
+function addAdminNote() {
+  var inp = document.getElementById('admin-note-input');
+  if (!inp || !inp.value.trim()) return;
+  var list = loadAdminNotes();
+  list.unshift({ ts: new Date().toISOString().replace('T',' ').slice(0,16), text: inp.value.trim() });
+  if (list.length > 100) list.length = 100;
+  persistAdminNotes(list);
+  inp.value = '';
+  renderAdminNotes();
+}
+function removeAdminNote(i) {
+  var list = loadAdminNotes();
+  list.splice(i, 1);
+  persistAdminNotes(list);
+  renderAdminNotes();
+}
+function clearAdminNotes() {
+  if (!confirm('Limpar todas as notas deste usuário?')) return;
+  localStorage.removeItem(NOTES_KEY);
+  renderAdminNotes();
+}
+renderAdminNotes();
 </script>
 {% endblock %}

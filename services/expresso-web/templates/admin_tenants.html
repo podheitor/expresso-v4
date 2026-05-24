@@ -10,7 +10,11 @@
 <div class="admin-page">
   <div class="admin-page-header">
     <h1>Tenants</h1>
-    <button class="btn btn-primary btn-sm" onclick="showModal('admin-tenant-modal')">+ Novo tenant</button>
+    <div style="margin-left:auto;display:flex;gap:.4rem">
+      <input type="search" id="tenant-search" class="search-input-sm" placeholder="Filtrar por nome ou domínio…"
+             oninput="filterTenants(this.value)" style="width:18rem">
+      <button class="btn btn-primary btn-sm" onclick="showModal('admin-tenant-modal')">+ Novo tenant</button>
+    </div>
   </div>
 
   <div class="card" style="margin-top:.75rem;overflow:auto">
@@ -32,7 +36,9 @@
           <tr><td colspan="8" class="muted" style="text-align:center;padding:2rem">Nenhum tenant.</td></tr>
         {% else %}
           {% for t in tenants %}
-          <tr>
+          <tr class="admin-tenant-row"
+              data-name="{{ t.name }}"
+              data-domain="{% match t.domain %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}">
             <td class="mono small">{{ t.id }}</td>
             <td><strong>{{ t.name }}</strong></td>
             <td class="mono small">{% match t.domain %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
@@ -85,5 +91,12 @@
 function showModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'flex'; }
 function hideModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'none'; }
 function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) hideModal(id); }
+function filterTenants(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('.admin-tenant-row').forEach(function(r) {
+    var match = !q || (r.dataset.name || '').toLowerCase().includes(q) || (r.dataset.domain || '').toLowerCase().includes(q);
+    r.style.display = match ? '' : 'none';
+  });
+}
 </script>
 {% endblock %}

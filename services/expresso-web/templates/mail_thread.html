@@ -48,6 +48,12 @@
       {% if messages.is_empty() %}
         <div class="empty-state">Thread vazia</div>
       {% else %}
+      {% if messages.len() > 1 %}
+      <div style="display:flex;gap:.4rem;margin-bottom:.5rem">
+        <button class="btn btn-ghost btn-sm" onclick="expandAllThreadMsgs()">▾ Expandir todas</button>
+        <button class="btn btn-ghost btn-sm" onclick="collapseAllThreadMsgs()">▸ Recolher todas</button>
+      </div>
+      {% endif %}
       <div class="thread-list">
         {% for msg in messages %}
         <div class="thread-msg thread-msg-item{% if msg.is_unread() %} thread-msg-unread{% endif %}" id="tmsg-{{ msg.id }}">
@@ -133,6 +139,24 @@ function resizeThreadIframe(frame) {
 }
 
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function expandAllThreadMsgs() {
+  document.querySelectorAll('.thread-msg-body').forEach(function(b) {
+    b.style.display = '';
+    var id = b.id.replace('body-', '');
+    var icon = document.getElementById('icon-' + id);
+    if (icon) icon.textContent = '▾';
+    if (typeof loadThreadBody === 'function') loadThreadBody(id);
+  });
+}
+function collapseAllThreadMsgs() {
+  document.querySelectorAll('.thread-msg-body').forEach(function(b) {
+    b.style.display = 'none';
+    var id = b.id.replace('body-', '');
+    var icon = document.getElementById('icon-' + id);
+    if (icon) icon.textContent = '▸';
+  });
+}
 
 // collapse all except last on load; load last body immediately
 (function() {

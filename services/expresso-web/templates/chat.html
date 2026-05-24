@@ -11,6 +11,10 @@
       <button class="btn btn-primary btn-sm" onclick="showModal('chat-new-channel-modal')" title="Novo canal">+</button>
     </header>
 
+    <div style="padding:.4rem .6rem">
+      <input type="search" id="chat-chan-filter" class="search-input-sm" placeholder="🔍 Filtrar canais…"
+             oninput="filterChatChannels(this.value)" style="width:100%">
+    </div>
     <nav class="folder-list chat-channel-list" aria-label="Canais">
       {% if channels.is_empty() %}
         <p class="muted small" style="padding:.75rem 1rem;">Nenhum canal ainda.<br>Crie o primeiro!</p>
@@ -1359,6 +1363,26 @@ function jumpToDate(d) {
   } else {
     alert('Nenhuma mensagem nessa data no canal carregado.');
   }
+}
+
+// ── Channel list filter ──────────────────────────────────────────────────────
+function filterChatChannels(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('.chat-channel-list .folder-item').forEach(function(a) {
+    var name = (a.querySelector('.folder-name') || {}).textContent || '';
+    var match = !q || name.toLowerCase().includes(q);
+    a.style.display = match ? '' : 'none';
+  });
+  // Hide section labels with no visible items
+  document.querySelectorAll('.chat-section-label').forEach(function(lbl) {
+    var sib = lbl.nextElementSibling;
+    var any = false;
+    while (sib && !sib.classList.contains('chat-section-label')) {
+      if (sib.classList && sib.classList.contains('folder-item') && sib.style.display !== 'none') { any = true; break; }
+      sib = sib.nextElementSibling;
+    }
+    lbl.style.display = (q && !any) ? 'none' : '';
+  });
 }
 </script>
 {% endblock %}

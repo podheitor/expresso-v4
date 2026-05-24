@@ -30,6 +30,15 @@
     </form>
   </div>
 
+  <div class="card" style="margin-bottom:1.5rem">
+    <h2 style="margin-bottom:.5rem">Link de assinatura iCal (somente leitura)</h2>
+    <p class="muted small">Cole esta URL em outro app de calendário para assinar este calendário.</p>
+    <div style="display:flex;gap:.4rem;align-items:center">
+      <input type="text" id="ical-share-url" readonly value="" class="tasks-add-input" style="flex:1;font-family:monospace">
+      <button class="btn btn-ghost btn-sm" onclick="copyIcalUrl()">Copiar</button>
+    </div>
+  </div>
+
   <h2 style="margin-bottom:.75rem">Compartilhamentos atuais</h2>
   {% if shares.is_empty() %}
   <p class="muted">Nenhum compartilhamento.</p>
@@ -52,4 +61,20 @@
   </table>
   {% endif %}
 </div>
+<script>
+(function initIcalShareUrl() {
+  var inp = document.getElementById('ical-share-url');
+  if (!inp) return;
+  inp.value = window.location.origin + '/calendar/{{ calendar.id }}/ical';
+})();
+function copyIcalUrl() {
+  var inp = document.getElementById('ical-share-url');
+  if (!inp) return;
+  inp.select();
+  navigator.clipboard.writeText(inp.value).then(function() {
+    var btns = document.querySelectorAll('[onclick="copyIcalUrl()"]');
+    btns.forEach(function(b){ var p = b.textContent; b.textContent = '✓ Copiado'; setTimeout(function(){ b.textContent = p; }, 1200); });
+  });
+}
+</script>
 {% endblock %}

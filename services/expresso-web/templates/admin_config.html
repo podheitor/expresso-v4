@@ -10,6 +10,8 @@
 <div class="admin-page">
   <div class="admin-page-header">
     <h1>Configuração global</h1>
+    <input type="search" id="admin-config-search" class="search-input-sm" placeholder="🔍 Filtrar configurações…"
+           oninput="filterAdminConfig(this.value)" style="margin-left:auto;width:18rem">
   </div>
 
   <form class="compose-form" method="post" action="/admin/config" style="max-width:600px">
@@ -208,6 +210,30 @@ function updateMaintPreview(cfg) {
   var bg = colors[cfg.level] || colors.info;
   el.innerHTML = '<div style="background:' + bg + ';color:#fff;padding:.4rem .75rem;border-radius:var(--radius);font-size:.82rem;display:flex;gap:.5rem;align-items:center">' +
     '📢 ' + escCfg(cfg.message) + '</div>';
+}
+
+function filterAdminConfig(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('form .card').forEach(function(card) {
+    var labels = card.querySelectorAll('label');
+    var anyMatch = !q;
+    labels.forEach(function(l) {
+      var t = (l.textContent || '').toLowerCase();
+      var match = !q || t.includes(q);
+      l.style.display = match ? '' : 'none';
+      if (match) anyMatch = true;
+    });
+    var h2 = card.querySelector('h2');
+    if (h2 && !q) anyMatch = true;
+    else if (h2) {
+      var hMatch = (h2.textContent || '').toLowerCase().includes(q);
+      if (hMatch) {
+        labels.forEach(function(l){ l.style.display = ''; });
+        anyMatch = true;
+      }
+    }
+    card.style.display = anyMatch ? '' : 'none';
+  });
 }
 </script>
 {% endblock %}

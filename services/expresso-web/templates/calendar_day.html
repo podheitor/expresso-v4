@@ -12,6 +12,7 @@
       <a class="btn btn-ghost" href="{{ prev_link }}">◀</a>
       <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
+      <button class="btn btn-ghost" onclick="window.print()" title="Imprimir agenda do dia">🖨</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new?date={{ date_iso }}">+ Novo evento</a>
     </div>
   </div>
@@ -95,6 +96,15 @@
   </div><!-- /cal-week-layout -->
 </div>
 
+<style>
+@media print {
+  .page-header .row, .view-switch, .cal-mini-sidebar, .cal-day-slot { display: none !important; }
+  .cal-week-layout { display: block !important; }
+  .cal-day-grid { overflow: visible !important; height: auto !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .cal-day-event { border: 1px solid #888 !important; background: #fff !important; color: #000 !important; }
+}
+</style>
 <script>
 (function positionDayEvents() {
   var ROW_HEIGHT = 30;

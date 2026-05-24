@@ -30,6 +30,8 @@
           </div>
           <div class="contact-actions">
             <a class="btn btn-ghost btn-sm" href="/mail/compose?to={{ c.email_str() }}">Enviar e-mail</a>
+            <button class="btn btn-ghost btn-sm" onclick="copyGalContact(this)"
+                    data-name="{{ c.display() }}" data-email="{{ c.email_str() }}" title="Copiar contato">📋</button>
           </div>
         </div>
         {% endfor %}
@@ -37,4 +39,15 @@
     {% endif %}
   </div>
 </div>
+<script>
+function copyGalContact(btn) {
+  var name = btn.dataset.name || '';
+  var email = btn.dataset.email || '';
+  var text = name + ' <' + email + '>';
+  navigator.clipboard.writeText(text).then(function(){
+    var prev = btn.textContent; btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
+</script>
 {% endblock %}

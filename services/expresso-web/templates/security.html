@@ -29,7 +29,58 @@
       <a class="btn btn-primary" href="{{ kc_account }}" target="_blank" rel="noopener">Abrir console de credenciais</a>
     </div>
 
+    <div class="subcard stack">
+      <h2>Códigos de backup</h2>
+      <p class="muted small">Use estes códigos uma única vez se perder acesso ao TOTP. Guarde em local seguro.</p>
+      <div id="backup-codes-box" style="font-family:monospace;background:var(--surface-2);padding:.5rem;border-radius:var(--radius);min-height:2rem;white-space:pre-wrap"></div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <button class="btn btn-ghost btn-sm" onclick="genBackupCodes()">Gerar 10 códigos</button>
+        <button class="btn btn-ghost btn-sm" onclick="copyBackupCodes()">Copiar</button>
+        <button class="btn btn-ghost btn-sm" onclick="downloadBackupCodes()">Baixar .txt</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearBackupCodes()">Limpar</button>
+      </div>
+    </div>
+
     <p><a class="link-sm" href="/me">← Voltar ao perfil</a></p>
   </div>
 </div>
+<script>
+var BACKUP_KEY = 'expresso_backup_codes_{{ me.user_id }}';
+function loadBackupCodes() {
+  try { return JSON.parse(localStorage.getItem(BACKUP_KEY) || '[]'); } catch(e) { return []; }
+}
+function renderBackupCodes() {
+  var box = document.getElementById('backup-codes-box');
+  if (!box) return;
+  var codes = loadBackupCodes();
+  box.textContent = codes.length ? codes.join('\n') : '(nenhum código gerado)';
+}
+function genBackupCodes() {
+  var codes = [];
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  for (var i = 0; i < 10; i++) {
+    var c = '';
+    for (var j = 0; j < 10; j++) c += chars[Math.floor(Math.random()*chars.length)];
+    codes.push(c.slice(0,5) + '-' + c.slice(5));
+  }
+  localStorage.setItem(BACKUP_KEY, JSON.stringify(codes));
+  renderBackupCodes();
+}
+function copyBackupCodes() {
+  var c = loadBackupCodes(); if (!c.length) return;
+  navigator.clipboard.writeText(c.join('\n'));
+}
+function downloadBackupCodes() {
+  var c = loadBackupCodes(); if (!c.length) return;
+  var blob = new Blob([c.join('\n')], { type: 'text/plain' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'expresso-backup-codes.txt'; a.click();
+}
+function clearBackupCodes() {
+  if (!confirm('Limpar todos os códigos?')) return;
+  localStorage.removeItem(BACKUP_KEY);
+  renderBackupCodes();
+}
+renderBackupCodes();
+</script>
 {% endblock %}

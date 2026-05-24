@@ -21,13 +21,14 @@
       <div class="form-row">
         <label>
           <span>Início <span class="text-danger">*</span></span>
-          <input type="datetime-local" name="scheduled_at" required>
+          <input type="datetime-local" name="scheduled_at" id="meet-start" required oninput="updateMeetTzPreview()">
         </label>
         <label>
           <span>Término (opcional)</span>
-          <input type="datetime-local" name="scheduled_end">
+          <input type="datetime-local" name="scheduled_end" id="meet-end" oninput="updateMeetTzPreview()">
         </label>
       </div>
+      <div class="muted small" id="meet-tz-info" style="margin-top:-.4rem"></div>
 
       <label>
         <span>Descrição / pauta</span>
@@ -41,4 +42,26 @@
     </form>
   </div>
 </div>
+<script>
+function updateMeetTzPreview() {
+  var box = document.getElementById('meet-tz-info');
+  var s = document.getElementById('meet-start');
+  if (!box || !s) return;
+  var tz = '';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch(e) {}
+  var off = -new Date().getTimezoneOffset();
+  var sign = off >= 0 ? '+' : '−';
+  var hh = String(Math.floor(Math.abs(off) / 60)).padStart(2,'0');
+  var mm = String(Math.abs(off) % 60).padStart(2,'0');
+  var info = '🌐 Fuso: ' + (tz || 'desconhecido') + ' (UTC' + sign + hh + ':' + mm + ')';
+  if (s.value) {
+    try {
+      var d = new Date(s.value);
+      info += ' · UTC: ' + d.toISOString().replace('T',' ').slice(0,16);
+    } catch(e) {}
+  }
+  box.textContent = info;
+}
+updateMeetTzPreview();
+</script>
 {% endblock %}

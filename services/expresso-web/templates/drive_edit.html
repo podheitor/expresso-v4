@@ -8,14 +8,26 @@
       <h1 class="mono">{{ file.name }}</h1>
       <p class="muted small">{{ file.size_human() }} · {% match file.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}—{% endmatch %}</p>
     </div>
-    <a class="btn btn-ghost" href="/drive">← Drive</a>
+    <div style="display:flex;gap:.4rem">
+      <button class="btn btn-ghost btn-sm" onclick="toggleEditFullscreen()" title="Tela cheia">⛶</button>
+      <a class="btn btn-ghost" href="/drive">← Drive</a>
+    </div>
   </div>
-  <div class="wopi-frame-wrap">
+  <div class="wopi-frame-wrap" id="wopi-frame-wrap">
     <iframe
+      id="wopi-frame"
       src="{{ iframe_url }}"
       class="wopi-frame"
       allow="fullscreen; clipboard-read; clipboard-write"
       referrerpolicy="no-referrer"></iframe>
   </div>
 </div>
+<script>
+function toggleEditFullscreen() {
+  var wrap = document.getElementById('wopi-frame-wrap');
+  if (!wrap) return;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (wrap.requestFullscreen) wrap.requestFullscreen();
+}
+</script>
 {% endblock %}

@@ -23,7 +23,8 @@
         <div class="version-card-header">
           <span class="version-badge{% if loop.first %} version-badge-current{% endif %}">v{{ v.version_no }}</span>
           {% if loop.first %}<span class="badge" style="font-size:.7rem">Atual</span>{% endif %}
-          <span class="version-size muted small">{{ v.size_human() }}</span>
+          <span class="version-size muted small" data-bytes="{{ v.size_bytes }}">{{ v.size_human() }}</span>
+          <span class="version-delta muted small" data-bytes="{{ v.size_bytes }}"></span>
           <span class="version-date muted small">{% match v.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</span>
         </div>
         <div class="version-mime muted small">{% match v.mime_type %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}</div>
@@ -45,6 +46,26 @@
   {% endif %}
 </div>
 <script>
+// Compute size deltas vs next-older (timeline is newest-first)
+(function computeVersionDeltas() {
+  var nodes = document.querySelectorAll('.version-delta');
+  var arr = Array.prototype.slice.call(nodes);
+  arr.forEach(function(el, i) {
+    var cur = parseInt(el.dataset.bytes || '0', 10);
+    var older = arr[i + 1];
+    if (!older) { el.textContent = ''; return; }
+    var prev = parseInt(older.dataset.bytes || '0', 10);
+    var d = cur - prev;
+    if (d === 0) { el.textContent = '±0'; return; }
+    var sign = d > 0 ? '+' : '−';
+    var abs = Math.abs(d);
+    var fmt = abs < 1024 ? abs + ' B'
+            : abs < 1048576 ? (abs/1024).toFixed(1) + ' KB'
+            : (abs/1048576).toFixed(1) + ' MB';
+    el.textContent = '(' + sign + fmt + ')';
+    el.style.color = d > 0 ? '#22c55e' : '#ef4444';
+  });
+})();
 // Animate timeline items on load
 document.querySelectorAll('.version-item').forEach(function(el, i) {
   el.style.opacity = '0';

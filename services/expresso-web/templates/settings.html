@@ -338,6 +338,22 @@
             <p class="muted small" style="margin-top:.5rem">Receba alertas mesmo com a aba em segundo plano.</p>
           </div>
           <div class="subcard stack">
+            <h3>Som de notificação</h3>
+            <p class="muted small" style="margin-bottom:.5rem">Som curto reproduzido junto da notificação desktop.</p>
+            <label class="checkbox-row" style="margin-bottom:.5rem">
+              <input type="checkbox" id="notif-sound-enabled" onchange="saveNotifSound()"> Ativar som
+            </label>
+            <div style="display:flex;gap:.4rem;align-items:center;flex-wrap:wrap">
+              <select id="notif-sound-tone" class="input-sm" onchange="saveNotifSound()" style="width:auto">
+                <option value="chime">Sino</option>
+                <option value="ping">Ping</option>
+                <option value="pop">Pop</option>
+                <option value="bell">Bell</option>
+              </select>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="playNotifSound()">▶ Testar</button>
+            </div>
+          </div>
+          <div class="subcard stack">
             <h3>Não perturbe (horário silencioso)</h3>
             <p class="muted small" style="margin-bottom:.5rem">Notificações desktop são suprimidas durante este período.</p>
             <label class="checkbox-row" style="margin-bottom:.5rem">
@@ -723,6 +739,44 @@ function updateDndStatus(prefs) {
     updateDndStatus(prefs);
   } catch(e) {}
 })();
+// ── Notification sound ────────────────────────────────────────────────────────
+var NOTIF_SOUND_KEY = 'expresso_notif_sound';
+function saveNotifSound() {
+  var en = document.getElementById('notif-sound-enabled');
+  var tone = document.getElementById('notif-sound-tone');
+  if (!en || !tone) return;
+  localStorage.setItem(NOTIF_SOUND_KEY, JSON.stringify({ enabled: en.checked, tone: tone.value }));
+}
+function playNotifSound() {
+  try {
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    var tone = (document.getElementById('notif-sound-tone') || {}).value || 'chime';
+    var freqs = { chime: [880, 1320], ping: [1500], pop: [400, 600], bell: [987, 1318, 1568] };
+    var seq = freqs[tone] || freqs.chime;
+    var ctx = new Ctx();
+    seq.forEach(function(f, i) {
+      var o = ctx.createOscillator(); var g = ctx.createGain();
+      o.frequency.value = f; o.type = 'sine';
+      g.gain.value = 0; g.gain.linearRampToValueAtTime(0.15, ctx.currentTime + i*0.12 + 0.01);
+      g.gain.linearRampToValueAtTime(0, ctx.currentTime + i*0.12 + 0.18);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + i*0.12); o.stop(ctx.currentTime + i*0.12 + 0.2);
+    });
+    setTimeout(function(){ try { ctx.close(); } catch(e){} }, 1500);
+  } catch(e) {}
+}
+(function initNotifSound() {
+  var en = document.getElementById('notif-sound-enabled');
+  var tone = document.getElementById('notif-sound-tone');
+  if (!en) return;
+  try {
+    var cfg = JSON.parse(localStorage.getItem(NOTIF_SOUND_KEY) || '{}');
+    en.checked = !!cfg.enabled;
+    if (tone && cfg.tone) tone.value = cfg.tone;
+  } catch(e) {}
+})();
+
 window.isInDndPeriod = function() {
   try {
     var prefs = JSON.parse(localStorage.getItem(DND_KEY) || '{}');
