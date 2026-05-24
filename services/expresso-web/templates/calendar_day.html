@@ -2097,5 +2097,25 @@ window.copyDayDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyWindow=function(){
+  let first=null,last=null;
+  document.querySelectorAll('[data-event-id]').forEach(e=>{
+    const s=e.getAttribute('data-event-start'),en=e.getAttribute('data-event-end');
+    if(!s||!en)return;
+    const ds=new Date(s),de=new Date(en);
+    if(isNaN(ds)||isNaN(de))return;
+    if(first===null||ds.getTime()<first)first=ds.getTime();
+    if(last===null||de.getTime()>last)last=de.getTime();
+  });
+  if(first===null){alert('Sem eventos');return;}
+  const fmt=ts=>{const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+  const out='busy: '+fmt(first)+' → '+fmt(last);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=fmt(first)+'-'+fmt(last);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

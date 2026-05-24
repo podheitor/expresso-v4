@@ -2717,5 +2717,24 @@ window.copyDriveByMimeType=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTopLargest=function(){
+  const arr=[];
+  document.querySelectorAll('[data-file-id]').forEach(f=>{
+    const sz=parseInt(f.getAttribute('data-file-size')||'0',10);
+    if(!sz)return;
+    const n=(f.getAttribute('data-file-name')||f.textContent||'').trim().slice(0,80);
+    arr.push([sz,n]);
+  });
+  if(!arr.length){alert('Sem arquivos');return;}
+  arr.sort((x,y)=>y[0]-x[0]);
+  const top=arr.slice(0,10);
+  const out=top.map(r=>r[0]+'\t'+r[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top10 '+top[0][0]+'b';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2141,5 +2141,27 @@ window.copyMonthByCreator=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestWeek=function(){
+  const a={};
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const d=new Date(s);if(isNaN(d))return;
+    const day=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+    const dow=day.getUTCDay();
+    const monday=new Date(day.getTime()-((dow+6)%7)*86400000);
+    const key=monday.toISOString().slice(0,10);
+    a[key]=(a[key]||0)+1;
+  });
+  const keys=Object.keys(a);
+  if(!keys.length){alert('Sem eventos');return;}
+  keys.sort((x,y)=>a[y]-a[x]);
+  const out=keys.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+keys[0]+' '+a[keys[0]];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
