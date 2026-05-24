@@ -830,4 +830,29 @@ window.copyEventDurations = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyBackToBack = function(){
+  const ev = Array.from(document.querySelectorAll('.event,.cal-event,[data-event-id]')).map(e => {
+    const ts = e.querySelector('time,[data-start]');
+    const te = e.querySelector('[data-end]') || e.querySelector('time:last-of-type');
+    const s = ts && (ts.getAttribute('datetime') || ts.getAttribute('data-start'));
+    const en = te && (te.getAttribute('data-end') || te.getAttribute('datetime'));
+    const ti = ((e.querySelector('.title,[data-title]')||{}).textContent||'').trim();
+    return s && en ? { s: new Date(s), e: new Date(en), t: ti } : null;
+  }).filter(Boolean).sort((a,b)=>a.s-b.s);
+  const pairs = [];
+  for (let i=1;i<ev.length;i++) {
+    if ((ev[i].s - ev[i-1].e) < 60000) pairs.push(ev[i-1].t+' → '+ev[i].t);
+  }
+  const out = pairs.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pairs.length+' pares back-to-back';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

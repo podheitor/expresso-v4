@@ -879,4 +879,23 @@ window.copyMessageIdsHeader = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyThreadAsMd = function(){
+  const msgs = document.querySelectorAll('.message,.msg,[data-msg-id]');
+  const out = Array.from(msgs).map(m => {
+    const a = ((m.querySelector('.author,[data-author]')||{}).textContent||'').trim();
+    const ts = ((m.querySelector('time,[data-ts]')||{}).textContent||'').trim();
+    const b = ((m.querySelector('.body,[data-body]')||m).textContent||'').trim();
+    return '## '+a+' — '+ts+'\n\n'+b+'\n';
+  }).join('\n---\n\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=msgs.length+' mensagens (Markdown)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -1562,4 +1562,25 @@ window.copyTotalSize = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copySharedFiles = function(){
+  const rows = document.querySelectorAll('.file-row, tr[data-file-id], li[data-file-id]');
+  const shared = [];
+  rows.forEach(r => {
+    if (r.getAttribute('data-shared') === 'true' || r.classList.contains('shared') || r.querySelector('.shared-icon, [data-shared="true"]')) {
+      const n = ((r.querySelector('.name,[data-name]')||{}).textContent || r.getAttribute('data-name') || '').trim();
+      if (n) shared.push(n);
+    }
+  });
+  const out = shared.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=shared.length+' arquivos compartilhados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

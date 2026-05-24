@@ -882,4 +882,26 @@ window.copyEarliestLatest = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyAllParticipants = function(){
+  const ev = document.querySelectorAll('.event,.cal-event,[data-event-id]');
+  const set = new Set();
+  ev.forEach(e => {
+    const els = e.querySelectorAll('.participant,[data-participant],[data-attendee]');
+    els.forEach(p => {
+      const v = (p.textContent || p.getAttribute('data-participant') || p.getAttribute('data-attendee') || '').trim();
+      if (v) set.add(v);
+    });
+  });
+  const out = Array.from(set).sort().join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=set.size+' participantes únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

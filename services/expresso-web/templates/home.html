@@ -1473,4 +1473,21 @@ window.copyPathName = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyPerformanceTiming = function(){
+  const p = performance.timing || {};
+  const nav = performance.getEntriesByType && performance.getEntriesByType('navigation')[0] || {};
+  const dl = nav.domContentLoadedEventEnd || (p.domContentLoadedEventEnd - p.navigationStart);
+  const ld = nav.loadEventEnd || (p.loadEventEnd - p.navigationStart);
+  const s = 'DCL='+Math.round(dl)+'ms Load='+Math.round(ld)+'ms';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
+</script>
 {% endblock %}

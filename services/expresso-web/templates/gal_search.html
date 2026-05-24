@@ -701,4 +701,23 @@ window.copyResultUids = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyResultsAsLdif = function(){
+  const rows = document.querySelectorAll('.gal-row,.result,tr[data-uid],li[data-uid]');
+  const out = Array.from(rows).map(r => {
+    const cn = ((r.querySelector('.name,[data-name]')||{}).textContent || '').trim();
+    const mail = ((r.querySelector('.email,[data-email]')||{}).textContent || '').trim();
+    const uid = r.getAttribute('data-uid') || '';
+    return 'dn: uid='+uid+'\nobjectClass: inetOrgPerson\ncn: '+cn+'\nmail: '+mail+'\n';
+  }).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' entradas LDIF copiadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

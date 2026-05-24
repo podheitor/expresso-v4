@@ -1630,4 +1630,16 @@ window.copyDarkModePref = function(){
   setTimeout(()=>t.remove(),2000);
 };
 </script>
+<script>
+window.exportAllLocalStorage = function(){
+  const data = {};
+  try { for (let i=0; i<localStorage.length; i++) { const k = localStorage.key(i); data[k] = localStorage.getItem(k); } } catch(e) {}
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-localstorage.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+};
+</script>
 {% endblock %}

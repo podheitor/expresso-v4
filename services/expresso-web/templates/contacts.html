@@ -1349,4 +1349,26 @@ window.copyContactsByCompany = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyBirthdays = function(){
+  const rows = document.querySelectorAll('.contact,.contact-row,li[data-contact-id],tr[data-contact-id]');
+  const lines = [];
+  rows.forEach(r => {
+    const bd = r.getAttribute('data-bday') || (r.querySelector('[data-bday]')||{}).getAttribute && r.querySelector('[data-bday]').getAttribute('data-bday') || '';
+    if (bd) {
+      const n = ((r.querySelector('.name,[data-name]')||{}).textContent||'').trim();
+      lines.push(bd+'\t'+n);
+    }
+  });
+  const out = lines.sort().join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' aniversários copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

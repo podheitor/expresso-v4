@@ -1139,4 +1139,20 @@ window.copySubjectToClipboard = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.insertCurrentDate = function(){
+  const body = document.querySelector('textarea[name="body"], #body');
+  if (!body) return;
+  const d = new Date().toLocaleDateString('pt-BR');
+  const pos = body.selectionStart || 0;
+  body.value = body.value.slice(0,pos) + d + body.value.slice(pos);
+  body.focus();
+  body.selectionStart = body.selectionEnd = pos + d.length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=d+' inserido';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

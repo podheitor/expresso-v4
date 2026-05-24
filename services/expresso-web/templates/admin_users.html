@@ -786,4 +786,28 @@ window.copyTenantsWithCount = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyRecentlyCreated = function(n){
+  const k = typeof n === 'number' ? n : 10;
+  const rows = Array.from(document.querySelectorAll('.user-row,tr[data-user-id],li[data-user-id]'));
+  rows.sort((a,b) => {
+    const ta = new Date(a.getAttribute('data-created')||'').getTime() || 0;
+    const tb = new Date(b.getAttribute('data-created')||'').getTime() || 0;
+    return tb - ta;
+  });
+  const out = rows.slice(0,k).map(r => {
+    const c = r.getAttribute('data-created')||'';
+    const e = ((r.querySelector('.email,[data-email]')||{}).textContent||r.getAttribute('data-email')||'').trim();
+    return c+'\t'+e;
+  }).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Top '+Math.min(k,rows.length)+' recém-criados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}
