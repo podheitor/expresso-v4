@@ -58,7 +58,7 @@
               data-user="{{ ev.user_email }}"
               data-resource="{{ ev.resource_id }}"
               data-ts="{{ ev.ts }}">
-            <td class="mono small">{{ ev.ts }}</td>
+            <td class="mono small audit-ts-cell" title="{{ ev.ts }}">{{ ev.ts }}</td>
             <td class="small">{{ ev.user_email }}</td>
             <td><span class="audit-action-badge">{{ ev.action }}</span></td>
             <td class="mono small muted">{% match ev.resource_id %}{% when Some with (r) %}{{ r }}{% when None %}—{% endmatch %}</td>
@@ -173,5 +173,22 @@ function exportAuditLog() {
   a.download = 'audit-' + new Date().toISOString().slice(0,10) + '.csv';
   a.click();
 }
+(function relativeAuditTimes() {
+  function rel(ts) {
+    var d = new Date(ts.replace(' ', 'T') + 'Z');
+    var diff = (Date.now() - d.getTime()) / 1000;
+    if (isNaN(diff)) return ts;
+    if (diff < 60) return Math.floor(diff) + 's';
+    if (diff < 3600) return Math.floor(diff / 60) + 'min';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h';
+    if (diff < 604800) return Math.floor(diff / 86400) + 'd';
+    return ts;
+  }
+  document.querySelectorAll('.audit-ts-cell').forEach(function(td) {
+    var raw = td.getAttribute('title') || td.textContent;
+    var r = rel(raw);
+    if (r !== raw) td.textContent = r;
+  });
+})();
 </script>
 {% endblock %}

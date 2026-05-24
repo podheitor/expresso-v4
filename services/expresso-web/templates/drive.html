@@ -40,7 +40,7 @@
     </div>
     <div class="page-header-actions">
       <div style="position:relative;display:flex;gap:.3rem;align-items:center">
-        <select id="drive-type-filter" class="input-sm" style="font-size:.8rem" onchange="driveSearch(document.getElementById('drive-search-input').value)">
+        <select id="drive-type-filter" class="input-sm" style="font-size:.8rem" onchange="try{localStorage.setItem('expresso_drive_type_filter_{{ me.user_id }}', this.value);}catch(e){};driveSearch(document.getElementById('drive-search-input').value)">
           <option value="">Todos os tipos</option>
           <option value="image">Imagens</option>
           <option value="video">Vídeos</option>
@@ -813,6 +813,13 @@ function applyDriveColor(btn, color) {
     var c = all[id] || '';
     applyDriveColor(b, c);
   });
+})();
+(function restoreDriveTypeFilter() {
+  try {
+    var sel = document.getElementById('drive-type-filter');
+    var v = localStorage.getItem('expresso_drive_type_filter_{{ me.user_id }}');
+    if (sel && v) sel.value = v;
+  } catch(e){}
 })();
 </script>
 {% endblock %}

@@ -92,11 +92,19 @@ function showModal(id) { var m = document.getElementById(id); if (m) m.style.dis
 function hideModal(id) { var m = document.getElementById(id); if (m) m.style.display = 'none'; }
 function closeModalOnOverlay(e, id) { if (e.target === e.currentTarget) hideModal(id); }
 function filterTenants(q) {
+  try { localStorage.setItem('expresso_admin_tenant_filter', q || ''); } catch(e){}
   q = (q || '').toLowerCase();
   document.querySelectorAll('.admin-tenant-row').forEach(function(r) {
     var match = !q || (r.dataset.name || '').toLowerCase().includes(q) || (r.dataset.domain || '').toLowerCase().includes(q);
     r.style.display = match ? '' : 'none';
   });
 }
+(function restoreTenantFilter() {
+  try {
+    var q = localStorage.getItem('expresso_admin_tenant_filter') || '';
+    var inp = document.getElementById('tenant-search');
+    if (q && inp) { inp.value = q; filterTenants(q); }
+  } catch(e){}
+})();
 </script>
 {% endblock %}

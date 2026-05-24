@@ -66,7 +66,7 @@
         {% for s in shares %}
         <tr>
           <td class="mono muted">{% match s.created_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
-          <td class="mono muted">{% match s.expires_at %}{% when Some with (d) %}{{ d }}{% when None %}—{% endmatch %}</td>
+          <td class="mono muted">{% match s.expires_at %}{% when Some with (d) %}<span class="share-expiry" data-exp="{{ d }}">{{ d }}</span>{% when None %}—{% endmatch %}</td>
           <td>
             {% if s.is_active() %}
               <span class="badge badge-ok">Ativo</span>
@@ -116,5 +116,21 @@ function showShareQr(url) {
     box.dataset.loaded = '1';
   }
 }
+(function showShareCountdown() {
+  document.querySelectorAll('.share-expiry').forEach(function(el) {
+    var exp = el.dataset.exp; if (!exp) return;
+    var d = new Date(exp.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return;
+    var diff = (d.getTime() - Date.now()) / 1000;
+    var hint = '';
+    if (diff <= 0) hint = ' (expirado)';
+    else if (diff < 3600) hint = ' (em ' + Math.floor(diff/60) + 'min)';
+    else if (diff < 86400) hint = ' (em ' + Math.floor(diff/3600) + 'h)';
+    else hint = ' (em ' + Math.floor(diff/86400) + 'd)';
+    el.textContent = exp + hint;
+    if (diff <= 0) el.style.color = '#ef4444';
+    else if (diff < 86400) el.style.color = '#f59e0b';
+  });
+})();
 </script>
 {% endblock %}

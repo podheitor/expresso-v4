@@ -170,6 +170,7 @@
 function filterAdminUsers(q) {
   var role = document.getElementById('admin-user-role-filter').value;
   var status = document.getElementById('admin-user-status-filter').value;
+  try { localStorage.setItem('expresso_admin_user_filters', JSON.stringify({q: q || '', role: role, status: status})); } catch(e){}
   var rows = document.querySelectorAll('.admin-user-row');
   var visible = 0;
   rows.forEach(function(r) {
@@ -277,5 +278,18 @@ function sortAdminUsers(key) {
     if (el) el.textContent = (k === _sortKey) ? (_sortDir > 0 ? '▲' : '▼') : '';
   });
 }
+(function restoreAdminUserFilters() {
+  try {
+    var s = JSON.parse(localStorage.getItem('expresso_admin_user_filters') || 'null');
+    if (!s) return;
+    var qInp = document.getElementById('admin-user-search');
+    var roleSel = document.getElementById('admin-user-role-filter');
+    var statusSel = document.getElementById('admin-user-status-filter');
+    if (qInp && s.q) qInp.value = s.q;
+    if (roleSel && s.role) roleSel.value = s.role;
+    if (statusSel && s.status) statusSel.value = s.status;
+    if (s.q || s.role || s.status) filterAdminUsers(s.q || '');
+  } catch(e){}
+})();
 </script>
 {% endblock %}

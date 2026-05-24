@@ -572,6 +572,7 @@
         <h2>Privacidade e dados locais</h2>
         <p class="muted small">Suas preferências (tema, atalhos, rascunhos, fixados, reações offline, lembretes,
         aniversários, etc.) são salvas no seu navegador. Você pode exportar, restaurar ou apagar tudo aqui.</p>
+        <p class="muted small mono" id="local-storage-usage">Calculando uso…</p>
         <div class="form-actions" style="margin-top:.5rem;justify-content:flex-start">
           <button type="button" class="btn btn-ghost btn-sm" onclick="exportLocalSettings()">📤 Exportar JSON</button>
           <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('settings-import-input').click()">📥 Importar JSON</button>
@@ -886,5 +887,21 @@ function clearAllLocalSettings() {
     window.location.reload();
   } catch(e) { alert('Erro ao apagar.'); }
 }
+(function showLocalStorageUsage() {
+  var el = document.getElementById('local-storage-usage'); if (!el) return;
+  try {
+    var totalBytes = 0, expressoBytes = 0, count = 0, expressoCount = 0;
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      var v = localStorage.getItem(k) || '';
+      var sz = (k.length + v.length) * 2;
+      totalBytes += sz; count++;
+      if (k.indexOf('expresso_') === 0 || k === 'theme' || k === 'accent') { expressoBytes += sz; expressoCount++; }
+    }
+    function fmt(b) { return b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(2) + ' MB'; }
+    el.textContent = '💾 ' + expressoCount + ' chaves Expresso · ' + fmt(expressoBytes) +
+                     ' (total navegador: ' + count + ' chaves · ' + fmt(totalBytes) + ')';
+  } catch(e) { el.textContent = 'Não foi possível medir o uso local.'; }
+})();
 </script>
 {% endblock %}

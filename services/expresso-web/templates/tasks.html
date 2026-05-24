@@ -5,7 +5,10 @@
 <div class="page tasks-page">
   <div class="page-header">
     <h1>Tarefas</h1>
-    <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
+    <div style="display:flex;gap:.4rem">
+      <button class="btn btn-ghost" onclick="window.print()" title="Imprimir lista visível">🖨 Imprimir</button>
+      <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
+    </div>
   </div>
 
   <!-- Filtros / listas -->
@@ -911,4 +914,13 @@ if (_tasksView === 'kanban') {
   renderAll();
 }
 </script>
+<style>
+@media print {
+  .tasks-sidebar, .page-header button, .tasks-toolbar, .tasks-add-form,
+  #appnav, .tasks-view-switch, .row-actions { display: none !important; }
+  .tasks-layout { display: block; }
+  .task-row { page-break-inside: avoid; border-bottom: 1px solid #ccc; padding: .35rem 0; }
+  body { background: #fff; color: #000; }
+}
+</style>
 {% endblock %}

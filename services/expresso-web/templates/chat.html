@@ -114,6 +114,7 @@
           <input type="date" class="chat-date-jump" id="chat-date-jump" onchange="jumpToDate(this.value)"
                  title="Ir para data" style="width:8.5rem">
           <span class="muted small" id="chat-search-result"></span>
+          <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
         </div>
       </header>
 
@@ -1409,6 +1410,21 @@ function filterChatChannels(q) {
     }
     lbl.style.display = (q && !any) ? 'none' : '';
   });
+}
+function exportChannelJson() {
+  var out = [];
+  document.querySelectorAll('.chat-msg').forEach(function(m) {
+    var author = (m.querySelector('.chat-msg-author') || {}).textContent || '';
+    var time   = (m.querySelector('.chat-msg-time') || {}).textContent || '';
+    var body   = (m.querySelector('.chat-msg-body') || {}).textContent || '';
+    out.push({ author: author.trim(), time: time.trim(), body: body.trim() });
+  });
+  var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chat-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 {% endblock %}

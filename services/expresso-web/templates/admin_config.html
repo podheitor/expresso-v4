@@ -213,6 +213,7 @@ function updateMaintPreview(cfg) {
 }
 
 function filterAdminConfig(q) {
+  try { localStorage.setItem('expresso_admin_cfg_filter', q || ''); } catch(e){}
   q = (q || '').toLowerCase();
   document.querySelectorAll('form .card').forEach(function(card) {
     var labels = card.querySelectorAll('label');
@@ -235,5 +236,12 @@ function filterAdminConfig(q) {
     card.style.display = anyMatch ? '' : 'none';
   });
 }
+(function restoreAdminCfgFilter() {
+  try {
+    var q = localStorage.getItem('expresso_admin_cfg_filter') || '';
+    var inp = document.getElementById('admin-config-search');
+    if (q && inp) { inp.value = q; filterAdminConfig(q); }
+  } catch(e){}
+})();
 </script>
 {% endblock %}

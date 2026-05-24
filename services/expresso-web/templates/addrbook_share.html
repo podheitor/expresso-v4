@@ -36,8 +36,23 @@
     <div style="display:flex;gap:.4rem;align-items:center">
       <input type="text" id="carddav-url" readonly value="" class="tasks-add-input" style="flex:1;font-family:monospace">
       <button class="btn btn-ghost btn-sm" onclick="copyCardDavUrl()">Copiar</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleCardDavQr()" title="QR code">📱</button>
     </div>
+    <div id="carddav-qr-box" style="display:none;margin-top:.5rem;text-align:center"></div>
   </div>
+  <script>
+  function toggleCardDavQr() {
+    var box = document.getElementById('carddav-qr-box');
+    var inp = document.getElementById('carddav-url');
+    if (!box || !inp) return;
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    if (box.style.display === 'block' && !box.dataset.loaded) {
+      var src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(inp.value);
+      box.innerHTML = '<img alt="QR" src="' + src + '" style="background:#fff;padding:.3rem;border-radius:var(--radius)">';
+      box.dataset.loaded = '1';
+    }
+  }
+  </script>
 
   <h2 style="margin-bottom:.75rem">Compartilhamentos atuais</h2>
   {% if shares.is_empty() %}

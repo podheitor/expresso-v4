@@ -34,6 +34,8 @@
         <div style="display:flex;gap:.4rem;margin-left:auto">
           <button class="btn btn-ghost btn-sm" onclick="printThread()" title="Imprimir conversa">🖨 Imprimir</button>
           <button class="btn btn-ghost btn-sm" onclick="copyThreadLink(this)" title="Copiar link da conversa">🔗 Link</button>
+          <button class="btn btn-ghost btn-sm" onclick="expandAllThreadMsgs()" title="Expandir todas as mensagens">⬇ Expandir todas</button>
+          <button class="btn btn-ghost btn-sm" onclick="collapseAllThreadMsgs()" title="Recolher todas as mensagens">⬆ Recolher todas</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
@@ -254,6 +256,12 @@ function copyThreadLink(btn) {
     btn.textContent = '✓ Copiado';
     setTimeout(function(){ btn.textContent = prev; }, 1500);
   });
+}
+function expandAllThreadMsgs() {
+  document.querySelectorAll('.thread-msg-body').forEach(function(b){ b.style.display = ''; });
+}
+function collapseAllThreadMsgs() {
+  document.querySelectorAll('.thread-msg-body').forEach(function(b){ b.style.display = 'none'; });
 }
 
 (function jumpFirstUnread() {

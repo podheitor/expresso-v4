@@ -13,6 +13,10 @@
       <a class="btn btn-ghost" href="{{ today_link }}">Hoje</a>
       <a class="btn btn-ghost" href="{{ next_link }}">▶</a>
       <input type="date" id="week-jump-date" onchange="jumpToWeekOf(this.value)" title="Ir para data" style="padding:.3rem;border:1px solid var(--border);border-radius:var(--radius-sm)">
+      <label class="muted small" style="display:inline-flex;align-items:center;gap:.3rem">
+        <input type="checkbox" id="cal-hide-weekend-cb" onchange="toggleWeekend()">
+        <span>Ocultar fim de semana</span>
+      </label>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
   </div>
@@ -231,10 +235,24 @@ function jumpToWeekOf(d) {
     } catch(e) {}
   });
 })();
+function toggleWeekend() {
+  var hide = document.body.classList.toggle('hide-weekend');
+  try { localStorage.setItem('expresso_cal_hide_weekend_{{ me.user_id }}', hide ? '1' : '0'); } catch(e){}
+}
+(function restoreWeekendPref() {
+  try {
+    if (localStorage.getItem('expresso_cal_hide_weekend_{{ me.user_id }}') === '1') {
+      document.body.classList.add('hide-weekend');
+      var cb = document.getElementById('cal-hide-weekend-cb');
+      if (cb) cb.checked = true;
+    }
+  } catch(e){}
+})();
 </script>
 <style>
 .week-col.cal-weekend { background: rgba(148,163,184,0.06); }
 .week-col.cal-weekend.today { background: rgba(20,184,166,.08); }
+body.hide-weekend .week-col.cal-weekend { display: none; }
 </style>
 <script>
 document.addEventListener('keydown', function(e) {

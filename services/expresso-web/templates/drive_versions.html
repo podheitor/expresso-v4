@@ -36,6 +36,9 @@
           <a class="btn btn-ghost btn-sm"
              href="/api/v1/drive/files/{{ file.id }}/versions/{{ v.version_no }}"
              title="Baixar esta versão">↓ Baixar</a>
+          <button type="button" class="btn btn-ghost btn-sm"
+                  onclick="copyVersionUrl(this,'/api/v1/drive/files/{{ file.id }}/versions/{{ v.version_no }}')"
+                  title="Copiar link direto desta versão">🔗</button>
           {% if !loop.first %}
           <form method="post" action="/drive/{{ file.id }}/versions/{{ v.version_no }}/restore"
                 onsubmit="return confirm('Restaurar v{{ v.version_no }} como versão atual?')">
@@ -90,5 +93,13 @@ document.querySelectorAll('.version-item').forEach(function(el, i) {
     el.style.transform = 'none';
   }, i * 60);
 });
+function copyVersionUrl(btn, path) {
+  var url = window.location.origin + path;
+  navigator.clipboard.writeText(url).then(function() {
+    var prev = btn.textContent;
+    btn.textContent = '✓';
+    setTimeout(function(){ btn.textContent = prev; }, 1200);
+  });
+}
 </script>
 {% endblock %}
