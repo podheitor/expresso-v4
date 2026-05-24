@@ -978,5 +978,17 @@ window.copyBusiestDay = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1800);
 };
+window.copyTotalDurationWeek = function(){
+  const evs=document.querySelectorAll('[data-event-start][data-event-end]');
+  let total=0;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-event-start'));const f=Date.parse(e.getAttribute('data-event-end'));if(!isNaN(s)&&!isNaN(f))total+=(f-s);});
+  const hrs=(total/3600000).toFixed(1);
+  const ta=document.createElement('textarea');ta.value='week_total_hours\t'+hrs;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=hrs+' h totais';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

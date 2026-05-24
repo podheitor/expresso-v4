@@ -1220,5 +1220,17 @@ window.bccSelf = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.appendSignature = function(){
+  const sig=localStorage.getItem('expresso_signature')||'';
+  if(!sig){alert('Sem assinatura: salve em localStorage["expresso_signature"]');return;}
+  const ta=document.querySelector('[name="body"]');
+  if(!ta){alert('campo body não encontrado');return;}
+  ta.value=(ta.value||'').replace(/\n+--\n[\s\S]*$/,'').trimEnd()+'\n\n-- \n'+sig;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='assinatura inserida';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

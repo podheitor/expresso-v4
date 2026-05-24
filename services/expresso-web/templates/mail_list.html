@@ -1542,5 +1542,16 @@ window.copySendersByVolume = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAttachmentsList = function(){
+  const rows=document.querySelectorAll('tr[data-has-attachment="true"]');
+  const out=[];
+  rows.forEach(r=>{const s=(r.getAttribute('data-subject')||'?').trim();const f=(r.getAttribute('data-from')||'?').trim();out.push(f+'\t'+s);});
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' com anexo';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

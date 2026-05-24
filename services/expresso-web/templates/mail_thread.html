@@ -945,5 +945,19 @@ window.copyThreadDates = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSpan = function(){
+  const msgs=document.querySelectorAll('[data-msg-date]');
+  if(!msgs.length){alert('thread vazia');return;}
+  const dates=[];
+  msgs.forEach(m=>{const d=Date.parse(m.getAttribute('data-msg-date'));if(!isNaN(d))dates.push(d);});
+  if(!dates.length){alert('sem datas válidas');return;}
+  const span=Math.round((Math.max(...dates)-Math.min(...dates))/86400000);
+  const ta=document.createElement('textarea');ta.value='span_days\t'+span;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='span: '+span+' dias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
