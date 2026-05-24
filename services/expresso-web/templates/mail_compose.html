@@ -1084,4 +1084,18 @@ window.countRecipients = function(){
   setTimeout(()=>t.remove(),2200);
 };
 </script>
+<script>
+window.trimTrailingWs = function(){
+  const body = document.querySelector('textarea[name="body"], #body');
+  if (!body) return;
+  const before = body.value.length;
+  body.value = body.value.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').replace(/\s+$/, '');
+  const after = body.value.length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Trim: -'+(before-after)+' chars';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

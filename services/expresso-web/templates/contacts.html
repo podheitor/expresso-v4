@@ -1270,4 +1270,26 @@ window.copyDomainStats = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyContactsWithPhone = function(){
+  const rows = document.querySelectorAll('.contact, .contact-row, li[data-contact-id], tr[data-contact-id]');
+  const lines = [];
+  rows.forEach(r => {
+    const ph = (r.querySelector('.phone,[data-phone]')||{}).textContent || r.getAttribute('data-phone') || '';
+    if (ph.trim()) {
+      const nm = (r.querySelector('.name,[data-name]')||{}).textContent || r.getAttribute('data-name') || '';
+      lines.push(nm.trim()+'\t'+ph.trim());
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' contatos com telefone copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

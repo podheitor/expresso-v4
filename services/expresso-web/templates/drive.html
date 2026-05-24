@@ -1465,4 +1465,32 @@ window.copyExtensionStats = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyLargestFile = function(){
+  const rows = document.querySelectorAll('.file-row, tr[data-file-id], li[data-file-id]');
+  let best = null, bestSize = -1;
+  rows.forEach(r => {
+    const sz = parseInt(r.getAttribute('data-size') || '0', 10);
+    if (sz > bestSize) { bestSize = sz; best = r; }
+  });
+  if (!best) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Sem arquivos com data-size';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const n = ((best.querySelector('.name,[data-name]')||{}).textContent || best.getAttribute('data-name') || '').trim();
+  const s = n+' ('+bestSize+' bytes)';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Maior arquivo copiado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

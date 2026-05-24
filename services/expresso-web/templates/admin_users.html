@@ -701,4 +701,24 @@ window.copyAdminsList = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyUsersByStatus = function(){
+  const rows = document.querySelectorAll('.user-row, tr[data-user-id], li[data-user-id]');
+  const counts = {};
+  rows.forEach(r => {
+    const s = (r.querySelector('.status,[data-status]')||{}).textContent || r.getAttribute('data-status') || '(unknown)';
+    const v = s.trim() || '(unknown)';
+    counts[v] = (counts[v]||0)+1;
+  });
+  const out = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>v+'\t'+k).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(counts).length+' status distintos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

@@ -1570,4 +1570,23 @@ window.copyTasksByAssignee = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyTasksByTag = function(){
+  const rows = document.querySelectorAll('.task, .task-row, li[data-task-id], tr[data-task-id]');
+  const counts = {};
+  rows.forEach(r => {
+    const tags = (r.getAttribute('data-tags')||'').split(/[,\s]+/).filter(Boolean);
+    tags.forEach(tg => counts[tg] = (counts[tg]||0)+1);
+  });
+  const out = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>v+'\t#'+k).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(counts).length+' tags copiadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

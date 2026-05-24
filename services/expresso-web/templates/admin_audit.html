@@ -693,4 +693,28 @@ window.copyTopActors = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyEventsByHour = function(){
+  const rows = document.querySelectorAll('.audit-row, tr[data-audit-id], li[data-audit-id]');
+  const counts = {};
+  rows.forEach(r => {
+    const ts = (r.querySelector('time,[data-ts]')||{});
+    const s = ts.getAttribute && (ts.getAttribute('datetime')||ts.getAttribute('data-ts')||ts.textContent) || '';
+    if (!s) return;
+    const d = new Date(s);
+    if (isNaN(d)) return;
+    const h = String(d.getHours()).padStart(2,'0')+':00';
+    counts[h] = (counts[h]||0)+1;
+  });
+  const out = Object.entries(counts).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Distribuição por hora copiada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

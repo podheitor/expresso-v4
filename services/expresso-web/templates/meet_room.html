@@ -1419,4 +1419,27 @@ window.toggleNoiseSuppression = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyJitsiVersion = function(){
+  if (!window.jitsiApi) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Jitsi API indisponível';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  Promise.resolve(window.jitsiApi.isAudioMuted ? window.jitsiApi.getDeploymentInfo && window.jitsiApi.getDeploymentInfo() : null).then(info => {
+    const s = info ? JSON.stringify(info) : '(info indisponível)';
+    navigator.clipboard.writeText(s).catch(()=>{
+      const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    });
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Deployment info copiado';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
+</script>
 {% endblock %}
