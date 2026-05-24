@@ -2337,5 +2337,27 @@ window.copyDayAllDayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWithAttendees=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const out=[];
+  evs.forEach(e=>{
+    const at=(e.dataset.attendees||'').split(',').map(s=>s.trim()).filter(Boolean);
+    if(at.length>0){
+      const ti=e.querySelector('.event-title')?.textContent.trim()||e.dataset.eventId;
+      out.push(ti+' ('+at.length+'): '+at.join(', '));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' w/at';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

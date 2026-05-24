@@ -2207,5 +2207,29 @@ window.copyAuditByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLogins=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const a=(r.dataset.action||'').toLowerCase();
+    if(a.includes('login')||a.includes('auth')||a.includes('signin')){
+      const ts=r.dataset.ts||'';
+      const u=r.dataset.user||r.querySelector('.audit-user')?.textContent.trim()||'';
+      const ip=r.dataset.ip||r.querySelector('.audit-ip')?.textContent.trim()||'';
+      out.push(ts+'\t'+u+'\t'+ip+'\t'+a);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' login';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

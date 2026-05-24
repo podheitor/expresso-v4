@@ -2203,5 +2203,28 @@ window.copyUsersByCreated=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive90d=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const cut=Date.now()-90*86400000;
+  const out=[];
+  rows.forEach(r=>{
+    const last=Date.parse(r.dataset.lastLogin||'');
+    if(isNaN(last)||last<cut){
+      const e=r.dataset.email||r.querySelector('.user-email')?.textContent.trim()||'';
+      out.push((isNaN(last)?'never':new Date(last).toISOString().slice(0,10))+'\t'+e);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' >90d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
