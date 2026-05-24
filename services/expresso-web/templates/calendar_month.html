@@ -2024,5 +2024,26 @@ window.copyMonthFreeDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthByTitlePrefix=function(){
+  const pref={};
+  document.querySelectorAll('[data-event-title]').forEach(e=>{
+    const t=(e.getAttribute('data-event-title')||'').trim();
+    const colon=t.indexOf(':');
+    if(colon>0&&colon<20){
+      const p=t.slice(0,colon).trim().toLowerCase();
+      pref[p]=(pref[p]||0)+1;
+    }
+  });
+  const keys=Object.keys(pref);
+  if(!keys.length){alert('Sem prefixos');return;}
+  keys.sort((x,y)=>pref[y]-pref[x]);
+  const out=keys.map(k=>k+'\t'+pref[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' prefs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

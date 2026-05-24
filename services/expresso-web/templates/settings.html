@@ -2623,5 +2623,21 @@ window.copySettingsScreen=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.countLocalStorageKeys=function(){
+  let n=0,bytes=0;
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i);
+    const v=localStorage.getItem(k)||'';
+    n++;
+    bytes+=(k.length+v.length)*2;
+  }
+  const out='keys: '+n+'\nbytes: '+bytes+'\nkb: '+(bytes/1024).toFixed(2);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=n+' keys '+(bytes/1024).toFixed(1)+'KB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

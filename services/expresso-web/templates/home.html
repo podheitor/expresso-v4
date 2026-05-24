@@ -2299,5 +2299,21 @@ window.copyHomeOnlineStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeNavTiming=function(){
+  const p=performance.timing||{};
+  if(!p.navigationStart){alert('Timing indisponível');return;}
+  const dns=p.domainLookupEnd-p.domainLookupStart;
+  const tcp=p.connectEnd-p.connectStart;
+  const ttfb=p.responseStart-p.requestStart;
+  const dom=p.domContentLoadedEventEnd-p.navigationStart;
+  const load=p.loadEventEnd-p.navigationStart;
+  const out='dns: '+dns+'ms\ntcp: '+tcp+'ms\nttfb: '+ttfb+'ms\ndomReady: '+dom+'ms\nloadComplete: '+load+'ms';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='load '+load+'ms';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
