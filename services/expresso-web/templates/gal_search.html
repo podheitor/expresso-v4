@@ -992,5 +992,16 @@ window.exportGalCsvFull = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSorted = function(){
+  const rows=Array.from(document.querySelectorAll('[data-gal-name]'));
+  rows.sort((a,b)=>(a.getAttribute('data-gal-name')||'').localeCompare(b.getAttribute('data-gal-name')||''));
+  const out=rows.map(r=>(r.getAttribute('data-gal-name')||'?')+'\t'+(r.getAttribute('data-gal-email')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' alfabético';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

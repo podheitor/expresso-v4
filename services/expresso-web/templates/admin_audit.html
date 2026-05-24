@@ -1075,5 +1075,16 @@ window.copyAuditByIp = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyAuditLast24h = function(){
+  const cutoff=Date.now()-86400000;
+  const rows=Array.from(document.querySelectorAll('[data-audit-id][data-audit-ts]')).filter(r=>{const t=Date.parse(r.getAttribute('data-audit-ts')); return !isNaN(t)&&t>=cutoff;});
+  const out=rows.map(r=>(r.getAttribute('data-audit-ts')||'?')+'\t'+(r.getAttribute('data-audit-actor')||'?')+'\t'+(r.getAttribute('data-audit-action')||'?')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' eventos 24h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

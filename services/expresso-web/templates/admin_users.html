@@ -1097,5 +1097,17 @@ window.copyUsersInactive90d = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByCreatedYear = function(){
+  const rows=document.querySelectorAll('[data-user-id][data-user-created]');
+  const m={};
+  rows.forEach(r=>{const y=(r.getAttribute('data-user-created')||'').slice(0,4); if(y) m[y]=(m[y]||0)+1;});
+  const out=Object.entries(m).sort().map(([y,n])=>y+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(m).length+' anos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

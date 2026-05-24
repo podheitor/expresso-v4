@@ -1439,5 +1439,19 @@ window.replaceTabsWithSpaces = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDraftAsEml = function(){
+  const subj=(document.querySelector('input[name="subject"]')||{}).value||'';
+  const to=(document.querySelector('input[name="to"]')||document.querySelector('textarea[name="to"]')||{}).value||'';
+  const cc=(document.querySelector('input[name="cc"]')||document.querySelector('textarea[name="cc"]')||{}).value||'';
+  const body=(document.querySelector('textarea[name="body"]')||{}).value||'';
+  const eml='From: {{ me.email }}\nTo: '+to+'\nCc: '+cc+'\nSubject: '+subj+'\nDate: '+new Date().toUTCString()+'\nContent-Type: text/plain; charset=UTF-8\n\n'+body;
+  const blob=new Blob([eml],{type:'message/rfc822'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='draft.eml';document.body.appendChild(a);a.click();a.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='EML baixado';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

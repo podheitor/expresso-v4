@@ -1167,5 +1167,18 @@ window.copyThreadStats = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstLast = function(){
+  const rows=Array.from(document.querySelectorAll('[data-msg-id][data-msg-date]'));
+  rows.sort((a,b)=>Date.parse(a.getAttribute('data-msg-date'))-Date.parse(b.getAttribute('data-msg-date')));
+  if(rows.length===0) return;
+  const first=rows[0], last=rows[rows.length-1];
+  const out='first: '+(first.getAttribute('data-msg-date')||'?')+' '+(first.getAttribute('data-msg-from')||'')+'\nlast: '+(last.getAttribute('data-msg-date')||'?')+' '+(last.getAttribute('data-msg-from')||'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='extremos copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

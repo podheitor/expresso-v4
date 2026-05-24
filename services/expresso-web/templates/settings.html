@@ -1964,5 +1964,28 @@ window.copyFontList = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.checkClipboardPermission = function(){
+  if(!navigator.permissions||!navigator.permissions.query){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='permissions API indisponível';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  navigator.permissions.query({name:'clipboard-write'}).then(p=>{
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='clipboard: '+p.state;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='query falhou';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

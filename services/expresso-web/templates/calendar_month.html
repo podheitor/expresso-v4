@@ -1242,5 +1242,18 @@ window.copyMonthByCategory = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyMonthAvgPerDay = function(){
+  const rows=document.querySelectorAll('[data-event-id][data-event-start]');
+  const days=new Set();
+  rows.forEach(r=>{const d=(r.getAttribute('data-event-start')||'').slice(0,10); if(d) days.add(d);});
+  const avg=days.size?(rows.length/days.size).toFixed(2):'0';
+  const out='eventos: '+rows.length+'\ndias: '+days.size+'\nmédia/dia: '+avg;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=avg+' eventos/dia';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
 </script>
 {% endblock %}

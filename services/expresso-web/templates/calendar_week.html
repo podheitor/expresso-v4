@@ -1190,5 +1190,17 @@ window.copyWeekRecurring = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLongest = function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id][data-event-start][data-event-end]'));
+  rows.sort((a,b)=>{const ad=Date.parse(a.getAttribute('data-event-end'))-Date.parse(a.getAttribute('data-event-start')); const bd=Date.parse(b.getAttribute('data-event-end'))-Date.parse(b.getAttribute('data-event-start')); return bd-ad;});
+  const top=rows.slice(0,5);
+  const out=top.map(r=>{const d=((Date.parse(r.getAttribute('data-event-end'))-Date.parse(r.getAttribute('data-event-start')))/60000)|0; return d+'min\t'+(r.getAttribute('data-event-title')||'');}).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 5 mais longos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

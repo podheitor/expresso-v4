@@ -1663,5 +1663,17 @@ window.copyContactsRecentlyAdded = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdaysThisMonth = function(){
+  const now=new Date();
+  const mm=now.getMonth()+1;
+  const rows=Array.from(document.querySelectorAll('[data-contact-id][data-contact-bday]')).filter(r=>{const b=r.getAttribute('data-contact-bday')||''; const m=parseInt(b.slice(5,7)); return m===mm;});
+  const out=rows.map(r=>(r.getAttribute('data-contact-bday')||'?')+'\t'+(r.getAttribute('data-contact-name')||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' aniversariantes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
