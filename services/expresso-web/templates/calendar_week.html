@@ -767,4 +767,24 @@ window.findBusiestDay = function(){
   setTimeout(() => t.remove(), 2000);
 };
 </script>
+<script>
+window.copyEventsByLocation = function(){
+  const ev = document.querySelectorAll('.event, .cal-event, [data-event-id]');
+  const counts = {};
+  ev.forEach(e => {
+    const loc = (e.querySelector('.location,[data-location]')||{}).textContent || e.getAttribute('data-location') || '';
+    const v = loc.trim() || '(sem local)';
+    counts[v] = (counts[v]||0)+1;
+  });
+  const out = Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>v+'\t'+k).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(counts).length+' locais copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

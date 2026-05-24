@@ -1367,4 +1367,24 @@ window.countUnread = function(){
   setTimeout(() => t.remove(), 1800);
 };
 </script>
+<script>
+window.copyTopSenders = function(){
+  const rows = document.querySelectorAll('.mail-row, tr[data-mail-id], li[data-mail-id]');
+  const counts = {};
+  rows.forEach(r => {
+    const s = (r.querySelector('.sender, .from, [data-from]') || {}).textContent || r.getAttribute('data-from') || '';
+    const v = s.trim();
+    if (v) counts[v] = (counts[v]||0)+1;
+  });
+  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10).map(([k,v])=>v+'\t'+k).join('\n');
+  navigator.clipboard.writeText(top).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=top;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Top '+Math.min(10,Object.keys(counts).length)+' remetentes copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

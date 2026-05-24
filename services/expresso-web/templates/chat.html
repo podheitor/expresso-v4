@@ -2117,4 +2117,25 @@ window.countMentions = function(){
   setTimeout(() => t.remove(), 1800);
 };
 </script>
+<script>
+window.copyEmojiUsage = function(){
+  const msgs = document.querySelectorAll('.message, .msg, [data-msg-id]');
+  const counts = {};
+  const re = /\p{Extended_Pictographic}/gu;
+  msgs.forEach(m => {
+    const txt = m.textContent || '';
+    const found = txt.match(re) || [];
+    found.forEach(e => counts[e] = (counts[e]||0)+1);
+  });
+  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,20).map(([k,v])=>v+'\t'+k).join('\n');
+  navigator.clipboard.writeText(top).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=top;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(counts).length+' emojis distintos copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

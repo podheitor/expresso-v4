@@ -706,4 +706,32 @@ window.sumDayDuration = function(){
   setTimeout(() => t.remove(), 1800);
 };
 </script>
+<script>
+window.copyFirstLastEvent = function(){
+  const ev = Array.from(document.querySelectorAll('.event, .cal-event, [data-event-id]'));
+  if (!ev.length) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Sem eventos hoje';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const get = e => {
+    const ts = (e.querySelector('time,[data-start]')||{});
+    const s = ts.getAttribute && (ts.getAttribute('datetime')||ts.getAttribute('data-start')||ts.textContent) || '';
+    const ti = (e.querySelector('.title,[data-title]')||{}).textContent || '';
+    return s.trim()+' '+ti.trim();
+  };
+  const out = 'Primeiro: '+get(ev[0])+'\nÚltimo:   '+get(ev[ev.length-1]);
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Primeiro/último evento copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

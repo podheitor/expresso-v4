@@ -1066,4 +1066,22 @@ window.appendSignature = function(){
   body.focus();
 };
 </script>
+<script>
+window.countRecipients = function(){
+  const fields = ['to','cc','bcc'];
+  let total = 0;
+  const detail = fields.map(f => {
+    const el = document.querySelector('[name="'+f+'"], #'+f);
+    const v = el ? (el.value || el.textContent || '') : '';
+    const n = v.split(/[,;]/).map(s=>s.trim()).filter(s=>s.includes('@')).length;
+    total += n;
+    return f.toUpperCase()+': '+n;
+  }).join(' · ');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=detail+' (total '+total+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2200);
+};
+</script>
 {% endblock %}
