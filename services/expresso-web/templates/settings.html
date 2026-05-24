@@ -1747,5 +1747,22 @@ window.pingContactsApi = function(){
     setTimeout(()=>t.remove(),2000);
   });
 };
+window.pingAdminApi = function(){
+  const t0=performance.now();
+  fetch('/api/admin/health',{credentials:'same-origin'}).then(r=>{
+    const dt=Math.round(performance.now()-t0);
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(r.ok?'#0a0':'#a00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Admin API '+r.status+' ('+dt+'ms)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),2000);
+  }).catch(e=>{
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Admin API erro: '+e.message;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),2000);
+  });
+};
 </script>
 {% endblock %}

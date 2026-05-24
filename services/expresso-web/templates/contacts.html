@@ -1460,5 +1460,16 @@ window.copyContactsByCompany = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsAllMailto = function(){
+  const rows=document.querySelectorAll('[data-contact-email]');
+  const arr=[];
+  rows.forEach(r=>{const e=(r.getAttribute('data-contact-email')||'').trim();if(e)arr.push(e);});
+  const ta=document.createElement('textarea');ta.value='mailto:?bcc='+arr.join(',');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mailto BCC: '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

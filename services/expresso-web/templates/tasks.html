@@ -1757,5 +1757,18 @@ window.copyUnassignedTasks = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMyTasks = function(){
+  const me=document.body.getAttribute('data-me-handle')||document.body.getAttribute('data-me-email')||'';
+  if(!me){alert('handle não detectado');return;}
+  const rows=document.querySelectorAll('[data-task-assignee]');
+  const out=[];
+  rows.forEach(r=>{const a=(r.getAttribute('data-task-assignee')||'').toLowerCase();if(a.includes(me.toLowerCase()))out.push(r.getAttribute('data-task-title')||'?');});
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' minhas tarefas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

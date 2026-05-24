@@ -1242,5 +1242,15 @@ window.uppercaseSubject = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.trimWhitespace = function(){
+  const f=['subject','body','to','cc','bcc'];
+  let n=0;
+  f.forEach(name=>{const el=document.querySelector('[name="'+name+'"]');if(el){const v=(el.value||'');const tr=v.split('\n').map(s=>s.replace(/[ \t]+$/,'')).join('\n').replace(/\n{3,}/g,'\n\n');if(tr!==v){el.value=tr;n++;}}});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=n+' campos limpos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

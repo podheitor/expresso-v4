@@ -1564,5 +1564,18 @@ window.copyFlaggedMail = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailsBySize = function(){
+  const rows=document.querySelectorAll('tr[data-msg-size]');
+  const arr=[];
+  rows.forEach(r=>{const s=parseInt(r.getAttribute('data-msg-size'),10);if(!isNaN(s))arr.push({s:s,subj:r.getAttribute('data-subject')||'?'});});
+  arr.sort((a,b)=>b.s-a.s);
+  const out=arr.slice(0,10).map(x=>x.s+'\t'+x.subj).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 10 maiores copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
