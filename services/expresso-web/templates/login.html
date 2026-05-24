@@ -61,6 +61,32 @@
     el.textContent = tz;
   } catch(e){}
 })();
+(function enterToLogin() {
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    var btn = document.getElementById('login-btn');
+    if (btn && !navigator.onLine === false && btn.style.pointerEvents !== 'none') {
+      e.preventDefault();
+      btn.click();
+    }
+  });
+})();
+(function showRecentTenants() {
+  try {
+    var raw = localStorage.getItem('expresso_recent_tenants');
+    if (!raw) return;
+    var arr = JSON.parse(raw);
+    if (!arr.length || arr.length < 2) return;
+    var section = document.querySelector('.auth-card');
+    if (!section) return;
+    var box = document.createElement('div');
+    box.style.cssText = 'margin-top:.6rem;text-align:center;font-size:.72rem';
+    box.innerHTML = '<span class="muted">Tenants recentes: </span>' + arr.slice(0, 4).map(function(t) {
+      return '<a href="https://' + encodeURIComponent(t) + '." style="margin:0 .25rem;text-decoration:none;color:var(--accent)">' + t + '</a>';
+    }).join('·');
+    section.appendChild(box);
+  } catch(e){}
+})();
 (function networkStatus() {
   var banner = document.getElementById('login-offline-banner');
   var btn    = document.getElementById('login-btn');

@@ -120,6 +120,43 @@
       </div>
     </div>
 
+    <!-- Saúde do sistema -->
+    <div class="home-widget" id="home-health-widget">
+      <div class="home-widget-header">
+        <span class="home-widget-icon" id="home-health-icon">●</span>
+        <span class="home-widget-title">Status do serviço</span>
+        <button class="btn btn-ghost btn-sm" onclick="refreshHomeHealth(this)" title="Verificar agora">↻</button>
+      </div>
+      <div id="home-health-body" style="padding:.3rem 0">
+        <p class="muted small" id="home-health-state">Verificando…</p>
+        <p class="muted small" id="home-health-detail" style="font-size:.7rem"></p>
+      </div>
+    </div>
+    <script>
+    (function pollHealth() {
+      var icon = document.getElementById('home-health-icon');
+      var state = document.getElementById('home-health-state');
+      var detail = document.getElementById('home-health-detail');
+      function set(ok, txt, info) {
+        if (icon) icon.style.color = ok ? '#22c55e' : '#ef4444';
+        if (state) state.textContent = ok ? '✓ Todos os serviços operacionais' : '✗ Serviço com problemas';
+        if (detail) detail.textContent = (info || '') + ' · última verificação: ' + new Date().toLocaleTimeString('pt-BR');
+      }
+      window.refreshHomeHealth = function(btn) {
+        if (state) state.textContent = 'Verificando…';
+        var t0 = Date.now();
+        fetch('/healthz', { credentials: 'include' }).then(function(r) {
+          var dt = Date.now() - t0;
+          set(r.ok, r.ok ? 'OK' : ('HTTP ' + r.status), 'latência ' + dt + 'ms');
+        }).catch(function(){ set(false, 'erro', 'sem conexão'); });
+      };
+      window.refreshHomeHealth();
+      setInterval(function() {
+        if (document.visibilityState === 'visible') window.refreshHomeHealth();
+      }, 5 * 60 * 1000);
+    })();
+    </script>
+
     <!-- Aniversários -->
     <div class="home-widget" id="home-bday-widget" style="display:none">
       <div class="home-widget-header">

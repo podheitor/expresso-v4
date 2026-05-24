@@ -591,6 +591,19 @@
         </div>
       </div>
 
+      <div class="card stack" style="margin-top:1rem">
+        <h2>Conteúdo remoto em e-mails</h2>
+        <p class="muted small">Por padrão, imagens externas são bloqueadas para proteger seu endereço IP e impedir rastreio (pixels de monitoramento).</p>
+        <label class="checkbox-row" style="display:flex;gap:.5rem;align-items:center">
+          <input type="checkbox" id="pref-load-ext-images" onchange="setLoadExtImages(this.checked)">
+          <span>Carregar imagens externas automaticamente</span>
+        </label>
+        <label class="checkbox-row" style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
+          <input type="checkbox" id="pref-block-trackers" onchange="setBlockTrackers(this.checked)">
+          <span>Avisar quando um e-mail contém possíveis pixels de rastreio</span>
+        </label>
+      </div>
+
       {% endif %}
 
     </div>
@@ -943,6 +956,16 @@ function previewLocalSettings() {
     el.textContent = '💾 ' + expressoCount + ' chaves Expresso · ' + fmt(expressoBytes) +
                      ' (total navegador: ' + count + ' chaves · ' + fmt(totalBytes) + ')';
   } catch(e) { el.textContent = 'Não foi possível medir o uso local.'; }
+})();
+var EXT_IMG_KEY = 'expresso_load_ext_images';
+var TRK_KEY = 'expresso_warn_trackers';
+function setLoadExtImages(v) { try { localStorage.setItem(EXT_IMG_KEY, v ? '1' : '0'); } catch(e){} }
+function setBlockTrackers(v) { try { localStorage.setItem(TRK_KEY, v ? '1' : '0'); } catch(e){} }
+(function initImgPrefs() {
+  var a = document.getElementById('pref-load-ext-images');
+  var b = document.getElementById('pref-block-trackers');
+  if (a) a.checked = localStorage.getItem(EXT_IMG_KEY) === '1';
+  if (b) b.checked = localStorage.getItem(TRK_KEY) !== '0';
 })();
 </script>
 {% endblock %}

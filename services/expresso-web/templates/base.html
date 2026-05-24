@@ -146,6 +146,12 @@
   (function() {
     var _g = false;
     document.addEventListener('keydown', function(e) {
+      // Ctrl+, → open Settings (always, even in inputs — like VSCode)
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        window.location.href = '/settings';
+        return;
+      }
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
       if (e.key === '/') {
         var search = document.getElementById('topbar-search');

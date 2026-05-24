@@ -60,6 +60,8 @@
       <div class="form-actions">
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
+        <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
+        <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
         <button class="btn btn-primary" type="submit">Agendar reunião</button>
       </div>
     </form>
@@ -137,6 +139,36 @@ function updateMeetInviteeCount(ta) {
   var emails = (ta.value || '').split(/[\n,;]+/).map(function(s){ return s.trim(); }).filter(Boolean);
   var unique = Array.from(new Set(emails.map(function(s){ return s.toLowerCase(); })));
   el.textContent = unique.length ? unique.length + ' convidado(s)' + (emails.length !== unique.length ? ' · ' + (emails.length - unique.length) + ' duplicado(s)' : '') : '';
+}
+function _meetFormData() {
+  var title = (document.querySelector('input[name="title"]') || {}).value || 'Reunião Expresso Meet';
+  var startV = (document.getElementById('meet-start') || {}).value || '';
+  var endV = (document.getElementById('meet-end') || {}).value || '';
+  var room = (document.querySelector('input[name="room_name"]') || {}).value || '';
+  var origin = window.location.origin;
+  var url = room ? (origin + '/meet/' + encodeURIComponent(room)) : origin + '/meet';
+  var details = 'Link da reunião: ' + url;
+  return { title: title, start: startV, end: endV, details: details };
+}
+function _toGcalDt(s) { return s ? s.replace(/-/g,'').replace(/:/g,'').replace('T','T') + '00' : ''; }
+function openInGoogleCal() {
+  var f = _meetFormData();
+  if (!f.start || !f.end) { alert('Defina início e fim primeiro.'); return; }
+  var u = 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+    + '&text=' + encodeURIComponent(f.title)
+    + '&dates=' + _toGcalDt(f.start) + '/' + _toGcalDt(f.end)
+    + '&details=' + encodeURIComponent(f.details);
+  window.open(u, '_blank', 'noopener');
+}
+function openInOutlook() {
+  var f = _meetFormData();
+  if (!f.start || !f.end) { alert('Defina início e fim primeiro.'); return; }
+  var u = 'https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent'
+    + '&subject=' + encodeURIComponent(f.title)
+    + '&startdt=' + encodeURIComponent(new Date(f.start).toISOString())
+    + '&enddt=' + encodeURIComponent(new Date(f.end).toISOString())
+    + '&body=' + encodeURIComponent(f.details);
+  window.open(u, '_blank', 'noopener');
 }
 </script>
 {% endblock %}

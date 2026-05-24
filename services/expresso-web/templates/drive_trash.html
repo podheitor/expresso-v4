@@ -22,6 +22,7 @@
            class="search-input-sm" style="width:18rem"
            oninput="filterTrash(this.value)">
     <span class="muted small" id="trash-visible-count"></span>
+    <span class="muted small" style="margin-left:auto">📊 Total: <strong id="trash-total-size">—</strong></span>
   </div>
   <table class="data-table">
     <thead>
@@ -29,7 +30,7 @@
     </thead>
     <tbody>
       {% for f in files %}
-      <tr class="trash-row" data-name="{{ f.name }}" data-fid="{{ f.id }}">
+      <tr class="trash-row" data-name="{{ f.name }}" data-fid="{{ f.id }}" data-bytes="{{ f.size_bytes }}">
         <td><input type="checkbox" class="trash-row-cb"></td>
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>{{ f.name }}</td>
@@ -95,5 +96,15 @@ function filterTrash(q) {
   var lbl = document.getElementById('trash-visible-count');
   if (lbl) lbl.textContent = q ? visible + ' visível(eis)' : '';
 }
+(function trashTotal() {
+  var el = document.getElementById('trash-total-size'); if (!el) return;
+  var total = 0;
+  document.querySelectorAll('.trash-row').forEach(function(r) { total += parseInt(r.dataset.bytes || '0', 10); });
+  var fmt = total < 1024 ? total + ' B'
+          : total < 1048576 ? (total/1024).toFixed(1) + ' KB'
+          : total < 1073741824 ? (total/1048576).toFixed(1) + ' MB'
+          : (total/1073741824).toFixed(2) + ' GB';
+  el.textContent = fmt;
+})();
 </script>
 {% endblock %}

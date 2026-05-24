@@ -57,6 +57,19 @@
         else if (e.key === 'f' || e.key === 'F') openImgFullscreen();
         else if (e.key === 'Escape') window.location.href = '/drive';
         else if (e.key === 'Backspace' && !e.metaKey) { e.preventDefault(); window.history.back(); }
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          try {
+            var list = JSON.parse(sessionStorage.getItem('expresso_drive_preview_list') || '[]');
+            var here = '{{ file.id }}';
+            var i = list.indexOf(here);
+            if (i < 0) return;
+            var ni = e.key === 'ArrowLeft' ? i - 1 : i + 1;
+            if (ni >= 0 && ni < list.length) {
+              e.preventDefault();
+              window.location.href = '/drive/preview/' + encodeURIComponent(list[ni]);
+            }
+          } catch(err){}
+        }
       });
       </script>
     {% else if file.preview_kind() == "pdf" %}

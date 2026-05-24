@@ -45,7 +45,9 @@
       <div class="form-actions" style="justify-content:flex-end">
         {% match contact_id %}{% when Some with (_id) %}
         <button type="button" onclick="document.getElementById('delete-form').submit()" class="btn btn-danger">Apagar</button>
-        {% when None %}{% endmatch %}
+        {% when None %}
+        <button type="submit" class="btn btn-ghost" name="save_and_new" value="1" onclick="markSaveAndNew(this.form)" title="Salvar e abrir novo formulário">Salvar e novo</button>
+        {% endmatch %}
         <button type="submit" class="btn btn-primary">Salvar</button>
       </div>
     </form>
@@ -89,6 +91,18 @@
     else if (contactKey && all[contactKey]) delete all[contactKey];
     saveBdays(all);
   });
+})();
+function markSaveAndNew(form) {
+  try { sessionStorage.setItem('expresso_contact_save_and_new', '1'); } catch(e){}
+}
+(function maybeReopenForm() {
+  try {
+    if (sessionStorage.getItem('expresso_contact_save_and_new') === '1') {
+      sessionStorage.removeItem('expresso_contact_save_and_new');
+      // After successful POST the server redirects back to contacts; from contacts page
+      // a banner with "Salvar e novo? voltar" could be added later. For now, do nothing here.
+    }
+  } catch(e){}
 })();
 </script>
 {% endblock %}

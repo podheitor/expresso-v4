@@ -107,6 +107,7 @@
           <button type="button" class="compose-rich-btn" onclick="rfmt('insertOrderedList')" title="Lista numerada">1.</button>
           <span class="compose-rich-sep"></span>
           <button type="button" class="compose-rich-btn" onclick="rfmt('removeFormat')" title="Limpar formatação">✕ fmt</button>
+          <button type="button" class="compose-rich-btn" onclick="insertComposeSignature()" title="Inserir assinatura salva">✍ Assinatura</button>
           <label class="compose-rich-toggle muted small">
             <input type="checkbox" id="toggle-rich" checked onchange="toggleRichMode(this.checked)"> Rich text
           </label>
@@ -562,5 +563,34 @@ function updateComposeRecipientCount() {
   });
   updateComposeRecipientCount();
 })();
+function insertComposeSignature() {
+  var SIG_KEY = 'expresso_signatures_{{ me.user_id }}';
+  var SIG_DEFAULT = 'expresso_default_sig_{{ me.user_id }}';
+  var sigs;
+  try { sigs = JSON.parse(localStorage.getItem(SIG_KEY) || '[]'); } catch(e) { sigs = []; }
+  if (!sigs.length) { alert('Nenhuma assinatura salva. Vá em Configurações para criar.'); return; }
+  var chosen;
+  if (sigs.length === 1) chosen = sigs[0];
+  else {
+    var def = localStorage.getItem(SIG_DEFAULT);
+    chosen = sigs.find(function(s){ return s.name === def; }) || sigs[0];
+    var pick = prompt('Assinaturas disponíveis:\n' + sigs.map(function(s,i){ return (i+1) + '. ' + s.name; }).join('\n') + '\n\nDigite o número:', '1');
+    if (pick === null) return;
+    var n = parseInt(pick, 10);
+    if (n >= 1 && n <= sigs.length) chosen = sigs[n - 1];
+  }
+  var body = chosen && (chosen.body || chosen.text || '');
+  if (!body) return;
+  var rich = document.getElementById('compose-rich-editor');
+  var ta = document.getElementById('compose-body-text');
+  var prefix = '\n\n-- \n';
+  if (rich && rich.style.display !== 'none') {
+    rich.innerHTML += prefix.replace(/\n/g, '<br>') + body.replace(/\n/g, '<br>');
+    if (typeof syncRichToText === 'function') syncRichToText();
+  } else if (ta) {
+    ta.value += prefix + body;
+    ta.dispatchEvent(new Event('input'));
+  }
+}
 </script>
 {% endblock %}

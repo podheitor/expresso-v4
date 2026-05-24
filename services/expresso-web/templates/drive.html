@@ -878,5 +878,11 @@ function applyDriveColor(btn, color) {
     }).join('');
   } catch(e){}
 })();
+// Populate session list of file IDs (for preview ←/→ navigation)
+(function seedPreviewList() {
+  var ids = Array.from(document.querySelectorAll('.drive-row-check')).map(function(b){ return b.dataset.id; }).filter(Boolean);
+  if (!ids.length) return;
+  try { sessionStorage.setItem('expresso_drive_preview_list', JSON.stringify(ids)); } catch(e){}
+})();
 </script>
 {% endblock %}

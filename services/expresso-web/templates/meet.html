@@ -276,5 +276,25 @@ function filterMeetLists(q) {
     li.style.display = (!q || n.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
+// "n" → agendar nova; "j/k" → navegar lista
+(function meetShortcuts() {
+  var idx = -1;
+  function items() { return document.querySelectorAll('.meet-list-item:not([style*="display: none"])'); }
+  function focus() {
+    items().forEach(function(li, i) {
+      li.style.outline = i === idx ? '2px solid var(--accent,#14b8a6)' : '';
+      if (i === idx) li.scrollIntoView({behavior:'smooth',block:'nearest'});
+    });
+  }
+  document.addEventListener('keydown', function(e) {
+    var t = (e.target && e.target.tagName) || '';
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); window.location.href = '/meet/schedule'; }
+    else if (e.key === 'j' || e.key === 'ArrowDown') { var l = items(); if (l.length) { idx = Math.min(idx+1, l.length-1); focus(); e.preventDefault(); } }
+    else if (e.key === 'k' || e.key === 'ArrowUp') { var l2 = items(); if (l2.length) { idx = Math.max(idx-1, 0); focus(); e.preventDefault(); } }
+    else if (e.key === 'Enter' && idx >= 0) { var l3 = items(); var a = l3[idx] ? l3[idx].querySelector('a.btn-primary') : null; if (a) window.location.href = a.href; }
+  });
+})();
 </script>
 {% endblock %}

@@ -1,7 +1,7 @@
 <header class="topbar">
   <a class="brand" href="/">Expresso</a>
   <nav class="appnav">
-    <a class="appnav-item{% if current == "mail"     %} active{% endif %}" href="/mail"     accesskey="1" title="Alt+1 / g+m">Mail</a>
+    <a class="appnav-item{% if current == "mail"     %} active{% endif %}" href="/mail"     accesskey="1" title="Alt+1 / g+m">Mail<span class="appnav-badge" id="mail-appnav-badge" style="display:none"></span></a>
     <a class="appnav-item{% if current == "calendar" %} active{% endif %}" href="/calendar" accesskey="2" title="Alt+2 / g+c">Agenda</a>
     <a class="appnav-item{% if current == "contacts" %} active{% endif %}" href="/contacts" accesskey="3" title="Alt+3">Contatos</a>
     <a class="appnav-item{% if current == "drive"    %} active{% endif %}" href="/drive"    accesskey="4" title="Alt+4 / g+d">Drive</a>
@@ -177,6 +177,30 @@ window.pushNotification = function(icon, body, href) {
   var n = parseInt(localStorage.getItem('expresso_tasks_today_count') || '0', 10);
   var badge = document.getElementById('tasks-appnav-badge');
   if (badge) { badge.textContent = n || ''; badge.style.display = n > 0 ? '' : 'none'; }
+})();
+
+// ── Mail badge polling (unread INBOX) ───────────────────────────────────────
+(function pollMailUnread() {
+  var badge = document.getElementById('mail-appnav-badge');
+  if (!badge) return;
+  function refresh() {
+    fetch('/api/v1/mail/folders/INBOX/unread-count', { credentials: 'include' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j) {
+        if (!j) return;
+        var n = parseInt(j.count || j.unread || 0, 10);
+        try { localStorage.setItem('expresso_mail_unread', String(n)); } catch(e){}
+        badge.textContent = n > 99 ? '99+' : (n || '');
+        badge.style.display = n > 0 ? '' : 'none';
+      }).catch(function(){});
+  }
+  // Seed from cached value to avoid flicker
+  var cached = parseInt(localStorage.getItem('expresso_mail_unread') || '0', 10);
+  if (cached > 0) { badge.textContent = cached > 99 ? '99+' : cached; badge.style.display = ''; }
+  refresh();
+  setInterval(function() {
+    if (document.visibilityState === 'visible') refresh();
+  }, 60000);
 })();
 
 // ── Global keyboard shortcuts ────────────────────────────────────────────────

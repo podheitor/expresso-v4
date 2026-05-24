@@ -6,7 +6,14 @@
   <div class="card" style="max-width:640px">
     <div class="page-header">
       <h1>{% match event_id %}{% when Some with (_) %}Editar evento{% when None %}Novo evento{% endmatch %}</h1>
-      <a class="link-sm" href="/calendar/{{ calendar.id }}">← voltar</a>
+      <div style="display:flex;gap:.4rem;align-items:center">
+        {% match event_id %}{% when Some with (_) %}
+          <button type="button" class="btn btn-ghost btn-sm" onclick="saveAsTemplate()" title="Salvar como modelo (local)">★ Modelo</button>
+        {% when None %}
+          <button type="button" class="btn btn-ghost btn-sm" onclick="loadTemplate(this)" title="Aplicar modelo salvo">★ Aplicar modelo</button>
+        {% endmatch %}
+        <a class="link-sm" href="/calendar/{{ calendar.id }}">← voltar</a>
+      </div>
     </div>
     <p class="muted" style="font-size:.875rem;margin-bottom:1rem">Agenda: <strong>{{ calendar.name }}</strong></p>
 
@@ -397,5 +404,39 @@ function clearLocation() {
     } catch(e){}
   });
 })();
+var EVT_TPL_KEY = 'expresso_event_templates';
+function getEventTemplates() { try { return JSON.parse(localStorage.getItem(EVT_TPL_KEY) || '[]'); } catch(e) { return []; } }
+function saveAsTemplate() {
+  var f = document.querySelector('form');
+  if (!f) return;
+  var fd = new FormData(f);
+  var name = prompt('Nome do modelo:', fd.get('summary') || 'Modelo');
+  if (!name) return;
+  var tpls = getEventTemplates();
+  tpls.unshift({
+    name: name,
+    summary: fd.get('summary') || '',
+    location: fd.get('location') || '',
+    description: fd.get('description') || '',
+    rrule: fd.get('rrule') || '',
+    saved_at: new Date().toISOString(),
+  });
+  try { localStorage.setItem(EVT_TPL_KEY, JSON.stringify(tpls.slice(0, 30))); alert('Modelo salvo: ' + name); } catch(e){}
+}
+function loadTemplate(btn) {
+  var tpls = getEventTemplates();
+  if (!tpls.length) { alert('Nenhum modelo salvo. Edite um evento e clique em ★ Modelo para criar.'); return; }
+  var pick = prompt('Modelos:\n' + tpls.map(function(t,i){ return (i+1) + '. ' + t.name; }).join('\n') + '\n\nNúmero:', '1');
+  if (pick === null) return;
+  var n = parseInt(pick, 10);
+  if (!(n >= 1 && n <= tpls.length)) return;
+  var t = tpls[n-1];
+  var f = document.querySelector('form');
+  if (!f) return;
+  ['summary','location','description','rrule'].forEach(function(k) {
+    var inp = f.querySelector('[name="' + k + '"]');
+    if (inp && t[k]) inp.value = t[k];
+  });
+}
 </script>
 {% endblock %}
