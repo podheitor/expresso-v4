@@ -2185,4 +2185,20 @@ window.copyMessagesWithLinks = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.scrollToFirstUnread = function(){
+  const el = document.querySelector('.message.unread, .msg.unread, [data-unread="true"]');
+  if (!el) {
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='Sem mensagens não lidas';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  el.scrollIntoView({behavior:'smooth', block:'center'});
+  el.style.outline = '2px solid #f60';
+  setTimeout(()=>{ el.style.outline=''; }, 2000);
+};
+</script>
 {% endblock %}

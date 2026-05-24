@@ -900,4 +900,27 @@ window.copyMonthStats = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyTopBusyDays = function(){
+  const cells = document.querySelectorAll('[data-day], .cal-day');
+  const counts = [];
+  cells.forEach(c => {
+    const n = c.querySelectorAll('.event,.cal-event,[data-event-id]').length;
+    if (n > 0) {
+      const d = c.getAttribute('data-day') || c.textContent.trim();
+      counts.push({day:d, n:n});
+    }
+  });
+  counts.sort((a,b)=>b.n-a.n);
+  const out = counts.slice(0,5).map(o => o.n+'\t'+o.day).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Top 5 dias mais cheios copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

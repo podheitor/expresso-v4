@@ -1126,4 +1126,17 @@ window.estimateReadTime = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copySubjectToClipboard = function(){
+  const subj = (document.querySelector('[name="subject"], #subject')||{}).value || '';
+  navigator.clipboard.writeText(subj).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=subj;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Assunto copiado ('+subj.length+' chars)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

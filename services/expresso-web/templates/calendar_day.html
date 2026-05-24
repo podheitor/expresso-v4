@@ -803,4 +803,31 @@ window.copyEventTitlesAlpha = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyEventDurations = function(){
+  const ev = document.querySelectorAll('.event,.cal-event,[data-event-id]');
+  const lines = [];
+  ev.forEach(e => {
+    const ts = e.querySelector('time,[data-start]');
+    const te = e.querySelector('[data-end]') || e.querySelector('time:last-of-type');
+    const s = ts && (ts.getAttribute('datetime') || ts.getAttribute('data-start'));
+    const en = te && (te.getAttribute('data-end') || te.getAttribute('datetime'));
+    if (!s || !en) return;
+    const ds = new Date(s), de = new Date(en);
+    if (isNaN(ds) || isNaN(de)) return;
+    const min = Math.round((de-ds)/60000);
+    const ti = ((e.querySelector('.title,[data-title]')||{}).textContent||'').trim();
+    lines.push(min+'min\t'+ti);
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' durações copiadas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

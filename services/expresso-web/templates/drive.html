@@ -1545,4 +1545,21 @@ window.copyOldestFile = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyTotalSize = function(){
+  const rows = document.querySelectorAll('.file-row, tr[data-file-id], li[data-file-id]');
+  let total = 0;
+  rows.forEach(r => total += (parseInt(r.getAttribute('data-size')||'0',10) || 0));
+  const mb = (total / 1024 / 1024).toFixed(2);
+  const s = total+' bytes ('+mb+' MB) em '+rows.length+' itens';
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=mb+' MB total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

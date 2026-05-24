@@ -757,4 +757,19 @@ window.copyAuditByAction = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyLastNAudit = function(n){
+  const k = typeof n === 'number' ? n : 50;
+  const rows = Array.from(document.querySelectorAll('.audit-row,tr[data-audit-id],li[data-audit-id]')).slice(0, k);
+  const out = rows.map(r => (r.textContent||'').trim().replace(/\s+/g,' ')).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Últimos '+rows.length+' eventos copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

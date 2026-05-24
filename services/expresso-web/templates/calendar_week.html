@@ -861,4 +861,25 @@ window.copyRecurringEvents = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyEarliestLatest = function(){
+  const ev = Array.from(document.querySelectorAll('.event,.cal-event,[data-event-id]')).map(e => {
+    const ts = (e.querySelector('time,[data-start]')||{});
+    const s = ts.getAttribute && (ts.getAttribute('datetime')||ts.getAttribute('data-start')||ts.textContent) || '';
+    return s ? new Date(s) : null;
+  }).filter(d => d && !isNaN(d));
+  if (!ev.length) return;
+  const min = new Date(Math.min.apply(null, ev));
+  const max = new Date(Math.max.apply(null, ev));
+  const s = 'Primeiro: '+min.toISOString()+'\nÚltimo:   '+max.toISOString();
+  navigator.clipboard.writeText(s).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=s;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='Janela da semana copiada';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

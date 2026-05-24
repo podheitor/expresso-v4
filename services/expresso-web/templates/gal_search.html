@@ -686,4 +686,19 @@ window.copyResultsTotal = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyResultUids = function(){
+  const rows = document.querySelectorAll('.gal-row,.result,tr[data-uid],li[data-uid]');
+  const ids = Array.from(rows).map(r => r.getAttribute('data-uid') || '').filter(Boolean);
+  const out = ids.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=ids.length+' UIDs copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}
