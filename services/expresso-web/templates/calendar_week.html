@@ -1906,5 +1906,24 @@ window.copyWeekLatestEnd=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortest=function(){
+  let best=null;
+  document.querySelectorAll('[data-event-start][data-event-end]').forEach(e=>{
+    const s=new Date(e.getAttribute('data-event-start'));
+    const en=new Date(e.getAttribute('data-event-end'));
+    if(isNaN(s)||isNaN(en))return;
+    const d=en-s;
+    if(d>0&&(best===null||d<best.d)){best={d,title:(e.getAttribute('data-event-title')||'').trim()};}
+  });
+  if(!best){alert('Sem eventos');return;}
+  const min=Math.round(best.d/60000);
+  const out=min+'min\t'+best.title;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='shortest '+min+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

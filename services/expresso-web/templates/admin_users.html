@@ -1801,5 +1801,24 @@ window.copyUsersWith2faOff=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedThisMonth=function(){
+  const now=new Date();
+  const ym=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const c=(r.getAttribute('data-user-created')||'').slice(0,7);
+    if(c===ym){
+      out.push((r.getAttribute('data-user-created')||'').slice(0,10)+'\t'+(r.getAttribute('data-user-email')||r.getAttribute('data-user-id')||''));
+    }
+  });
+  if(!out.length){alert('Nenhum criado neste mês');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' '+ym;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
