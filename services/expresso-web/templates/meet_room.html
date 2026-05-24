@@ -2374,5 +2374,17 @@ window.toggleMeetRecording=function(){
     setTimeout(()=>t.remove(),1500);
   }catch(e){alert('Erro: '+e.message);}
 };
+window.copyMeetIframeSrc=function(){
+  const f=document.querySelector('iframe');
+  if(!f){alert('Sem iframe');return;}
+  const src=f.src||'';
+  if(!src){alert('Sem src');return;}
+  const ta=document.createElement('textarea');ta.value=src;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='src '+src.length+'c';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

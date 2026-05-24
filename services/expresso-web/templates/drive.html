@@ -2847,5 +2847,22 @@ window.copyDriveByDayCreated=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDuplicateNames=function(){
+  const a={};
+  document.querySelectorAll('[data-file-id]').forEach(f=>{
+    const n=(f.getAttribute('data-file-name')||'').trim().toLowerCase();
+    if(!n)return;
+    a[n]=(a[n]||0)+1;
+  });
+  const dup=Object.keys(a).filter(k=>a[k]>1);
+  if(!dup.length){alert('Sem duplicados');return;}
+  const out=dup.map(k=>k+'\t'+a[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=dup.length+' dup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

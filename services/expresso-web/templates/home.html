@@ -2464,5 +2464,18 @@ window.copyHomeMemoryUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeDateTime=function(){
+  const d=new Date();
+  const iso=d.toISOString();
+  const local=d.toString();
+  const epoch=d.getTime();
+  const out='iso: '+iso+'\nlocal: '+local+'\nepoch: '+epoch;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=iso.slice(0,19);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

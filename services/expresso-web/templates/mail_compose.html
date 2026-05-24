@@ -2235,5 +2235,22 @@ window.dedupeRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.saveDraftSnapshot=function(){
+  const get=name=>document.getElementById(name)||document.querySelector('[name="'+name+'"]');
+  const snap={
+    subject:(get('subject')&&get('subject').value)||'',
+    to:(get('to')&&get('to').value)||'',
+    cc:(get('cc')&&get('cc').value)||'',
+    bcc:(get('bcc')&&get('bcc').value)||'',
+    body:(get('body')&&get('body').value)||'',
+    ts:new Date().toISOString()
+  };
+  localStorage.setItem('expresso_draft_snapshot_{{ me.user_id }}',JSON.stringify(snap));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='snap ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

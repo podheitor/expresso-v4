@@ -2132,5 +2132,16 @@ window.expandAllMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.collapseAllMessages=function(){
+  let closed=0;
+  document.querySelectorAll('[data-msg-id] details').forEach(d=>{
+    if(d.open){d.open=false;closed++;}
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='-'+closed+' close';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

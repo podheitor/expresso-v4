@@ -2688,5 +2688,22 @@ window.findDuplicateContacts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCsv=function(){
+  const out=['name,email,phone,company'];
+  document.querySelectorAll('[data-contact-id]').forEach(c=>{
+    const n=(c.getAttribute('data-contact-name')||'').replace(/"/g,'""');
+    const em=(c.getAttribute('data-contact-email')||'').replace(/"/g,'""');
+    const ph=(c.getAttribute('data-contact-phone')||c.getAttribute('data-contact-tel')||'').replace(/"/g,'""');
+    const co=(c.getAttribute('data-contact-company')||'').replace(/"/g,'""');
+    out.push('"'+n+'","'+em+'","'+ph+'","'+co+'"');
+  });
+  if(out.length<2){alert('Sem contatos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(out.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

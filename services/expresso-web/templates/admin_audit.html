@@ -2094,5 +2094,30 @@ window.copyAuditByIp=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLast7d=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const cut=Date.now()-7*86400000;
+  const out=[];
+  rows.forEach(r=>{
+    const ts=r.dataset.ts||r.querySelector('.audit-ts')?.textContent.trim()||'';
+    const d=Date.parse(ts);
+    if(!isNaN(d)&&d>=cut){
+      const a=r.dataset.action||r.querySelector('.audit-action')?.textContent.trim()||'';
+      const u=r.dataset.user||r.querySelector('.audit-user')?.textContent.trim()||'';
+      out.push(ts+'\t'+u+'\t'+a);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' 7d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
