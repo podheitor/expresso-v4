@@ -3107,5 +3107,28 @@ window.copyTasksRecentlyDone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueToday=function(){
+  const rows=document.querySelectorAll('[data-task-id]');
+  const today=new Date().toISOString().slice(0,10);
+  const out=[];
+  rows.forEach(r=>{
+    const d=(r.dataset.due||'').slice(0,10);
+    if(d===today){
+      const ti=r.querySelector('.task-title')?.textContent.trim()||r.dataset.taskId;
+      out.push(ti);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' hoje';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

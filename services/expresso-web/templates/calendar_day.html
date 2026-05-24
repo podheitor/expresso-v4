@@ -2359,5 +2359,31 @@ window.copyDayWithAttendees=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayBusyHours=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const hrs=new Array(24).fill(0);
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const en=Date.parse(e.dataset.end||'');
+    if(!isNaN(s)&&!isNaN(en)){
+      for(let h=new Date(s).getHours();h<=new Date(en).getHours();h++){
+        if(h>=0&&h<24)hrs[h]++;
+      }
+    }
+  });
+  const lines=hrs.map((v,i)=>String(i).padStart(2,'0')+'h: '+v);
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const busy=hrs.filter(v=>v>0).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=busy+'/24 busy';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

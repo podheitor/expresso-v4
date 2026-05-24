@@ -2359,5 +2359,25 @@ window.appendDateToSubject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.wordCountBody=function(){
+  const body=document.querySelector('[name=body]');
+  if(!body){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no body';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const v=body.value||'';
+  const words=v.trim()?v.trim().split(/\s+/).length:0;
+  const chars=v.length;
+  const lines=v.split('\n').length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=words+'w '+chars+'c '+lines+'l';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

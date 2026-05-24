@@ -2231,5 +2231,28 @@ window.copyAuditLogins=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByDow=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const names=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const by=new Array(7).fill(0);
+  rows.forEach(r=>{
+    const d=Date.parse(r.dataset.ts||'');
+    if(!isNaN(d))by[new Date(d).getDay()]++;
+  });
+  const lines=by.map((v,i)=>names[i]+': '+v);
+  const ta=document.createElement('textarea');
+  ta.value=lines.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  let peak=0,pi=0;
+  by.forEach((v,i)=>{if(v>peak){peak=v;pi=i;}});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='peak '+names[pi];
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
