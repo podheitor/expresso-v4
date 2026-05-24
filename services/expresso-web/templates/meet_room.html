@@ -2326,5 +2326,16 @@ window.toggleMeetMute=function(){
     setTimeout(()=>t.remove(),1500);
   }catch(e){alert('Erro: '+e.message);}
 };
+window.toggleMeetVideo=function(){
+  try{
+    if(!window.jitsiApi){alert('Jitsi não conectado');return;}
+    window.jitsiApi.executeCommand('toggleVideo');
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='video toggled';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){alert('Erro: '+e.message);}
+};
 </script>
 {% endblock %}
