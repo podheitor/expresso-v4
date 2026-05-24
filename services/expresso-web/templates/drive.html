@@ -1990,5 +1990,20 @@ window.copyDriveFolderTree=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTrashSize=function(){
+  const rows=Array.from(document.querySelectorAll('[data-file-id]')).filter(r=>r.dataset.fileTrashed==='true');
+  let bytes=0;
+  rows.forEach(r=>{bytes+=parseInt(r.dataset.fileSize||'0',10);});
+  const mb=(bytes/1024/1024).toFixed(2);
+  const ta=document.createElement('textarea');
+  ta.value='lixeira: '+rows.length+' arquivos '+mb+' MB';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lixeira '+mb+' MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1202,5 +1202,19 @@ window.copyAuditByTenant=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFirstLastTs=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-id]'));
+  if(!rows.length)return;
+  const ts=rows.map(r=>r.dataset.auditTs||'').filter(Boolean).sort();
+  const ta=document.createElement('textarea');
+  ta.value='first: '+ts[0]+'\nlast:  '+ts[ts.length-1];
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='first/last ts';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

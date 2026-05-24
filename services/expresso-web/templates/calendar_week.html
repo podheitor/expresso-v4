@@ -1323,5 +1323,19 @@ window.copyWeekShortEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekDeepWorkHours=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]')).map(r=>({s:r.dataset.eventStart||'',e:r.dataset.eventEnd||''})).filter(x=>x.s&&x.e).sort((a,b)=>a.s.localeCompare(b.s));
+  let deep=0;
+  for(let i=0;i<rows.length-1;i++){const gap=(new Date(rows[i+1].s)-new Date(rows[i].e))/60000;if(gap>=120)deep+=gap;}
+  const ta=document.createElement('textarea');
+  ta.value='deep work: '+(deep/60).toFixed(1)+'h';
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=(deep/60).toFixed(1)+'h deep work';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
