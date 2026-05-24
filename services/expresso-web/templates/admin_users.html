@@ -831,4 +831,28 @@ window.copyUsersAsCsv = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyInactiveUsers = function(days){
+  const k = typeof days === 'number' ? days : 90;
+  const cutoff = Date.now() - k*86400000;
+  const rows = document.querySelectorAll('.user-row,tr[data-user-id],li[data-user-id]');
+  const lines = [];
+  rows.forEach(r => {
+    const last = new Date(r.getAttribute('data-last-login')||'').getTime();
+    if (isNaN(last) || last < cutoff) {
+      const e = ((r.querySelector('.email,[data-email]')||{}).textContent||r.getAttribute('data-email')||'').trim();
+      if (e) lines.push(e+'\t'+(isNaN(last)?'never':new Date(last).toISOString().slice(0,10)));
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' inativos ≥'+k+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

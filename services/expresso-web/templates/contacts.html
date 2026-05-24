@@ -1391,4 +1391,27 @@ window.copyContactsAsTsv = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyEmptyContacts = function(){
+  const rows = document.querySelectorAll('.contact,.contact-row,li[data-contact-id],tr[data-contact-id]');
+  const empty = [];
+  rows.forEach(r => {
+    const e = ((r.querySelector('.email,[data-email]')||{}).textContent||r.getAttribute('data-email')||'').trim();
+    const p = ((r.querySelector('.phone,[data-phone]')||{}).textContent||r.getAttribute('data-phone')||'').trim();
+    if (!e && !p) {
+      const n = ((r.querySelector('.name,[data-name]')||{}).textContent||r.getAttribute('data-name')||'').trim();
+      if (n) empty.push(n);
+    }
+  });
+  const out = empty.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=empty.length+' contatos sem email nem telefone';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

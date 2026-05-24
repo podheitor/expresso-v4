@@ -2241,4 +2241,25 @@ window.copyMessagesWithCode = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyMsgsByDay = function(){
+  const msgs = document.querySelectorAll('.message,.msg,[data-msg-id]');
+  const counts = {};
+  msgs.forEach(m => {
+    const ts = (m.querySelector('time,[data-ts]')||{});
+    const s = ts.getAttribute && (ts.getAttribute('datetime')||ts.getAttribute('data-ts')||ts.textContent) || '';
+    const day = (s||'').slice(0,10);
+    if (day) counts[day] = (counts[day]||0)+1;
+  });
+  const out = Object.entries(counts).sort().map(([k,v])=>k+'\t'+v).join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(counts).length+' dias copiados';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1800);
+};
+</script>
 {% endblock %}

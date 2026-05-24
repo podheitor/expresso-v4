@@ -931,4 +931,26 @@ window.copyAfterHoursEvents = function(){
   setTimeout(()=>t.remove(),1800);
 };
 </script>
+<script>
+window.copyAllDayWeek = function(){
+  const ev = document.querySelectorAll('.event,.cal-event,[data-event-id]');
+  const lines = [];
+  ev.forEach(e => {
+    if (e.classList.contains('all-day') || e.getAttribute('data-all-day') === 'true') {
+      const ti = ((e.querySelector('.title,[data-title]')||{}).textContent||'').trim();
+      const s = (e.querySelector('time,[data-start]')||{}).getAttribute && e.querySelector('time,[data-start]').getAttribute('datetime') || '';
+      lines.push(s.slice(0,10)+'\t'+ti);
+    }
+  });
+  const out = lines.join('\n');
+  navigator.clipboard.writeText(out).catch(()=>{
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=lines.length+' all-day';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
+</script>
 {% endblock %}

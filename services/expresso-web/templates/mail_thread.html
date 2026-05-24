@@ -914,4 +914,14 @@ window.copyUniqueLinks = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.scrollToLastMsg = function(){
+  const msgs = document.querySelectorAll('.message,.msg,[data-msg-id]');
+  if (!msgs.length) return;
+  const last = msgs[msgs.length-1];
+  last.scrollIntoView({behavior:'smooth', block:'end'});
+  last.style.outline = '2px solid #0a0';
+  setTimeout(()=>{ last.style.outline=''; }, 1500);
+};
+</script>
 {% endblock %}

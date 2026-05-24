@@ -1504,4 +1504,18 @@ window.copyThreadIds = function(){
   setTimeout(()=>t.remove(),1500);
 };
 </script>
+<script>
+window.copyAvgSubjectLen = function(){
+  const rows = document.querySelectorAll('.mail-row, tr[data-mail-id], li[data-mail-id]');
+  if (!rows.length) return;
+  let total = 0;
+  rows.forEach(r => total += (((r.querySelector('.subject,[data-subject]')||{}).textContent||'').trim()).length);
+  const avg = Math.round(total / rows.length);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=avg+' chars/assunto (média de '+rows.length+')';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2000);
+};
+</script>
 {% endblock %}

@@ -1530,4 +1530,20 @@ window.kickAll = function(){
   });
 };
 </script>
+<script>
+window.copyParticipantList = function(){
+  if (!window.jitsiApi) return;
+  Promise.resolve(window.jitsiApi.getParticipantsInfo ? window.jitsiApi.getParticipantsInfo() : []).then(list => {
+    const out = (list||[]).map(p => (p.displayName||'?')+'\t'+(p.participantId||'')).join('\n');
+    navigator.clipboard.writeText(out).catch(()=>{
+      const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    });
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=(list||[]).length+' participantes';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
+</script>
 {% endblock %}
