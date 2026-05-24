@@ -13,6 +13,7 @@
     <input type="search" id="admin-config-search" class="search-input-sm" placeholder="🔍 Filtrar configurações…"
            oninput="filterAdminConfig(this.value)" style="margin-left:auto;width:18rem">
   </div>
+  <nav id="admin-config-toc" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.75rem;padding:.5rem;background:var(--surface-2);border-radius:var(--radius)"></nav>
 
   <form class="compose-form" method="post" action="/admin/config" style="max-width:600px">
     <div class="card stack" style="margin-bottom:1rem">
@@ -255,6 +256,22 @@ function filterAdminConfig(q) {
     var inp = document.getElementById('admin-config-search');
     if (q && inp) { inp.value = q; filterAdminConfig(q); }
   } catch(e){}
+})();
+(function buildAdminConfigToc() {
+  var nav = document.getElementById('admin-config-toc');
+  if (!nav) return;
+  var headers = document.querySelectorAll('.admin-page h2');
+  if (!headers.length) { nav.style.display = 'none'; return; }
+  headers.forEach(function(h, i) {
+    var id = 'admin-cfg-sec-' + i;
+    h.id = id;
+    var a = document.createElement('a');
+    a.href = '#' + id;
+    a.textContent = (h.textContent || '').trim();
+    a.style.cssText = 'padding:.2rem .5rem;background:var(--surface);border-radius:.3rem;text-decoration:none;font-size:.78rem;color:var(--text)';
+    a.addEventListener('click', function(e){ e.preventDefault(); h.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    nav.appendChild(a);
+  });
 })();
 (function backToTopBtn() {
   var btn = document.createElement('button');

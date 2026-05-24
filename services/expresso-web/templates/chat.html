@@ -103,6 +103,7 @@
             {% when None %}{% endmatch %}
         </div>
         <div class="chat-header-actions">
+          <button class="chat-action-btn" id="chat-mute-btn" onclick="toggleChannelMute('{{ ch.id }}')" title="Silenciar notificações deste canal">🔔</button>
           <div id="chat-members-online" class="chat-members-online" title="Membros online"></div>
           <div class="chat-search-wrap" id="chat-search-wrap">
             <button class="chat-action-btn" onclick="toggleChatSearch()" title="Buscar mensagens">🔍</button>
@@ -1460,6 +1461,26 @@ function exportChannelMarkdown() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+var CHAT_MUTE_KEY = 'expresso_chat_muted_channels';
+function loadMutedChannels() { try { return JSON.parse(localStorage.getItem(CHAT_MUTE_KEY) || '[]'); } catch(e) { return []; } }
+function toggleChannelMute(cid) {
+  if (!cid) return;
+  var muted = loadMutedChannels();
+  var i = muted.indexOf(cid);
+  if (i >= 0) muted.splice(i, 1); else muted.push(cid);
+  localStorage.setItem(CHAT_MUTE_KEY, JSON.stringify(muted));
+  updateMuteBtn(cid);
+}
+function updateMuteBtn(cid) {
+  var btn = document.getElementById('chat-mute-btn'); if (!btn) return;
+  var isMuted = loadMutedChannels().indexOf(cid) >= 0;
+  btn.textContent = isMuted ? '🔕' : '🔔';
+  btn.title = isMuted ? 'Notificações silenciadas — clique para reativar' : 'Silenciar notificações deste canal';
+  btn.style.opacity = isMuted ? '.6' : '';
+}
+(function initMuteBtn() {
+  {% match active_channel %}{% when Some with (ac) %}updateMuteBtn('{{ ac.id }}');{% when None %}{% endmatch %}
+})();
 function updateChatCharCount(ta) {
   var el = document.getElementById('chat-char-count');
   if (!el) return;

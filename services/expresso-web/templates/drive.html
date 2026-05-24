@@ -75,6 +75,10 @@
     </div>
   </div>
 
+  <div id="drive-recent-edits" style="display:none;margin-bottom:.75rem;padding:.5rem .75rem;background:var(--surface-2);border-radius:var(--radius);border:1px dashed var(--border)">
+    <span class="muted small" style="font-weight:500">⏱ Editados recentemente</span>
+    <ul id="drive-recent-edits-list" style="list-style:none;padding:0;margin:.3rem 0 0;display:flex;flex-wrap:wrap;gap:.3rem;font-size:.78rem"></ul>
+  </div>
   {% if files.is_empty() %}
     <div class="empty-state">Pasta vazia</div>
   {% else %}
@@ -826,6 +830,22 @@ function applyDriveColor(btn, color) {
     var sel = document.getElementById('drive-type-filter');
     var v = localStorage.getItem('expresso_drive_type_filter_{{ me.user_id }}');
     if (sel && v) sel.value = v;
+  } catch(e){}
+})();
+(function loadRecentEdits() {
+  try {
+    var arr = JSON.parse(localStorage.getItem('expresso_recent_edits') || '[]');
+    if (!arr.length) return;
+    var box = document.getElementById('drive-recent-edits');
+    var list = document.getElementById('drive-recent-edits-list');
+    if (!box || !list) return;
+    box.style.display = 'block';
+    list.innerHTML = arr.slice(0, 6).map(function(e) {
+      var safe = String(e.name || e.id).replace(/[<>"&]/g, function(c) {
+        return { '<': '&lt;', '>': '&gt;', '"': '&quot;', '&': '&amp;' }[c];
+      });
+      return '<li><a href="/drive/' + encodeURIComponent(e.id) + '/edit" style="display:inline-block;padding:.15rem .4rem;background:var(--surface);border-radius:.3rem;text-decoration:none">📄 ' + safe + '</a></li>';
+    }).join('');
   } catch(e){}
 })();
 </script>

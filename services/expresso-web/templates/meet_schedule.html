@@ -42,6 +42,13 @@
         <textarea name="description" rows="4" placeholder="Tópicos a tratar, links relevantes…"></textarea>
       </label>
 
+      <label>
+        <span>Convidados <span class="muted">(opcional, um e-mail por linha)</span></span>
+        <textarea name="invitees" id="meet-invitees-ta" rows="3" placeholder="fulano@expresso.local"
+                  oninput="updateMeetInviteeCount(this)"></textarea>
+        <span class="muted small" id="meet-invitees-count"></span>
+      </label>
+
       <div class="form-actions">
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
@@ -99,6 +106,12 @@ function setMeetDur(mins) {
   e.value = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
           + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
   if (typeof updateMeetTzPreview === 'function') updateMeetTzPreview();
+}
+function updateMeetInviteeCount(ta) {
+  var el = document.getElementById('meet-invitees-count'); if (!el) return;
+  var emails = (ta.value || '').split(/[\n,;]+/).map(function(s){ return s.trim(); }).filter(Boolean);
+  var unique = Array.from(new Set(emails.map(function(s){ return s.toLowerCase(); })));
+  el.textContent = unique.length ? unique.length + ' convidado(s)' + (emails.length !== unique.length ? ' · ' + (emails.length - unique.length) + ' duplicado(s)' : '') : '';
 }
 </script>
 {% endblock %}

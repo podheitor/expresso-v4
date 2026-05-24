@@ -5,7 +5,7 @@
 <div class="page">
   <div class="page-header">
     <div>
-      <h1>{{ selected.name }} <span class="muted small" id="month-event-total" style="font-size:.7rem;font-weight:400"></span></h1>
+      <h1>{{ selected.name }} <span class="muted small" id="month-event-total" style="font-size:.7rem;font-weight:400"></span> <span class="muted small" id="month-next7-total" style="font-size:.7rem;font-weight:400"></span></h1>
       <p class="muted">{{ month_label }}</p>
     </div>
     <div class="row">
@@ -386,6 +386,18 @@ document.addEventListener('keydown', function(e) {
   });
   var el = document.getElementById('month-event-total');
   if (el) el.textContent = total > 0 ? '· ' + total + ' evento(s) este mês' : '';
+  var next7 = 0;
+  var today = new Date(); today.setHours(0,0,0,0);
+  var horizon = new Date(today.getTime() + 7 * 86400000);
+  document.querySelectorAll('.month-cell[data-date]').forEach(function(cell) {
+    var d = new Date(cell.dataset.date + 'T00:00:00');
+    if (isNaN(d.getTime())) return;
+    if (d < today || d > horizon) return;
+    var c = cell.querySelector('.cell-event-count');
+    if (c) next7 += parseInt(c.textContent || '0', 10) || 0;
+  });
+  var el2 = document.getElementById('month-next7-total');
+  if (el2) el2.textContent = next7 > 0 ? '· ' + next7 + ' nos próximos 7 dias' : '';
 })();
 function filterMonthEvents(q) {
   q = (q || '').toLowerCase().trim();

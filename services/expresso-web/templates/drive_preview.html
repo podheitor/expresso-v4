@@ -55,6 +55,8 @@
         else if (e.key === '0') zoomImgReset();
         else if (e.key === 'r' || e.key === 'R') rotateImg();
         else if (e.key === 'f' || e.key === 'F') openImgFullscreen();
+        else if (e.key === 'Escape') window.location.href = '/drive';
+        else if (e.key === 'Backspace' && !e.metaKey) { e.preventDefault(); window.history.back(); }
       });
       </script>
     {% else if file.preview_kind() == "pdf" %}

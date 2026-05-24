@@ -47,5 +47,16 @@ function openWopiNewTab() {
   if (!iframe) return;
   window.open(iframe.src, '_blank', 'noopener');
 }
+(function trackRecentEdits() {
+  try {
+    var KEY = 'expresso_recent_edits';
+    var arr = JSON.parse(localStorage.getItem(KEY) || '[]');
+    var entry = { id: '{{ file.id }}', name: '{{ file.name }}', ts: Date.now() };
+    arr = arr.filter(function(x){ return x.id !== entry.id; });
+    arr.unshift(entry);
+    if (arr.length > 10) arr = arr.slice(0, 10);
+    localStorage.setItem(KEY, JSON.stringify(arr));
+  } catch(e){}
+})();
 </script>
 {% endblock %}

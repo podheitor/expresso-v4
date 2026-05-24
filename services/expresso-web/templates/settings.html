@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Configurações · Expresso{% endblock %}
+{% block title %}{% if tab == "profile" %}Perfil{% else if tab == "signature" %}Assinatura{% else if tab == "autoreply" %}Resposta automática{% else if tab == "notifications" %}Notificações{% else if tab == "security" %}Segurança{% else if tab == "filters" %}Filtros{% else if tab == "shortcuts" %}Atalhos{% else if tab == "privacy" %}Privacidade{% else %}Configurações{% endif %} · Configurações · Expresso{% endblock %}
 {% block nav %}{% let current = "settings" %}{% include "_appnav.html" %}{% endblock %}
 {% block body %}
 <div class="page settings-page">

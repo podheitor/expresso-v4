@@ -123,6 +123,7 @@
         </label>
       </div>
       <ul class="compose-attach-list" id="compose-attach-list"></ul>
+      <div class="muted small" id="compose-attach-summary" style="font-size:.72rem;margin-top:.2rem"></div>
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Enviar</button>
@@ -265,6 +266,8 @@ function removeAttach(idx) {
 function renderAttachList() {
   var ul = document.getElementById('compose-attach-list');
   ul.innerHTML = '';
+  var ext = document.getElementById('compose-attach-summary');
+  if (ext) ext.textContent = _attachFiles.length ? ('📎 ' + _attachFiles.length + ' anexo(s)') : '';
   var total = 0;
   _attachFiles.forEach(function(f, i) {
     total += f.size;

@@ -77,7 +77,9 @@ function filterAudit(q) {
   var action = document.getElementById('audit-action-filter').value;
   var from = document.getElementById('audit-date-from').value;
   var to = document.getElementById('audit-date-to').value;
+  var matched = 0, total = 0;
   document.querySelectorAll('.audit-row').forEach(function(r) {
+    total++;
     var textMatch = !q || r.dataset.user.toLowerCase().includes(q.toLowerCase()) ||
                     r.dataset.action.toLowerCase().includes(q.toLowerCase()) ||
                     (r.dataset.resource || '').toLowerCase().includes(q.toLowerCase());
@@ -85,8 +87,20 @@ function filterAudit(q) {
     var ts = r.dataset.ts || '';
     var fromMatch = !from || ts >= from;
     var toMatch = !to || ts.slice(0,10) <= to;
-    r.style.display = (textMatch && actionMatch && fromMatch && toMatch) ? '' : 'none';
+    var ok = textMatch && actionMatch && fromMatch && toMatch;
+    r.style.display = ok ? '' : 'none';
+    if (ok) matched++;
   });
+  var hint = document.getElementById('audit-match-count');
+  if (!hint) {
+    hint = document.createElement('span');
+    hint.id = 'audit-match-count';
+    hint.className = 'muted small';
+    hint.style.cssText = 'margin-left:.4rem';
+    var filters = document.querySelector('.admin-filters');
+    if (filters) filters.appendChild(hint);
+  }
+  hint.textContent = (q || action || from || to) ? (matched + '/' + total + ' linhas') : '';
 }
 // ── Live-tail ─────────────────────────────────────────────────────────────────
 var _auditLiveTimer = null;

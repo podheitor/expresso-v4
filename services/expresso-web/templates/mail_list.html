@@ -38,6 +38,7 @@
           <button class="btn btn-ghost btn-sm" onclick="markAllRead()" title="Marcar todas como lidas">✓ Todas lidas</button>
           <button class="btn btn-ghost btn-sm" id="sender-filter-btn" onclick="clearSenderFilter()" style="display:none" title="Limpar filtro de remetente">✕ <span id="sender-filter-label"></span></button>
           <button class="btn btn-ghost btn-sm" onclick="toggleMailFilters()" title="Filtros avançados">⚙ Filtros</button>
+          <button class="btn btn-ghost btn-sm" onclick="showMailShortcuts()" title="Atalhos de teclado">⌨</button>
           <form method="get" action="/mail/search" class="toolbar-search">
             <input type="search" name="q" placeholder="Pesquisar..." class="search-input-sm">
           </form>
@@ -827,6 +828,18 @@ function copyMsgLink(btn) {
     btn.textContent = '✓';
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
+}
+function showMailShortcuts() {
+  alert('Atalhos de teclado:\n\n' +
+    'j / ↓     próxima mensagem\n' +
+    'k / ↑     mensagem anterior\n' +
+    'Enter     abrir\n' +
+    'r         responder\n' +
+    'f         encaminhar\n' +
+    'e         arquivar\n' +
+    '#         apagar\n' +
+    'u         marcar não lida\n' +
+    '/         buscar');
 }
 </script>
 {% endblock %}

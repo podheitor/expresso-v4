@@ -112,6 +112,20 @@ function copyTenantId(btn, id) {
     setTimeout(function(){ btn.textContent = prev; }, 1200);
   });
 }
+(function adminTenantsShortcuts() {
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      var s = document.getElementById('tenant-search');
+      if (s) { s.focus(); s.select(); }
+    } else if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      if (typeof showModal === 'function') showModal('admin-tenant-modal');
+    }
+  });
+})();
 var _tenantSortAsc = {};
 function sortTenants(col, numeric) {
   var tbody = document.querySelector('table.admin-table tbody');

@@ -78,6 +78,7 @@
               <a class="btn btn-ghost btn-sm" href="/mail/{{ msg.id }}" style="display:inline-block">Abrir completo</a>
               <a class="btn btn-ghost btn-sm" href="/mail/compose?reply_to={{ msg.id }}&folder=INBOX">↩ Responder</a>
               <a class="btn btn-ghost btn-sm" href="/mail/compose?forward={{ msg.id }}&folder=INBOX">→ Encaminhar</a>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="printOneMsg('{{ msg.id }}')" title="Imprimir só esta mensagem">🖨</button>
             </div>
             <div id="thread-body-content-{{ msg.id }}" class="thread-body-content">
               {% if !msg.preview_display().is_empty() %}
@@ -307,6 +308,17 @@ function toggleThreadToc() {
   });
   panel.innerHTML = html;
   document.body.appendChild(panel);
+}
+function printOneMsg(mid) {
+  var src = document.getElementById('tmsg-' + mid);
+  if (!src) return;
+  var w = window.open('', '_blank', 'width=720,height=900');
+  if (!w) { alert('Bloqueador de pop-up impediu a impressão.'); return; }
+  w.document.write('<html><head><title>Mensagem · Expresso</title>' +
+    '<style>body{font-family:sans-serif;padding:1.5rem;color:#000}.thread-msg-actions,.thread-msg-body-actions,.thread-collapse-icon{display:none!important}blockquote{border-left:3px solid #ccc;padding-left:.6rem;color:#555}</style>' +
+    '</head><body>' + src.outerHTML +
+    '<scr' + 'ipt>window.onload=function(){window.print();}</scr' + 'ipt></body></html>');
+  w.document.close();
 }
 </script>
 {% endblock %}

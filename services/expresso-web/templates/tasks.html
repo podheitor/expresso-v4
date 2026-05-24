@@ -57,6 +57,7 @@
       <div style="padding:.5rem .75rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.3rem">
         <button class="btn btn-ghost btn-sm" onclick="exportTasksCsv()" style="width:100%;font-size:.78rem">⬇ Exportar CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="exportTasksJson()" style="width:100%;font-size:.78rem" title="Exportar tarefas e configurações como JSON">⬇ Exportar JSON</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportTasksIcs()" style="width:100%;font-size:.78rem" title="Exportar como VTODO (.ics)">⬇ Exportar .ics</button>
         <label class="btn btn-ghost btn-sm" style="width:100%;font-size:.78rem;cursor:pointer;text-align:center">📥 Importar JSON
           <input type="file" accept="application/json" style="display:none" onchange="importTasksJson(this)">
         </label>
@@ -880,6 +881,33 @@ function sortTasksBy(arr, mode) {
   if (sel) sel.value = getTasksSort();
 })();
 
+// ── Export VTODO ────────────────────────────────────────────────────────────
+function exportTasksIcs() {
+  var tasks = loadTasks();
+  if (!tasks.length) { alert('Sem tarefas para exportar.'); return; }
+  function esc(s) { return String(s || '').replace(/\\/g, '\\\\').replace(/[,;]/g, '\\$&').replace(/\n/g, '\\n'); }
+  function dt(s) { if (!s) return ''; var d = new Date(s); if (isNaN(d.getTime())) return ''; return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+  var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Expresso//Tasks//PT-BR'];
+  var stamp = dt(new Date().toISOString());
+  tasks.forEach(function(t, i) {
+    lines.push('BEGIN:VTODO');
+    lines.push('UID:' + (t.id || ('task-' + i)) + '@expresso');
+    lines.push('DTSTAMP:' + stamp);
+    lines.push('SUMMARY:' + esc(t.title || t.text || 'Tarefa'));
+    if (t.due) lines.push('DUE:' + dt(t.due));
+    if (t.notes) lines.push('DESCRIPTION:' + esc(t.notes));
+    lines.push('STATUS:' + (t.done ? 'COMPLETED' : 'NEEDS-ACTION'));
+    if (t.priority) lines.push('PRIORITY:' + parseInt(t.priority, 10));
+    lines.push('END:VTODO');
+  });
+  lines.push('END:VCALENDAR');
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-tasks-' + new Date().toISOString().slice(0,10) + '.ics';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 // ── Import/Export JSON ──────────────────────────────────────────────────────
 function exportTasksJson() {
   var payload = { v: 1, exported_at: new Date().toISOString(), tasks: loadTasks() };
