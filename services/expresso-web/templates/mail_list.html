@@ -2780,5 +2780,26 @@ window.copyMailBySender=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailFlagged=function(){
+  const rows=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  rows.forEach(r=>{
+    if(r.dataset.flagged==='true'||r.classList.contains('flagged')||r.querySelector('.flag-icon.on')){
+      const s=r.querySelector('.msg-subject')?.textContent.trim()||r.dataset.msgId;
+      out.push(s);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' ⚑';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

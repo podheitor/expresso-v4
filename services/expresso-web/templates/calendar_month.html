@@ -2335,5 +2335,27 @@ window.copyMonthAvgPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFirstLast=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const ts=[];
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    if(!isNaN(s))ts.push(s);
+  });
+  ts.sort((a,b)=>a-b);
+  const first=ts[0]?new Date(ts[0]).toISOString():'(none)';
+  const last=ts[ts.length-1]?new Date(ts[ts.length-1]).toISOString():'(none)';
+  const ta=document.createElement('textarea');
+  ta.value='first: '+first+'\nlast: '+last;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='1st/last';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

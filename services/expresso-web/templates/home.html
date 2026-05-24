@@ -2507,5 +2507,20 @@ window.copyHomeUserAgent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeCookieCount=function(){
+  const ck=document.cookie||'';
+  const parts=ck?ck.split(';').map(s=>s.trim().split('=')[0]).filter(Boolean):[];
+  const ta=document.createElement('textarea');
+  ta.value=parts.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=parts.length+' ck';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

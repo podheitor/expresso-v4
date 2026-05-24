@@ -2908,5 +2908,28 @@ window.copyDriveByExt=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestN=function(){
+  const n=parseInt(prompt('Top N por tamanho:','10'),10)||10;
+  const rows=document.querySelectorAll('[data-file-id]');
+  const arr=[];
+  rows.forEach(r=>{
+    const sz=parseInt(r.dataset.size||'0',10);
+    const nm=r.dataset.name||r.querySelector('.file-name')?.textContent.trim()||r.dataset.fileId;
+    arr.push({sz,nm});
+  });
+  arr.sort((a,b)=>b.sz-a.sz);
+  const out=arr.slice(0,n).map(x=>x.sz+'\t'+x.nm);
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
