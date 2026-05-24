@@ -1841,5 +1841,23 @@ window.copyDraftLinks=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDraftTo=function(){
+  const to=document.querySelector('input[name=to]')||document.querySelector('textarea[name=to]');
+  const cc=document.querySelector('input[name=cc]')||document.querySelector('textarea[name=cc]');
+  const bcc=document.querySelector('input[name=bcc]')||document.querySelector('textarea[name=bcc]');
+  const parts=[];
+  if(to&&to.value.trim())parts.push('to: '+to.value.trim());
+  if(cc&&cc.value.trim())parts.push('cc: '+cc.value.trim());
+  if(bcc&&bcc.value.trim())parts.push('bcc: '+bcc.value.trim());
+  if(!parts.length){alert('Sem destinatários');return;}
+  const out=parts.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const total=parts.reduce((n,p)=>n+(p.split(/[,;]/).length),0);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total+' destinatários';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

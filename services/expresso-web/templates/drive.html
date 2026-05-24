@@ -2317,5 +2317,20 @@ window.copyDriveSelectedPaths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveEmpty=function(){
+  const rows=document.querySelectorAll('[data-file-name][data-file-size]');
+  const out=[];
+  rows.forEach(r=>{
+    const sz=parseInt(r.getAttribute('data-file-size')||'-1',10);
+    if(sz===0)out.push(r.getAttribute('data-file-name'));
+  });
+  if(!out.length){alert('Sem arquivos vazios');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' vazios';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1457,5 +1457,18 @@ window.copyGalRandomPick=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalCountTotal=function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  const total=rows.length;
+  const withTitle=Array.from(rows).filter(r=>(r.getAttribute('data-gal-title')||'').trim()).length;
+  const withPhone=Array.from(rows).filter(r=>(r.getAttribute('data-gal-phone')||'').trim()).length;
+  const out='total: '+total+'\ncom cargo: '+withTitle+'\ncom telefone: '+withPhone;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=total+' total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

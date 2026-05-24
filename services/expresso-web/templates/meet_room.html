@@ -2052,5 +2052,17 @@ window.muteEveryoneMeet=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetParticipantCount=function(){
+  if(!window.jitsiApi){alert('Jitsi ausente');return;}
+  try{
+    const n=window.jitsiApi.getNumberOfParticipants?window.jitsiApi.getNumberOfParticipants():'?';
+    const ta=document.createElement('textarea');ta.value=String(n);document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent=n+' participantes';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){alert(e.message);}
+};
 </script>
 {% endblock %}

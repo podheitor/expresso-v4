@@ -2215,5 +2215,19 @@ window.copyMailLargerThan=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSenderFreq=function(){
+  const rows=document.querySelectorAll('[data-mail-from]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  const buckets={};
+  rows.forEach(r=>{const f=(r.getAttribute('data-mail-from')||'?').toLowerCase();buckets[f]=(buckets[f]||0)+1;});
+  const sorted=Object.entries(buckets).sort((a,b)=>b[1]-a[1]).slice(0,20);
+  const out=sorted.map(([f,c])=>c+'\t'+f).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+sorted.length+' remetentes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

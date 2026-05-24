@@ -2432,5 +2432,22 @@ window.copyTasksOverdueList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksProgressPct=function(){
+  const rows=document.querySelectorAll('[data-task-id]');
+  if(!rows.length){alert('Sem tasks');return;}
+  let done=0;
+  rows.forEach(r=>{
+    const s=(r.getAttribute('data-task-status')||'').toLowerCase();
+    if(s==='done'||s==='completed')done++;
+  });
+  const pct=Math.round(done*100/rows.length);
+  const out=done+'/'+rows.length+' = '+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(pct>=80?'#0a0':pct>=50?'#a60':'#a00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=pct+'% concluído';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

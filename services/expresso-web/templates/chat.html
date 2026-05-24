@@ -2992,5 +2992,20 @@ window.copyChatByAuthor=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatDateRange=function(){
+  const rows=document.querySelectorAll('[data-msg-ts]');
+  if(!rows.length){alert('Sem mensagens');return;}
+  const ts=Array.from(rows).map(r=>new Date(r.getAttribute('data-msg-ts'))).filter(d=>!isNaN(d)).sort((a,b)=>a-b);
+  if(!ts.length){alert('Datas inválidas');return;}
+  const oldest=ts[0],newest=ts[ts.length-1];
+  const days=Math.ceil((newest-oldest)/86400000);
+  const out='oldest '+oldest.toISOString()+'\nnewest '+newest.toISOString()+'\nspan '+days+' dias\ncount '+ts.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=days+'d / '+ts.length+' msgs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

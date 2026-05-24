@@ -1637,5 +1637,16 @@ window.copyThreadCountByAuthor=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSubject=function(){
+  const el=document.querySelector('[data-thread-subject], h1, h2');
+  const subj=el?(el.getAttribute('data-thread-subject')||el.textContent||'').trim():'';
+  if(!subj){alert('Sem subject');return;}
+  const ta=document.createElement('textarea');ta.value=subj;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='subject ('+subj.length+'c)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
