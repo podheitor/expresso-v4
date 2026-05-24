@@ -61,6 +61,7 @@
         <a class="btn btn-ghost" href="/meet">Cancelar</a>
         <button type="button" class="btn btn-ghost" onclick="restoreLastMeetForm()" title="Preencher campos com os dados da última reunião agendada">↻ Repetir última</button>
         <button type="button" class="btn btn-ghost" onclick="clearMeetForm()" title="Limpar todos os campos">⟲ Limpar</button>
+        <button type="button" class="btn btn-ghost" onclick="genMeetRoomSlug()" title="Gerar nome aleatório para a sala">🎲 Sugerir nome</button>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
         <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
@@ -210,6 +211,15 @@ function clearMeetForm() {
   });
   var ic = document.getElementById('meet-invitees-ta');
   if (ic && typeof updateMeetInviteeCount === 'function') updateMeetInviteeCount(ic);
+}
+function genMeetRoomSlug(targetSel) {
+  var t = document.querySelector(targetSel || 'input[name="room"], input[name="slug"], input[name="name"]');
+  if (!t) { alert('Campo de sala não encontrado.'); return; }
+  var adj = ['azul','rapido','solar','feliz','sereno','vivido','novo','lindo','calmo','claro'];
+  var sub = ['rio','foco','dia','sala','reuniao','ponte','encontro','grupo','time','equipe'];
+  var slug = adj[Math.floor(Math.random()*adj.length)] + '-' + sub[Math.floor(Math.random()*sub.length)] + '-' + Math.floor(Math.random()*1000);
+  t.value = slug;
+  t.focus(); t.select();
 }
 </script>
 {% endblock %}

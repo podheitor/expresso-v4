@@ -1055,5 +1055,39 @@ function applyReduceMotion(on) {
     if (dirty) { e.preventDefault(); e.returnValue = ''; return ''; }
   });
 })();
+function exportAllPreferences() {
+  var dump = {};
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (k && k.indexOf('expresso_') === 0) {
+      try { dump[k] = JSON.parse(localStorage.getItem(k)); }
+      catch(_) { dump[k] = localStorage.getItem(k); }
+    }
+  }
+  var blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'expresso-preferences-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function importAllPreferences(input) {
+  var f = input.files && input.files[0]; if (!f) return;
+  var rd = new FileReader();
+  rd.onload = function(ev) {
+    try {
+      var obj = JSON.parse(ev.target.result);
+      if (!confirm('Importar ' + Object.keys(obj).length + ' preferências? Isto sobrescreve as atuais.')) return;
+      Object.keys(obj).forEach(function(k){
+        if (k.indexOf('expresso_') !== 0) return;
+        var v = obj[k];
+        localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v));
+      });
+      alert('Importadas. Recarregando…');
+      window.location.reload();
+    } catch(_) { alert('Arquivo inválido.'); }
+  };
+  rd.readAsText(f);
+}
 </script>
 {% endblock %}

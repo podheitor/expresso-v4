@@ -177,6 +177,25 @@ function copyGalContact(btn) {
       var s = document.getElementById('gal-search-input');
       if (s) { e.preventDefault(); s.focus(); s.select(); }
     }
+    else if ((e.key === 'v' || e.key === 'V') && idx >= 0) {
+      e.preventDefault();
+      var card = cards[idx];
+      var name = (card.querySelector('.gal-name, h3, h4, strong') || {}).textContent || '';
+      var email = (card.querySelector('a[href^="mailto:"]') || {}).textContent || '';
+      var tel = (card.querySelector('a[href^="tel:"]') || {}).textContent || '';
+      var org = (card.querySelector('.gal-org, .muted') || {}).textContent || '';
+      var v = 'BEGIN:VCARD\nVERSION:3.0\nFN:' + name.trim() + '\nEMAIL:' + email.trim() + (tel ? '\nTEL:' + tel.trim() : '') + (org ? '\nORG:' + org.trim() : '') + '\nEND:VCARD\n';
+      var blob = new Blob([v], { type: 'text/vcard' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = (name.trim() || 'contact') + '.vcf';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }
+    else if (e.key === '?') {
+      e.preventDefault();
+      alert('Atalhos GAL:\n\nj/k — navegar\nEnter — abrir\nc — copiar\nm — mail\nv — baixar vCard\n/ — buscar\n? — esta ajuda');
+    }
   });
 })();
 </script>

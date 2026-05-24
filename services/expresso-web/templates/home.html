@@ -295,6 +295,23 @@
       <div id="home-tasks-today-count" style="font-size:.78rem;color:var(--accent);margin-top:.2rem"></div>
       <div id="home-pomo-today" style="font-size:.72rem;color:var(--muted);margin-top:.15rem"></div>
       <div id="home-snoozed-mails" style="font-size:.72rem;color:#ef4444;margin-top:.15rem;display:none"></div>
+      <div id="home-birthdays-month" style="font-size:.72rem;color:var(--accent);margin-top:.15rem;display:none"></div>
+      <script>(function(){
+        try {
+          var raw = JSON.parse(localStorage.getItem('expresso_birthdays') || '{}');
+          var mm = String(new Date().getMonth() + 1).padStart(2, '0');
+          var hits = [];
+          Object.keys(raw).forEach(function(name){
+            var d = raw[name] || '';
+            if (d.length >= 5 && d.substr(d.length === 5 ? 0 : 5, 2) === mm) hits.push(name);
+          });
+          if (hits.length) {
+            var el = document.getElementById('home-birthdays-month');
+            el.textContent = '🎂 Aniversariantes do mês: ' + hits.slice(0, 3).join(', ') + (hits.length > 3 ? ' +' + (hits.length - 3) : '');
+            el.style.display = 'block';
+          }
+        } catch(_) {}
+      })();</script>
       <script>(function(){
         try {
           var arr = JSON.parse(localStorage.getItem('expresso_snoozed_threads') || '[]');
@@ -917,6 +934,24 @@ document.addEventListener('keydown', function(e) {
            '</li>';
   }).join('');
   box.style.display = 'block';
+})();
+(function homeSessionUptime() {
+  var KEY = 'expresso_session_start_{{ me.user_id }}';
+  var start;
+  try { start = parseInt(localStorage.getItem(KEY) || '0', 10); } catch(_) { start = 0; }
+  if (!start) { start = Date.now(); try { localStorage.setItem(KEY, String(start)); } catch(_) {} }
+  var greet = document.getElementById('home-greet-h1');
+  if (!greet) return;
+  var span = document.createElement('div');
+  span.style.cssText = 'font-size:.7rem;color:var(--muted);font-weight:400;margin-top:.2rem';
+  greet.parentNode.appendChild(span);
+  function render() {
+    var s = Math.floor((Date.now() - start) / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+    span.textContent = h > 0 ? '⏱ Logado há ' + h + 'h ' + m + 'min' : '⏱ Logado há ' + m + 'min';
+  }
+  render();
+  setInterval(render, 60000);
 })();
 </script>
 {% endblock %}

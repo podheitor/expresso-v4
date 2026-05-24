@@ -5,7 +5,7 @@
 <div class="page">
   <div class="page-header">
     <div>
-      <h1>{{ selected.name }}</h1>
+      <h1>{{ selected.name }} <span id="day-event-count" class="muted" style="font-size:.6em;font-weight:400"></span></h1>
       <p class="muted">{{ date_label }}</p>
     </div>
     <div class="row">
@@ -287,6 +287,12 @@ function copyDayLink(btn) {
       if (href) { e.preventDefault(); window.location.href = href; }
     }
   });
+})();
+(function(){
+  var el = document.getElementById('day-event-count');
+  if (!el) return;
+  var n = document.querySelectorAll('.cal-day-event, .cal-day-allday-event').length;
+  el.textContent = n === 0 ? '(sem eventos)' : '(' + n + ' evento' + (n > 1 ? 's' : '') + ')';
 })();
 </script>
 {% endblock %}

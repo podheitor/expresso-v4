@@ -24,6 +24,7 @@
       <input type="search" id="week-event-filter" placeholder="🔍 Filtrar eventos…"
              oninput="filterWeekEvents(this.value)" class="search-input-sm" style="width:12rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir semana">🖨</button>
+      <button class="btn btn-ghost" onclick="copyWeekAgenda(this)" title="Copiar agenda da semana como texto">📋 Agenda</button>
       <button class="btn btn-ghost" onclick="setWorkingHours()" title="Configurar horário comercial (oculta antes/depois)">🕘 Hr. trabalho</button>
       <a class="btn btn-primary" href="/calendar/{{ selected.id }}/events/new">+ Novo evento</a>
     </div>
@@ -340,5 +341,26 @@ function applyWorkingHours(wh) {
     if (wh) applyWorkingHours(wh);
   } catch(e){}
 })();
+function copyWeekAgenda(btn) {
+  var lines = [];
+  document.querySelectorAll('.week-col').forEach(function(col){
+    var iso = col.dataset.iso || (col.querySelector('[data-iso]') || {}).dataset && col.querySelector('[data-iso]').dataset.iso || '';
+    var events = col.querySelectorAll('.event-chip');
+    if (!events.length) return;
+    lines.push('— ' + (iso || (col.querySelector('.week-day-label') || {}).textContent || '?') + ' —');
+    events.forEach(function(ev){
+      var time = (ev.querySelector('.ev-time') || {}).textContent || '';
+      var title = (ev.querySelector('.ev-title') || {}).textContent || '';
+      lines.push(time.trim() + ' ' + title.trim());
+    });
+    lines.push('');
+  });
+  if (!lines.length) { alert('Nenhum evento na semana visível.'); return; }
+  var txt = lines.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+  else alert(txt);
+}
 </script>
 {% endblock %}

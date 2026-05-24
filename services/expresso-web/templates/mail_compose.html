@@ -666,5 +666,26 @@ document.addEventListener('keydown', function(e) {
     if (btn) { e.preventDefault(); saveComposeDraft(btn); }
   }
 });
+function checkComposeSpelling() {
+  var ta = document.querySelector('textarea[name="body"], #compose-body, [contenteditable]');
+  if (!ta) { alert('Editor não encontrado.'); return; }
+  if (ta.isContentEditable) {
+    var prev = ta.spellcheck;
+    ta.spellcheck = !prev;
+    alert('Correção ortográfica: ' + (ta.spellcheck ? 'ativada' : 'desativada'));
+  } else {
+    ta.spellcheck = !ta.spellcheck;
+    alert('Spellcheck: ' + (ta.spellcheck ? 'on' : 'off'));
+  }
+}
+function copyComposeBody(btn) {
+  var ta = document.querySelector('textarea[name="body"], #compose-body');
+  var txt = ta ? ta.value : (document.querySelector('[contenteditable]') || {}).textContent || '';
+  if (!txt) { alert('Mensagem vazia.'); return; }
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+  else { var x = document.createElement('textarea'); x.value = txt; document.body.appendChild(x); x.select(); document.execCommand('copy'); document.body.removeChild(x); }
+}
 </script>
 {% endblock %}

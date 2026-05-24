@@ -669,6 +669,10 @@ function toggleContactFav(btn, cid) {
       e.preventDefault();
       if (typeof showBirthdaysThisMonth === 'function') showBirthdaysThisMonth();
     }
+    else if (e.key === 'g' || e.key === 'G') {
+      e.preventDefault();
+      if (typeof showGroupsModal === 'function') showGroupsModal();
+    }
     else if (e.key === '?') {
       e.preventDefault();
       alert('Atalhos contatos:\n\nj/k — navegar\nEnter — abrir\nn — novo\n/ — buscar\ne — editar (hover)\nb — aniversariantes do mês\n? — esta ajuda');

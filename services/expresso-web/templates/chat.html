@@ -123,6 +123,7 @@
           <button class="chat-action-btn" onclick="exportChannelJson()" title="Exportar mensagens (JSON)">💾</button>
           <button class="chat-action-btn" onclick="exportChannelMarkdown()" title="Exportar mensagens (Markdown)">📝</button>
           <button class="chat-action-btn" onclick="exportChannelText()" title="Exportar mensagens (TXT)">📄</button>
+          <button class="chat-action-btn" onclick="copyChannelLink(this)" title="Copiar link do canal">🔗</button>
           <button class="chat-action-btn" onclick="toggleChatCompact()" title="Modo compacto (densidade)" id="chat-compact-btn">⇕</button>
           <button class="chat-action-btn" onclick="toggleChatTimestamps(this)" title="Mostrar timestamps absolutos em todas as mensagens" id="chat-ts-btn">🕒</button>
           <button class="chat-action-btn" onclick="clearChannelLocal('{{ ch.id }}', this)" title="Apagar dados locais deste canal (fixados, rascunhos, reações offline)">🧹</button>
@@ -1632,6 +1633,17 @@ function insertSlashCommand() {
   autoResize(ta);
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+function copyChannelLink(btn) {
+  var url = window.location.href.split('#')[0].split('?')[0];
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(function(){
+      if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+    });
+  } else {
+    var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Link: ' + url);
+  }
 }
 </script>
 <style>

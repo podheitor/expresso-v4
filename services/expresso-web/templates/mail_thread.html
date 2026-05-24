@@ -219,6 +219,9 @@ function collapseAllThreadMsgs() {
     } else if (e.key === '#') {
       var trashF = last.querySelector('form[action*="trash"]');
       if (trashF && confirm('Mover para lixeira?')) { trashF.submit(); }
+    } else if (key === 'P') {
+      e.preventDefault();
+      if (typeof printThread === 'function') printThread();
     }
   });
 })();

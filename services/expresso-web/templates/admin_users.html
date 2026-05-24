@@ -84,7 +84,27 @@
       } else if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         window.location.reload();
+      } else if (e.key === 'c' || e.key === 'C') {
+        var hov = window._lastHoverAdminUser;
+        if (!hov) return;
+        var email = hov.dataset.email || '';
+        if (!email) return;
+        e.preventDefault();
+        if (navigator.clipboard) navigator.clipboard.writeText(email);
+        else { var ta = document.createElement('textarea'); ta.value = email; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+        var t = document.createElement('div');
+        t.textContent = '📋 ' + email;
+        t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+        document.body.appendChild(t);
+        setTimeout(function(){ t.remove(); }, 1500);
+      } else if (e.key === '?') {
+        e.preventDefault();
+        alert('Atalhos admin/usuários:\n\n/ — buscar\nn — novo usuário\ne — exportar CSV\nr — recarregar\nc — copiar email (sob mouse)\n? — esta ajuda');
       }
+    });
+    document.addEventListener('mouseover', function(e) {
+      var tr = e.target && e.target.closest && e.target.closest('.admin-user-row');
+      if (tr) window._lastHoverAdminUser = tr;
     });
   })();
   </script>

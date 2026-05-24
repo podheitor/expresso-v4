@@ -984,16 +984,19 @@ function toggleDriveOnlyFavs(btn) {
 }
 (function(){
   window._lastHoverDriveFile = null;
+  window._lastHoverDriveId = null;
   document.addEventListener('mouseover', function(e){
     var tr = e.target.closest && e.target.closest('tr[data-file-id]');
     if (tr) {
       var nameCell = tr.querySelector('.drive-name, td a, td');
       window._lastHoverDriveFile = nameCell ? (nameCell.textContent || '').trim() : '';
+      window._lastHoverDriveId = tr.dataset.fileId || '';
     }
   });
   document.addEventListener('keydown', function(e){
     if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-    if (e.key === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey && window._lastHoverDriveFile) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'c' && window._lastHoverDriveFile) {
       var name = window._lastHoverDriveFile;
       if (navigator.clipboard) navigator.clipboard.writeText(name);
       else { var ta = document.createElement('textarea'); ta.value = name; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
@@ -1002,6 +1005,14 @@ function toggleDriveOnlyFavs(btn) {
       t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
       document.body.appendChild(t);
       setTimeout(function(){ t.remove(); }, 1500);
+    } else if (e.key === '*' && window._lastHoverDriveId && typeof toggleDriveFav === 'function') {
+      e.preventDefault();
+      toggleDriveFav(window._lastHoverDriveId);
+      var t2 = document.createElement('div');
+      t2.textContent = '⭐ ' + (window._lastHoverDriveFile || window._lastHoverDriveId);
+      t2.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t2);
+      setTimeout(function(){ t2.remove(); }, 1200);
     }
   });
 })();

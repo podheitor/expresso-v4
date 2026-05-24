@@ -14,6 +14,7 @@
       <button class="btn btn-ghost btn-sm" onclick="exportAuditLog()">⬇ CSV</button>
       <button class="btn btn-ghost btn-sm" onclick="exportAuditJson()">⬇ JSON</button>
       <button class="btn btn-ghost btn-sm" onclick="copyAuditSummary(this)" title="Copiar resumo (top 5 ações + top 5 usuários)">📊 Resumo</button>
+      <button class="btn btn-ghost btn-sm" onclick="copyVisibleAuditIps(this)" title="Copiar IPs únicos das linhas visíveis">🌐 IPs</button>
     </div>
   </div>
 
@@ -294,6 +295,23 @@ function copyAuditSummary(btn) {
   var txt = 'Resumo de auditoria (' + rows.length + ' eventos)\n\nTop ações:\n' + top(actions) + '\n\nTop usuários:\n' + top(users);
   if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
     if (btn) { var t = btn.textContent; btn.textContent = '✓ Copiado'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+  });
+  else alert(txt);
+}
+function copyVisibleAuditIps(btn) {
+  var rows = document.querySelectorAll('.audit-row');
+  var seen = {};
+  rows.forEach(function(r){
+    if (r.style.display === 'none') return;
+    var ipCell = r.cells[4];
+    var ip = ipCell ? (ipCell.textContent || '').trim() : '';
+    if (ip && ip !== '—') seen[ip] = (seen[ip] || 0) + 1;
+  });
+  var list = Object.keys(seen).sort(function(a,b){ return seen[b] - seen[a]; });
+  if (!list.length) { alert('Nenhum IP visível.'); return; }
+  var txt = list.map(function(ip){ return ip + ' (' + seen[ip] + ')'; }).join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function(){
+    if (btn) { var t = btn.textContent; btn.textContent = '✓ ' + list.length; setTimeout(function(){ btn.textContent = t; }, 1500); }
   });
   else alert(txt);
 }
