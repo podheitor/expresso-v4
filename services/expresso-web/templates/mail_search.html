@@ -83,8 +83,10 @@
       {% else if messages.is_empty() %}
         <div class="empty-state">Nenhum resultado para "{{ query }}"</div>
       {% else %}
-        <div class="list-toolbar">
+        <div class="list-toolbar" style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
           <span class="muted small">{{ messages.len() }} resultado{% if messages.len() != 1 %}s{% endif %} para "{{ query }}"</span>
+          <input type="search" id="mail-results-refine" placeholder="🔎 refinar nestes resultados…" oninput="refineSearchResults(this.value)" style="margin-left:auto;width:14rem;font-size:.85rem;padding:.2rem .4rem">
+          <span class="muted small" id="mail-results-visible"></span>
         </div>
         <ul class="msg-rows">
           {% for msg in messages %}
@@ -204,5 +206,17 @@ function copySearchUrl(btn) {
     else if (e.key === 'Enter' && idx >= 0) { window.location.href = rows[idx].href; }
   });
 })();
+function refineSearchResults(q) {
+  q = (q || '').toLowerCase().trim();
+  var visible = 0;
+  document.querySelectorAll('.msg-rows > li').forEach(function(li) {
+    var t = (li.textContent || '').toLowerCase();
+    var show = !q || t.includes(q);
+    li.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var v = document.getElementById('mail-results-visible');
+  if (v) v.textContent = q ? '· ' + visible + ' visível(eis)' : '';
+}
 </script>
 {% endblock %}

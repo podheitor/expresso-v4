@@ -38,6 +38,7 @@
           <button class="btn btn-ghost btn-sm" onclick="collapseAllThreadMsgs()" title="Recolher todas as mensagens">⬆ Recolher todas</button>
           <button class="btn btn-ghost btn-sm" onclick="toggleThreadToc()" title="Sumário (jump-to)">📑 Sumário</button>
           <button class="btn btn-ghost btn-sm" onclick="archiveThread()" title="Arquivar todas as mensagens desta thread">↓ Arquivar thread</button>
+          <button class="btn btn-ghost btn-sm" onclick="markThreadRead()" title="Marcar todas as mensagens como lidas">✓ Tudo lido</button>
           <div style="position:relative">
             <button class="btn btn-ghost btn-sm" onclick="this.nextElementSibling.classList.toggle('open')">⋯ Mover</button>
             <div class="dropdown-menu">
@@ -221,6 +222,19 @@ function collapseAllThreadMsgs() {
 var _threadMsgIds = (function() {
   return Array.from(document.querySelectorAll('.thread-msg-item[id^="tmsg-"]')).map(function(el){ return el.id.replace('tmsg-',''); });
 })();
+function markThreadRead() {
+  var unread = document.querySelectorAll('.thread-msg-unread');
+  if (!unread.length) { alert('Nenhuma mensagem não lida nesta conversa.'); return; }
+  var ids = Array.from(unread).map(function(d){ return (d.id || '').replace(/^tmsg-/, ''); }).filter(Boolean);
+  Promise.all(ids.map(function(id) {
+    return fetch('/mail/' + encodeURIComponent(id) + '/mark-read', { method: 'POST', credentials: 'include' }).catch(function(){});
+  })).then(function() {
+    unread.forEach(function(d) {
+      d.classList.remove('thread-msg-unread');
+      var b = d.querySelector('.chat-unread-badge'); if (b) b.remove();
+    });
+  });
+}
 function archiveThread() {
   if (!_threadMsgIds.length) return;
   if (!confirm('Arquivar ' + _threadMsgIds.length + ' mensagem(ns)?')) return;

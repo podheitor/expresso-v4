@@ -76,6 +76,14 @@
       {% if messages.is_empty() %}
         <div class="empty-state">Nenhuma mensagem</div>
       {% else %}
+      <!-- Quick filter chips -->
+      <div style="display:flex;gap:.3rem;padding:.3rem .75rem;border-bottom:1px solid var(--border);background:var(--bg-raised);font-size:.75rem">
+        <button type="button" class="btn btn-ghost btn-sm mail-quick-filter" data-filter="all" onclick="setMailQuickFilter('all',this)" style="font-weight:600">Todas</button>
+        <button type="button" class="btn btn-ghost btn-sm mail-quick-filter" data-filter="unread" onclick="setMailQuickFilter('unread',this)">📩 Não lidas</button>
+        <button type="button" class="btn btn-ghost btn-sm mail-quick-filter" data-filter="starred" onclick="setMailQuickFilter('starred',this)">⭐ Sinalizadas</button>
+        <button type="button" class="btn btn-ghost btn-sm mail-quick-filter" data-filter="attach" onclick="setMailQuickFilter('attach',this)">📎 Anexos</button>
+        <span class="muted small" id="mail-quick-filter-count" style="margin-left:auto;align-self:center"></span>
+      </div>
       <!-- Batch action bar -->
       <div id="mail-batch-bar" style="display:none;padding:.3rem .75rem;background:var(--bg-raised);border-bottom:1px solid var(--border);display:none;align-items:center;gap:.5rem">
         <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer" title="Selecionar todas">
@@ -91,7 +99,9 @@
       </div>
       <ul class="msg-rows">
         {% for msg in messages %}
-        <li class="msg-row-wrap" data-mid="{{ msg.id }}">
+        <li class="msg-row-wrap" data-mid="{{ msg.id }}"
+            data-unread="{% if msg.is_unread() %}1{% else %}0{% endif %}"
+            data-attach="{% if msg.has_attachments %}1{% else %}0{% endif %}">
           <input type="checkbox" class="mail-row-check" data-mid="{{ msg.id }}"
                  onchange="updateMailSelection(event)" style="position:absolute;left:.4rem;top:50%;transform:translateY(-50%);z-index:2;display:none">
           <a class="msg-row{% if msg.is_unread() %} unread{% endif %}{% match selected_id %}{% when Some with (sid) %}{% if sid.as_str() == msg.id.as_str() %} selected{% endif %}{% when None %}{% endmatch %}"
@@ -840,6 +850,30 @@ function showMailShortcuts() {
     '#         apagar\n' +
     'u         marcar não lida\n' +
     '/         buscar');
+}
+function setMailQuickFilter(f, btn) {
+  document.querySelectorAll('.mail-quick-filter').forEach(function(b){ b.style.fontWeight = ''; b.style.background = ''; });
+  if (btn) { btn.style.fontWeight = '600'; btn.style.background = 'var(--bg-hover)'; }
+  var rows = document.querySelectorAll('.msg-row-wrap');
+  var visible = 0;
+  rows.forEach(function(r) {
+    var show = true;
+    if (f === 'unread') show = r.dataset.unread === '1';
+    else if (f === 'attach') show = r.dataset.attach === '1';
+    else if (f === 'starred') {
+      var lbls = r.querySelector('.msg-labels');
+      show = !!(lbls && lbls.querySelector('[data-label-name="importante"], [data-star="1"]'));
+      // Fall back: check for ⭐ in subject area
+      if (!show) {
+        var subj = r.querySelector('.msg-subject');
+        show = !!(subj && /⭐/.test(subj.textContent || ''));
+      }
+    }
+    r.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var cnt = document.getElementById('mail-quick-filter-count');
+  if (cnt) cnt.textContent = visible + ' mensagem(ns)';
 }
 </script>
 {% endblock %}

@@ -13,6 +13,7 @@
     <div style="margin-left:auto;display:flex;gap:.4rem">
       <input type="search" id="tenant-search" class="search-input-sm" placeholder="Filtrar por nome ou domínio…"
              oninput="filterTenants(this.value)" style="width:18rem">
+      <button class="btn btn-ghost btn-sm" onclick="exportTenantsCsv()" title="Exportar tenants para CSV">📤 CSV</button>
       <button class="btn btn-primary btn-sm" onclick="showModal('admin-tenant-modal')">+ Novo tenant</button>
     </div>
   </div>
@@ -140,6 +141,30 @@ function sortTenants(col, numeric) {
     return asc ? av.localeCompare(bv) : bv.localeCompare(av);
   });
   rows.forEach(function(r){ tbody.appendChild(r); });
+}
+function exportTenantsCsv() {
+  var rows = document.querySelectorAll('.admin-tenant-row');
+  if (!rows.length) { alert('Nada para exportar.'); return; }
+  var lines = ['ID;Nome;Dominio;Usuarios;Quota_GB;Status;Criado_em'];
+  rows.forEach(function(r) {
+    var c = r.querySelectorAll('td');
+    function clean(s) { return (s || '').replace(/[\r\n;"]/g,' ').replace(/\s+/g,' ').trim(); }
+    lines.push([
+      clean(c[0] && c[0].textContent),
+      clean(c[1] && c[1].textContent),
+      clean(c[2] && c[2].textContent),
+      clean(c[3] && c[3].textContent),
+      clean(c[4] && c[4].textContent),
+      clean(c[5] && c[5].textContent),
+      clean(c[6] && c[6].textContent),
+    ].join(';'));
+  });
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tenants-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 </script>
 {% endblock %}

@@ -74,6 +74,7 @@
       <input type="search" class="tasks-add-input" id="chat-global-search" placeholder="🔍 Buscar em todos os canais…"
              oninput="chatGlobalSearch(this.value)" style="width:100%;font-size:.82rem">
       <ul class="chat-global-results" id="chat-global-results" style="display:none"></ul>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="markAllChannelsRead()" title="Marcar todos canais como lidos" style="width:100%;margin-top:.3rem;font-size:.75rem">✓ Tudo lido</button>
     </div>
     <footer class="sidebar-footer">
       <div class="presence-self-wrap">
@@ -1503,6 +1504,13 @@ function updateChatCharCount(ta) {
   if (n === 0) { el.textContent = ''; return; }
   el.textContent = n + '/' + max;
   el.style.color = n > max * 0.9 ? '#ef4444' : '';
+}
+function markAllChannelsRead() {
+  var unread = document.querySelectorAll('.folder-item .chat-unread-badge');
+  if (!unread.length) { alert('Nenhum canal com mensagens não lidas.'); return; }
+  if (!confirm('Marcar ' + unread.length + ' canal(is) como lidos?')) return;
+  unread.forEach(function(b) { b.style.display = 'none'; });
+  fetch('/api/v1/chat/mark-all-read', { method: 'POST', credentials: 'include' }).catch(function(){});
 }
 </script>
 {% endblock %}

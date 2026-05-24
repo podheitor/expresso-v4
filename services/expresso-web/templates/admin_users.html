@@ -19,6 +19,32 @@
     </div>
   </div>
 
+  <!-- Quick stats -->
+  <div id="admin-users-stats" class="muted small" style="margin-bottom:.5rem;display:flex;gap:.6rem;flex-wrap:wrap">
+    <span>Total: <strong id="ust-total">—</strong></span>
+    <span>Admins: <strong id="ust-admin">—</strong></span>
+    <span>Usuários: <strong id="ust-user">—</strong></span>
+    <span>Suspensos: <strong id="ust-suspended">—</strong></span>
+    <span>Visíveis: <strong id="ust-visible">—</strong></span>
+  </div>
+  <script>
+  (function adminUserStats() {
+    var rows = document.querySelectorAll('.admin-user-row');
+    var counts = { admin: 0, user: 0, suspended: 0, total: rows.length };
+    rows.forEach(function(r) {
+      if (r.dataset.role === 'admin') counts.admin++;
+      else counts.user++;
+      if (r.dataset.status === 'suspended') counts.suspended++;
+    });
+    var ids = ['total','admin','user','suspended'];
+    ids.forEach(function(k){ var el = document.getElementById('ust-' + k); if (el) el.textContent = counts[k]; });
+    var vis = document.getElementById('ust-visible'); if (vis) vis.textContent = rows.length;
+    window.updateUstVisible = function() {
+      var v = document.querySelectorAll('.admin-user-row:not([style*="display: none"])').length;
+      var el = document.getElementById('ust-visible'); if (el) el.textContent = v;
+    };
+  })();
+  </script>
   <!-- Filtros -->
   <div class="admin-filters">
     <input type="search" id="admin-user-search" placeholder="Filtrar por nome ou email…"
@@ -201,6 +227,8 @@ function filterAdminUsers(q) {
   });
   var cnt = document.getElementById('admin-user-count');
   if (cnt) cnt.textContent = visible;
+  var vis = document.getElementById('ust-visible');
+  if (vis) vis.textContent = visible;
 }
 
 function editAdminUser(id, email, role) {

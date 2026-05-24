@@ -12,6 +12,8 @@
     <h1>Configuração global</h1>
     <input type="search" id="admin-config-search" class="search-input-sm" placeholder="🔍 Filtrar configurações…"
            oninput="filterAdminConfig(this.value)" style="margin-left:auto;width:18rem">
+    <button type="button" class="btn btn-ghost btn-sm" onclick="clearAdminConfigFilter()" title="Limpar filtro (Esc)">✕</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Voltar ao topo">↑</button>
   </div>
   <nav id="admin-config-toc" style="display:flex;gap:.3rem;flex-wrap:wrap;margin-bottom:.75rem;padding:.5rem;background:var(--surface-2);border-radius:var(--radius)"></nav>
 
@@ -226,6 +228,16 @@ function updateMaintPreview(cfg) {
     '📢 ' + escCfg(cfg.message) + '</div>';
 }
 
+function clearAdminConfigFilter() {
+  var inp = document.getElementById('admin-config-search');
+  if (inp) { inp.value = ''; filterAdminConfig(''); inp.focus(); }
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var inp = document.getElementById('admin-config-search');
+    if (inp && document.activeElement === inp && inp.value) { e.preventDefault(); clearAdminConfigFilter(); }
+  }
+});
 function filterAdminConfig(q) {
   try { localStorage.setItem('expresso_admin_cfg_filter', q || ''); } catch(e){}
   q = (q || '').toLowerCase();

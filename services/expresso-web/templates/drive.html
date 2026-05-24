@@ -96,7 +96,7 @@
     <tbody>
       {% for f in files %}
       <tr data-file-id="{{ f.id }}">
-        <td><input type="checkbox" class="drive-file-check" data-id="{{ f.id }}" onchange="updateDriveSelection()"></td>
+        <td><input type="checkbox" class="drive-file-check" data-id="{{ f.id }}" data-size="{{ f.size_bytes }}" onchange="updateDriveSelection()"></td>
         <td style="width:2rem">{{ f.icon() }}</td>
         <td>
           {% if f.is_folder() %}
@@ -260,7 +260,19 @@ function updateDriveSelection() {
   var bar = document.getElementById('drive-batch-bar');
   var cnt = document.getElementById('drive-sel-count');
   if (bar) bar.style.display = selected.length ? 'flex' : 'none';
-  if (cnt) cnt.textContent = selected.length + ' selecionado' + (selected.length !== 1 ? 's' : '');
+  var totalBytes = 0;
+  selected.forEach(function(cb) {
+    var n = parseInt(cb.dataset.size || '0', 10);
+    if (!isNaN(n)) totalBytes += n;
+  });
+  function fmtBytes(b) {
+    if (!b) return '';
+    var u = ['B','KB','MB','GB','TB']; var i = 0;
+    while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+    return b.toFixed(b < 10 && i > 0 ? 1 : 0) + ' ' + u[i];
+  }
+  var sizeText = totalBytes ? ' · ' + fmtBytes(totalBytes) : '';
+  if (cnt) cnt.textContent = selected.length + ' selecionado' + (selected.length !== 1 ? 's' : '') + sizeText;
 }
 function clearDriveSelection() {
   document.querySelectorAll('.drive-file-check').forEach(function(cb){ cb.checked = false; });

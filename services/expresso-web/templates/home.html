@@ -15,6 +15,17 @@
       <div class="home-clock-date muted small" id="home-date"></div>
     </div>
     <div style="display:flex;gap:.5rem;align-items:center">
+      <div style="position:relative">
+        <button class="btn btn-primary btn-sm" onclick="toggleHomeCreateMenu(event)" id="home-create-btn" title="Criar novo (N)">＋ Novo ▾</button>
+        <div id="home-create-menu" style="display:none;position:absolute;right:0;top:2rem;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);z-index:50;min-width:200px;padding:.3rem">
+          <a class="dropdown-item" href="/mail/compose" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">✉ E-mail</a>
+          <a class="dropdown-item" href="/calendar" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">📅 Evento</a>
+          <a class="dropdown-item" href="/tasks" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">✓ Tarefa</a>
+          <a class="dropdown-item" href="/meet/schedule" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">📹 Reunião Meet</a>
+          <a class="dropdown-item" href="/contacts" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">👤 Contato</a>
+          <a class="dropdown-item" href="/drive" style="display:block;padding:.4rem .6rem;text-decoration:none;color:inherit">📁 Upload arquivo</a>
+        </div>
+      </div>
       <button class="btn btn-ghost btn-sm" onclick="toggleFocusMode()" id="focus-mode-btn" title="Modo foco (esconde notificações e chat)">🎯 Foco</button>
     </div>
   </header>
@@ -717,5 +728,25 @@ renderWeatherWidget();
     }).join('');
   } catch(e){}
 })();
+function toggleHomeCreateMenu(e) {
+  if (e) e.stopPropagation();
+  var m = document.getElementById('home-create-menu');
+  if (!m) return;
+  m.style.display = (m.style.display === 'none' || !m.style.display) ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+  var m = document.getElementById('home-create-menu');
+  var b = document.getElementById('home-create-btn');
+  if (!m || !b) return;
+  if (m.style.display === 'block' && !m.contains(e.target) && e.target !== b) m.style.display = 'none';
+});
+document.addEventListener('keydown', function(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'n' || e.key === 'N') {
+    e.preventDefault();
+    toggleHomeCreateMenu();
+  }
+});
 </script>
 {% endblock %}

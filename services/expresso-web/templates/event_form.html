@@ -53,7 +53,13 @@
         </label>
       </div>
       <label>Local
-        <input name="location" value="{{ location }}">
+        <input id="event-location-input" name="location" value="{{ location }}" list="event-location-suggest">
+        <datalist id="event-location-suggest"></datalist>
+        <span class="muted small">
+          <button type="button" class="link-sm" onclick="useMeetForLocation()" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0">📹 Reunião Meet</button>
+          ·
+          <button type="button" class="link-sm" onclick="clearLocation()" style="background:none;border:none;color:var(--accent);cursor:pointer;padding:0">limpar</button>
+        </span>
       </label>
       <label>Descrição
         <textarea name="description" rows="4">{{ description }}</textarea>
@@ -358,6 +364,38 @@ function updateAttendeeCount(ta) {
 (function initAttendeeCount() {
   var ta = document.getElementById('event-attendees-ta');
   if (ta) updateAttendeeCount(ta);
+})();
+function useMeetForLocation() {
+  var inp = document.getElementById('event-location-input');
+  if (!inp) return;
+  var rid = 'exp-' + Math.random().toString(36).slice(2, 10);
+  var origin = window.location.origin;
+  inp.value = origin + '/meet/' + rid;
+  inp.focus();
+}
+function clearLocation() {
+  var inp = document.getElementById('event-location-input');
+  if (inp) { inp.value = ''; inp.focus(); }
+}
+(function locationHistory() {
+  var KEY = 'expresso_event_locations';
+  var inp = document.getElementById('event-location-input');
+  var dl  = document.getElementById('event-location-suggest');
+  if (!inp || !dl) return;
+  try {
+    var hist = JSON.parse(localStorage.getItem(KEY) || '[]');
+    dl.innerHTML = hist.slice(0, 20).map(function(l){ return '<option value="' + l.replace(/"/g,'&quot;') + '">'; }).join('');
+  } catch(e){}
+  var form = inp.closest('form');
+  if (form) form.addEventListener('submit', function() {
+    var val = (inp.value || '').trim();
+    if (!val) return;
+    try {
+      var h = JSON.parse(localStorage.getItem(KEY) || '[]');
+      h = [val].concat(h.filter(function(x){ return x !== val; })).slice(0, 20);
+      localStorage.setItem(KEY, JSON.stringify(h));
+    } catch(e){}
+  });
 })();
 </script>
 {% endblock %}

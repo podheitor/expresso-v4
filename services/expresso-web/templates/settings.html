@@ -16,6 +16,7 @@
       <a class="settings-nav-item{% if tab == "security" %} active{% endif %}" href="/settings?tab=security">Segurança</a>
       <a class="settings-nav-item{% if tab == "filters" %} active{% endif %}" href="/settings?tab=filters">Filtros de e-mail</a>
       <a class="settings-nav-item{% if tab == "shortcuts" %} active{% endif %}" href="/settings?tab=shortcuts">Atalhos de teclado</a>
+      <a class="settings-nav-item{% if tab == "privacy" %} active{% endif %}" href="/settings?tab=privacy">Privacidade & dados</a>
     </nav>
 
     <div class="settings-content">
@@ -574,7 +575,8 @@
         <p class="muted small" style="margin-top:.5rem">Os atalhos não funcionam quando o foco está em campos de texto.</p>
       </div>
 
-      <div class="card stack" style="margin-top:1rem">
+      {% else if tab == "privacy" %}
+      <div class="card stack">
         <h2>Privacidade e dados locais</h2>
         <p class="muted small">Suas preferências (tema, atalhos, rascunhos, fixados, reações offline, lembretes,
         aniversários, etc.) são salvas no seu navegador. Você pode exportar, restaurar ou apagar tudo aqui.</p>

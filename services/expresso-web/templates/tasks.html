@@ -4,7 +4,7 @@
 {% block body %}
 <div class="page tasks-page">
   <div class="page-header">
-    <h1>Tarefas</h1>
+    <h1>Tarefas <span class="muted small" id="tasks-header-stats" style="font-weight:400;font-size:.7em"></span></h1>
     <div style="display:flex;gap:.4rem">
       <button class="btn btn-ghost" onclick="window.print()" title="Imprimir lista visível">🖨 Imprimir</button>
       <button class="btn btn-primary" onclick="showAddTask()">+ Nova tarefa</button>
@@ -315,6 +315,15 @@ function renderAll() {
   var pct = total > 0 ? Math.round(done/total*100) : 0;
   document.getElementById('progress-label').textContent = done + ' de ' + total + ' concluídas (' + pct + '%)';
   document.getElementById('progress-fill').style.width = pct + '%';
+  var doneToday = tasks.filter(function(t){ return t.done && (t.done_at || '').slice(0,10) === today; }).length;
+  var hdr = document.getElementById('tasks-header-stats');
+  if (hdr) {
+    var parts = [];
+    if (allCount) parts.push(allCount + ' pendente(s)');
+    if (overdueCount) parts.push(overdueCount + ' atrasada(s)');
+    if (doneToday) parts.push('✓ ' + doneToday + ' hoje');
+    hdr.textContent = parts.length ? '— ' + parts.join(' · ') : '';
+  }
 
   if (!filtered.length) {
     list.innerHTML = '';
