@@ -2046,5 +2046,18 @@ window.copyTasksByPriority=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueThisWeek=function(){
+  const now=new Date(), end=new Date(now.getTime()+7*86400000);
+  const rows=Array.from(document.querySelectorAll('[data-task-id]')).filter(r=>{const d=r.dataset.taskDue;if(!d)return false;const dt=new Date(d);return dt>=now&&dt<=end;});
+  const lines=rows.map(r=>(r.dataset.taskDue||'')+'\t'+(r.dataset.taskTitle||'')).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' esta semana';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

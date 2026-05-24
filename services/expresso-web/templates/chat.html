@@ -2614,5 +2614,17 @@ window.copyChatTopSenders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.toggleChatTimestamps=function(){
+  const k='expresso_chatts_{{ me.user_id }}';
+  const cur=localStorage.getItem(k)==='1';
+  const next=!cur;
+  localStorage.setItem(k,next?'1':'0');
+  document.querySelectorAll('[data-msg-ts]').forEach(el=>{el.style.display=next?'':'none';});
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='timestamps '+(next?'on':'off');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1260,5 +1260,19 @@ window.copyThreadAttachmentNames=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstLastTs=function(){
+  const rows=Array.from(document.querySelectorAll('[data-msg-id]'));
+  if(!rows.length)return;
+  const first=rows[0].dataset.msgDate||'',last=rows[rows.length-1].dataset.msgDate||'';
+  const ta=document.createElement('textarea');
+  ta.value='first: '+first+'\nlast:  '+last;
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='first/last ts';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
