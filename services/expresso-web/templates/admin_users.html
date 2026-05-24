@@ -1820,5 +1820,22 @@ window.copyUsersCreatedThisMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByTenantDist=function(){
+  const t1={};
+  document.querySelectorAll('[data-user-id]').forEach(u=>{
+    const tn=(u.getAttribute('data-user-tenant')||'?').trim();
+    t1[tn]=(t1[tn]||0)+1;
+  });
+  const keys=Object.keys(t1);
+  if(!keys.length){alert('Sem usuários');return;}
+  keys.sort((a,b)=>t1[b]-t1[a]);
+  const out=keys.map(k=>k+'\t'+t1[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' tenants';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

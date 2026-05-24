@@ -1869,5 +1869,23 @@ window.copyThreadGapMins=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadQuotedRatio=function(){
+  let q=0,total=0;
+  document.querySelectorAll('[data-msg-body]').forEach(m=>{
+    const txt=(m.getAttribute('data-msg-body')||m.textContent||'');
+    const lines=txt.split('\n');
+    total+=lines.length;
+    q+=lines.filter(l=>l.trim().startsWith('>')).length;
+  });
+  if(!total){alert('Sem corpo');return;}
+  const pct=Math.round(100*q/total);
+  const out='quoted lines: '+q+'\ntotal lines: '+total+'\nratio: '+pct+'%';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quoted '+pct+'%';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

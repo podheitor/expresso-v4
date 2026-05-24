@@ -1970,5 +1970,23 @@ window.copyMonthAttendeesTop=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthDayOfWeekDist=function(){
+  const dow=[0,0,0,0,0,0,0];
+  const names=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  document.querySelectorAll('[data-event-start]').forEach(e=>{
+    const s=e.getAttribute('data-event-start');if(!s)return;
+    const d=new Date(s);if(isNaN(d))return;
+    dow[d.getDay()]++;
+  });
+  const total=dow.reduce((a,b)=>a+b,0);
+  if(!total){alert('Sem eventos');return;}
+  const out=names.map((n,i)=>n+'\t'+dow[i]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dow '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2567,5 +2567,21 @@ window.copyDriveLargest5=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveEmptyFolders=function(){
+  const out=[];
+  document.querySelectorAll('[data-folder-row]').forEach(r=>{
+    const ch=parseInt(r.getAttribute('data-folder-children')||'0',10);
+    if(ch===0){
+      out.push((r.getAttribute('data-folder-name')||'').trim());
+    }
+  });
+  if(!out.length){alert('Nenhuma pasta vazia');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' vazias';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2582,5 +2582,21 @@ window.copyCookieKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.clearNonAuthCookies=function(){
+  const keys=document.cookie.split(';').map(s=>s.split('=')[0].trim()).filter(Boolean);
+  const keep=new Set(['session','sid','auth','jwt','token','csrf','_csrf']);
+  let removed=0;
+  keys.forEach(k=>{
+    if(!keep.has(k.toLowerCase())){
+      document.cookie=k+'=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+      removed++;
+    }
+  });
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='-'+removed+' cookies';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

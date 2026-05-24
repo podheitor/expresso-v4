@@ -2459,5 +2459,21 @@ window.copyMailListByDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListFlaggedItems=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const f=(r.getAttribute('data-mail-flagged')||'').trim();
+    if(f==='true'||f==='1'){
+      out.push((r.getAttribute('data-mail-from')||'')+'\t'+(r.getAttribute('data-mail-subject')||''));
+    }
+  });
+  if(!out.length){alert('Nenhum flagged');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' flagged';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

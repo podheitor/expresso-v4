@@ -1808,5 +1808,24 @@ window.copyAuditIpAddresses=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditOldestEntry=function(){
+  let oldest=null;let oldestTs='';
+  document.querySelectorAll('[data-audit-id]').forEach(r=>{
+    const ts=(r.getAttribute('data-audit-ts')||'').trim();
+    if(!ts)return;
+    if(!oldestTs || ts<oldestTs){oldestTs=ts;oldest=r;}
+  });
+  if(!oldest){alert('Sem entradas');return;}
+  const id=oldest.getAttribute('data-audit-id')||'';
+  const action=oldest.getAttribute('data-audit-action')||'';
+  const actor=oldest.getAttribute('data-audit-actor')||'';
+  const out='ts: '+oldestTs+'\nid: '+id+'\nactor: '+actor+'\naction: '+action;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='oldest '+oldestTs.slice(0,10);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
