@@ -3547,5 +3547,28 @@ window.copyChatMyMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMentions=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    const txt=m.querySelector('.msg-body')?.textContent||'';
+    const ms=txt.match(/@[\w.-]+/g);
+    if(ms){
+      const ts=m.dataset.ts||'';
+      out.push(ts+' '+ms.join(' '));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' @';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

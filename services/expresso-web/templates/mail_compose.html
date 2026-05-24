@@ -2281,5 +2281,24 @@ window.loadDraftSnapshot=function(){
     setTimeout(()=>t.remove(),1500);
   }
 };
+window.countSpacesInSubject=function(){
+  const subj=document.querySelector('[name=subject]');
+  if(!subj){
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='no subj';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const v=subj.value;
+  const spc=(v.match(/ /g)||[]).length;
+  const dbl=(v.match(/ {2,}/g)||[]).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dbl>0?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=spc+' spc, '+dbl+' dup';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
