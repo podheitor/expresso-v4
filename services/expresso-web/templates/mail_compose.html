@@ -757,6 +757,19 @@ function copyComposeBody(btn) {
   setInterval(snap, 30000);
   window.addEventListener('beforeunload', snap);
 })();
+function showAttachmentsSummary() {
+  var bytes = 0, names = [];
+  document.querySelectorAll('input[type="file"]').forEach(function(inp){
+    if (inp.files) for (var i = 0; i < inp.files.length; i++) { bytes += inp.files[i].size; names.push(inp.files[i].name); }
+  });
+  document.querySelectorAll('[data-attach-size]').forEach(function(el){
+    var s = +el.dataset.attachSize; if (isFinite(s)) bytes += s;
+    var nm = el.dataset.attachName || el.textContent.trim(); if (nm) names.push(nm);
+  });
+  function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; return (s/1048576).toFixed(2)+' MB'; }
+  if (!names.length) { alert('Sem anexos.'); return; }
+  alert('📎 Anexos (' + names.length + '):\n\n' + names.map(function(n){ return '• ' + n; }).join('\n') + '\n\nTotal: ' + fmt(bytes));
+}
 document.addEventListener('keydown', function(e){
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     var form = document.querySelector('form.compose-form, form[action*="/mail/send"]');

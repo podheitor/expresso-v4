@@ -62,6 +62,7 @@
       <button class="btn btn-ghost" onclick="showFolderTotalSize(this)" title="Tamanho total dos arquivos visíveis">📏 Total</button>
       <button class="btn btn-ghost" onclick="toggleDriveOnlyFavs(this)" title="Mostrar somente favoritos" id="drive-only-favs-btn">⭐ Só favs</button>
       <button class="btn btn-ghost" onclick="sortDriveBySize(true)" title="Ordenar por tamanho (maior primeiro)">📏↓ Tamanho</button>
+      <button class="btn btn-ghost" onclick="showDriveCrumbsCopy()" title="Copiar caminho atual">🗂 Caminho</button>
       <select class="btn btn-ghost" onchange="if(this.value){filterDriveByKind(this.value);}else{clearDriveFilter();}" title="Filtrar por tipo">
         <option value="">Tipo…</option>
         <option value="img">🖼️ Imagens</option>
@@ -1085,6 +1086,14 @@ function showDriveFileInfo() {
   var owner = tr.dataset.owner || '?';
   function fmt(s){ s = +s; if(!isFinite(s)) return '?'; if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; if(s<1073741824) return (s/1048576).toFixed(1)+' MB'; return (s/1073741824).toFixed(2)+' GB'; }
   alert('📄 ' + name + '\n\nID: ' + id + '\nTamanho: ' + fmt(size) + '\nTipo: ' + mime + '\nModificado: ' + mtime + '\nDono: ' + owner);
+}
+function showDriveCrumbsCopy() {
+  var crumbs = Array.from(document.querySelectorAll('.drive-crumb'));
+  if (!crumbs.length) { alert('Sem caminho.'); return; }
+  var path = '/' + crumbs.map(function(c){ return c.textContent.trim(); }).filter(Boolean).join('/');
+  if (navigator.clipboard) navigator.clipboard.writeText(path);
+  else { var ta = document.createElement('textarea'); ta.value = path; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('📋 Caminho copiado:\n' + path);
 }
 function sortDriveBySize(desc) {
   var tbody = document.querySelector('table tbody');

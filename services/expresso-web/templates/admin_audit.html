@@ -17,6 +17,7 @@
       <button class="btn btn-ghost btn-sm" onclick="copyVisibleAuditIps(this)" title="Copiar IPs únicos das linhas visíveis">🌐 IPs</button>
       <button class="btn btn-ghost btn-sm" onclick="groupAuditByUser(this)" title="Agrupar visíveis por usuário">👥 Por usuário</button>
       <button class="btn btn-ghost btn-sm" onclick="promptFilterAuditAction()" title="Filtrar por ação">🔍 Filtrar ação</button>
+      <button class="btn btn-ghost btn-sm" onclick="exportVisibleAuditCsv()" title="Baixar CSV das linhas visíveis">⬇ CSV</button>
     </div>
   </div>
 
@@ -350,6 +351,25 @@ function filterAuditByAction(action) {
     if (match) shown++;
   });
   return shown;
+}
+function exportVisibleAuditCsv() {
+  var rows = Array.from(document.querySelectorAll('tbody tr')).filter(function(r){ return r.offsetParent !== null; });
+  if (!rows.length) { alert('Sem linhas visíveis.'); return; }
+  var headers = Array.from(document.querySelectorAll('thead th')).map(function(th){ return th.textContent.trim(); });
+  var lines = [headers.map(function(h){ return '"' + h.replace(/"/g, '""') + '"'; }).join(',')];
+  rows.forEach(function(r){
+    var cells = Array.from(r.querySelectorAll('td')).map(function(td){
+      var v = td.textContent.replace(/\s+/g, ' ').trim();
+      return '"' + v.replace(/"/g, '""') + '"';
+    });
+    lines.push(cells.join(','));
+  });
+  var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'audit-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 0);
 }
 (function localizeAuditTimestamps(){
   document.querySelectorAll('tr[data-ts] td:first-child, td[data-ts]').forEach(function(td){

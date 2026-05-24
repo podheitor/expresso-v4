@@ -30,6 +30,7 @@
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetSelfView(this)" title="Ocultar/mostrar meu vídeo (self-view)" id="meet-selfview-btn">🪞 Self</button>
       <button class="btn btn-ghost btn-sm" onclick="setMeetPassword(this)" title="Definir senha para entrar na sala" id="meet-pwd-btn">🔒 Senha</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleMeetBlur(this)" title="Desfocar fundo (virtual background)" id="meet-blur-btn">🌫 Blur</button>
+      <button class="btn btn-ghost btn-sm" onclick="setMeetReminder()" title="Lembrete temporal">⏰ Lembrete</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleRaiseHand(this)" title="Levantar mão" id="meet-hand-btn">✋</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-chat')" title="Chat da reunião">💬</button>
       <button class="btn btn-ghost btn-sm" onclick="togglePanel('panel-participants')" title="Participantes">👥</button>
@@ -1057,6 +1058,18 @@ function toggleMeetSelfView(btn) {
     }
   } catch(e){}
   if (btn) btn.textContent = _meetSelfHidden ? '🪞 Mostrar' : '🪞 Self';
+}
+function setMeetReminder() {
+  var min = parseInt(prompt('Lembrete em quantos minutos? (1–180)', '30'), 10);
+  if (isNaN(min) || min < 1 || min > 180) return;
+  setTimeout(function(){
+    if (Notification && Notification.permission === 'granted') {
+      try { new Notification('⏰ Sala de reunião', { body: 'Lembrete após ' + min + ' min — reunião em andamento.' }); } catch(e) {}
+    }
+    alert('⏰ Lembrete: ' + min + ' minutos se passaram nesta sala.');
+  }, min * 60000);
+  alert('Lembrete agendado para daqui a ' + min + ' min.');
+  if (Notification && Notification.permission === 'default') Notification.requestPermission();
 }
 (function meetDurationCounter(){
   var start = Date.now();

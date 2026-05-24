@@ -226,6 +226,12 @@ function collapseAllThreadMsgs() {
     } else if (key === 'P') {
       e.preventDefault();
       if (typeof printThread === 'function') printThread();
+    } else if (e.key === 'g' && !e.shiftKey) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (e.key === 'G' || (e.key === 'g' && e.shiftKey)) {
+      e.preventDefault();
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     } else if (e.key === 'n' || e.key === 'N' || e.key === 'p') {
       e.preventDefault();
       var msgs = document.querySelectorAll('.thread-msg-item');

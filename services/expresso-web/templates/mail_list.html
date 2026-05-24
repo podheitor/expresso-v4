@@ -98,6 +98,8 @@
         <button class="btn btn-ghost btn-sm" onclick="showTopSenders()" title="Top remetentes nesta pasta">👥 Top</button>
         <button class="btn btn-ghost btn-sm" onclick="filterMailToday(this)" title="Mostrar somente mensagens de hoje">📆 Hoje</button>
         <button class="btn btn-ghost btn-sm" onclick="filterMailUnreadOnly(this)" title="Mostrar somente não lidas">👁️ Só não lidas</button>
+        <button class="btn btn-ghost btn-sm" onclick="sortMailByDate(false)" title="Mais recentes primeiro">📅↓</button>
+        <button class="btn btn-ghost btn-sm" onclick="sortMailByDate(true)" title="Mais antigas primeiro">📅↑</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('read')">✓ Marcar lidas</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('flag')" title="Adicionar estrela ⭐">⭐ Sinalizar</button>
         <button class="btn btn-ghost btn-sm" onclick="batchMailAction('archive')">📥 Arquivar</button>
@@ -1023,6 +1025,17 @@ function filterMailToday(btn) {
     if (match) shown++;
   });
   alert(shown + ' mensagem(s) de hoje. Use o filtro padrão para limpar.');
+}
+function sortMailByDate(asc) {
+  var ul = document.querySelector('ul.msg-rows, .msg-list ul');
+  if (!ul) return;
+  var rows = Array.from(ul.querySelectorAll('.msg-row-wrap'));
+  rows.sort(function(a, b){
+    var da = ((a.querySelector('[data-date]') || {}).dataset && a.querySelector('[data-date]').dataset.date) || ((a.querySelector('time') || {}).getAttribute && a.querySelector('time').getAttribute('datetime')) || '';
+    var db = ((b.querySelector('[data-date]') || {}).dataset && b.querySelector('[data-date]').dataset.date) || ((b.querySelector('time') || {}).getAttribute && b.querySelector('time').getAttribute('datetime')) || '';
+    return asc ? da.localeCompare(db) : db.localeCompare(da);
+  });
+  rows.forEach(function(r){ ul.appendChild(r); });
 }
 function filterMailUnreadOnly(btn) {
   var rows = document.querySelectorAll('.msg-row-wrap');

@@ -707,6 +707,20 @@ function toggleContactFav(btn, cid) {
       document.body.appendChild(t);
       setTimeout(function(){ t.remove(); }, 1500);
     }
+    else if (e.key === 't' || e.key === 'T') {
+      var hct = window._lastHoverContact;
+      if (!hct) return;
+      var tel = hct.dataset.phone || ((hct.querySelector('.contact-card-phone') || {}).textContent || '').replace(/^📞\s*/, '').trim();
+      if (!tel) { alert('Contato sem telefone.'); return; }
+      e.preventDefault();
+      if (navigator.clipboard) navigator.clipboard.writeText(tel);
+      else { var ta = document.createElement('textarea'); ta.value = tel; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+      var t = document.createElement('div');
+      t.textContent = '📞 ' + tel;
+      t.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--accent);color:#fff;padding:.5rem .8rem;border-radius:var(--radius);z-index:9999;font-size:.85rem';
+      document.body.appendChild(t);
+      setTimeout(function(){ t.remove(); }, 1500);
+    }
     else if (e.key === 'm' || e.key === 'M') {
       var hc2 = window._lastHoverContact;
       if (!hc2) return;

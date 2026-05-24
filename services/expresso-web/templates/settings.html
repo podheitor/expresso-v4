@@ -1133,6 +1133,19 @@ function importAllPreferences(input) {
   };
   rd.readAsText(f);
 }
+function showStorageQuota() {
+  if (!navigator.storage || !navigator.storage.estimate) {
+    alert('Estimativa de quota não disponível neste navegador.');
+    return;
+  }
+  navigator.storage.estimate().then(function(est){
+    function fmt(s){ if(s<1024) return s+' B'; if(s<1048576) return (s/1024).toFixed(1)+' KB'; if(s<1073741824) return (s/1048576).toFixed(2)+' MB'; return (s/1073741824).toFixed(2)+' GB'; }
+    var used = est.usage || 0;
+    var quota = est.quota || 0;
+    var pct = quota ? ((used / quota) * 100).toFixed(2) : '?';
+    alert('💾 Quota do navegador (origem Expresso):\n\nUso: ' + fmt(used) + '\nLimite: ' + fmt(quota) + '\nPercentual: ' + pct + '%');
+  });
+}
 function testBrowserNotification() {
   if (!('Notification' in window)) { alert('Navegador não suporta notificações.'); return; }
   function fire() {

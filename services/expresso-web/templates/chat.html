@@ -1742,6 +1742,20 @@ function showChannelMsgStats() {
         'Hoje: ' + todayCount + '\n\n' +
         'Top autores:\n' + top.map(function(a){ return '  ' + byAuthor[a] + '× ' + a; }).join('\n'));
 }
+function filterChatByAuthor() {
+  var name = prompt('Mostrar somente mensagens do autor (vazio = todas):');
+  if (name === null) return;
+  var msgs = document.querySelectorAll('[data-msg-id]');
+  var shown = 0;
+  msgs.forEach(function(m){
+    if (!name) { m.style.display = ''; return; }
+    var a = ((m.querySelector('.chat-msg-author, .chat-msg-name') || {}).textContent || '').trim().toLowerCase();
+    var match = a.indexOf(name.toLowerCase()) >= 0;
+    m.style.display = match ? '' : 'none';
+    if (match) shown++;
+  });
+  if (name) alert(shown + ' mensagem(s) do autor "' + name + '".');
+}
 function showMostReactedMsgs() {
   var msgs = document.querySelectorAll('[data-msg-id]');
   var scored = [];

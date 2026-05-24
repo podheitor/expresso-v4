@@ -1054,6 +1054,20 @@ document.addEventListener('keydown', function(e) {
   } else if (e.key === 's' || e.key === 'S') {
     e.preventDefault();
     showTasksWeekStats();
+  } else if (e.key === 'o' || e.key === 'O') {
+    e.preventDefault();
+    var today = new Date().toISOString().slice(0, 10);
+    var items = Array.from(document.querySelectorAll('.task-item[data-id]'));
+    var late = items.find(function(it){
+      var due = it.dataset.due || ((it.querySelector('[data-due]') || {}).dataset || {}).due;
+      return due && due < today && !it.classList.contains('done');
+    });
+    if (late) {
+      late.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      late.style.transition = 'outline .3s';
+      late.style.outline = '2px solid var(--error,red)';
+      setTimeout(function(){ late.style.outline = ''; }, 1800);
+    } else alert('Nenhuma tarefa atrasada.');
   } else if (e.key === 'y' || e.key === 'Y') {
     var elY = window._lastHoverTask;
     if (!elY) return;

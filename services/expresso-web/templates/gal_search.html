@@ -231,6 +231,14 @@ function copyGalContact(btn) {
       e.preventDefault();
       if (typeof saveAsGalGroup === 'function') saveAsGalGroup();
     }
+    else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      window.location.reload();
+    }
+    else if (e.key === 'B') {
+      e.preventDefault();
+      if (typeof showGalBookmarks === 'function') showGalBookmarks();
+    }
     else if (e.key === 'b' || e.key === 'B') {
       e.preventDefault();
       if (typeof bccAllGal === 'function') bccAllGal();

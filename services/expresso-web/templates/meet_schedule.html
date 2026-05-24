@@ -63,6 +63,7 @@
         <button type="button" class="btn btn-ghost" onclick="clearMeetForm()" title="Limpar todos os campos">⟲ Limpar</button>
         <button type="button" class="btn btn-ghost" onclick="genMeetRoomSlug()" title="Gerar nome aleatório para a sala">🎲 Sugerir nome</button>
         <button type="button" class="btn btn-ghost" onclick="copyScheduledMeetLink(this)" title="Copiar link da sala">🔗 Copiar link</button>
+        <button type="button" class="btn btn-ghost" onclick="scheduleMeetLocalReminder()" title="Lembrete local antes da reunião">⏰ Lembrete</button>
         <button type="button" class="btn btn-ghost" onclick="copyMeetDraft(this)" title="Copiar pré-rascunho de convite">📋 Convite</button>
         <button type="button" class="btn btn-ghost" onclick="openInGoogleCal()" title="Adicionar ao Google Calendar">📅 Google</button>
         <button type="button" class="btn btn-ghost" onclick="openInOutlook()" title="Adicionar ao Outlook Web">📅 Outlook</button>
@@ -221,6 +222,27 @@ function genMeetRoomSlug(targetSel) {
   var slug = adj[Math.floor(Math.random()*adj.length)] + '-' + sub[Math.floor(Math.random()*sub.length)] + '-' + Math.floor(Math.random()*1000);
   t.value = slug;
   t.focus(); t.select();
+}
+function scheduleMeetLocalReminder() {
+  var ts = (document.querySelector('input[name="starts_at"], input[type="datetime-local"]') || {}).value;
+  if (!ts) { alert('Defina data/hora de início primeiro.'); return; }
+  var when = new Date(ts);
+  if (!isFinite(when.getTime())) { alert('Data inválida.'); return; }
+  var min = parseInt(prompt('Avisar quantos minutos antes? (1–60)', '5'), 10);
+  if (isNaN(min) || min < 1 || min > 60) return;
+  var fireAt = when.getTime() - min * 60000;
+  var delay = fireAt - Date.now();
+  if (delay <= 0) { alert('A hora alvo já passou.'); return; }
+  if (delay > 86400000) { alert('Lembretes só podem ser agendados nas próximas 24h (limitação JS).'); return; }
+  setTimeout(function(){
+    var slug = (document.querySelector('input[name="room"], input[name="slug"], input[name="name"]') || {}).value || 'sala';
+    if (Notification && Notification.permission === 'granted') {
+      try { new Notification('⏰ Reunião em ' + min + ' min', { body: 'Sala: ' + slug }); } catch(e) {}
+    }
+    alert('⏰ Sua reunião começa em ' + min + ' min — sala: ' + slug);
+  }, delay);
+  alert('Lembrete agendado para ' + new Date(fireAt).toLocaleString());
+  if (Notification && Notification.permission === 'default') Notification.requestPermission();
 }
 function copyScheduledMeetLink(btn) {
   var t = document.querySelector('input[name="room"], input[name="slug"], input[name="name"]');

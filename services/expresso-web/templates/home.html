@@ -448,6 +448,8 @@
         <span class="home-widget-icon">📝</span>
         <span class="home-widget-title">Bloco de notas</span>
         <span class="muted small" id="home-notes-saved" style="margin-left:auto;font-size:.7rem"></span>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="if(confirm('Limpar todas as anotações?')){var t=document.getElementById('home-notes-ta'); if(t){t.value='';try{localStorage.removeItem('expresso_home_notes_{{ me.user_id }}');}catch(e){}}}" title="Limpar anotações">🗑</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="(function(){var t=document.getElementById('home-notes-ta');if(!t||!t.value)return;var b=new Blob([t.value],{type:'text/plain;charset=utf-8'});var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download='notas-'+new Date().toISOString().slice(0,10)+'.txt';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(u);a.remove();},0);})()" title="Baixar notas">⬇</button>
       </div>
       <textarea id="home-notes-ta" placeholder="Anotações rápidas (salva automaticamente)…" rows="5"
                 style="width:100%;font-family:inherit;font-size:.85rem;padding:.4rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);color:inherit;resize:vertical"></textarea>
