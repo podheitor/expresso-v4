@@ -1248,5 +1248,19 @@ window.copyDayBusyMinutes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAttendees=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]'));
+  const s=new Set();
+  rows.forEach(r=>{(r.dataset.eventAttendees||'').split(/[,;\s]+/).forEach(a=>{if(a)s.add(a.toLowerCase());});});
+  const lines=Array.from(s).sort().join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=lines; document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=s.size+' participantes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
