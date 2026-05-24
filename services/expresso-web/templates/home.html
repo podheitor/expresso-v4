@@ -1647,5 +1647,9 @@ window.copyScreenInfo = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyBatteryStatus = function(){
+  if(!navigator.getBattery){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='battery API indisponível';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.getBattery().then(b=>{const out='battery: '+(b.level*100).toFixed(0)+'%\tcharging: '+b.charging+'\tcharge-time: '+b.chargingTime+'s\tdischarge-time: '+b.dischargingTime+'s';const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent=out;document.body.appendChild(t);setTimeout(()=>t.remove(),2000);});
+};
 </script>
 {% endblock %}

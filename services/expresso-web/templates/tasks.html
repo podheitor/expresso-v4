@@ -1853,5 +1853,15 @@ window.copyTasksWithTag = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOldestPending = function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-status="pending"][data-task-created]')).sort((a,b)=>Date.parse(a.getAttribute('data-task-created'))-Date.parse(b.getAttribute('data-task-created'))).slice(0,10);
+  const out=rows.map(r=>r.getAttribute('data-task-created').slice(0,10)+'\t'+r.getAttribute('data-task-title')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top 10 mais antigas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

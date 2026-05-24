@@ -1059,5 +1059,18 @@ window.copyThreadEmojis = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFirstLast = function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-date]')).sort((a,b)=>Date.parse(a.getAttribute('data-msg-date'))-Date.parse(b.getAttribute('data-msg-date')));
+  if(!msgs.length)return;
+  const a=msgs[0],b=msgs[msgs.length-1];
+  const span=Math.round((Date.parse(b.getAttribute('data-msg-date'))-Date.parse(a.getAttribute('data-msg-date')))/86400000);
+  const out='primeira: '+a.getAttribute('data-msg-date')+'\núltima: '+b.getAttribute('data-msg-date')+'\nduração: '+span+'d';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thread span: '+span+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
