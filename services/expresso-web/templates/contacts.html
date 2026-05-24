@@ -1143,4 +1143,21 @@ function groupContactsByFirstLetter() {
   });
 })();
 </script>
+<script>
+window.countContactDomains = function(){
+  const counts = {};
+  document.querySelectorAll('[data-email]').forEach(n => {
+    const dom = (n.dataset.email || '').split('@')[1];
+    if (!dom) return;
+    counts[dom] = (counts[dom] || 0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const txt = sorted.map(([d,c]) => d + ': ' + c).join(' · ') || 'sem domínios';
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = txt;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+};
+</script>
 {% endblock %}

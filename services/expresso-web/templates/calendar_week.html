@@ -669,4 +669,20 @@ function printWeekAgenda() {
   });
 })();
 </script>
+<script>
+window.findBusiestDay = function(){
+  const counts = {};
+  document.querySelectorAll('[data-event-id][data-start]').forEach(e => {
+    const day = (e.dataset.start || '').slice(0,10);
+    if (!day) return;
+    counts[day] = (counts[day] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = top ? 'Dia mais ocupado: ' + top[0] + ' (' + top[1] + ')' : 'Sem eventos';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2000);
+};
+</script>
 {% endblock %}

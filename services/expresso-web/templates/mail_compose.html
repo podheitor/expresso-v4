@@ -959,6 +959,11 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.lowercaseSubject = function(){
+  const s = document.querySelector('input[name="subject"]');
+  if (!s) return;
+  s.value = (s.value || '').toLowerCase();
+};
 window.insertHorizontalRule = function(){
   const body = document.querySelector('textarea[name="body"]');
   if (!body) return;

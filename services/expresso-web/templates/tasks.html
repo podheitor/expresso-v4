@@ -1468,4 +1468,18 @@ function highlightAllOverdueTasks() {
   });
 })();
 </script>
+<script>
+window.copyDoneTasks = function(){
+  const done = Array.from(document.querySelectorAll('.task-row.done, .task-row[data-status="done"]'))
+    .map(r => r.dataset.title || (r.querySelector('.title')||{}).textContent || '').filter(Boolean);
+  if (!done.length) return;
+  const txt = done.map(t => '✓ ' + t).join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = done.length + ' concluídas copiadas';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
+</script>
 {% endblock %}

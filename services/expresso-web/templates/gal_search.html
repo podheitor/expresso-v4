@@ -528,4 +528,19 @@ function listGalFavoritesLocal() {
   });
 })();
 </script>
+<script>
+window.countGalDomains = function(){
+  const counts = {};
+  document.querySelectorAll('[data-email]').forEach(n => {
+    const dom = (n.dataset.email || '').split('@')[1];
+    if (dom) counts[dom] = (counts[dom] || 0) + 1;
+  });
+  const tot = Object.keys(counts).length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = tot + ' domínios distintos';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
+</script>
 {% endblock %}

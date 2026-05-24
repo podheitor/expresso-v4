@@ -714,4 +714,18 @@ function printThread() {
   });
 })();
 </script>
+<script>
+window.copyAllAttachmentsList = function(){
+  const names = Array.from(document.querySelectorAll('[data-attachment-name]'))
+    .map(n => n.dataset.attachmentName).filter(Boolean);
+  if (!names.length) return;
+  const txt = names.join('\n');
+  navigator.clipboard?.writeText(txt).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = names.length + ' anexos listados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
+</script>
 {% endblock %}

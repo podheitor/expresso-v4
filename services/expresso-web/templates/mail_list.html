@@ -1303,4 +1303,14 @@ function toggleMailListDensity() {
   });
 })();
 </script>
+<script>
+window.countUnread = function(){
+  const n = document.querySelectorAll('.mail-row.unread, .mail-row:not(.read)[data-read="0"]').length;
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = n + ' não lidas nesta página';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1800);
+};
+</script>
 {% endblock %}

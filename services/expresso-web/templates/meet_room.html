@@ -1338,4 +1338,17 @@ function toggleMeetParticipantsPane() {
   });
 })();
 </script>
+<script>
+window.pingMeetApi = function(){
+  const start = performance.now();
+  fetch('/api/v1/meet/health').then(r => {
+    const ms = Math.round(performance.now() - start);
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;top:10px;right:10px;background:' + (r.ok?'#0a0':'#a00') + ';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent = (r.ok ? 'Meet API OK' : 'Meet API erro') + ' (' + ms + 'ms)';
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 1800);
+  }).catch(() => {});
+};
+</script>
 {% endblock %}

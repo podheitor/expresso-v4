@@ -581,4 +581,20 @@ function copyAuditAsCsv() {
   });
 })();
 </script>
+<script>
+window.countByEventType = function(){
+  const counts = {};
+  document.querySelectorAll('[data-event-type]').forEach(n => {
+    const v = (n.dataset.eventType || '').trim();
+    if (v) counts[v] = (counts[v] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,3);
+  const txt = top.map(([k,v]) => k + ': ' + v).join(' · ') || 'sem eventos';
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = txt;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+};
+</script>
 {% endblock %}
