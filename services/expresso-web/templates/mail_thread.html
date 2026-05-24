@@ -521,5 +521,11 @@ document.addEventListener('keydown', function(e){
   if (!emails.size) { alert('Sem participantes identificados.'); return; }
   alert('Participantes (' + emails.size + '):\n\n' + Array.from(emails).join('\n'));
 });
+// sprint #20690 — tecla `?` ajuda thread
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /mail/thread:\n  n → próxima msg\n  p → anterior\n  g/G → topo/fim\n  r → foco reply\n  c → colapsa/expande tudo\n  a → lista anexos\n  f → participantes\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}

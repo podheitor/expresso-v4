@@ -858,5 +858,15 @@ document.addEventListener('keydown', function(e){
     if (inp) inp.value = '';
   });
 });
+// sprint #20689 — toggleCcBccVisibility() mostra/esconde Cc/Bcc
+function toggleCcBccVisibility() {
+  ['cc','bcc'].forEach(function(n){
+    var inp = document.querySelector('input[name="' + n + '"]');
+    if (!inp) return;
+    var wrap = inp.closest('.form-row, .field, label, div');
+    if (!wrap) return;
+    wrap.style.display = (wrap.style.display === 'none') ? '' : 'none';
+  });
+}
 </script>
 {% endblock %}

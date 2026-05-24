@@ -1294,5 +1294,17 @@ function showBrowserCapabilities() {
   caps.push('UA: ' + navigator.userAgent.slice(0, 100));
   alert('Capabilities do navegador:\n\n' + caps.join('\n'));
 }
+// sprint #20688 — pingServerHealth() faz HEAD em /healthz e mede latência
+function pingServerHealth() {
+  var t0 = performance.now();
+  fetch('/healthz', {method:'HEAD', cache:'no-store'})
+    .then(function(r){
+      var ms = (performance.now() - t0).toFixed(0);
+      alert('Servidor respondeu em ' + ms + 'ms · status ' + r.status);
+    })
+    .catch(function(err){
+      alert('Falhou: ' + err.message);
+    });
+}
 </script>
 {% endblock %}

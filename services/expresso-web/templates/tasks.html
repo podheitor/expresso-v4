@@ -1239,6 +1239,19 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /tasks:\n  / → foco campo adicionar\n  y → copia título (hover)\n  o → primeiro atrasado\n  t → filtra hoje\n  e → exporta MD\n  s → estatísticas\n  ? → esta ajuda');
 });
+// sprint #20686 — tecla `c` marca selecionadas como concluídas via fetch para cada checkbox
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'c' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var sel = document.querySelectorAll('.task-row input[type="checkbox"]:checked, .row-checkbox:checked');
+  if (!sel.length) return;
+  if (!confirm('Marcar ' + sel.length + ' tarefa(s) como concluída(s)?')) return;
+  sel.forEach(function(cb){
+    var row = cb.closest('.task-row, [data-task-id]');
+    var doneBtn = row && row.querySelector('button[data-action="complete"], a[href*="complete"]');
+    if (doneBtn) doneBtn.click();
+  });
+});
 </script>
 <style>
 @media print {

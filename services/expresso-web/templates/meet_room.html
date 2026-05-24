@@ -1133,6 +1133,12 @@ document.addEventListener('keydown', function(e){
   if (typeof showInviteModal === 'function') showInviteModal();
   else { var btn = document.querySelector('[onclick*="showInviteModal"]'); if (btn) btn.click(); }
 });
+// sprint #20685 — tecla `?` ajuda meet-room
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /meet/room:\n  p → PiP\n  r → reload com confirmação\n  s → copia link\n  f → fullscreen\n  q → sair\n  i → convidar\n  ? → esta ajuda');
+});
 </script>
 
 <!-- Invite modal -->

@@ -1183,5 +1183,11 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.href = '/drive/trash';
 });
+// sprint #20684 — tecla `?` ajuda do drive
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /drive:\n  i → file info\n  d → download selecionado\n  g → /drive\n  u → pasta pai\n  r → reload\n  t → lixeira\n  n → contagem\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}

@@ -1119,5 +1119,25 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /mail:\n  j/k → próxima/anterior\n  Enter → abrir\n  f → primeira não lida\n  u → marca selecionadas como lidas\n  y → copia subject (hover)\n  * → toggle select all\n  i → estatísticas pasta\n  📅 ↑↓ → ordenar\n  ? → esta ajuda');
 });
+// sprint #20682 — tecla `t` mostra timestamp da mensagem hovered
+document.addEventListener('mouseover', function(e){
+  var r = e.target && e.target.closest && e.target.closest('tr[data-mail-id], .mail-row');
+  if (r) window._lastHoverMailRow = r;
+});
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 't' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var r = window._lastHoverMailRow;
+  if (!r) return;
+  var ts = r.dataset.date || r.dataset.timestamp || (r.querySelector('time') && r.querySelector('time').getAttribute('datetime')) || '';
+  if (!ts) return;
+  var d = new Date(ts);
+  if (isNaN(d)) return;
+  var t = document.createElement('div');
+  t.textContent = '🕐 ' + d.toLocaleString() + ' (' + d.toISOString() + ')';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999;font-size:.85rem';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 3500);
+});
 </script>
 {% endblock %}

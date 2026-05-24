@@ -883,6 +883,30 @@ document.addEventListener('keydown', function(e){
   if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
   alert('Atalhos /contacts:\n  / → busca\n  m → mailto\n  c → copia email (hover)\n  t → copia tel (hover)\n  r → reload\n  n → contagem\n  e → CSV export\n  ? → esta ajuda');
 });
+// sprint #20687 — exportar contatos visíveis como vCard 3.0
+function exportContactsVcf() {
+  var rows = document.querySelectorAll('tr[data-contact-id], .contact-row');
+  var vcards = [];
+  rows.forEach(function(r){
+    if (r.offsetParent === null) return;
+    var name = (r.dataset.name || (r.querySelector('.contact-name') || {}).textContent || '').trim();
+    var email = (r.dataset.email || (r.querySelector('.contact-email') || {}).textContent || '').trim();
+    var phone = (r.dataset.phone || (r.querySelector('.contact-phone') || {}).textContent || '').trim();
+    if (!name && !email) return;
+    var v = ['BEGIN:VCARD','VERSION:3.0','FN:' + (name || email)];
+    if (email) v.push('EMAIL;TYPE=INTERNET:' + email);
+    if (phone) v.push('TEL:' + phone);
+    v.push('END:VCARD');
+    vcards.push(v.join('\r\n'));
+  });
+  if (!vcards.length) { alert('Sem contatos para exportar.'); return; }
+  var blob = new Blob([vcards.join('\r\n')], {type:'text/vcard'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'contacts-' + new Date().toISOString().slice(0,10) + '.vcf';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+}
 </script>
 
 <!-- Groups modal -->

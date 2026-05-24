@@ -288,5 +288,20 @@ function generateSlugFromName() {
     alert('Sugestão: ' + slug + '-' + rnd);
   }
 }
+// sprint #20695 — validateMeetSchedule() avisa se fim < início ou < agora
+function validateMeetSchedule() {
+  var startV = (document.getElementById('meet-start') || {}).value || '';
+  var endV = (document.getElementById('meet-end') || {}).value || '';
+  if (!startV) { alert('Defina o início.'); return false; }
+  var s = new Date(startV), now = new Date();
+  if (s < now) {
+    if (!confirm('Início é no passado (' + s.toLocaleString() + '). Continuar?')) return false;
+  }
+  if (endV) {
+    var en = new Date(endV);
+    if (en <= s) { alert('Fim deve ser depois do início.'); return false; }
+  }
+  return true;
+}
 </script>
 {% endblock %}

@@ -425,5 +425,23 @@ document.addEventListener('keydown', function(e){
   if (e.key !== 'r' || e.ctrlKey || e.metaKey || e.altKey) return;
   window.location.reload();
 });
+// sprint #20694 — tecla `a` distribuição por action no audit visível
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'a' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var tally = {};
+  document.querySelectorAll('tbody tr').forEach(function(r){
+    if (r.style.display === 'none') return;
+    var act = (r.dataset.action || '').trim();
+    if (!act) {
+      var cells = r.querySelectorAll('td');
+      if (cells.length >= 3) act = cells[2].textContent.trim();
+    }
+    if (act) tally[act] = (tally[act] || 0) + 1;
+  });
+  var top = Object.keys(tally).sort(function(a,b){ return tally[b] - tally[a]; });
+  if (!top.length) { alert('Sem ações nas linhas visíveis.'); return; }
+  alert('Distribuição por ação:\n\n' + top.map(function(a){ return tally[a] + '× ' + a; }).join('\n'));
+});
 </script>
 {% endblock %}

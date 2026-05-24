@@ -1875,6 +1875,14 @@ document.addEventListener('keydown', function(e){
   if (!stream) return;
   stream.scrollTop = 0;
 });
+// sprint #20683 — tecla `G` (shift+g) rola pro fim do stream
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'G' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var stream = document.querySelector('.chat-stream, #chat-messages, .chat-messages');
+  if (!stream) return;
+  stream.scrollTop = stream.scrollHeight;
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

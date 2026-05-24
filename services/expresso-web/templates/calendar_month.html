@@ -519,5 +519,11 @@ document.addEventListener('keydown', function(e){
   u.searchParams.delete('date');
   window.location.href = u.toString();
 });
+// sprint #20693 — tecla `?` ajuda calendar month
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+  alert('Atalhos /calendar/month:\n  [/] → mês anterior/seguinte\n  H → mês de hoje\n  T → rola pra célula de hoje\n  y → pular pra ano\n  w → top dias\n  ? → esta ajuda');
+});
 </script>
 {% endblock %}
