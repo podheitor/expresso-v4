@@ -1727,5 +1727,23 @@ window.copyDayBackToBack=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayTotalBusy=function(){
+  const rows=document.querySelectorAll('[data-event-start][data-event-end]');
+  let total=0;
+  rows.forEach(r=>{
+    const s=new Date(r.getAttribute('data-event-start'));
+    const e=new Date(r.getAttribute('data-event-end'));
+    if(!isNaN(s)&&!isNaN(e))total+=(e-s);
+  });
+  const min=Math.round(total/60000);
+  const h=Math.floor(min/60),m=min%60;
+  const out='ocupado: '+h+'h '+m+'m ('+min+'min) em '+rows.length+' eventos';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ocupado '+h+'h '+m+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2218,5 +2218,27 @@ window.copyContactsNoOrg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsBirthdayThisMonth=function(){
+  const m=new Date().getMonth();
+  const rows=document.querySelectorAll('[data-contact-birthday]');
+  const out=[];
+  rows.forEach(r=>{
+    const bd=r.getAttribute('data-contact-birthday')||'';
+    const d=new Date(bd);
+    if(isNaN(d))return;
+    if(d.getMonth()===m){
+      const n=r.getAttribute('data-contact-name')||'?';
+      out.push(d.toISOString().slice(5,10)+'\t'+n);
+    }
+  });
+  if(!out.length){alert('Sem aniversários este mês');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a06;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' aniversariantes';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

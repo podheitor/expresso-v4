@@ -1899,5 +1899,18 @@ window.countSentences=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.uppercaseSubject=function(){
+  const sub=document.querySelector('[name=subject], #compose-subject, input[name=subject]');
+  if(!sub){alert('Sem subject');return;}
+  const v=(sub.value||'').trim();
+  if(!v){alert('Vazio');return;}
+  sub.value=v.toUpperCase();
+  sub.focus();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='subject UPPERCASE';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

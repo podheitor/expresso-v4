@@ -1697,5 +1697,20 @@ window.copyThreadLargestMsg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentNames=function(){
+  const rows=document.querySelectorAll('[data-attachment-name]');
+  const out=[];
+  rows.forEach(r=>{
+    const n=(r.getAttribute('data-attachment-name')||'').trim();
+    if(n)out.push(n);
+  });
+  if(!out.length){alert('Sem anexos');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' anexos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

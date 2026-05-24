@@ -1625,5 +1625,24 @@ window.copyUsersInactive30d=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByQuotaTier=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const buckets={small:0,medium:0,large:0,xl:0};
+  rows.forEach(r=>{
+    const q=parseInt(r.getAttribute('data-user-quota-mb')||'0',10);
+    if(isNaN(q)||q<=0)return;
+    if(q<=1024)buckets.small++;
+    else if(q<=5120)buckets.medium++;
+    else if(q<=20480)buckets.large++;
+    else buckets.xl++;
+  });
+  const out=Object.keys(buckets).map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='quota tiers ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
