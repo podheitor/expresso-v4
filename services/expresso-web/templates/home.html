@@ -1768,5 +1768,19 @@ window.copyPerfTimings = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyDocStats = function(){
+  const links=document.querySelectorAll('a').length;
+  const imgs=document.querySelectorAll('img').length;
+  const inputs=document.querySelectorAll('input,textarea,select').length;
+  const buttons=document.querySelectorAll('button').length;
+  const scripts=document.querySelectorAll('script').length;
+  const out='links: '+links+'\nimgs: '+imgs+'\ninputs: '+inputs+'\nbuttons: '+buttons+'\nscripts: '+scripts;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=links+' links '+imgs+' imgs';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -1464,5 +1464,16 @@ window.spellCheckCount = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDraftSnapshot = function(){
+  const subj=(document.querySelector('input[name="subject"]')||{}).value||'';
+  const body=(document.querySelector('textarea[name="body"]')||{}).value||'';
+  const k='expresso_draft_snap_{{ me.user_id }}_'+Date.now();
+  localStorage.setItem(k,JSON.stringify({subject:subj,body:body,ts:new Date().toISOString()}));
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='snapshot salvo: '+k.slice(-13);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
