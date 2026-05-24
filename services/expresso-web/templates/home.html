@@ -1177,5 +1177,17 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 2500);
 });
+// sprint #20636 — saudação dinâmica conforme hora do dia
+(function homeDynamicGreeting(){
+  var h = document.querySelector('.home-greeting, .greeting, h1');
+  if (!h) return;
+  var orig = h.textContent.trim();
+  if (!orig) return;
+  var hour = new Date().getHours();
+  var prefix = hour < 5 ? 'Boa madrugada' : hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  if (!/bom dia|boa tarde|boa noite|boa madrugada/i.test(orig)) {
+    h.textContent = prefix + ', ' + orig;
+  }
+})();
 </script>
 {% endblock %}

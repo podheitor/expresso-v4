@@ -421,6 +421,23 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 3000);
 });
+// sprint #20647 — tecla `a` lista todos eventos da semana ordenados por dia/hora
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'a' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var evs = [];
+  document.querySelectorAll('.event-chip[data-start], .event[data-start]').forEach(function(ev){
+    var s = new Date(ev.dataset.start);
+    if (isNaN(s)) return;
+    evs.push({start: s, title: ev.dataset.title || ev.textContent.trim().slice(0,60)});
+  });
+  evs.sort(function(a,b){ return a.start - b.start; });
+  if (!evs.length) { alert('Sem eventos.'); return; }
+  var lines = evs.map(function(x){
+    return x.start.toLocaleString().slice(0,16) + ' · ' + x.title;
+  });
+  alert('Agenda da semana (' + evs.length + '):\n\n' + lines.join('\n'));
+});
 </script>
 <style>
 @media print {

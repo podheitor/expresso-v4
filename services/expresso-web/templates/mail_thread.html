@@ -478,5 +478,21 @@ document.addEventListener('keydown', function(e){
   });
   alert('Anexos da thread (' + atts.length + '):\n\n' + lines.join('\n'));
 });
+// sprint #20645 — tecla `c` colapsa/expande todas as mensagens da thread
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'c' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var msgs = document.querySelectorAll('.thread-msg');
+  if (!msgs.length) return;
+  var anyOpen = false;
+  msgs.forEach(function(m){
+    var body = m.querySelector('.thread-msg-body, .msg-body');
+    if (body && body.style.display !== 'none') anyOpen = true;
+  });
+  msgs.forEach(function(m){
+    var body = m.querySelector('.thread-msg-body, .msg-body');
+    if (body) body.style.display = anyOpen ? 'none' : '';
+  });
+});
 </script>
 {% endblock %}

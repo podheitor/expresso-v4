@@ -826,5 +826,20 @@ document.addEventListener('keydown', function(e){
   ta.value = '';
   ta.focus();
 });
+// sprint #20644 — insertSignatureBlock() apende assinatura básica no corpo
+function insertSignatureBlock() {
+  var ta = document.querySelector('textarea[name="body"]');
+  if (!ta) return;
+  var K = 'expresso_compose_signature_{{ me.user_id }}';
+  var sig = localStorage.getItem(K);
+  if (!sig) {
+    sig = prompt('Defina sua assinatura (será salva localmente):', '--\n{{ me.user_id }}');
+    if (sig === null) return;
+    try { localStorage.setItem(K, sig); } catch(e) {}
+  }
+  if (ta.value && !/\n--\n/.test(ta.value)) ta.value += '\n\n' + sig;
+  else if (!ta.value) ta.value = sig;
+  ta.focus();
+}
 </script>
 {% endblock %}

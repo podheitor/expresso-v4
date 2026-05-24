@@ -277,5 +277,24 @@ function copyGalContact(btn) {
     if (e.key === 'h' || e.key === 'H') { e.preventDefault(); window.showGalSearchHistory(); }
   });
 })();
+// sprint #20649 — tecla `c` copia todos emails dos resultados visíveis
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'c' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var emails = [];
+  document.querySelectorAll('[data-email], .gal-email').forEach(function(el){
+    var e2 = el.dataset.email || el.textContent.trim();
+    if (e2 && e2.indexOf('@') > 0) emails.push(e2);
+  });
+  if (!emails.length) return;
+  var txt = emails.join(', ');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  var t = document.createElement('div');
+  t.textContent = '📋 ' + emails.length + ' email(s) copiado(s)';
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#16a34a;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 1800);
+});
 </script>
 {% endblock %}

@@ -481,5 +481,22 @@ document.addEventListener('keydown', function(e){
   today.style.outline = '3px solid #3b82f6';
   setTimeout(function(){ today.style.outline = ''; }, 2000);
 });
+// sprint #20648 — tecla `w` mostra dias com mais eventos do mês
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'w' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var cells = document.querySelectorAll('.month-cell');
+  var stats = [];
+  cells.forEach(function(c){
+    var n = c.querySelectorAll('.event-chip, .event-allday').length;
+    if (n === 0) return;
+    var label = c.dataset.date || (c.querySelector('.day-num, header') || {}).textContent || '?';
+    stats.push({label: label.trim(), n: n});
+  });
+  stats.sort(function(a,b){ return b.n - a.n; });
+  if (!stats.length) { alert('Sem eventos no mês.'); return; }
+  var lines = stats.slice(0, 10).map(function(x){ return x.n + '× ' + x.label; });
+  alert('Top dias do mês:\n\n' + lines.join('\n'));
+});
 </script>
 {% endblock %}

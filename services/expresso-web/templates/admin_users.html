@@ -446,5 +446,28 @@ function adminUsersClearFilters() {
   var st = document.getElementById('admin-user-status-filter'); if (st) st.value = '';
   filterAdminUsers('');
 }
+// sprint #20650 — tecla `e` exporta usuários visíveis como CSV
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'e' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = [['user_id','email','role','status']];
+  document.querySelectorAll('.admin-user-row').forEach(function(r){
+    if (r.style.display === 'none') return;
+    rows.push([
+      r.dataset.userId || '',
+      r.dataset.email || '',
+      r.dataset.role || '',
+      r.dataset.status || ''
+    ]);
+  });
+  if (rows.length === 1) { alert('Sem usuários visíveis.'); return; }
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"' + (c||'').replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'admin-users-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+});
 </script>
 {% endblock %}

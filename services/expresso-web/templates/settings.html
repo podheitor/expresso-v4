@@ -1224,5 +1224,46 @@ function showExpressoLocalKeys() {
   var lines = keys.slice(0, 60).map(function(x){ return (x.size + ' B').padStart(8) + ' · ' + x.k; });
   alert('Chaves expresso_* (' + keys.length + ', ' + (total/1024).toFixed(1) + ' KiB):\n\n' + lines.join('\n'));
 }
+// sprint #20643 — exportar todas as preferências expresso_* como JSON
+function exportExpressoPrefs() {
+  var dump = {};
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('expresso_') === 0) {
+        dump[k] = localStorage.getItem(k);
+      }
+    }
+  } catch(e) {}
+  var blob = new Blob([JSON.stringify(dump, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'expresso-prefs-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+}
+// importar de volta um JSON exportado
+function importExpressoPrefs() {
+  var inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/json';
+  inp.onchange = function(){
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var data = JSON.parse(r.result);
+        var n = 0;
+        Object.keys(data).forEach(function(k){
+          if (k.indexOf('expresso_') === 0) { localStorage.setItem(k, data[k]); n++; }
+        });
+        alert(n + ' chave(s) restaurada(s). Recarregue a página.');
+      } catch(e) { alert('JSON inválido: ' + e.message); }
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
 </script>
 {% endblock %}

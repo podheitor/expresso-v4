@@ -1207,6 +1207,22 @@ document.addEventListener('keydown', function(e){
   a.click();
   setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
 });
+// sprint #20641 — tecla `s` mostra estatísticas (concluídas hoje vs pendentes)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var pend = 0, doneAll = 0, doneToday = 0;
+  var todayStr = new Date().toISOString().slice(0,10);
+  document.querySelectorAll('.task-row, [data-task-id]').forEach(function(r){
+    var done = r.dataset.done === '1' || r.classList.contains('done') || r.classList.contains('completed');
+    if (done) {
+      doneAll++;
+      var d = r.dataset.completedAt || r.dataset.doneAt || '';
+      if (d.indexOf(todayStr) === 0) doneToday++;
+    } else pend++;
+  });
+  alert('📊 Tarefas:\n  Pendentes: ' + pend + '\n  Concluídas (total visível): ' + doneAll + '\n  Concluídas hoje: ' + doneToday);
+});
 </script>
 <style>
 @media print {

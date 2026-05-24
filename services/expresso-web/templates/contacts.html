@@ -847,6 +847,27 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 2500);
 });
+// sprint #20642 — tecla `e` exporta todos os emails dos contatos visíveis (CSV)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'e' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var rows = [['name','email','phone']];
+  document.querySelectorAll('tr[data-contact-id], .contact-row').forEach(function(r){
+    if (r.offsetParent === null) return;
+    var name = (r.dataset.name || (r.querySelector('.contact-name') || {}).textContent || '').trim();
+    var email = (r.dataset.email || (r.querySelector('.contact-email') || {}).textContent || '').trim();
+    var phone = (r.dataset.phone || (r.querySelector('.contact-phone') || {}).textContent || '').trim();
+    if (name || email) rows.push([name, email, phone]);
+  });
+  if (rows.length === 1) { alert('Sem contatos visíveis.'); return; }
+  var csv = rows.map(function(r){ return r.map(function(c){ return '"' + (c||'').replace(/"/g,'""') + '"'; }).join(','); }).join('\n');
+  var blob = new Blob([csv], {type:'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'contacts-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+});
 </script>
 
 <!-- Groups modal -->

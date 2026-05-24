@@ -368,5 +368,21 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 3000);
 });
+// sprint #20646 — tecla `s` mostra total de horas ocupadas no dia
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 's' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var totalMin = 0;
+  document.querySelectorAll('.event[data-start][data-end]').forEach(function(ev){
+    var s = new Date(ev.dataset.start), en = new Date(ev.dataset.end);
+    if (!isNaN(s) && !isNaN(en) && en > s) totalMin += (en - s) / 60000;
+  });
+  var h = Math.floor(totalMin / 60), m = Math.round(totalMin % 60);
+  var t = document.createElement('div');
+  t.textContent = '⏱ Tempo ocupado hoje: ' + h + 'h' + (m ? ' ' + m + 'min' : '');
+  t.style.cssText='position:fixed;top:1rem;right:1rem;background:#222;color:#fff;padding:.5rem .8rem;border-radius:.4rem;z-index:9999';
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove();}, 3000);
+});
 </script>
 {% endblock %}

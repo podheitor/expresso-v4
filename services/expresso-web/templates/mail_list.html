@@ -1075,5 +1075,17 @@ document.addEventListener('keydown', function(e){
   first.style.outline = '2px solid #3b82f6';
   setTimeout(function(){ first.style.outline = ''; }, 1500);
 });
+// sprint #20637 — tecla `i` mostra contagem por status (lidas/não lidas/marcadas)
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'i' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var total = 0, unread = 0, flagged = 0;
+  document.querySelectorAll('tr[data-mail-id], .mail-row').forEach(function(r){
+    total++;
+    if (r.dataset.unread === '1' || r.classList.contains('unread')) unread++;
+    if (r.dataset.flagged === '1' || r.querySelector('.flagged, .star.on, [data-flag="1"]')) flagged++;
+  });
+  alert('📊 Pasta atual:\n  Total: ' + total + '\n  Não lidas: ' + unread + '\n  Sinalizadas: ' + flagged);
+});
 </script>
 {% endblock %}

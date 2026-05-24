@@ -1840,6 +1840,24 @@ document.addEventListener('keydown', function(e){
   document.body.appendChild(t);
   setTimeout(function(){t.remove();}, 1800);
 });
+// sprint #20638 — função showChatSnippets() lista snippets salvos
+function showChatSnippets() {
+  var K = 'expresso_chat_snippets_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(K) || '[]'); } catch(e) {}
+  if (!arr.length) { alert('Sem snippets salvos. Hover uma mensagem e tecle `s` para salvar.'); return; }
+  var lines = arr.slice(0, 20).map(function(x){
+    var d = new Date(x.ts).toLocaleString();
+    return '[' + d + '] ' + x.body.slice(0, 120);
+  });
+  alert('Snippets (' + arr.length + '):\n\n' + lines.join('\n\n'));
+}
+// tecla `S` (shift+s) abre snippets
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'S' || e.ctrlKey || e.metaKey || e.altKey) return;
+  showChatSnippets();
+});
 </script>
 <style>
 .chat-compact .chat-msg-item { padding: .15rem .5rem !important; margin-bottom: 0 !important; }

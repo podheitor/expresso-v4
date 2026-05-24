@@ -1108,6 +1108,16 @@ document.addEventListener('keydown', function(e){
     done();
   }
 });
+// sprint #20640 — tecla `f` toggle fullscreen do iframe Jitsi
+document.addEventListener('keydown', function(e){
+  if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+  if (e.key !== 'f' || e.ctrlKey || e.metaKey || e.altKey) return;
+  var iframe = document.querySelector('iframe[src*="jitsi"], iframe[name*="jitsi"], #jitsi-iframe, .jitsi-container iframe');
+  var target = iframe || document.querySelector('.jitsi-container, .meet-iframe-container');
+  if (!target) return;
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (target.requestFullscreen) target.requestFullscreen();
+});
 </script>
 
 <!-- Invite modal -->
