@@ -1316,5 +1316,18 @@ window.copyDayLongestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLunchSlot=function(){
+  const rows=Array.from(document.querySelectorAll('[data-event-id]')).map(r=>({s:r.dataset.eventStart||'',e:r.dataset.eventEnd||''})).filter(x=>x.s&&x.e).sort((a,b)=>a.s.localeCompare(b.s));
+  const busy=rows.some(r=>{const sh=new Date(r.s).getHours(),eh=new Date(r.e).getHours();return sh<13&&eh>12;});
+  const ta=document.createElement('textarea');
+  ta.value='almoço 12-13h: '+(busy?'OCUPADO':'livre');
+  document.body.appendChild(ta); ta.select();
+  document.execCommand('copy'); ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(busy?'#a00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='almoço: '+(busy?'ocupado':'livre');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
