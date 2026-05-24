@@ -1366,5 +1366,22 @@ function exportTasksJson() {
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
 }
+// sprint #20806 — highlightAllOverdueTasks: marca tarefas com data-due no passado
+function highlightAllOverdueTasks() {
+  var now = Date.now();
+  var n = 0;
+  document.querySelectorAll('.task-row, [data-task-id]').forEach(function(r){
+    var due = r.getAttribute('data-due');
+    if (!due) return;
+    var t = Date.parse(due);
+    if (isNaN(t) || t >= now) return;
+    var done = r.classList.contains('done') || r.classList.contains('completed') || r.querySelector('input[type="checkbox"]:checked');
+    if (done) return;
+    r.style.outline = '2px solid #d33';
+    r.style.background = 'rgba(255,0,0,.06)';
+    n++;
+  });
+  alert(n + ' tarefa(s) vencida(s) destacada(s).');
+}
 </script>
 {% endblock %}

@@ -947,5 +947,15 @@ function previewBodyPlainInNewTab() {
     '</pre>');
   w.document.close();
 }
+// sprint #20809 — copyDraftAsMarkdown: gera markdown formatado do draft
+function copyDraftAsMarkdown() {
+  var subj = (document.querySelector('input[name="subject"], #compose-subject') || {}).value || '';
+  var to = (document.querySelector('input[name="to"], #compose-to') || {}).value || '';
+  var body = (document.querySelector('textarea[name="body"], #compose-body') || {}).value || '';
+  var md = '# ' + subj + '\n\n**To:** ' + to + '\n\n---\n\n' + body + '\n';
+  if (navigator.clipboard) navigator.clipboard.writeText(md);
+  else { var ta = document.createElement('textarea'); ta.value = md; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Draft em markdown copiado (' + md.length + ' chars).');
+}
 </script>
 {% endblock %}

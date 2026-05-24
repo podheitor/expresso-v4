@@ -513,5 +513,18 @@ document.addEventListener('keydown', function(e){
   var lines = keys.slice(0, 10).map(function(k){ return k + ': ' + counts[k]; });
   alert('Top tenants:\n\n' + lines.join('\n'));
 });
+// sprint #20815 — copySuspendedUsersList: copia emails de users com classe/data 'suspended'
+function copySuspendedUsersList() {
+  var emails = [];
+  document.querySelectorAll('.user-row.suspended, .user-row[data-status="suspended"], tr[data-status="suspended"]').forEach(function(r){
+    var em = ((r.querySelector('.user-email, [data-email]') || {}).textContent || r.getAttribute('data-email') || '').trim();
+    if (em) emails.push(em);
+  });
+  if (!emails.length) { alert('Nenhum usuário marcado como suspenso visível.'); return; }
+  var txt = emails.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(emails.length + ' email(s) suspenso(s) copiado(s).');
+}
 </script>
 {% endblock %}

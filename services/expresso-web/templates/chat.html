@@ -1954,5 +1954,19 @@ function showChatChannelCount() {
   });
   alert('Sidebar de chat:\n  Canais: ' + ch + '\n  DMs: ' + dm + '\n  Total: ' + links.length);
 }
+// sprint #20803 — copyChatLastN: copia conteúdo das últimas 10 msgs
+function copyChatLastN(n) {
+  var msgs = Array.prototype.slice.call(document.querySelectorAll('.chat-msg, [data-msg-id]'));
+  if (!msgs.length) { alert('Sem mensagens.'); return; }
+  var take = msgs.slice(-(n || 10));
+  var out = take.map(function(m){
+    var who = ((m.querySelector('.chat-msg-author, [data-author]') || {}).textContent || '?').trim();
+    var body = ((m.querySelector('.chat-msg-body, [data-body]') || m).textContent || '').trim().replace(/\s+/g, ' ');
+    return who + ': ' + body;
+  }).join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(out);
+  else { var ta = document.createElement('textarea'); ta.value = out; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert(take.length + ' msg(s) copiada(s).');
+}
 </script>
 {% endblock %}

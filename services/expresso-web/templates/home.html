@@ -1278,5 +1278,21 @@ function pingExpressoLatency() {
       alert('Latência /health (3 amostras):\n  avg: ' + avg.toFixed(1) + ' ms\n  min: ' + min.toFixed(1) + ' ms\n  max: ' + max.toFixed(1) + ' ms');
     });
 }
+// sprint #20801 — copyHomeQuickSummary: copia texto resumo da home
+function copyHomeQuickSummary() {
+  var now = new Date();
+  var lines = [
+    'Expresso — resumo (' + now.toLocaleString() + ')',
+    'Usuário: {{ me.email }}',
+    'Tenant: {{ me.tenant_id }}',
+    'URL: ' + window.location.href
+  ];
+  var tiles = document.querySelectorAll('.home-tile, .quick-tile');
+  if (tiles.length) lines.push('Tiles na home: ' + tiles.length);
+  var txt = lines.join('\n');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Resumo copiado.');
+}
 </script>
 {% endblock %}

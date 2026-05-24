@@ -1211,5 +1211,19 @@ function copyMailListSummary() {
   else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert(lines.length + ' linha(s) copiada(s).');
 }
+// sprint #20802 — toggleMailListDensity: alterna compact / comfortable (localStorage)
+function toggleMailListDensity() {
+  var KEY = 'expresso_mail_density_{{ me.user_id }}';
+  var cur = 'comfortable';
+  try { cur = localStorage.getItem(KEY) || 'comfortable'; } catch (_) {}
+  var next = cur === 'compact' ? 'comfortable' : 'compact';
+  try { localStorage.setItem(KEY, next); } catch (_) {}
+  document.body.classList.toggle('mail-compact', next === 'compact');
+  alert('Densidade: ' + next);
+}
+(function(){
+  var KEY = 'expresso_mail_density_{{ me.user_id }}';
+  try { if (localStorage.getItem(KEY) === 'compact') document.body.classList.add('mail-compact'); } catch (_) {}
+})();
 </script>
 {% endblock %}

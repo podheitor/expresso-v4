@@ -1409,5 +1409,20 @@ function pingNotificationApi() {
   if (Notification.permission === 'default') Notification.requestPermission().then(fire);
   else fire(Notification.permission);
 }
+// sprint #20808 — countExpressoPrefsByPrefix: agrupa chaves expresso_<feature>_
+function countExpressoPrefsByPrefix() {
+  var groups = {};
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (!k || k.indexOf('expresso_') !== 0) continue;
+    var rest = k.slice('expresso_'.length);
+    var feat = rest.split('_')[0] || '(none)';
+    groups[feat] = (groups[feat] || 0) + 1;
+  }
+  var keys = Object.keys(groups).sort(function(a, b){ return groups[b] - groups[a]; });
+  if (!keys.length) { alert('Sem prefs expresso_*.'); return; }
+  var lines = keys.map(function(k){ return k + ': ' + groups[k]; });
+  alert('Prefs por feature:\n\n' + lines.join('\n'));
+}
 </script>
 {% endblock %}

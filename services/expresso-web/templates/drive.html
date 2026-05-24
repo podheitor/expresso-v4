@@ -1272,5 +1272,22 @@ function sumSelectedFilesSize() {
   }
   alert(count + ' arquivo(s) selecionado(s): ' + fmt(bytes));
 }
+// sprint #20804 — copyDriveBreadcrumbs: copia caminho da pasta atual
+function copyDriveBreadcrumbs() {
+  var crumbs = document.querySelectorAll('.breadcrumb a, .breadcrumb-item, nav.breadcrumb *');
+  var parts = [];
+  crumbs.forEach(function(c){
+    var t = (c.textContent || '').trim();
+    if (t && parts.indexOf(t) === -1) parts.push(t);
+  });
+  if (!parts.length) {
+    var p = window.location.pathname;
+    parts = p.replace(/^\/drive\/?/, '').split('/').filter(Boolean);
+  }
+  var txt = '/' + parts.join('/');
+  if (navigator.clipboard) navigator.clipboard.writeText(txt);
+  else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
+  alert('Caminho copiado: ' + txt);
+}
 </script>
 {% endblock %}

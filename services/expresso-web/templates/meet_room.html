@@ -1255,5 +1255,14 @@ function copyRoomUrlWithTimestamp() {
   else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert('URL+timestamp copiado.');
 }
+// sprint #20805 — toggleMeetParticipantsPane (Jitsi)
+function toggleMeetParticipantsPane() {
+  if (!window.jitsiApi || typeof window.jitsiApi.executeCommand !== 'function') {
+    alert('Jitsi não inicializado.');
+    return;
+  }
+  try { window.jitsiApi.executeCommand('toggleParticipantsPane'); }
+  catch (err) { alert('Erro: ' + err.message); }
+}
 </script>
 {% endblock %}

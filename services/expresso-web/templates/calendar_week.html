@@ -569,5 +569,27 @@ function copyWeekEventsCsv() {
   else { var ta = document.createElement('textarea'); ta.value = csv; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert((rows.length - 1) + ' evento(s) copiado(s) como CSV.');
 }
+// sprint #20812 — printWeekAgenda: imprime agenda da semana
+function printWeekAgenda() {
+  var html = '<h1>Agenda da semana</h1>';
+  var cols = document.querySelectorAll('.day-col, .week-day-col, [data-day]');
+  if (!cols.length) { alert('Sem grade.'); return; }
+  cols.forEach(function(col){
+    var day = col.getAttribute('data-day') || ((col.querySelector('.day-header, .day-label') || {}).textContent || '?').trim();
+    html += '<h2>' + day + '</h2><ul>';
+    col.querySelectorAll('.event, .calendar-event, [data-event-id]').forEach(function(ev){
+      var start = ev.getAttribute('data-start') || (ev.querySelector('.event-start, .event-time') || {}).textContent || '';
+      var title = (ev.querySelector('.event-title, .title') || ev).textContent.trim().replace(/\s+/g, ' ');
+      html += '<li>' + start.trim() + ' — ' + title + '</li>';
+    });
+    html += '</ul>';
+  });
+  var w = window.open('', '_blank');
+  if (!w) { alert('Popup bloqueado.'); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Semana</title>' +
+    '<style>body{font:14px/1.5 system-ui;padding:1rem;max-width:780px;margin:auto}h2{margin-top:1.25rem;border-bottom:1px solid #ccc}</style>' + html);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 250);
+}
 </script>
 {% endblock %}

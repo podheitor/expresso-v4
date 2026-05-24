@@ -1034,5 +1034,19 @@ function copyAllContactsAsVcfBlock() {
   else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert(cards.length + ' VCard(s) copiado(s).');
 }
+// sprint #20807 — groupContactsByFirstLetter: alert com contagem por inicial
+function groupContactsByFirstLetter() {
+  var groups = {};
+  document.querySelectorAll('.contact-row, [data-contact-id]').forEach(function(r){
+    var n = ((r.querySelector('.contact-name, [data-name]') || {}).textContent || '').trim();
+    if (!n) return;
+    var l = n.charAt(0).toUpperCase();
+    groups[l] = (groups[l] || 0) + 1;
+  });
+  var keys = Object.keys(groups).sort();
+  if (!keys.length) { alert('Sem contatos com nome.'); return; }
+  var lines = keys.map(function(k){ return k + ': ' + groups[k]; });
+  alert('Distribuição por inicial:\n\n' + lines.join('\n'));
+}
 </script>
 {% endblock %}

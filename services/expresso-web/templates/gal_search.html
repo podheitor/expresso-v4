@@ -406,5 +406,27 @@ function printGalResults() {
   w.document.close();
   setTimeout(function(){ w.focus(); w.print(); }, 250);
 }
+// sprint #20814 — toggleGalFavoriteLocal: marca/desmarca email como favorito (localStorage)
+function toggleGalFavoriteLocal(email) {
+  var KEY = 'expresso_gal_favorites_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (_) {}
+  if (!email) {
+    email = prompt('Email para favoritar/desfavoritar:');
+    if (!email) return;
+  }
+  email = String(email).trim().toLowerCase();
+  var idx = arr.indexOf(email);
+  if (idx === -1) { arr.push(email); alert('Favoritado: ' + email); }
+  else { arr.splice(idx, 1); alert('Desfavoritado: ' + email); }
+  try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (_) {}
+}
+function listGalFavoritesLocal() {
+  var KEY = 'expresso_gal_favorites_{{ me.user_id }}';
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (_) {}
+  if (!arr.length) alert('Sem favoritos GAL.');
+  else alert(arr.length + ' favorito(s):\n\n' + arr.join('\n'));
+}
 </script>
 {% endblock %}

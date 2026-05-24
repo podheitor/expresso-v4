@@ -619,5 +619,31 @@ function copyMonthEventsCsv() {
   else { var ta = document.createElement('textarea'); ta.value = csv; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); }
   alert((rows.length - 1) + ' evento(s) copiado(s) como CSV.');
 }
+// sprint #20813 — printMonthOverview: imprime visão geral do mês
+function printMonthOverview() {
+  var html = '<h1>Mês — visão geral</h1>';
+  var cells = document.querySelectorAll('.day-cell, [data-day]');
+  if (!cells.length) { alert('Sem grade do mês.'); return; }
+  var withEvents = 0;
+  cells.forEach(function(cell){
+    var evs = cell.querySelectorAll('.event, .calendar-event, [data-event-id]');
+    if (!evs.length) return;
+    withEvents++;
+    var d = cell.getAttribute('data-day') || ((cell.querySelector('.day-number, .day-label') || {}).textContent || '?').trim();
+    html += '<h3>Dia ' + d + ' (' + evs.length + ')</h3><ul>';
+    evs.forEach(function(ev){
+      var title = (ev.querySelector('.event-title, .title') || ev).textContent.trim().replace(/\s+/g, ' ');
+      html += '<li>' + title + '</li>';
+    });
+    html += '</ul>';
+  });
+  html = '<p>Dias com eventos: ' + withEvents + '</p>' + html;
+  var w = window.open('', '_blank');
+  if (!w) { alert('Popup bloqueado.'); return; }
+  w.document.write('<!doctype html><meta charset="utf-8"><title>Mês</title>' +
+    '<style>body{font:14px/1.5 system-ui;padding:1rem;max-width:780px;margin:auto}h3{margin-top:1rem}</style>' + html);
+  w.document.close();
+  setTimeout(function(){ w.focus(); w.print(); }, 250);
+}
 </script>
 {% endblock %}
