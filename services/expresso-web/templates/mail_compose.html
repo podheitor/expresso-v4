@@ -1775,5 +1775,20 @@ window.strikeSelection=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.codeSelection=function(){
+  const body=document.querySelector('textarea[name=body]');
+  if(!body){alert('Sem campo body');return;}
+  const s=body.selectionStart,e=body.selectionEnd;
+  if(s===e){alert('Selecione texto primeiro');return;}
+  const sel=body.value.substring(s,e);
+  const wrap=sel.includes('\n')?'\n```\n':'`';
+  body.value=body.value.substring(0,s)+wrap+sel+wrap+body.value.substring(e);
+  body.focus();body.setSelectionRange(s+wrap.length,e+wrap.length);
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='code ('+sel.length+'c)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

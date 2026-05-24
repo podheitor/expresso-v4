@@ -1550,5 +1550,21 @@ window.copyThreadAvgResponseTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentsList=function(){
+  const atts=document.querySelectorAll('[data-attachment-name]');
+  if(!atts.length){alert('Sem anexos');return;}
+  const out=[];
+  atts.forEach(a=>{
+    const n=a.getAttribute('data-attachment-name')||'?';
+    const sz=parseInt(a.getAttribute('data-attachment-size')||'0',10);
+    out.push((sz?(sz/1024).toFixed(1)+' KB':'?')+'\t'+n);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' anexos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

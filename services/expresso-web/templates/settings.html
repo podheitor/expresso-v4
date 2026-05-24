@@ -2322,5 +2322,17 @@ window.copyTimezoneOffset=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyScreenResolution=function(){
+  const w=window.screen.width,h=window.screen.height;
+  const dpr=window.devicePixelRatio||1;
+  const vw=window.innerWidth,vh=window.innerHeight;
+  const out='screen '+w+'x'+h+' @'+dpr+'x / viewport '+vw+'x'+vh;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=w+'x'+h+' @'+dpr+'x';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

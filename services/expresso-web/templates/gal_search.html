@@ -1372,5 +1372,22 @@ window.copyGalManagers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalByDept=function(){
+  const rows=document.querySelectorAll('[data-gal-email]');
+  if(!rows.length){alert('Sem resultados');return;}
+  const buckets={};
+  rows.forEach(r=>{
+    const d=(r.getAttribute('data-gal-dept')||'(sem)').trim()||'(sem)';
+    buckets[d]=(buckets[d]||0)+1;
+  });
+  const sorted=Object.entries(buckets).sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([d,c])=>c+'\t'+d).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=sorted.length+' deptos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

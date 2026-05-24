@@ -1462,5 +1462,26 @@ window.copyUsersByCreatedYear=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersInactive30d=function(){
+  const cutoff=Date.now()-30*86400000;
+  const rows=document.querySelectorAll('[data-user-last-login]');
+  const out=[];
+  rows.forEach(r=>{
+    const t=new Date(r.getAttribute('data-user-last-login'));
+    if(isNaN(t)||t.getTime()<cutoff){
+      const email=r.getAttribute('data-user-email')||'?';
+      const last=isNaN(t)?'nunca':r.getAttribute('data-user-last-login');
+      out.push(last+'\t'+email);
+    }
+  });
+  if(!out.length){alert('Todos ativos nos últimos 30d');return;}
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' inativos 30d+';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

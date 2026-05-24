@@ -1589,5 +1589,22 @@ window.copyWeekTentative=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalHours=function(){
+  const rows=document.querySelectorAll('[data-event-start][data-event-end]');
+  if(!rows.length){alert('Sem eventos');return;}
+  let totalMs=0;
+  rows.forEach(r=>{
+    const s=new Date(r.getAttribute('data-event-start')),e=new Date(r.getAttribute('data-event-end'));
+    if(!isNaN(s)&&!isNaN(e)&&e>s)totalMs+=(e-s);
+  });
+  const h=Math.floor(totalMs/3600000),m=Math.floor((totalMs%3600000)/60000);
+  const out=h+'h '+m+'m em '+rows.length+' eventos';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=h+'h '+m+'m total';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

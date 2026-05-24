@@ -1451,5 +1451,25 @@ window.copyAuditTopActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditFailuresOnly=function(){
+  const rows=document.querySelectorAll('[data-audit-result]');
+  const out=[];
+  rows.forEach(r=>{
+    const res=(r.getAttribute('data-audit-result')||'').toLowerCase();
+    if(res==='fail'||res==='failure'||res==='error'||res==='denied'){
+      const ts=r.getAttribute('data-audit-ts')||'';
+      const actor=r.getAttribute('data-audit-actor')||'?';
+      const action=r.getAttribute('data-audit-action')||'?';
+      out.push(ts+'\t'+actor+'\t'+action+'\t'+res);
+    }
+  });
+  if(!out.length){alert('Sem falhas');return;}
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#a00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' falhas';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
