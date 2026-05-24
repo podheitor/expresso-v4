@@ -1713,5 +1713,22 @@ window.copyUsersByLocale=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWithoutPhoto=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const hasPhoto=(r.getAttribute('data-user-photo')||'').trim();
+    if(!hasPhoto||hasPhoto==='false'||hasPhoto==='0'){
+      out.push((r.getAttribute('data-user-email')||r.getAttribute('data-user-id')||'').trim());
+    }
+  });
+  const list=out.filter(Boolean);
+  if(!list.length){alert('Todos com foto');return;}
+  const ta=document.createElement('textarea');ta.value=list.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=list.length+' s/foto';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

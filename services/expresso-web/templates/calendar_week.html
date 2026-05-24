@@ -1824,5 +1824,21 @@ window.copyWeekAllDayEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimezoneList=function(){
+  const tzs=new Set();
+  document.querySelectorAll('[data-event-tz]').forEach(e=>{
+    const z=(e.getAttribute('data-event-tz')||'').trim();
+    if(z)tzs.add(z);
+  });
+  const local=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  tzs.add(local+' (local)');
+  const out=Array.from(tzs).sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=out.length+' tz';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

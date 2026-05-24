@@ -2361,5 +2361,22 @@ window.copyMailStarred=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailWithLabels=function(){
+  const buckets={};
+  document.querySelectorAll('[data-mail-labels]').forEach(r=>{
+    const labels=(r.getAttribute('data-mail-labels')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    labels.forEach(l=>{buckets[l]=(buckets[l]||0)+1;});
+  });
+  const keys=Object.keys(buckets);
+  if(!keys.length){alert('Sem labels');return;}
+  keys.sort((a,b)=>buckets[b]-buckets[a]);
+  const out=keys.map(k=>k+'\t'+buckets[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=keys.length+' labels';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
