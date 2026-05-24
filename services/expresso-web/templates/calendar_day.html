@@ -607,6 +607,22 @@ function printDayAgenda() {
 })();
 </script>
 <script>
+window.copyAttendeesFlat = function(){
+  const set = new Set();
+  document.querySelectorAll('[data-attendees]').forEach(n => {
+    (n.dataset.attendees || '').split(',').forEach(a => {
+      const s = a.trim();
+      if (s) set.add(s);
+    });
+  });
+  if (!set.size) return;
+  navigator.clipboard?.writeText([...set].join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = set.size + ' atendees únicos copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyEventLocations = function(){
   const locs = new Set();
   document.querySelectorAll('[data-location]').forEach(n => {

@@ -607,6 +607,17 @@ function copySuspendedUsersList() {
 })();
 </script>
 <script>
+window.copyAdminsOnly = function(){
+  const items = Array.from(document.querySelectorAll('tr[data-user-id][data-user-role="admin"]'))
+    .map(r => r.dataset.userEmail).filter(Boolean);
+  if (!items.length) return;
+  navigator.clipboard?.writeText(items.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = items.length + ' admins copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyDisabled2faList = function(){
   const items = Array.from(document.querySelectorAll('tr[data-user-id][data-2fa="false"], tr[data-user-id]:not([data-2fa="true"])'))
     .map(r => r.dataset.userEmail).filter(Boolean);

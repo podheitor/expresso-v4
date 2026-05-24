@@ -1304,6 +1304,14 @@ function toggleMailListDensity() {
 })();
 </script>
 <script>
+window.scrollToFirstUnread = function(){
+  const u = document.querySelector('.mail-row.unread, .mail-row[data-read="0"]');
+  if (u) {
+    u.scrollIntoView({behavior:'smooth', block:'center'});
+    u.style.outline = '2px solid #06c';
+    setTimeout(() => u.style.outline = '', 1500);
+  }
+};
 window.toggleRowStripes = function(){
   const k = 'expresso_mail_stripes_{{ me.user_id }}';
   const next = localStorage.getItem(k) !== '1';

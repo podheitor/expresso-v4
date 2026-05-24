@@ -959,6 +959,16 @@ function copyDraftAsMarkdown() {
 }
 </script>
 <script>
+window.stripTrailingSpaces = function(){
+  const body = document.querySelector('textarea[name="body"]');
+  if (!body) return;
+  body.value = body.value.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n');
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'Espaços finais removidos';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyDraftStats = function(){
   const subj = (document.querySelector('input[name="subject"]') || {}).value || '';
   const body = (document.querySelector('textarea[name="body"]') || {}).value || '';

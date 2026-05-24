@@ -529,6 +529,22 @@ function listGalFavoritesLocal() {
 })();
 </script>
 <script>
+window.copySelectedJson = function(){
+  const sel = Array.from(document.querySelectorAll('.gal-row.selected, tr.selected'));
+  if (!sel.length) return;
+  const out = sel.map(r => ({
+    name: r.dataset.name || '',
+    email: r.dataset.email || '',
+    dept: r.dataset.dept || '',
+    phone: r.dataset.phone || '',
+  }));
+  navigator.clipboard?.writeText(JSON.stringify(out, null, 2)).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = out.length + ' selecionados (JSON) copiados';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.toggleCompactRows = function(){
   const k = 'expresso_gal_compact_{{ me.user_id }}';
   const next = localStorage.getItem(k) !== '1';

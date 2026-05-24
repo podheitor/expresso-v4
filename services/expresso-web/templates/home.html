@@ -1359,6 +1359,9 @@ function copyHomeQuickSummary() {
 })();
 </script>
 <script>
+window.openMyProfile = function(){
+  location.href = '/settings/profile';
+};
 window.copyEpochNow = function(){
   const e = String(Math.floor(Date.now()/1000));
   navigator.clipboard?.writeText(e).catch(() => {});

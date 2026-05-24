@@ -715,6 +715,20 @@ function printThread() {
 })();
 </script>
 <script>
+window.countMsgsPerSender = function(){
+  const counts = {};
+  document.querySelectorAll('[data-from]').forEach(n => {
+    const f = (n.dataset.from || '').trim();
+    if (f) counts[f] = (counts[f] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,5);
+  const txt = top.map(([f,c]) => c + 'x ' + f).join(' · ') || 'nenhuma msg';
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#06c;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = txt;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+};
 window.threadSpanDays = function(){
   const ts = Array.from(document.querySelectorAll('[data-message-date]'))
     .map(n => Date.parse(n.dataset.messageDate)).filter(x => !isNaN(x));

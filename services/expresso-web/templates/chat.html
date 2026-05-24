@@ -2047,6 +2047,22 @@ function copyChatLastN(n) {
 })();
 </script>
 <script>
+window.copyMsgsLastHour = function(){
+  const cut = Date.now() - 3600000;
+  const msgs = Array.from(document.querySelectorAll('.chat-msg[data-ts]'))
+    .filter(m => {
+      const t = Date.parse(m.dataset.ts);
+      return !isNaN(t) && t >= cut;
+    })
+    .map(m => (m.querySelector('.body') || m).textContent.trim());
+  if (!msgs.length) return;
+  navigator.clipboard?.writeText(msgs.join('\n')).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = msgs.length + ' msgs da última hora';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.copyLastMsgTs = function(){
   const last = document.querySelector('.chat-msg:last-of-type [data-ts], .chat-msg:last-of-type .time');
   if (!last) return;

@@ -731,6 +731,26 @@ function printMonthOverview() {
 })();
 </script>
 <script>
+window.exportMonthIcal = function(){
+  const evs = Array.from(document.querySelectorAll('[data-event-id]'));
+  if (!evs.length) return;
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Expresso//Month//EN'];
+  evs.forEach(e => {
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + e.dataset.eventId);
+    lines.push('SUMMARY:' + (e.dataset.title || ''));
+    lines.push('DTSTART:' + (e.dataset.start || '').replace(/[-:]/g, '').slice(0,15) + 'Z');
+    lines.push('DTEND:' + (e.dataset.end || '').replace(/[-:]/g, '').slice(0,15) + 'Z');
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const blob = new Blob([lines.join('\r\n')], {type:'text/calendar'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'month.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
 window.copyEmptyDays = function(){
   const days = new Set();
   document.querySelectorAll('.cal-cell[data-date]').forEach(c => {

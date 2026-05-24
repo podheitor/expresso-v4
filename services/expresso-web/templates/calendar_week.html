@@ -670,6 +670,27 @@ function printWeekAgenda() {
 })();
 </script>
 <script>
+window.copyWeekIcal = function(){
+  const evs = Array.from(document.querySelectorAll('[data-event-id]'));
+  if (!evs.length) return;
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Expresso//Week//EN'];
+  evs.forEach(e => {
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + e.dataset.eventId);
+    lines.push('SUMMARY:' + (e.dataset.title || ''));
+    lines.push('DTSTART:' + (e.dataset.start || '').replace(/[-:]/g, '').slice(0,15) + 'Z');
+    lines.push('DTEND:' + (e.dataset.end || '').replace(/[-:]/g, '').slice(0,15) + 'Z');
+    lines.push('END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  const ics = lines.join('\r\n');
+  navigator.clipboard?.writeText(ics).catch(() => {});
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent = 'iCal da semana copiado';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 1500);
+};
 window.sumWeekDuration = function(){
   let total = 0;
   document.querySelectorAll('[data-event-id][data-start][data-end]').forEach(e => {
