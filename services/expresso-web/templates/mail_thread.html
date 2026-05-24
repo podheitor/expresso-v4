@@ -1047,5 +1047,17 @@ window.copyThreadWordCount = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),2000);
 };
+window.copyThreadEmojis = function(){
+  const re=/\p{Extended_Pictographic}/gu;
+  const m={};
+  document.querySelectorAll('[data-msg-body]').forEach(x=>{const es=(x.getAttribute('data-msg-body')||'').match(re);if(es)es.forEach(e=>m[e]=(m[e]||0)+1);});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(([e,n])=>e+'\t'+n).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=Object.keys(m).length+' emojis distintos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

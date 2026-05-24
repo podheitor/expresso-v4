@@ -979,5 +979,16 @@ window.copyUsersOverQuota = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedThisMonth = function(){
+  const cutoff=new Date();cutoff.setDate(1);cutoff.setHours(0,0,0,0);
+  const rows=Array.from(document.querySelectorAll('[data-user-created]')).filter(r=>{const v=Date.parse(r.getAttribute('data-user-created'));return !isNaN(v)&&v>=cutoff.getTime();});
+  const out=rows.map(r=>r.getAttribute('data-user-created').slice(0,10)+'\t'+r.getAttribute('data-user-email')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=rows.length+' criados no mês';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

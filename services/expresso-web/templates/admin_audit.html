@@ -950,5 +950,16 @@ window.copyAuditTopActors = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditUniqueIps = function(){
+  const set=new Set();
+  document.querySelectorAll('[data-audit-ip]').forEach(r=>{const ip=r.getAttribute('data-audit-ip');if(ip)set.add(ip);});
+  const out=Array.from(set).sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=set.size+' IPs únicos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

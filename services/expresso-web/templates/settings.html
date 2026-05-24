@@ -1826,5 +1826,15 @@ window.copySessionStorageKeys = function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyEnabledFeatures = function(){
+  const flags=Array.from(document.querySelectorAll('[data-feature-flag]')).filter(r=>r.getAttribute('data-feature-enabled')==='1'||r.getAttribute('data-feature-enabled')==='true');
+  const out=flags.map(f=>f.getAttribute('data-feature-flag')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=flags.length+' flags ativos';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
