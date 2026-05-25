@@ -4238,5 +4238,20 @@ window.copyMeetRoomCapacity=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetHandsRaised=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const out=[];
+  ps.forEach(p=>{
+    if(p.dataset.handRaised==='1'||p.dataset.raisedHand==='1'||p.querySelector('[data-hand-up]'))
+      out.push((p.dataset.name||p.dataset.participant||'')+'\t'+(p.dataset.handRaisedAt||''));
+  });
+  const txt='name\traisedAt\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hnd '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

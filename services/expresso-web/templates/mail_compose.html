@@ -4261,5 +4261,21 @@ window.composeWordCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuoteDepth=function(){
+  const body=(document.querySelector('textarea[name=body]')||{}).value||'';
+  const lines=body.split('\n');
+  let max=0,quoted=0;
+  lines.forEach(l=>{
+    const m=l.match(/^(>\s*)+/);
+    if(m){quoted++;const d=(m[0].match(/>/g)||[]).length;if(d>max)max=d;}
+  });
+  const out='lines='+lines.length+'\nquoted='+quoted+'\nmaxDepth='+max;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qd '+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

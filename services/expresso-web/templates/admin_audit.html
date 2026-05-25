@@ -4544,5 +4544,22 @@ window.copyAuditMonthlyTrend=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByUserAgent=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const ua=(r.dataset.userAgent||r.dataset.ua||'(none)').trim()||'(none)';
+    const family=ua.split(/[\/\s]/)[0]||'(none)';
+    counts[family]=(counts[family]||0)+1;
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='ua\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='uaf '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

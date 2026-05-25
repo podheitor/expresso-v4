@@ -4887,5 +4887,21 @@ window.copySettingsBrowserFeatures=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPermissionsState=function(){
+  const names=['geolocation','notifications','microphone','camera','clipboard-read','clipboard-write','persistent-storage','midi'];
+  const out={};
+  if(navigator.permissions&&navigator.permissions.query){
+    Promise.all(names.map(n=>navigator.permissions.query({name:n}).then(r=>out[n]=r.state).catch(()=>out[n]='unknown')))
+      .then(()=>{
+        const txt=Object.entries(out).map(([k,v])=>k+'='+v).join('\n');
+        const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+        const t=document.createElement('div');
+        t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+        t.textContent='perm '+Object.keys(out).length;
+        document.body.appendChild(t);
+        setTimeout(()=>t.remove(),1500);
+      });
+  }
+};
 </script>
 {% endblock %}
