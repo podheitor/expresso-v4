@@ -5090,5 +5090,16 @@ window.copyAuditHourHistogram=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditPrivilegeEscalation=function(){
+  const rows=Array.from(document.querySelectorAll('[data-audit-row]'));
+  const esc=rows.filter(r=>{const a=(r.dataset.action||'').toLowerCase();return /grant|elevate|promote|role.*change|sudo|admin.*add/.test(a);});
+  const out=esc.map(e=>(e.dataset.timestamp||e.dataset.ts||'')+'\t'+(e.dataset.actor||'')+'\t'+(e.dataset.action||'')+'\t'+(e.dataset.target||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(esc.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='esc '+esc.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6014,5 +6014,17 @@ window.copyTasksRecurringInstances=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueDays=function(){
+  const rows=Array.from(document.querySelectorAll('[data-task-row]'));
+  const now=Date.now();
+  const over=rows.map(r=>{const due=r.dataset.due;const st=r.dataset.status||'';if(!due||st==='done'||st==='completed')return null;const d=new Date(due);if(isNaN(d))return null;const days=Math.floor((now-d)/86400000);if(days<=0)return null;return {id:r.dataset.taskId||r.dataset.id||'',days,title:r.dataset.title||''};}).filter(Boolean).sort((a,b)=>b.days-a.days);
+  const out=over.map(o=>o.days+'d\t'+o.id+'\t'+o.title).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='odd '+over.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

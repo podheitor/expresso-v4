@@ -5604,5 +5604,16 @@ window.copyMailListLargestAttachments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSelectedRows=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const sel=rows.filter(r=>{const cb=r.querySelector('input[type="checkbox"]');return (cb&&cb.checked)||r.classList.contains('selected')||r.dataset.selected==='true';});
+  const out=sel.map(s=>(s.dataset.mailId||s.dataset.id||'')+'\t'+(s.dataset.from||'')+'\t'+(s.dataset.subject||'')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='selrow '+sel.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

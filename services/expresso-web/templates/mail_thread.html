@@ -5002,5 +5002,17 @@ window.copyThreadMessageSizesKb=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadUniqueDomains=function(){
+  const msgs=Array.from(document.querySelectorAll('[data-msg-id]'));
+  const doms=new Set();
+  msgs.forEach(m=>{const f=(m.dataset.from||'').toLowerCase();const at=f.lastIndexOf('@');if(at>=0)doms.add(f.slice(at+1).replace(/[>\s].*$/,''));});
+  const out=Array.from(doms).sort().join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+doms.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
