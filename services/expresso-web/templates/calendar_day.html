@@ -5042,5 +5042,25 @@ window.copyDayShortMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayWorkloadByHour=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const hours=Array(24).fill(0);
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start),en=new Date(e.dataset.end||e.dataset.start);
+    if(isNaN(s)||isNaN(en))return;
+    let h=s.getHours();
+    const endH=en.getHours()+(en.getMinutes()>0?1:0);
+    for(let i=h;i<endH&&i<24;i++) hours[i]++;
+  });
+  const out=hours.map((c,h)=>h.toString().padStart(2,'0')+':00\t'+c+'\t'+'█'.repeat(c)).join('\n');
+  const peak=hours.indexOf(Math.max(...hours));
+  const txt='hour\tcount\tbar (peak='+peak+':00 with '+hours[peak]+' events)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wl peak '+peak+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

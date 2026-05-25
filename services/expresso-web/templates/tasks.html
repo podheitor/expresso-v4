@@ -5823,5 +5823,24 @@ window.copyTasksReopenCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksChecklistProgress=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const checks=r.querySelectorAll('[data-checklist-item], .checklist-item');
+    if(!checks.length) return;
+    const done=[...checks].filter(c=>c.dataset.done==='1'||c.dataset.checked==='1'||c.querySelector('input[type=checkbox]:checked')||c.classList.contains('done')).length;
+    const pct=Math.round(done/checks.length*100);
+    out.push((r.dataset.id||'')+'\t'+(r.dataset.title||'').slice(0,40)+'\t'+done+'/'+checks.length+'\t'+pct+'%');
+  });
+  out.sort((a,b)=>parseInt(a.split('\t')[3])-parseInt(b.split('\t')[3]));
+  const txt='id\ttitle\tdone\tpct ('+out.length+' tasks with checklists)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chk '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

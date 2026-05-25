@@ -5074,5 +5074,21 @@ window.copyWeekRoomBookings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTopAttendees=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  evs.forEach(e=>{
+    (e.dataset.attendees||'').split(/[,;]/).map(s=>s.trim().toLowerCase()).filter(Boolean).forEach(a=>{counts[a]=(counts[a]||0)+1;});
+  });
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,25);
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='attendee\tmeetings (top 25 of '+Object.keys(counts).length+', '+evs.length+' events)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='top '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

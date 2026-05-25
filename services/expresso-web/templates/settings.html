@@ -5187,5 +5187,27 @@ window.copySettingsCssVariables=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsPreferencesMatrix=function(){
+  const info={
+    prefersDark:matchMedia('(prefers-color-scheme: dark)').matches,
+    prefersLight:matchMedia('(prefers-color-scheme: light)').matches,
+    reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reducedTransparency:matchMedia('(prefers-reduced-transparency: reduce)').matches,
+    reducedData:matchMedia('(prefers-reduced-data: reduce)').matches,
+    highContrast:matchMedia('(prefers-contrast: more)').matches,
+    forcedColors:matchMedia('(forced-colors: active)').matches,
+    invertedColors:matchMedia('(inverted-colors: inverted)').matches,
+    pointerCoarse:matchMedia('(pointer: coarse)').matches,
+    hoverHover:matchMedia('(hover: hover)').matches,
+    anyHover:matchMedia('(any-hover: hover)').matches
+  };
+  const txt=Object.entries(info).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pref '+Object.values(info).filter(Boolean).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

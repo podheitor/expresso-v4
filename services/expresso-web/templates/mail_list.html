@@ -5417,5 +5417,20 @@ window.copyMailListSelected=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListMessageIds=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const mid=r.dataset.messageId||r.dataset.msgRfcId||r.dataset.rfcMessageId||'';
+    if(mid) out.push((r.dataset.id||'')+'\t'+mid+'\t'+(r.dataset.from||'')+'\t'+(r.dataset.subject||'').slice(0,40));
+  });
+  const txt='internalId\tmessageId\tfrom\tsubject ('+out.length+'/'+rows.length+' with RFC message-id)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mid '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

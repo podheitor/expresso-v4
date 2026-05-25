@@ -4569,5 +4569,28 @@ window.composeReplyAllCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLinkPreviewCheck=function(){
+  const body=((document.querySelector('textarea[name=body]')||{}).value||(document.querySelector('[contenteditable=true]')||{}).innerText||'').toString();
+  const links=body.match(/https?:\/\/[^\s<>()]+/g)||[];
+  const domains={};
+  const shorteners=['bit.ly','tinyurl.com','goo.gl','t.co','ow.ly','is.gd','buff.ly','adf.ly','tr.im'];
+  const flagged=[];
+  links.forEach(u=>{
+    try{
+      const url=new URL(u);
+      domains[url.hostname]=(domains[url.hostname]||0)+1;
+      if(shorteners.includes(url.hostname)) flagged.push('shortener:'+u);
+      if(url.search.length>200) flagged.push('long-querystring:'+u.slice(0,80));
+    }catch(e){flagged.push('malformed:'+u.slice(0,80));}
+  });
+  const out=Object.entries(domains).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='LINKS='+links.length+'\nDOMAINS:\n'+out+'\n\nFLAGGED ('+flagged.length+'):\n'+flagged.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(flagged.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lnk '+links.length+(flagged.length?' ⚠'+flagged.length:'');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4631,5 +4631,29 @@ window.copyGalProfileCompleteness=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalTenureGroups=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const now=Date.now();
+  const buckets={'<1y':0,'1-3y':0,'3-5y':0,'5-10y':0,'10+y':0,'unknown':0};
+  rows.forEach(r=>{
+    const ts=r.dataset.hireDate||r.dataset.startDate||r.dataset.joined||'';
+    if(!ts){buckets.unknown++;return;}
+    const d=new Date(ts);if(isNaN(d)){buckets.unknown++;return;}
+    const years=(now-d.getTime())/31557600000;
+    if(years<1) buckets['<1y']++;
+    else if(years<3) buckets['1-3y']++;
+    else if(years<5) buckets['3-5y']++;
+    else if(years<10) buckets['5-10y']++;
+    else buckets['10+y']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='tenureBucket\tcount (n='+rows.length+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ten '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

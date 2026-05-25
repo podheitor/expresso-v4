@@ -4818,5 +4818,28 @@ window.copyThreadLabelsSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAuthHeaders=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const counts={'spf=pass':0,'spf=fail':0,'dkim=pass':0,'dkim=fail':0,'dmarc=pass':0,'dmarc=fail':0,'none':0};
+  const failed=[];
+  msgs.forEach(m=>{
+    const spf=(m.dataset.spfResult||m.dataset.spf||'').toLowerCase();
+    const dkim=(m.dataset.dkimResult||m.dataset.dkim||'').toLowerCase();
+    const dmarc=(m.dataset.dmarcResult||m.dataset.dmarc||'').toLowerCase();
+    if(!spf&&!dkim&&!dmarc){counts.none++;return;}
+    if(spf==='pass') counts['spf=pass']++; else if(spf==='fail') counts['spf=fail']++;
+    if(dkim==='pass') counts['dkim=pass']++; else if(dkim==='fail') counts['dkim=fail']++;
+    if(dmarc==='pass') counts['dmarc=pass']++; else if(dmarc==='fail') counts['dmarc=fail']++;
+    if(spf==='fail'||dkim==='fail'||dmarc==='fail') failed.push(m.dataset.msgId+'\t'+(m.dataset.from||'')+'\tspf='+spf+' dkim='+dkim+' dmarc='+dmarc);
+  });
+  const summary=Object.entries(counts).map(([k,v])=>k+'='+v).join(', ');
+  const txt='SUMMARY: '+summary+'\n\nFAILED:\n'+failed.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(failed.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='auth '+(failed.length?'fail='+failed.length:'ok');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

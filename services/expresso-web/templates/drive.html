@@ -5540,5 +5540,25 @@ window.copyDriveMimeTypeStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLinkSharing=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const counts={'public':0,'anyoneWithLink':0,'domain':0,'restricted':0,'unknown':0};
+  const publicList=[];
+  items.forEach(it=>{
+    const s=(it.dataset.linkSharing||it.dataset.linkAccess||it.dataset.visibility||'restricted').toLowerCase();
+    if(s.includes('public')||s.includes('anyone')) {counts.anyoneWithLink++;publicList.push((it.dataset.name||'')+'\t'+s);}
+    else if(s.includes('domain')||s.includes('org')) counts.domain++;
+    else if(s.includes('restricted')||s.includes('private')) counts.restricted++;
+    else counts.unknown++;
+  });
+  const summary=Object.entries(counts).filter(([,v])=>v>0).map(([k,v])=>k+'='+v).join(', ');
+  const txt='SUMMARY: '+summary+' (n='+items.length+')\n\nPUBLIC/ANYONE-WITH-LINK:\nname\taccess\n'+publicList.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(counts.anyoneWithLink?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lnk pub='+counts.anyoneWithLink;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

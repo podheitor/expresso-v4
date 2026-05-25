@@ -4877,5 +4877,22 @@ window.copyUsersExternalIdentities=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersGroupMemberships=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const counts=new Map();
+  rows.forEach(r=>{
+    const raw=r.dataset.groups||r.dataset.memberOf||r.dataset.roles||'';
+    raw.split(/[,;|]/).map(s=>s.trim()).filter(Boolean).forEach(g=>{counts.set(g,(counts.get(g)||0)+1);});
+  });
+  const sorted=[...counts.entries()].sort((a,b)=>b[1]-a[1]);
+  const out=sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='group\tmembers ('+sorted.length+' groups, '+rows.length+' users)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='grp '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
