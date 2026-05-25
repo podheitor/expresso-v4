@@ -5636,5 +5636,17 @@ window.copyHomeLocationInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeReferrerPath=function(){
+  const ref=document.referrer||'(none)';
+  let host='',path='';
+  try{const u=new URL(ref);host=u.host;path=u.pathname;}catch(e){}
+  const out='referrer: '+ref+'\nhost: '+host+'\npath: '+path;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ref '+(host||'none');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
