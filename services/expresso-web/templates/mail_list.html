@@ -5829,5 +5829,18 @@ window.copyMailListReceivedByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListPriorityFlags=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const lines=[];
+  rows.forEach(r=>{const p=(r.getAttribute('data-priority')||'').toLowerCase();
+    if(p==='high'||p==='urgent'){lines.push((r.getAttribute('data-subject')||'?')+'\t'+p);}});
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pri '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4948,5 +4948,18 @@ window.copyMeetHandRaised=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetCaptionsLanguage=function(){
+  const lang=document.documentElement.lang||'?';
+  const cap=document.querySelector('[data-captions-lang]');
+  const cl=cap?cap.getAttribute('data-captions-lang'):'(none)';
+  const en=cap?cap.getAttribute('data-captions-enabled')||'?':'?';
+  const out='ui-lang='+lang+'\ncaptions-lang='+cl+'\ncaptions-enabled='+en;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cap '+cl;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

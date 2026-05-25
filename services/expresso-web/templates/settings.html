@@ -5604,5 +5604,19 @@ window.copySettingsMediaCapabilities=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copySettingsClipboardCheck=function(){
+  if(!navigator.clipboard){alert('clipboard unsupported');return;}
+  navigator.permissions.query({name:'clipboard-read'}).then(p1=>{
+    navigator.permissions.query({name:'clipboard-write'}).then(p2=>{
+      const out='read='+p1.state+'\nwrite='+p2.state+'\nasync='+(!!navigator.clipboard.read);
+      const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+      const t=document.createElement('div');
+      t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+      t.textContent='clip '+p2.state;
+      document.body.appendChild(t);
+      setTimeout(()=>t.remove(),1500);
+    }).catch(()=>{});
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

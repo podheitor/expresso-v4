@@ -5945,5 +5945,18 @@ window.copyDriveExtensionStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveSizeBuckets=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const b={tiny:0,small:0,medium:0,large:0,huge:0};
+  items.forEach(i=>{const sz=parseInt(i.getAttribute('data-size')||'0',10);
+    if(sz<1024)b.tiny++;else if(sz<1048576)b.small++;else if(sz<104857600)b.medium++;else if(sz<1073741824)b.large++;else b.huge++;});
+  const out='tiny(<1k)='+b.tiny+'\nsmall(<1M)='+b.small+'\nmedium(<100M)='+b.medium+'\nlarge(<1G)='+b.large+'\nhuge(>=1G)='+b.huge;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sb '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
