@@ -7070,5 +7070,21 @@ window.copyChatBotMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatThreadedReplies=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const parents={};
+  msgs.forEach(m=>{
+    const p=m.getAttribute('data-parent-id');
+    if(p)parents[p]=(parents[p]||0)+1;
+  });
+  const lines=Object.keys(parents).map(p=>p+': '+parents[p]);
+  const out='thread replies:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='thr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
