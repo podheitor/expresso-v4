@@ -4356,5 +4356,18 @@ window.copyDriveOwnedByMe=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestN=function(){
+  const n=parseInt(prompt('top N por tamanho?','10')||'10',10);
+  const arr=Array.from(document.querySelectorAll('[data-drive-item]')).map(r=>({
+    name:r.getAttribute('data-name')||'',size:parseInt(r.getAttribute('data-size')||'0',10)
+  })).filter(x=>x.size>0).sort((a,b)=>b.size-a.size).slice(0,n);
+  const out=arr.map(x=>x.size+'\t'+x.name).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

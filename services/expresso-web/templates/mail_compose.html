@@ -3521,5 +3521,16 @@ window.composeStripTrailingSpaces=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCountSentences=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const sentences=(ta.value.match(/[.!?]+(?=\s|$)/g)||[]).length;
+  const words=(ta.value.trim().match(/\S+/g)||[]).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=words+'w / '+sentences+'s';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
