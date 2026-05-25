@@ -3332,5 +3332,23 @@ window.copyTimezoneOffset=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHardwareInfo=function(){
+  const cores=navigator.hardwareConcurrency||'?';
+  const mem=navigator.deviceMemory||'?';
+  const dpr=window.devicePixelRatio||1;
+  const sz=screen.width+'x'+screen.height;
+  const out='cores '+cores+'\tmem '+mem+'GB\tdpr '+dpr+'\tscreen '+sz;
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hw '+cores+'c/'+mem+'g';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3409,5 +3409,22 @@ window.copyDriveOwners=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveOldest=function(){
+  const items=Array.from(document.querySelectorAll('[data-drive-item]'));
+  const sortable=items.map(i=>({n:i.dataset.name||'',m:Date.parse(i.dataset.modified||'')||Infinity})).filter(x=>isFinite(x.m));
+  sortable.sort((a,b)=>a.m-b.m);
+  const top=sortable.slice(0,10);
+  const ta=document.createElement('textarea');
+  ta.value=top.map(x=>new Date(x.m).toISOString().slice(0,10)+'\t'+x.n).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='old '+top.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4036,5 +4036,21 @@ window.copyChatActiveChannel=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatJoinedCount=function(){
+  const els=document.querySelectorAll('[data-channel]');
+  let n=0;
+  els.forEach(e=>{if(e.dataset.joined==='true'){n++;}});
+  const ta=document.createElement('textarea');
+  ta.value='joined '+n+' of '+els.length;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='jn '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

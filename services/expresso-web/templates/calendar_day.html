@@ -2824,5 +2824,27 @@ window.copyDayDurationsCsv=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUntilNext=function(){
+  const now=Date.now();
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  const upcoming=evs.map(e=>({s:Date.parse(e.dataset.start||''),t:e.dataset.title||''})).filter(x=>!isNaN(x.s)&&x.s>=now).sort((a,b)=>a.s-b.s);
+  const next=upcoming[0];
+  let out='no upcoming';
+  if(next){
+    const mins=Math.round((next.s-now)/60000);
+    out=mins+' min until '+next.t;
+  }
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nx '+(next?Math.round((next.s-now)/60000)+'m':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2832,5 +2832,26 @@ window.copyWeekBusiestDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalHours=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let mins=0;
+  evs.forEach(e=>{
+    const s=Date.parse(e.dataset.start||'');
+    const f=Date.parse(e.dataset.end||'');
+    if(!isNaN(s)&&!isNaN(f)){mins+=(f-s)/60000;}
+  });
+  const hrs=(mins/60).toFixed(1);
+  const ta=document.createElement('textarea');
+  ta.value='week total '+hrs+' h ('+evs.length+' events)';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='th '+hrs;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

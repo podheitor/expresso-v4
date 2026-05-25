@@ -3265,5 +3265,25 @@ window.copyMailLastWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailSelectedSenders=function(){
+  const sel=document.querySelectorAll('[data-mail-row] input[type=checkbox]:checked');
+  const set=new Set();
+  sel.forEach(c=>{
+    const row=c.closest('[data-mail-row]');
+    if(row&&row.dataset.from){set.add(row.dataset.from.trim());}
+  });
+  const arr=Array.from(set).sort();
+  const ta=document.createElement('textarea');
+  ta.value=arr.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

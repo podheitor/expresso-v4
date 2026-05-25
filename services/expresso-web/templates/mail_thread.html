@@ -2691,5 +2691,25 @@ window.copyThreadByHour=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadFlagged=function(){
+  const msgs=document.querySelectorAll('[data-msg]');
+  const out=[];
+  msgs.forEach(m=>{
+    if(m.dataset.flagged==='true'){
+      out.push((m.dataset.id||'?')+'\t'+(m.dataset.from||'')+'\t'+(m.dataset.date||''));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fl '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
