@@ -4248,5 +4248,18 @@ window.composeStripHtml=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeWordCount=function(){
+  const body=(document.querySelector('textarea[name=body]')||{}).value||'';
+  const words=body.match(/\b[\w']+\b/g)||[];
+  const sentences=body.match(/[.!?]+\s/g)||[];
+  const paragraphs=body.split(/\n\s*\n/).filter(p=>p.trim()).length;
+  const out='words\t'+words.length+'\nsentences\t'+sentences.length+'\nparagraphs\t'+paragraphs+'\ncharacters\t'+body.length+'\nreading-min\t'+Math.ceil(words.length/200);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wc '+words.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

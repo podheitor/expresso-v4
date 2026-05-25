@@ -5056,5 +5056,20 @@ window.copyMailFolderSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailDeliveryFailures=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=(r.getAttribute('data-delivery-status')||r.getAttribute('data-bounce')||'').toLowerCase();
+    if(s&&(s==='bounce'||s==='failed'||s==='undeliverable'||s==='hardbounce'||s==='softbounce'))
+      out.push((r.getAttribute('data-date')||'?')+'\t'+(r.getAttribute('data-to')||r.getAttribute('data-from')||'?')+'\t'+s);
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bnc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

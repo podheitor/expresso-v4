@@ -4530,5 +4530,19 @@ window.copyAuditUniqueActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditMonthlyTrend=function(){
+  const counts={};
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const m=(r.getAttribute('data-timestamp')||'').slice(0,7);
+    if(m)counts[m]=(counts[m]||0)+1;
+  });
+  const out=Object.keys(counts).sort().map(k=>k+'\t'+counts[k]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mo '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

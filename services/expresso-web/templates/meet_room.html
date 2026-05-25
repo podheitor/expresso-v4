@@ -4226,5 +4226,17 @@ window.copyMeetSttTranscriptCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRoomCapacity=function(){
+  const cap=document.querySelector('[data-room-capacity]');
+  const curr=document.querySelectorAll('[data-participant]').length;
+  const max=cap?parseInt(cap.getAttribute('data-room-capacity')||'0',10):0;
+  const out='current\t'+curr+'\ncapacity\t'+max+'\nutilization\t'+(max?(100*curr/max).toFixed(1)+'%':'?')+'\nroom-name\t'+((cap&&cap.getAttribute('data-room-name'))||'?');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(max&&curr>=max?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cap '+curr+'/'+max;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

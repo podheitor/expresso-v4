@@ -4864,5 +4864,28 @@ window.copySettingsActiveElement=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBrowserFeatures=function(){
+  const feats={
+    webSockets:'WebSocket' in window,
+    webWorkers:'Worker' in window,
+    intersectionObserver:'IntersectionObserver' in window,
+    resizeObserver:'ResizeObserver' in window,
+    fetch:'fetch' in window,
+    streams:'ReadableStream' in window,
+    indexedDB:'indexedDB' in window,
+    webgl:!!document.createElement('canvas').getContext('webgl'),
+    webgl2:!!document.createElement('canvas').getContext('webgl2'),
+    webRtc:'RTCPeerConnection' in window,
+    geolocation:'geolocation' in navigator,
+    pushAPI:'PushManager' in window
+  };
+  const out=Object.keys(feats).map(k=>k+'\t'+(feats[k]?'yes':'no')).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ft '+Object.values(feats).filter(Boolean).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

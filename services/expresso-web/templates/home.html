@@ -4318,5 +4318,21 @@ window.copyHomeButtonAria=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeFontStack=function(){
+  const samples=Array.from(document.querySelectorAll('body,h1,h2,p,button,input,code'));
+  const seen=new Set();
+  const out=samples.map(el=>{
+    const ff=getComputedStyle(el).fontFamily;
+    if(seen.has(el.tagName+ff))return null;
+    seen.add(el.tagName+ff);
+    return el.tagName+'\t'+ff;
+  }).filter(Boolean).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fnt '+seen.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
