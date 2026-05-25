@@ -5648,5 +5648,19 @@ window.copyHomeReferrerPath=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeTimezoneOffset=function(){
+  const d=new Date();
+  const off=d.getTimezoneOffset();
+  const sign=off>0?'-':'+';
+  const h=Math.floor(Math.abs(off)/60).toString().padStart(2,'0');
+  const m=(Math.abs(off)%60).toString().padStart(2,'0');
+  const out='tz offset: '+sign+h+':'+m+'\nlocal: '+d.toString()+'\niso: '+d.toISOString();
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tzo '+sign+h+':'+m;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
