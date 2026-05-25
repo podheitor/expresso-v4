@@ -4260,5 +4260,18 @@ window.copyDayCancelledEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingLinks=function(){
+  const out=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const u=e.getAttribute('data-meet-url')||e.getAttribute('data-conference-url')||'';
+    if(u)out.push((e.getAttribute('data-start')||'?')+'\t'+(e.getAttribute('data-title')||'?')+'\t'+u);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='links '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

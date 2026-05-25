@@ -4114,5 +4114,20 @@ window.copyAuditGeoSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditDataExfilSuspects=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const a=(r.getAttribute('data-action')||'').toLowerCase();
+    const bytes=parseInt(r.getAttribute('data-bytes')||'0',10);
+    if(/download|export|copy|share/.test(a)&&bytes>10485760)out.push((r.getAttribute('data-ts')||'?')+'\t'+(r.getAttribute('data-actor')||'?')+'\t'+a+'\t'+(bytes/1048576).toFixed(1)+'MB');
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='exfil '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5024,5 +5024,20 @@ window.copyTasksLabelMatrix=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksReopenedCount=function(){
+  const out=[];
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const reopens=parseInt(r.getAttribute('data-reopen-count')||'0',10);
+    if(reopens>0)out.push({id:r.getAttribute('data-id')||'?',r:reopens,t:r.getAttribute('data-title')||'?'});
+  });
+  out.sort((a,b)=>b.r-a.r);
+  const txt=out.map(x=>x.id+'\t'+x.r+'\t'+x.t).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='reopen '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

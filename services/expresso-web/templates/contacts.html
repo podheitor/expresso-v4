@@ -4666,5 +4666,20 @@ window.copyContactsAvatarMissing=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsLastInteraction=function(){
+  const out=[];
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    const ts=Date.parse(c.getAttribute('data-last-interaction')||c.getAttribute('data-last-contact')||'');
+    if(!isNaN(ts))out.push({d:ts,e:c.getAttribute('data-email')||'?',n:c.getAttribute('data-name')||'?'});
+  });
+  out.sort((a,b)=>b.d-a.d);
+  const txt=out.slice(0,30).map(x=>new Date(x.d).toISOString().slice(0,10)+'\t'+x.n+'\t'+x.e).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='last '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

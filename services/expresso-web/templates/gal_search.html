@@ -3881,5 +3881,24 @@ window.copyGalCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAniversariesNext30=function(){
+  const now=new Date(),out=[];
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const h=r.getAttribute('data-hired')||r.getAttribute('data-start-date')||'';
+    if(!h)return;
+    const d=new Date(h);if(isNaN(d))return;
+    const next=new Date(now.getFullYear(),d.getMonth(),d.getDate());
+    if(next<now)next.setFullYear(now.getFullYear()+1);
+    const days=(next-now)/86400000;
+    if(days<=30){const years=now.getFullYear()-d.getFullYear()+(next.getFullYear()>now.getFullYear()?1:0);out.push(next.toISOString().slice(0,10)+'\t'+years+'y\t'+(r.getAttribute('data-name')||'?'));}
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='anniv '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
