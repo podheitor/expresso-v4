@@ -5127,5 +5127,22 @@ window.copyMailMissingSpfDkim=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailQuarantined=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const q=(r.dataset.quarantine||r.dataset.quarantined||r.dataset.spamScore||'').toString();
+    const score=parseFloat(r.dataset.spamScore||'0');
+    if(q==='1'||q==='true'||r.dataset.folder==='quarantine'||score>=5)
+      out.push((r.dataset.from||'')+'\t'+(r.dataset.subject||'')+'\tscore='+score);
+  });
+  const txt='from\tsubject\tscore\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qrn '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

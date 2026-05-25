@@ -5136,5 +5136,22 @@ window.copyContactsLastInteractionStale=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsByGroup=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const counts={};
+  cs.forEach(c=>{
+    const grps=(c.dataset.groups||c.dataset.group||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(!grps.length) counts['(ungrouped)']=(counts['(ungrouped)']||0)+1;
+    grps.forEach(g=>counts[g]=(counts[g]||0)+1);
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='group\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='grp '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

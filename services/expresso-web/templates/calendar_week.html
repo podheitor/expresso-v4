@@ -4780,5 +4780,23 @@ window.copyWeekFreeAfternoons=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekAvgEventLength=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let tot=0,n=0,mn=Infinity,mx=0;
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start),ed=new Date(e.dataset.end||e.dataset.start);
+    if(isNaN(s)||isNaN(ed))return;
+    const min=(ed-s)/60000;
+    if(min>0){tot+=min;n++;if(min<mn)mn=min;if(min>mx)mx=min;}
+  });
+  const avg=n?(tot/n).toFixed(1):'0';
+  const out='events='+n+'\navgMin='+avg+'\nminMin='+(mn===Infinity?0:mn)+'\nmaxMin='+mx+'\ntotalMin='+tot.toFixed(0);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='avg '+avg+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

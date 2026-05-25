@@ -4928,5 +4928,22 @@ window.copySettingsConnectionInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsStorageEstimate=function(){
+  const finish=(o)=>{
+    const txt=Object.entries(o).map(([k,v])=>k+'='+v).join('\n');
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='stg '+Object.keys(o).length;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  };
+  if(navigator.storage&&navigator.storage.estimate){
+    navigator.storage.estimate().then(e=>{
+      const pct=e.quota?((e.usage||0)/e.quota*100).toFixed(2):'?';
+      finish({usageMB:((e.usage||0)/1048576).toFixed(1),quotaMB:((e.quota||0)/1048576).toFixed(1),pct:pct+'%'});
+    }).catch(()=>finish({error:'unavailable'}));
+  } else finish({error:'unsupported'});
+};
 </script>
 {% endblock %}

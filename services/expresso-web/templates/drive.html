@@ -5242,5 +5242,21 @@ window.copyDriveExpiringShares=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveVersionedFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const out=[];
+  items.forEach(i=>{
+    const v=parseInt(i.dataset.versionCount||i.dataset.versions||'0',10);
+    if(v>1) out.push((i.dataset.name||'')+'\t'+v+'\t'+(i.dataset.modifiedAt||''));
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[1])-parseInt(a.split('\t')[1]));
+  const txt='name\tversions\tlastModified\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ver '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

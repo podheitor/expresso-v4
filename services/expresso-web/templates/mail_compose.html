@@ -4305,5 +4305,20 @@ window.composeRecipientCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeReplaceTabs=function(){
+  const ta2=document.querySelector('textarea[name=body]');
+  if(!ta2){return;}
+  const before=ta2.value;
+  const replaced=before.replace(/\t/g,'    ');
+  ta2.value=replaced;
+  ta2.dispatchEvent(new Event('input',{bubbles:true}));
+  const out='replacedTabs='+((before.match(/\t/g)||[]).length);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tab '+((before.match(/\t/g)||[]).length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

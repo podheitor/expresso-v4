@@ -4748,5 +4748,20 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayAlarmReminders=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const out=[];
+  evs.forEach(e=>{
+    const alarms=(e.dataset.alarms||e.dataset.reminders||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    if(alarms.length) out.push((e.dataset.start||'')+'\t'+(e.dataset.title||'')+'\t'+alarms.join('|'));
+  });
+  const txt='start\ttitle\talarms\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='alm '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

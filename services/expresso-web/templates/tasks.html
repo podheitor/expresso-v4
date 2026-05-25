@@ -5508,5 +5508,28 @@ window.copyTasksEstimatedVsActual=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueByDays=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const out=[];
+  const now=Date.now();
+  rows.forEach(r=>{
+    const due=r.dataset.dueAt||r.dataset.dueDate;
+    const done=r.dataset.status==='done'||r.dataset.completed==='1';
+    if(done||!due) return;
+    const dt=new Date(due).getTime();if(isNaN(dt))return;
+    if(dt<now){
+      const days=Math.floor((now-dt)/86400000);
+      out.push((r.dataset.taskId||'')+'\t'+(r.dataset.title||'')+'\t'+days+'d');
+    }
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='id\ttitle\toverdueDays\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='od '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

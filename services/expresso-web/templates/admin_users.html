@@ -4565,5 +4565,29 @@ window.copyUsersNeverLoggedIn=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersPasswordAgeSummary=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const buckets={'<30d':0,'30-90d':0,'90-180d':0,'180-365d':0,'>1y':0,'never':0};
+  const now=Date.now();
+  rows.forEach(r=>{
+    const lc=r.dataset.passwordChangedAt||r.dataset.pwdChangedAt;
+    if(!lc){buckets.never++;return;}
+    const t=new Date(lc).getTime();if(isNaN(t)){buckets.never++;return;}
+    const d=(now-t)/86400000;
+    if(d<30)buckets['<30d']++;
+    else if(d<90)buckets['30-90d']++;
+    else if(d<180)buckets['90-180d']++;
+    else if(d<365)buckets['180-365d']++;
+    else buckets['>1y']++;
+  });
+  const out=Object.entries(buckets).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='bucket\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pwd '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

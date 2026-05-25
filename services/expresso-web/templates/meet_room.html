@@ -4284,5 +4284,21 @@ window.copyMeetNetworkQuality=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetMutedTalkers=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const out=[];
+  ps.forEach(p=>{
+    const muted=p.dataset.muted==='1'||p.dataset.audioMuted==='1';
+    const trying=p.dataset.speaking==='1'||p.dataset.isSpeaking==='1'||p.dataset.voiceActivity==='1';
+    if(muted&&trying) out.push((p.dataset.name||p.dataset.participant||'')+'\tmuted-but-speaking');
+  });
+  const txt='name\tstatus\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mut '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

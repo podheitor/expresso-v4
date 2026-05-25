@@ -4817,5 +4817,21 @@ window.copyMonthBirthdayList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthLargestGap=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>new Date(e.dataset.start).getTime()).filter(t=>!isNaN(t)).sort((a,b)=>a-b);
+  let maxGap=0,gapStart='',gapEnd='';
+  for(let i=1;i<evs.length;i++){
+    const gap=evs[i]-evs[i-1];
+    if(gap>maxGap){maxGap=gap;gapStart=new Date(evs[i-1]).toISOString();gapEnd=new Date(evs[i]).toISOString();}
+  }
+  const days=(maxGap/86400000).toFixed(1);
+  const out='maxGapDays='+days+'\nfrom='+gapStart+'\nto='+gapEnd;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gap '+days+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

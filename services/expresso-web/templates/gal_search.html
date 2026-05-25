@@ -4337,5 +4337,23 @@ window.copyGalAliasMap=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDepartmentSizes=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const d=(r.dataset.department||r.dataset.dept||'(none)').trim()||'(none)';
+    counts[d]=(counts[d]||0)+1;
+  });
+  const arr=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const total=arr.reduce((s,[,v])=>s+v,0);
+  const out=arr.map(([k,v])=>k+'\t'+v+'\t'+((v/total)*100).toFixed(1)+'%').join('\n');
+  const txt='dept\tcount\tpct\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dpt '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
