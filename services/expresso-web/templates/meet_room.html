@@ -5049,5 +5049,18 @@ window.copyMeetScreenShareCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetRecordingState=function(){
+  const root=document.querySelector('[data-meet-room]')||document.body;
+  const rec=(root.getAttribute('data-recording')||'').toLowerCase();
+  const start=root.getAttribute('data-recording-started')||'';
+  const by=root.getAttribute('data-recording-by')||'';
+  const out='recording: '+(rec||'unknown')+'\nstarted: '+start+'\nby: '+by;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(rec==='true'||rec==='active'||rec==='on'?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rec '+(rec||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
