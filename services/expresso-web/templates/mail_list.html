@@ -5106,5 +5106,26 @@ window.copyMailSizeBuckets=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailMissingSpfDkim=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const spf=(r.dataset.spf||'').toLowerCase();
+    const dkim=(r.dataset.dkim||'').toLowerCase();
+    const dmarc=(r.dataset.dmarc||'').toLowerCase();
+    const missing=[];
+    if(spf!=='pass') missing.push('spf='+spf);
+    if(dkim!=='pass') missing.push('dkim='+dkim);
+    if(dmarc!=='pass') missing.push('dmarc='+dmarc);
+    if(missing.length) out.push((r.dataset.from||'')+'\t'+(r.dataset.subject||'')+'\t'+missing.join('|'));
+  });
+  const txt='from\tsubject\tflags\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='auth '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

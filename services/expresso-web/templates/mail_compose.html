@@ -4292,5 +4292,18 @@ window.composeEmojiCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCount=function(){
+  const get=n=>(document.querySelector('input[name='+n+'],textarea[name='+n+']')||{}).value||'';
+  const split=s=>s.split(/[,;\n]/).map(x=>x.trim()).filter(Boolean);
+  const to=split(get('to')),cc=split(get('cc')),bcc=split(get('bcc'));
+  const total=to.length+cc.length+bcc.length;
+  const out='to='+to.length+'\ncc='+cc.length+'\nbcc='+bcc.length+'\ntotal='+total;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(total>50?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcp '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5118,5 +5118,23 @@ window.copyContactsAgeStats=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsLastInteractionStale=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const out=[];
+  const cutoff=Date.now()-180*86400000;
+  cs.forEach(c=>{
+    const li=c.dataset.lastInteractionAt||c.dataset.lastContacted;
+    if(!li) return;
+    const t=new Date(li).getTime();
+    if(!isNaN(t)&&t<cutoff) out.push((c.dataset.displayName||c.dataset.name||'')+'\t'+(c.dataset.email||'')+'\t'+li);
+  });
+  const txt='name\temail\tlastInteraction\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stl '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

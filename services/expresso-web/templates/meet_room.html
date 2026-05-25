@@ -4268,5 +4268,21 @@ window.copyMeetPresenterHistory=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetNetworkQuality=function(){
+  const stats={rtt:0,jitter:0,loss:0,bandwidth:0,n:0};
+  const ps=document.querySelectorAll('[data-participant]');
+  ps.forEach(p=>{
+    const r=parseFloat(p.dataset.rtt||'0'),j=parseFloat(p.dataset.jitter||'0'),l=parseFloat(p.dataset.packetLoss||'0'),b=parseFloat(p.dataset.bandwidth||'0');
+    if(r||j||l||b){stats.rtt+=r;stats.jitter+=j;stats.loss+=l;stats.bandwidth+=b;stats.n++;}
+  });
+  const n=stats.n||1;
+  const out='participants='+stats.n+'\nrtt_avg='+(stats.rtt/n).toFixed(1)+'ms\njitter_avg='+(stats.jitter/n).toFixed(1)+'ms\nloss_avg='+(stats.loss/n).toFixed(2)+'%\nbandwidth_avg='+(stats.bandwidth/n).toFixed(0)+'kbps';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nq '+stats.n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

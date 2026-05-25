@@ -4761,5 +4761,24 @@ window.copyWeekTentativeEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeAfternoons=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const busyAft={};
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start);if(isNaN(s))return;
+    const h=s.getHours(); if(h>=13&&h<18){
+      const day=s.toISOString().slice(0,10); busyAft[day]=(busyAft[day]||0)+1;
+    }
+  });
+  const all=new Set();evs.forEach(e=>{const s=new Date(e.dataset.start);if(!isNaN(s))all.add(s.toISOString().slice(0,10));});
+  const free=[...all].filter(d=>!busyAft[d]);
+  const txt='freeAfternoons\n'+free.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(free.length?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aft '+free.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

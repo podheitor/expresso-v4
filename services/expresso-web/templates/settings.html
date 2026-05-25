@@ -4917,5 +4917,16 @@ window.copySettingsBatteryStatus=function(){
     navigator.getBattery().then(b=>finish({level:Math.round(b.level*100)+'%',charging:b.charging,chargingTime:b.chargingTime,dischargingTime:b.dischargingTime})).catch(()=>finish({error:'unavailable'}));
   } else finish({error:'getBattery unsupported'});
 };
+window.copySettingsConnectionInfo=function(){
+  const c=navigator.connection||navigator.mozConnection||navigator.webkitConnection||{};
+  const lines=['effectiveType='+(c.effectiveType||'?'),'downlink='+(c.downlink||'?')+'Mbps','rtt='+(c.rtt||'?')+'ms','saveData='+(c.saveData?'1':'0'),'onLine='+navigator.onLine];
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='net '+(c.effectiveType||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

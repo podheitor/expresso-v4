@@ -5787,5 +5787,20 @@ window.copyChatEditedCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatDeletedMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const out=[];
+  msgs.forEach(m=>{
+    if(m.dataset.deleted==='1'||m.dataset.removedAt||m.classList.contains('deleted'))
+      out.push((m.dataset.timestamp||'')+'\t'+(m.dataset.sender||'')+'\t'+(m.dataset.removedAt||''));
+  });
+  const txt='ts\tsender\tdeletedAt\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='del '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
