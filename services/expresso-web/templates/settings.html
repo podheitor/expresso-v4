@@ -3891,5 +3891,21 @@ window.copyDocumentTitle=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyStorageKeys=function(){
+  const ks=[];
+  for(let i=0;i<localStorage.length;i++){ks.push(localStorage.key(i));}
+  ks.sort();
+  const ta=document.createElement('textarea');
+  ta.value=ks.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ls '+ks.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

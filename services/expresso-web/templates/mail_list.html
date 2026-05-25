@@ -3892,5 +3892,24 @@ window.copyMailFolderName=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailHourBuckets=function(){
+  const buckets=new Array(24).fill(0);
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const ts=Date.parse(r.getAttribute('data-ts')||'');
+    if(!isNaN(ts)){buckets[new Date(ts).getHours()]++;}
+  });
+  const out=buckets.map((c,h)=>String(h).padStart(2,'0')+'\t'+c).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

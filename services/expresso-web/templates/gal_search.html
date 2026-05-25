@@ -3151,5 +3151,28 @@ window.copyGalSelectedCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalJsonExport=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const arr=[];
+  rows.forEach(r=>{
+    arr.push({
+      name:r.getAttribute('data-name')||'',
+      email:r.getAttribute('data-email')||'',
+      department:r.getAttribute('data-department')||'',
+      phone:r.getAttribute('data-phone')||''
+    });
+  });
+  const ta=document.createElement('textarea');
+  ta.value=JSON.stringify(arr,null,2);
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='js '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3233,5 +3233,26 @@ window.copyComposeQuotePrev=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeReplyAll=function(){
+  const fields=['to','cc'];
+  const set=new Set();
+  fields.forEach(f=>{
+    const el=document.querySelector('input[name="'+f+'"]');
+    const v=el?el.value:'';
+    v.split(/[,;]/).map(s=>s.trim()).filter(Boolean).forEach(e=>set.add(e));
+  });
+  const out=Array.from(set).join(', ');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ra '+set.size;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
