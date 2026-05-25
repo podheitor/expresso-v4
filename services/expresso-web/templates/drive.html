@@ -3447,5 +3447,27 @@ window.copyDrivePhotos=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveOverThreshold=function(){
+  const limit=10*1024*1024;
+  const items=document.querySelectorAll('[data-drive-item]');
+  const out=[];
+  items.forEach(i=>{
+    const sz=parseInt(i.dataset.size||'0',10);
+    if(sz>=limit){
+      out.push((sz/1024/1024).toFixed(2)+' MB\t'+(i.dataset.name||''));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='10m '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2919,5 +2919,30 @@ window.copyHomeLanguages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeStorageUsage=function(){
+  if(!navigator.storage||!navigator.storage.estimate){
+    const tx=document.createElement('div');
+    tx.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    tx.textContent='no storage api';
+    document.body.appendChild(tx);
+    setTimeout(()=>tx.remove(),1500);
+    return;
+  }
+  navigator.storage.estimate().then(e=>{
+    const usedMB=((e.usage||0)/1024/1024).toFixed(2);
+    const quotaMB=((e.quota||0)/1024/1024).toFixed(2);
+    const ta=document.createElement('textarea');
+    ta.value='used '+usedMB+' MB of '+quotaMB+' MB';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='st '+usedMB;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

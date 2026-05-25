@@ -2553,5 +2553,24 @@ window.copyGalRandomPick=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalEmailsToOnly=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const emails=[];
+  rows.forEach(r=>{
+    const e=(r.dataset.email||'').trim();
+    if(e){emails.push(e);}
+  });
+  const ta=document.createElement('textarea');
+  ta.value='To: '+emails.join(', ');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='to '+emails.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
