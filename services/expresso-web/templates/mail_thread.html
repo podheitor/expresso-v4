@@ -5756,5 +5756,21 @@ window.copyThreadSubjectChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadBccList=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const all=new Set();
+  msgs.forEach(m=>{
+    const bcc=(m.getAttribute('data-bcc')||'').split(',').map(s=>s.trim()).filter(Boolean);
+    bcc.forEach(a=>all.add(a));
+  });
+  const arr=Array.from(all).sort();
+  const out='unique BCC addresses ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bcc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

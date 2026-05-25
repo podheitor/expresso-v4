@@ -6014,5 +6014,24 @@ window.copyWeekShortestEvent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimePerDay=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const totals={};
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    const en=Date.parse(e.getAttribute('data-end')||'')||0;
+    if(!s||!en)return;
+    const d=new Date(s).toISOString().slice(0,10);
+    totals[d]=(totals[d]||0)+Math.round((en-s)/60000);
+  });
+  const lines=Object.entries(totals).sort().map(([k,v])=>k+': '+Math.floor(v/60)+'h'+(v%60)+'m');
+  const out='busy time per day:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tpd '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

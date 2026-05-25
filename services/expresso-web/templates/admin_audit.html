@@ -5820,5 +5820,25 @@ window.copyAuditAdminActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLoginEvents=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const lines=[];
+  rows.forEach(r=>{
+    const act=(r.getAttribute('data-action')||'').toLowerCase();
+    if(act.includes('login')||act.includes('logout')||act.includes('auth')){
+      const ts=r.getAttribute('data-timestamp')||'';
+      const actor=r.getAttribute('data-actor')||'';
+      const ip=r.getAttribute('data-ip')||'';
+      lines.push(ts+'\t'+actor+'\t'+act+'\t'+ip);
+    }
+  });
+  const out='login/auth events ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lg '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
