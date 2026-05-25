@@ -7100,5 +7100,20 @@ window.copyChatLinkPreviews=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatFilesShared=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const lines=[];
+  msgs.forEach(m=>{
+    const f=m.getAttribute('data-file-name');
+    if(f)lines.push((m.getAttribute('data-author')||'?')+': '+f);
+  });
+  const out='files shared:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fls '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

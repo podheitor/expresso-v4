@@ -6878,5 +6878,21 @@ window.copyTasksNoAssignee=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksByProject=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const m={};
+  rows.forEach(r=>{
+    const p=(r.getAttribute('data-project')||'(none)').trim()||'(none)';
+    m[p]=(m[p]||0)+1;
+  });
+  const lines=Object.keys(m).sort().map(k=>k+': '+m[k]);
+  const out='tasks by project:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prj '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
