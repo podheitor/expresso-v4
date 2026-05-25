@@ -5449,5 +5449,18 @@ window.copyAuditAdminActions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLoginGeoSummary=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const m={};
+  rows.forEach(r=>{const a=(r.getAttribute('data-action')||'').toLowerCase();if(a.includes('login')||a.includes('signin')||a.includes('auth')){const g=(r.getAttribute('data-geo')||r.getAttribute('data-city')||r.getAttribute('data-country')||'unknown').trim();m[g]=(m[g]||0)+1;}});
+  const sorted=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]);
+  const out='login geo summary ('+sorted.length+'):\n'+sorted.map(x=>x[1]+'\t'+x[0]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='geo '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

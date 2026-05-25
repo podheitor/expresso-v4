@@ -6076,5 +6076,18 @@ window.copyDriveOwnedByMe=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveVersionedItems=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];let total=0;
+  items.forEach(it=>{const v=parseInt(it.getAttribute('data-version-count')||it.getAttribute('data-versions')||'0',10)||0;if(v>1){total+=v;lines.push((it.getAttribute('data-name')||'').trim()+' | v'+v);}});
+  lines.sort((a,b)=>parseInt(b.split(' | v')[1])-parseInt(a.split(' | v')[1]));
+  const out='versioned items ('+lines.length+', '+total+' total versions):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ver '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

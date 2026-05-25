@@ -5609,5 +5609,18 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayMeetingChainLength=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event]'));
+  evs.sort((a,b)=>(a.getAttribute('data-start')||'').localeCompare(b.getAttribute('data-start')||''));
+  let chain=1,maxChain=1,prevEnd=null;
+  for(const e of evs){const s=Date.parse(e.getAttribute('data-start')||'')||0;const en=Date.parse(e.getAttribute('data-end')||'')||0;if(prevEnd&&s-prevEnd<=5*60000){chain++;if(chain>maxChain)maxChain=chain;}else{chain=1;}prevEnd=en;}
+  const out='day meeting chain (max consecutive back-to-back): '+maxChain;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(maxChain>=4?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='chn '+maxChain;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

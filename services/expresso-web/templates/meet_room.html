@@ -5075,5 +5075,17 @@ window.copyMeetParticipantRoles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetWaitingRoom=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const lines=[];
+  parts.forEach(p=>{const s=(p.getAttribute('data-state')||p.getAttribute('data-status')||'').toLowerCase();if(s==='waiting'||s==='lobby'||s==='pending'){lines.push((p.getAttribute('data-name')||'').trim());}});
+  const out='waiting room ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wait '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

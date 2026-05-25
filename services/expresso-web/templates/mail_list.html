@@ -5960,5 +5960,17 @@ window.copyMailListDkimPassRate=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListAutoArchived=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const lines=[];
+  rows.forEach(r=>{const a=(r.getAttribute('data-archived')||'').toLowerCase();const auto=(r.getAttribute('data-auto-archive')||'').toLowerCase();if((a==='true'||a==='1')&&(auto==='true'||auto==='1')){lines.push((r.getAttribute('data-date')||'')+'\t'+(r.getAttribute('data-from')||'')+'\t'+(r.getAttribute('data-subject')||''));}});
+  const out='auto-archived rows ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aa '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

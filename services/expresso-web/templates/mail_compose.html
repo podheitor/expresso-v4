@@ -5084,5 +5084,21 @@ window.composeSpellcheckState=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientDomains=function(){
+  const toField=document.querySelector('input[name="to"]')||document.querySelector('#to');
+  const ccField=document.querySelector('input[name="cc"]')||document.querySelector('#cc');
+  const bccField=document.querySelector('input[name="bcc"]')||document.querySelector('#bcc');
+  const all=[].concat((toField?toField.value:'').split(/[,;]/),(ccField?ccField.value:'').split(/[,;]/),(bccField?bccField.value:'').split(/[,;]/));
+  const m={};
+  all.map(x=>x.trim().toLowerCase()).filter(x=>x.includes('@')).forEach(x=>{const d=x.split('@').pop().replace(/[>\s].*$/,'');if(d){m[d]=(m[d]||0)+1;}});
+  const sorted=Object.keys(m).map(k=>[k,m[k]]).sort((a,b)=>b[1]-a[1]);
+  const out='recipient domains ('+sorted.length+'):\n'+sorted.map(x=>x[1]+'\t'+x[0]).join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dom '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

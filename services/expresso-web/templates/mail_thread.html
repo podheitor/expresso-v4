@@ -5390,5 +5390,17 @@ window.copyThreadAttachmentMimeTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadEncryptedMessages=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const lines=[];
+  msgs.forEach(m=>{const e=(m.getAttribute('data-encryption')||m.getAttribute('data-encrypted')||'').toLowerCase();if(e&&e!=='false'&&e!=='none'&&e!=='0'){lines.push((m.getAttribute('data-date')||'')+' ['+e+']');}});
+  const out='encrypted messages in thread ('+lines.length+' / '+msgs.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='enc '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5705,5 +5705,17 @@ window.copyMonthBirthdayList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthHolidayList=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const lines=[];
+  evs.forEach(e=>{const c=(e.getAttribute('data-category')||'').toLowerCase();const cal=(e.getAttribute('data-calendar')||'').toLowerCase();const t=(e.getAttribute('data-title')||'').toLowerCase();if(c==='holiday'||c==='feriado'||cal.includes('holiday')||cal.includes('feriado')||t.includes('holiday')||t.includes('feriado')){lines.push((e.getAttribute('data-start')||'').slice(0,10)+' '+(e.getAttribute('data-title')||'').trim());}});
+  const out='holidays this month ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hol '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5989,5 +5989,19 @@ window.copyContactsBlockedList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsRecentlyUpdated=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const arr=[];
+  cs.forEach(c=>{const u=c.getAttribute('data-updated-at')||c.getAttribute('data-modified')||'';if(u){arr.push({u,name:(c.getAttribute('data-name')||'').trim()});}});
+  arr.sort((a,b)=>(b.u||'').localeCompare(a.u||''));
+  const lines=arr.slice(0,25).map(x=>x.u+'\t'+x.name);
+  const out='recently updated contacts ('+arr.length+', top 25):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='upd '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
