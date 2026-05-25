@@ -2940,5 +2940,27 @@ window.copyContactsCompanyTop=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsDuplicateEmails=function(){
+  const rows=document.querySelectorAll('[data-contact-row]');
+  const seen={};
+  rows.forEach(r=>{
+    const e=(r.dataset.email||'').toLowerCase().trim();
+    if(!e)return;
+    seen[e]=(seen[e]||[]);
+    seen[e].push(r.dataset.name||'');
+  });
+  const dupes=Object.entries(seen).filter(([_,v])=>v.length>1);
+  const ta=document.createElement('textarea');
+  ta.value=dupes.map(([e,ns])=>e+'\t'+ns.join(', ')).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dupes.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
