@@ -2803,5 +2803,18 @@ window.copyComposeTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.insertCurrentDate=function(){
+  const b=document.getElementById('body');
+  if(!b){return;}
+  const d=new Intl.DateTimeFormat(navigator.language||'pt-BR',{dateStyle:'full',timeStyle:'short'}).format(new Date());
+  const at=b.selectionStart||b.value.length;
+  b.value=b.value.slice(0,at)+d+b.value.slice(at);
+  b.focus();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dt';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

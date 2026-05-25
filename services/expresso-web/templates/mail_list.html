@@ -3397,5 +3397,20 @@ window.copyMailDateRange=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargestSubjLen=function(){
+  const rows=Array.from(document.querySelectorAll('[data-mail-row]'));
+  const items=rows.map(r=>({l:(r.dataset.subject||'').length,s:r.dataset.subject||''})).sort((a,b)=>b.l-a.l).slice(0,10);
+  const ta=document.createElement('textarea');
+  ta.value=items.map(x=>x.l+'\t'+x.s).join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sl '+(items[0]?items[0].l:0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

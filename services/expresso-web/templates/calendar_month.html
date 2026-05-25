@@ -3007,5 +3007,27 @@ window.copyMonthOpenSlots=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthRecurringOnly=function(){
+  const evs=document.querySelectorAll('[data-event-id]');
+  const out=[];
+  evs.forEach(e=>{
+    if((e.dataset.recurring||'').trim()==='1'||(e.dataset.rrule||'').trim()){
+      const t=(e.dataset.eventTitle||e.textContent||'').trim();
+      const s=(e.dataset.eventStart||'').slice(0,10);
+      out.push(s+'\t'+t);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rc '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

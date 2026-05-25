@@ -3436,5 +3436,27 @@ window.copyLocalStorageBytes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHardwareWebGL=function(){
+  const cv=document.createElement('canvas');
+  const gl=cv.getContext('webgl')||cv.getContext('experimental-webgl');
+  let out='no webgl';
+  if(gl){
+    const dbg=gl.getExtension('WEBGL_debug_renderer_info');
+    const vendor=dbg?gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL):gl.getParameter(gl.VENDOR);
+    const rend=dbg?gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);
+    out='vendor '+vendor+'\trenderer '+rend;
+  }
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gl '+(gl?'ok':'no');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
