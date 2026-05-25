@@ -4348,5 +4348,17 @@ window.copySettingsLocalStorageKeys=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsServiceWorkers=function(){
+  if(!navigator.serviceWorker){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='no sw api';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    const out=regs.map(r=>r.scope+'\t'+(r.active?.state||'?')+'\t'+(r.active?.scriptURL||'')).join('\n')+'\ntotal='+regs.length;
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='sw '+regs.length;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

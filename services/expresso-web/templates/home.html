@@ -3817,5 +3817,17 @@ window.copyHomeStorageEstimate=function(){
     setTimeout(()=>t.remove(),1500);
   });
 };
+window.copyHomeBatteryStatus=function(){
+  if(!navigator.getBattery){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='no battery api';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  navigator.getBattery().then(b=>{
+    const out='level='+(b.level*100).toFixed(0)+'%\ncharging='+b.charging+'\ncharge-time='+b.chargingTime+'s\ndischarge-time='+b.dischargingTime+'s';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:'+(b.charging||b.level>0.2?'#0a0':'#c00')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='bat '+(b.level*100).toFixed(0)+'%';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}

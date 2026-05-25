@@ -3644,5 +3644,16 @@ window.copyGalCityCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalSelectedVcard=function(){
+  const sel=document.querySelector('[data-gal-row].selected,[data-gal-row][data-selected="1"]');
+  if(!sel){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='no selection';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const lines=['BEGIN:VCARD','VERSION:3.0','FN:'+(sel.getAttribute('data-name')||''),'EMAIL:'+(sel.getAttribute('data-email')||''),'TEL:'+(sel.getAttribute('data-phone')||''),'ORG:'+(sel.getAttribute('data-dept')||''),'TITLE:'+(sel.getAttribute('data-title')||''),'ADR:;;'+(sel.getAttribute('data-city')||'')+';;;;','END:VCARD'];
+  const ta=document.createElement('textarea');ta.value=lines.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vcard';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
