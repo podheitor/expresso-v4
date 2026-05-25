@@ -3888,5 +3888,18 @@ window.copyDayLongMeetings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayUnconfirmedRsvp=function(){
+  const out=[];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const r=(e.getAttribute('data-my-rsvp')||e.getAttribute('data-rsvp')||'').toLowerCase();
+    if(!r||r==='needs-action'||r==='tentative'||r==='?')out.push((e.getAttribute('data-start')||'')+'\t'+(r||'?')+'\t'+(e.getAttribute('data-title')||''));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='? '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

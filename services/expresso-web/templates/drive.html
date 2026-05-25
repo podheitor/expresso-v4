@@ -4395,5 +4395,19 @@ window.copyDriveAvgFileSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderNames=function(){
+  const out=[];
+  document.querySelectorAll('[data-drive-item]').forEach(r=>{
+    const tp=(r.getAttribute('data-type')||'').toLowerCase();
+    if(tp==='folder'||tp==='dir')out.push(r.getAttribute('data-name')||'');
+  });
+  out.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dir '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

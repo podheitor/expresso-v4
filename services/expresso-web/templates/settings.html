@@ -4242,5 +4242,20 @@ window.copySettingsPermissionsTable=async function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsIndexedDbList=async function(){
+  try{
+    if(!indexedDB.databases){const e=document.createElement('div');e.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';e.textContent='no api';document.body.appendChild(e);setTimeout(()=>e.remove(),1500);return;}
+    const list=await indexedDB.databases();
+    const out=list.map(d=>(d.name||'(unnamed)')+'\tv'+d.version).join('\n')||'(none)';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='idb '+list.length;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }catch(e){
+    const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='err '+e.message;document.body.appendChild(t);setTimeout(()=>t.remove(),1500);
+  }
+};
 </script>
 {% endblock %}
