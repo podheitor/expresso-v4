@@ -5996,5 +5996,21 @@ window.copyAuditByActorDomain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditSensitiveActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const sens=/delete|disable|revoke|grant|reset|drop|truncate|export/i;
+  const lines=[];
+  rows.forEach(r=>{
+    const k=r.getAttribute('data-action')||'';
+    if(sens.test(k))lines.push((r.getAttribute('data-timestamp')||'?')+' '+(r.getAttribute('data-actor')||'?')+' '+k);
+  });
+  const out='sensitive actions:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sens '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

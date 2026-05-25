@@ -5920,5 +5920,23 @@ window.copyThreadSenderDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadAttachmentExtensions=function(){
+  const items=document.querySelectorAll('[data-attachment]');
+  const m={};
+  items.forEach(i=>{
+    const n=(i.getAttribute('data-filename')||'').toLowerCase();
+    const idx=n.lastIndexOf('.');
+    const e=idx>0?n.slice(idx+1):'(none)';
+    m[e]=(m[e]||0)+1;
+  });
+  const lines=Object.keys(m).sort().map(k=>k+': '+m[k]);
+  const out='attachment exts:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aex '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
