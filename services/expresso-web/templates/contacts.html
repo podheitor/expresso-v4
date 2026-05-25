@@ -4016,5 +4016,24 @@ window.copyContactsBirthdaysThisMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsMissingFields=function(){
+  let noEmail=0,noPhone=0,noCompany=0;
+  document.querySelectorAll('[data-contact-row]').forEach(r=>{
+    if(!(r.dataset.email||'').trim()){noEmail++;}
+    if(!(r.dataset.phone||'').trim()){noPhone++;}
+    if(!(r.dataset.company||'').trim()){noCompany++;}
+  });
+  const ta=document.createElement('textarea');
+  ta.value='no_email\t'+noEmail+'\nno_phone\t'+noPhone+'\nno_company\t'+noCompany;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mf '+(noEmail+noPhone+noCompany);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

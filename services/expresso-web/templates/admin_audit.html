@@ -3471,5 +3471,25 @@ window.copyAuditRecentLogins=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditPermissionChanges=function(){
+  const out=[];
+  document.querySelectorAll('[data-audit-row]').forEach(r=>{
+    const action=(r.getAttribute('data-action')||'').toLowerCase();
+    if(action.includes('permission')||action.includes('role')||action.includes('grant')||action.includes('revoke')){
+      out.push((r.getAttribute('data-ts')||'')+'\t'+(r.getAttribute('data-actor')||'')+'\t'+action);
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='perm '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

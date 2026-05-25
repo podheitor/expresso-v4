@@ -4005,5 +4005,23 @@ window.copyMailWithAttachments=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailReplyChains=function(){
+  const out=[];
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=(r.dataset.subject||'').trim();
+    if(/^(re|res|rv|fwd|enc)\s*:/i.test(s)){out.push((r.dataset.date||'')+'\t'+(r.dataset.from||'')+'\t'+s);}
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='re '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

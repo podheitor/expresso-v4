@@ -3656,5 +3656,32 @@ window.copyMonthBusiestWeekday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEmptyDays=function(){
+  const monthDays=new Set();
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const d=(e.getAttribute('data-start')||'').slice(0,10);
+    if(d){monthDays.add(d);}
+  });
+  const now=new Date();
+  const y=now.getFullYear();
+  const m=now.getMonth();
+  const last=new Date(y,m+1,0).getDate();
+  const empty=[];
+  for(let d=1;d<=last;d++){
+    const iso=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    if(!monthDays.has(iso)){empty.push(iso);}
+  }
+  const ta=document.createElement('textarea');
+  ta.value=empty.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+empty.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

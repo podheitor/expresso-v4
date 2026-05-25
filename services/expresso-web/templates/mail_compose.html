@@ -3326,5 +3326,22 @@ window.composeInsertHorizontalRule=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeCountParagraphs=function(){
+  const el=document.querySelector('textarea[name="body"]');
+  const v=el?el.value:'';
+  const paras=v.split(/\n\s*\n/).filter(p=>p.trim()).length;
+  const lines=v.split('\n').length;
+  const ta=document.createElement('textarea');
+  ta.value='paragraphs\t'+paras+'\nlines\t'+lines+'\nchars\t'+v.length;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='p '+paras;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
