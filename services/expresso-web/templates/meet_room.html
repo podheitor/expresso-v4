@@ -3975,5 +3975,20 @@ window.copyMeetVideoOff=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetBandwidthStats=function(){
+  const out=[];
+  document.querySelectorAll('[data-participant]').forEach(p=>{
+    const tx=parseFloat(p.getAttribute('data-bandwidth-up')||'0');
+    const rx=parseFloat(p.getAttribute('data-bandwidth-down')||'0');
+    if(tx>0||rx>0)out.push((p.getAttribute('data-name')||'?')+'\t↑'+tx.toFixed(0)+'kbps\t↓'+rx.toFixed(0)+'kbps');
+  });
+  out.sort();
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bw '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

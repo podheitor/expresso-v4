@@ -4407,5 +4407,21 @@ window.copyWeekDeclinedEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekHoursPerDay=function(){
+  const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const hours=new Array(7).fill(0);
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    const en=Date.parse(e.getAttribute('data-end')||'');
+    if(!isNaN(s)&&!isNaN(en))hours[new Date(s).getDay()]+=(en-s)/3600000;
+  });
+  const out=days.map((d,i)=>d+'\t'+hours[i].toFixed(2)+'h');
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hrs '+hours.reduce((a,b)=>a+b,0).toFixed(1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

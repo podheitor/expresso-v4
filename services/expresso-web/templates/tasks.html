@@ -5143,5 +5143,23 @@ window.copyTasksDueTodayList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksBacklogSize=function(){
+  let open=0,todo=0,inprog=0,blocked=0,done=0;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const s=(r.getAttribute('data-status')||'').toLowerCase();
+    if(s==='done'||s==='closed'||s==='completed')done++;
+    else if(s==='blocked')blocked++;
+    else if(s==='in_progress'||s==='inprogress'||s==='doing')inprog++;
+    else if(s==='todo'||s==='open'||s==='backlog')todo++;
+    else open++;
+  });
+  const out='Todo: '+todo+'\nIn progress: '+inprog+'\nBlocked: '+blocked+'\nDone: '+done+'\nOther open: '+open+'\nBacklog total: '+(todo+inprog+blocked+open);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='backlog '+(todo+inprog+blocked+open);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

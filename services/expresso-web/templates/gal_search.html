@@ -4000,5 +4000,18 @@ window.copyGalCsvExport=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalRowsVcards=function(){
+  const out=[];
+  document.querySelectorAll('[data-gal-row]').forEach(r=>{
+    const v=['BEGIN:VCARD','VERSION:3.0','FN:'+(r.getAttribute('data-name')||''),'TITLE:'+(r.getAttribute('data-title')||''),'ORG:'+(r.getAttribute('data-department')||''),'EMAIL:'+(r.getAttribute('data-email')||''),'TEL;TYPE=CELL:'+(r.getAttribute('data-mobile')||''),'END:VCARD'];
+    out.push(v.join('\r\n'));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\r\n\r\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vcards '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

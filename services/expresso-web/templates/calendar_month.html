@@ -4448,5 +4448,21 @@ window.copyMonthEventsByLocation=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsCsvExport=function(){
+  const rows=[['Start','End','Title','Organizer','Location','Visibility'].join(',')];
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const vals=['data-start','data-end','data-title','data-organizer','data-location','data-visibility'].map(a=>{
+      const v=(e.getAttribute(a)||'').replace(/"/g,'""');
+      return /[",\n]/.test(v)?'"'+v+'"':v;
+    });
+    rows.push(vals.join(','));
+  });
+  const ta=document.createElement('textarea');ta.value=rows.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(rows.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

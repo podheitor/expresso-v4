@@ -4783,5 +4783,21 @@ window.copyContactsEmailDomains=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsCsvExport=function(){
+  const rows=[['Name','Email','Phone','Mobile','Company','Title','Country','City'].join(',')];
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    const vals=['data-name','data-email','data-phone','data-mobile','data-company','data-title','data-country','data-city'].map(a=>{
+      const v=(c.getAttribute(a)||'').replace(/"/g,'""');
+      return /[",\n]/.test(v)?'"'+v+'"':v;
+    });
+    rows.push(vals.join(','));
+  });
+  const ta=document.createElement('textarea');ta.value=rows.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csv '+(rows.length-1);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
