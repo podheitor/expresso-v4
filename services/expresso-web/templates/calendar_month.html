@@ -3411,5 +3411,25 @@ window.copyMonthAllTitles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthMonthlyTotals=function(){
+  const events=document.querySelectorAll('[data-event]');
+  const buckets={};
+  events.forEach(e=>{
+    const m=(e.getAttribute('data-start')||'').slice(0,7);
+    if(m){buckets[m]=(buckets[m]||0)+1;}
+  });
+  const out=Object.keys(buckets).sort().map(k=>k+'\t'+buckets[k]).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mt '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

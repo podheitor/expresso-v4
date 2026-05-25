@@ -3215,5 +3215,28 @@ window.copyUsersAdminsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedThisWeek=function(){
+  const cutoff=Date.now()-7*24*3600*1000;
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const ts=Date.parse(r.getAttribute('data-created-at')||'');
+    if(!isNaN(ts)&&ts>=cutoff){
+      out.push((r.getAttribute('data-created-at')||'')+'\t'+(r.getAttribute('data-email')||''));
+    }
+  });
+  out.sort();
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
