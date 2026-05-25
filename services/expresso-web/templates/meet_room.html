@@ -4330,5 +4330,21 @@ window.copyMeetDeviceConstraints=function(){
     finish(navigator.mediaDevices.getSupportedConstraints());
   } else finish({error:'unsupported'});
 };
+window.copyMeetParticipantsByRole=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const counts={host:0,moderator:0,presenter:0,attendee:0,guest:0,other:0};
+  ps.forEach(p=>{
+    const r=(p.dataset.role||p.dataset.participantRole||'attendee').toLowerCase();
+    if(counts[r]!=null)counts[r]++;else counts.other++;
+  });
+  const out=Object.entries(counts).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='role\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rl '+ps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5192,5 +5192,21 @@ window.copyContactsByEmailProvider=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsLanguagePref=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const counts={};
+  cs.forEach(c=>{
+    const l=(c.dataset.language||c.dataset.lang||c.dataset.locale||'(none)').toLowerCase().split('-')[0]||'(none)';
+    counts[l]=(counts[l]||0)+1;
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='lang\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lng '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

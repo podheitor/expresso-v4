@@ -4830,5 +4830,20 @@ window.copyWeekRecurringMaster=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekShortestGap=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start).getTime(),e:new Date(e.dataset.end||e.dataset.start).getTime(),t:e.dataset.title||''})).filter(x=>!isNaN(x.s)&&!isNaN(x.e)).sort((a,b)=>a.s-b.s);
+  let minGap=Infinity,from='',to='';
+  for(let i=1;i<evs.length;i++){
+    const gap=evs[i].s-evs[i-1].e;
+    if(gap>=0&&gap<minGap){minGap=gap;from=evs[i-1].t;to=evs[i].t;}
+  }
+  const out='minGapMin='+(minGap===Infinity?'n/a':Math.round(minGap/60000))+'\nbetween='+from+' → '+to;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(minGap<300000?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sg '+(minGap===Infinity?'n/a':Math.round(minGap/60000)+'m');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4642,5 +4642,22 @@ window.copyAuditPrivilegedDeletions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAfterHoursActions=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const ts=r.dataset.timestamp;if(!ts)return;
+    const d=new Date(ts);if(isNaN(d))return;
+    const hr=d.getHours(),dw=d.getDay();
+    if(hr<7||hr>=20||dw===0||dw===6) out.push(ts+'\t'+(r.dataset.actor||'')+'\t'+(r.dataset.action||''));
+  });
+  const txt='ts\tactor\taction\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ah '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

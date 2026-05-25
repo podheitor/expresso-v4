@@ -4582,5 +4582,21 @@ window.copyThreadReplyAllRatio=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadSentVsReceived=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const me=(window.currentUserEmail||document.body.dataset.userEmail||'').toLowerCase();
+  let sent=0,recv=0;
+  msgs.forEach(m=>{
+    const from=(m.dataset.from||'').toLowerCase();
+    if(me&&from.includes(me))sent++;else recv++;
+  });
+  const out='sentByMe='+sent+'\nreceived='+recv+'\nratio='+(recv?(sent/recv).toFixed(2):'∞')+'\nuserEmail='+(me||'(unknown)');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='svr s='+sent+'/r='+recv;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

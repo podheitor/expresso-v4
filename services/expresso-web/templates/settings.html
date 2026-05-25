@@ -4974,5 +4974,17 @@ window.copySettingsScreenWakeLock=function(){
     navigator.wakeLock.request('screen').then(l=>{finish({supported:true,acquired:true,type:l.type});l.release();}).catch(e=>finish({supported:true,acquired:false,error:e.name}));
   } else finish({supported:false});
 };
+window.copySettingsCryptoDetails=function(){
+  const c=window.crypto||window.msCrypto||{};
+  const lines=['crypto='+(c?'yes':'no'),'subtle='+(c.subtle?'yes':'no'),'randomUUID='+(typeof c.randomUUID==='function'?'yes':'no'),'getRandomValues='+(typeof c.getRandomValues==='function'?'yes':'no')];
+  if(c.randomUUID)lines.push('sampleUUID='+c.randomUUID());
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='crp '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
