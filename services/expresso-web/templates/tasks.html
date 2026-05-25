@@ -5066,5 +5066,24 @@ window.copyTasksByProject=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimateVsActual=function(){
+  const out=[];
+  let totalEst=0,totalAct=0;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const est=parseFloat(r.getAttribute('data-estimate-hours')||'0');
+    const act=parseFloat(r.getAttribute('data-actual-hours')||'0');
+    if(est>0||act>0){
+      totalEst+=est;totalAct+=act;
+      out.push((r.getAttribute('data-title')||'?')+'\test='+est+'h\tact='+act+'h');
+    }
+  });
+  const summary='Total: est='+totalEst.toFixed(1)+'h act='+totalAct.toFixed(1)+'h delta='+(totalAct-totalEst).toFixed(1)+'h';
+  const ta=document.createElement('textarea');ta.value=summary+'\n'+out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(totalAct>totalEst*1.2?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vs '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

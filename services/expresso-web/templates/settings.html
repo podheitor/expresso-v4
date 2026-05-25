@@ -4584,5 +4584,25 @@ window.copySettingsScreenInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBatteryStatus=function(){
+  if(!navigator.getBattery){
+    const ta=document.createElement('textarea');ta.value='battery API unsupported';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='battery n/a';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  navigator.getBattery().then(b=>{
+    const out=['charging\t'+b.charging,'level\t'+(b.level*100).toFixed(0)+'%','chargingTime\t'+b.chargingTime+'s','dischargingTime\t'+b.dischargingTime+'s'];
+    const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='battery '+(b.level*100).toFixed(0)+'%';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  }).catch(()=>{});
+};
 </script>
 {% endblock %}

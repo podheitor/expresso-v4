@@ -4355,5 +4355,25 @@ window.copyMonthAvgDuration=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthBusiestWeek=function(){
+  const weeks={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=e.getAttribute('data-start')||'';
+    const d=new Date(s);
+    if(isNaN(d.getTime()))return;
+    const onejan=new Date(d.getFullYear(),0,1);
+    const wk=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+    const key=d.getFullYear()+'-W'+wk;
+    weeks[key]=(weeks[key]||0)+1;
+  });
+  const sorted=Object.keys(weeks).sort((a,b)=>weeks[b]-weeks[a]);
+  const out=sorted.map(k=>k+'\t'+weeks[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='busiest '+(sorted[0]||'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
