@@ -6735,5 +6735,19 @@ window.copyMonthOrganizers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthAvgPerWeek=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const wmap={};
+  evs.forEach(e=>{const d=(e.getAttribute('data-start')||'').slice(0,10);if(!d)return;const dt=new Date(d);const wk=Math.ceil((dt.getDate()+new Date(dt.getFullYear(),dt.getMonth(),1).getDay())/7);wmap[wk]=(wmap[wk]||0)+1;});
+  const ws=Object.values(wmap);
+  const avg=ws.length?Math.round(ws.reduce((a,b)=>a+b,0)/ws.length*10)/10:0;
+  const out='avg_per_week='+avg+'\nweeks='+ws.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='apw '+avg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
