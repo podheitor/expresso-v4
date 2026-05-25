@@ -4092,5 +4092,19 @@ window.copyMailOldest=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailLargest=function(){
+  let big=null,sz=0;
+  document.querySelectorAll('[data-mail-row]').forEach(r=>{
+    const s=parseInt(r.getAttribute('data-size')||'0',10);
+    if(s>sz){sz=s;big=r;}
+  });
+  const out=big?((big.getAttribute('data-subject')||'')+'\t'+(big.getAttribute('data-from')||'')+'\t'+sz):'-';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=big?'big '+Math.round(sz/1024)+'KB':'-';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
