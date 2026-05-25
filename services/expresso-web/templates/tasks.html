@@ -5926,5 +5926,23 @@ window.copyTasksTimeToFirstAction=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksProjectGrouping=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const projects={};
+  rows.forEach(r=>{
+    const p=r.getAttribute('data-project')||'(no project)';
+    if(!projects[p])projects[p]={total:0,done:0};
+    projects[p].total++;
+    if(r.getAttribute('data-status')==='done'||r.hasAttribute('data-completed'))projects[p].done++;
+  });
+  const lines=Object.entries(projects).map(([p,s])=>p+'\t'+s.total+'\t'+s.done+'\t'+((s.done/s.total)*100).toFixed(0)+'%');
+  const out='project\ttotal\tdone\tprogress\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prj '+Object.keys(projects).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5176,5 +5176,24 @@ window.copyWeekOrganizersTopN=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTimeBlocksByPurpose=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const purposes={meeting:0,focus:0,break:0,personal:0,other:0};
+  evs.forEach(e=>{
+    const t=(e.getAttribute('data-title')||(e.querySelector('.title')||e).textContent||'').toLowerCase();
+    if(/\b(focus|deep work|writing|coding)\b/.test(t))purposes.focus++;
+    else if(/\b(lunch|break|coffee|gym)\b/.test(t))purposes.break++;
+    else if(/\b(meeting|sync|standup|1:1|review)\b/.test(t))purposes.meeting++;
+    else if(/\b(doctor|family|personal|holiday)\b/.test(t))purposes.personal++;
+    else purposes.other++;
+  });
+  const out='purpose\tcount\n'+Object.entries(purposes).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prp '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4654,5 +4654,20 @@ window.copyMeetScreenSharers=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetGuestVsAuth=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let guest=0,auth=0;
+  parts.forEach(p=>{
+    if(p.hasAttribute('data-guest')||p.getAttribute('data-auth-type')==='guest')guest++;
+    else auth++;
+  });
+  const out='authenticated='+auth+'\nguests='+guest+'\ntotal='+parts.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(guest?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gst '+guest;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

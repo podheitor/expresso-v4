@@ -5312,5 +5312,29 @@ window.copySettingsServiceWorkers=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copySettingsWebGlInfo=function(){
+  const c=document.createElement('canvas');
+  const gl=c.getContext('webgl')||c.getContext('experimental-webgl');
+  if(!gl){
+    const out='webgl=unsupported';
+    const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='gl n/a';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+    return;
+  }
+  const dbg=gl.getExtension('WEBGL_debug_renderer_info');
+  const vendor=dbg?gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL):'(masked)';
+  const renderer=dbg?gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL):'(masked)';
+  const out='vendor='+vendor+'\nrenderer='+renderer+'\nversion='+gl.getParameter(gl.VERSION)+'\nshading_lang='+gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gl ok';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

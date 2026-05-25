@@ -4985,5 +4985,27 @@ window.copyUsersPasswordPolicyCheck=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersSessionCounts=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  let totalSessions=0,maxSessions=0,maxUser='';
+  const distrib={0:0,1:0,2:0,'3-5':0,'6+':0};
+  rows.forEach(r=>{
+    const n=parseInt(r.getAttribute('data-sessionCount')||r.getAttribute('data-sessions')||'0',10)||0;
+    totalSessions+=n;
+    if(n>maxSessions){maxSessions=n;maxUser=r.getAttribute('data-email')||'?';}
+    if(n===0)distrib['0']++;
+    else if(n===1)distrib['1']++;
+    else if(n===2)distrib['2']++;
+    else if(n<=5)distrib['3-5']++;
+    else distrib['6+']++;
+  });
+  const out='total_sessions='+totalSessions+'\nmax_user='+maxUser+' ('+maxSessions+')\n\nbucket\tusers\n'+Object.entries(distrib).map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ses '+totalSessions;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

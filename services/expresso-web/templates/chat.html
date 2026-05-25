@@ -6200,5 +6200,23 @@ window.copyChatGifStickerUsage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatUrgencyMarkers=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const urgent=[];
+  const re=/\b(urgent|asap|emergency|crítico|urgente|imediato)\b/i;
+  msgs.forEach(m=>{
+    const txt=(m.querySelector('.text')||m).textContent.trim();
+    if(re.test(txt)){
+      urgent.push((m.getAttribute('data-from')||'?')+': '+txt.substring(0,80));
+    }
+  });
+  const out='urgent_messages='+urgent.length+'/'+msgs.length+'\n'+urgent.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(urgent.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='urg '+urgent.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

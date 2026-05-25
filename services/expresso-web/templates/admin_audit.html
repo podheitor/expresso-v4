@@ -4998,5 +4998,23 @@ window.copyAuditDeletionEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLoginsByCountry=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const byCountry={};
+  rows.forEach(r=>{
+    if((r.getAttribute('data-action')||'').toLowerCase().includes('login')){
+      const c=r.getAttribute('data-country')||r.getAttribute('data-geo-country')||'(unknown)';
+      byCountry[c]=(byCountry[c]||0)+1;
+    }
+  });
+  const sorted=Object.entries(byCountry).sort((a,b)=>b[1]-a[1]);
+  const out='country\tlogins\n'+sorted.map(([k,v])=>k+'\t'+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cn '+sorted.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
