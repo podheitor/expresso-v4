@@ -6200,5 +6200,23 @@ window.copySettingsConsoleLogCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsBatteryStatus=function(){
+  const lines=[];
+  if(navigator.getBattery){
+    navigator.getBattery().then(b=>{
+      lines.push('level: '+(b.level*100).toFixed(0)+'%');
+      lines.push('charging: '+b.charging);
+      lines.push('charging time: '+b.chargingTime);
+      lines.push('discharging time: '+b.dischargingTime);
+    }).catch(()=>{});
+  }
+  const text=lines.length?'battery:\n'+lines.join('\n'):'battery: unsupported';
+  const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='bat '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

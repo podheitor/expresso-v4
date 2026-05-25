@@ -6481,5 +6481,22 @@ window.copyMailListLabelCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListThreadedSubjects=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const seen={};
+  rows.forEach(r=>{
+    const s=(r.getAttribute('data-subject')||'').replace(/^(re|fwd|fw):\s*/i,'').trim();
+    if(!s)return;
+    seen[s]=(seen[s]||0)+1;
+  });
+  const lines=Object.keys(seen).filter(k=>seen[k]>1).sort().map(k=>k+': '+seen[k]);
+  const out='threaded subjects:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ths '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
