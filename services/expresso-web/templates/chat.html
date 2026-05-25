@@ -7387,5 +7387,17 @@ window.copyChatMsgLengthAvg=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatActivityByHour=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const counts=new Array(24).fill(0);
+  msgs.forEach(m=>{const t=Date.parse(m.getAttribute('data-timestamp')||'')||0;if(t)counts[new Date(t).getHours()]++;});
+  const out='chat by hour:\n'+counts.map((c,i)=>String(i).padStart(2,'0')+': '+c).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr '+msgs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6780,5 +6780,18 @@ window.copyContactsInitials=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsTagCounts=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const m=new Map();
+  cs.forEach(c=>{const tags=(c.getAttribute('data-tags')||'').split(/[,;]/);tags.forEach(tg=>{const x=tg.trim();if(x)m.set(x,(m.get(x)||0)+1);});});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out='contacts tags:\n'+arr.map(([t,c])=>c+'\t'+t).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tg '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

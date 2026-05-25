@@ -6427,5 +6427,18 @@ window.copyWeekCategoryCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekStatusBreakdown=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const m=new Map();
+  evs.forEach(e=>{const s=(e.getAttribute('data-status')||'confirmed').trim();m.set(s,(m.get(s)||0)+1);});
+  const arr=Array.from(m.entries()).sort((a,b)=>b[1]-a[1]);
+  const out='week status:\n'+arr.map(([s,c])=>c+'\t'+s).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wsb '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

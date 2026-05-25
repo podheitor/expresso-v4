@@ -6433,5 +6433,17 @@ window.copySettingsButtonLabels=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsHeadingsOutline=function(){
+  const hs=document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+  const lines=[];
+  hs.forEach(h=>{const lvl=parseInt(h.tagName[1],10);lines.push('  '.repeat(lvl-1)+'#'.repeat(lvl)+' '+(h.textContent||'').trim());});
+  const out='outline ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ol '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

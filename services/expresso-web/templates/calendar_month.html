@@ -6497,5 +6497,22 @@ window.copyMonthByOwner=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFreeDays=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const days=new Set();
+  evs.forEach(e=>{const s=(e.getAttribute('data-start')||'').slice(0,10);if(s)days.add(s);});
+  const now=new Date();
+  const y=now.getFullYear(),mo=now.getMonth();
+  const total=new Date(y,mo+1,0).getDate();
+  const free=[];
+  for(let d=1;d<=total;d++){const k=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');if(!days.has(k))free.push(k);}
+  const out='free days ('+free.length+'):\n'+free.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fd '+free.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

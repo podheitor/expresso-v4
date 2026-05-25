@@ -6839,5 +6839,17 @@ window.copyDriveSharedItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderCounts=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let folders=0,files=0;
+  items.forEach(i=>{if(i.getAttribute('data-type')==='folder')folders++;else files++;});
+  const out='drive contents:\nfolders: '+folders+'\nfiles: '+files+'\ntotal: '+items.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fc '+folders+'/'+files;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5726,5 +5726,17 @@ window.copyHomeQueryParams=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeStorageSizes=function(){
+  let ls=0,ss=0;
+  try{for(const k in localStorage)if(localStorage.hasOwnProperty(k))ls+=k.length+(localStorage.getItem(k)||'').length;}catch(e){}
+  try{for(const k in sessionStorage)if(sessionStorage.hasOwnProperty(k))ss+=k.length+(sessionStorage.getItem(k)||'').length;}catch(e){}
+  const out='storage sizes (chars):\nlocalStorage: '+ls+'\nsessionStorage: '+ss;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+(ls+ss);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
