@@ -6791,5 +6791,22 @@ window.copyTasksBlocked=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksEstimateTotal=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let estimated=0,actual=0,withEst=0;
+  rows.forEach(r=>{
+    const e=parseFloat(r.getAttribute('data-estimate-h')||'0');
+    const a=parseFloat(r.getAttribute('data-actual-h')||'0');
+    if(e>0){estimated+=e;withEst++;}
+    actual+=a;
+  });
+  const out='time estimates:\nestimated: '+estimated.toFixed(1)+'h ('+withEst+' tasks)\nactual: '+actual.toFixed(1)+'h\nvariance: '+(actual-estimated).toFixed(1)+'h';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='est '+estimated.toFixed(0)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6472,5 +6472,24 @@ window.copyDriveTrashItems=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveVersionedFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(i=>{
+    const v=parseInt(i.getAttribute('data-version-count')||'0',10);
+    if(v>1){
+      const n=i.getAttribute('data-name')||'';
+      lines.push(v+'\t'+n);
+    }
+  });
+  lines.sort((a,b)=>parseInt(b)-parseInt(a));
+  const out='files with >1 version ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ver '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

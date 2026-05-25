@@ -6100,5 +6100,26 @@ window.copySettingsKeyboardShortcuts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsFontFaces=function(){
+  const seen=new Set();
+  Array.from(document.styleSheets).forEach(s=>{
+    try{
+      Array.from(s.cssRules||[]).forEach(r=>{
+        if(r.type===5){
+          const fam=(r.style&&r.style.getPropertyValue('font-family'))||'';
+          if(fam)seen.add(fam.replace(/^['"]|['"]$/g,''));
+        }
+      });
+    }catch(e){}
+  });
+  const arr=Array.from(seen).sort();
+  const out='@font-face families ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ff '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5454,5 +5454,18 @@ window.copyMeetChatTranscript=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetTimeInMeeting=function(){
+  const joined=document.querySelector('[data-joined-at]');
+  const at=joined?Date.parse(joined.getAttribute('data-joined-at')||''):0;
+  const ms=at?(Date.now()-at):0;
+  const m=Math.floor(ms/60000),s=Math.floor((ms%60000)/1000);
+  const out='time in meeting:\njoined at: '+(joined?joined.getAttribute('data-joined-at'):'(unknown)')+'\nelapsed: '+m+'m'+s+'s';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tim '+m+'m';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
