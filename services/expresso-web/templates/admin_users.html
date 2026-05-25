@@ -4662,5 +4662,22 @@ window.copyUsersLockedOut=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersWith2faEnabled=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const yes=[],no=[];
+  rows.forEach(r=>{
+    const v=(r.dataset.twoFactor||r.dataset.twofaEnabled||r.dataset.mfa||'').toLowerCase();
+    const id=(r.dataset.username||r.dataset.email||'')+'\t'+(r.dataset.twoFactorMethod||r.dataset.mfaMethod||'');
+    if(v==='1'||v==='true'||v==='enabled'||v==='on') yes.push(id); else no.push(id.split('\t')[0]);
+  });
+  const pct=rows.length?((yes.length/rows.length)*100).toFixed(1):'0';
+  const txt='2fa enabled='+yes.length+'/'+rows.length+' ('+pct+'%)\n\n[enabled]\nuser\tmethod\n'+yes.join('\n')+'\n\n[disabled]\n'+no.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(yes.length===rows.length?'#0a0':no.length>yes.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='2fa '+yes.length+'/'+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

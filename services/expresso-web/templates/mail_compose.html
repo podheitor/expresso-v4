@@ -4374,5 +4374,18 @@ window.composeRemoveTrailingSpaces=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeLineEndingCheck=function(){
+  const body=(document.querySelector('textarea[name=body]')||{}).value||'';
+  const crlf=(body.match(/\r\n/g)||[]).length;
+  const lf=(body.match(/(?<!\r)\n/g)||[]).length;
+  const cr=(body.match(/\r(?!\n)/g)||[]).length;
+  const out='CRLF='+crlf+'\nLF='+lf+'\nCR='+cr+'\nmixed='+([crlf,lf,cr].filter(n=>n>0).length>1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='le crlf='+crlf+' lf='+lf;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

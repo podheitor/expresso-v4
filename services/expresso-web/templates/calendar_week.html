@@ -4862,5 +4862,21 @@ window.copyWeekFirstMeetingPerDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalDurationHours=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let tot=0;
+  evs.forEach(e=>{
+    const s=new Date(e.dataset.start),ed=new Date(e.dataset.end||e.dataset.start);
+    if(isNaN(s)||isNaN(ed))return;
+    tot+=Math.max(0,(ed-s)/3600000);
+  });
+  const out='events='+evs.length+'\ntotalHours='+tot.toFixed(1)+'\navgHours='+(evs.length?(tot/evs.length).toFixed(2):'0')+'\nworkdaysEq='+(tot/8).toFixed(1);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tot '+tot.toFixed(0)+'h';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

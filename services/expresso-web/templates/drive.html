@@ -5328,5 +5328,22 @@ window.copyDriveTextFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveLargestFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const arr=[];
+  items.forEach(i=>{
+    const s=parseInt(i.dataset.size||'0',10);
+    if(s>0) arr.push({n:i.dataset.name||'',s,o:i.dataset.owner||''});
+  });
+  arr.sort((a,b)=>b.s-a.s);
+  const out=arr.slice(0,30).map(x=>x.n+'\t'+(x.s/1048576).toFixed(2)+'MB\t'+x.o).join('\n');
+  const txt='name\tsizeMB\towner\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='big '+Math.min(30,arr.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

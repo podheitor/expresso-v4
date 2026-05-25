@@ -4360,5 +4360,23 @@ window.copyMeetEncryptionMode=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetExternalGuests=function(){
+  const ps=document.querySelectorAll('[data-participant]');
+  const out=[];
+  const domain=(window.orgDomain||document.body.dataset.orgDomain||'').toLowerCase();
+  ps.forEach(p=>{
+    const ext=p.dataset.external==='1'||p.dataset.guest==='1';
+    const email=(p.dataset.email||'').toLowerCase();
+    const extByDomain=domain&&email&&!email.endsWith('@'+domain);
+    if(ext||extByDomain) out.push((p.dataset.name||p.dataset.participant||'')+'\t'+email+'\tflag='+(ext?'attr':'domain'));
+  });
+  const txt='name\temail\tflag\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ext '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

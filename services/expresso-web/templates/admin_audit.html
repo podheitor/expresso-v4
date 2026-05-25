@@ -4674,5 +4674,21 @@ window.copyAuditApiCalls=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditTopResources=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const counts={};
+  rows.forEach(r=>{
+    const res=r.dataset.resource||r.dataset.target||r.dataset.objectId;
+    if(res) counts[res]=(counts[res]||0)+1;
+  });
+  const entries=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,50);
+  const txt='resource\tcount (top '+entries.length+' of '+Object.keys(counts).length+')\n'+entries.map(e=>e[0]+'\t'+e[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='res '+entries.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

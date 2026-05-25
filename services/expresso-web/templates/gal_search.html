@@ -4419,5 +4419,23 @@ window.copyGalHireDates=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalAttendanceHours=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const out=[];
+  let total=0;
+  rows.forEach(r=>{
+    const h=parseFloat(r.dataset.attendanceHours||r.dataset.hoursThisWeek||r.dataset.weeklyHours||'0');
+    if(h>0){out.push((r.dataset.email||r.dataset.username||'')+'\t'+(r.dataset.displayName||r.dataset.name||'')+'\t'+h.toFixed(1));total+=h;}
+  });
+  out.sort((a,b)=>parseFloat(b.split('\t')[2])-parseFloat(a.split('\t')[2]));
+  const avg=out.length?(total/out.length).toFixed(1):'0';
+  const txt='email\tname\thours (avg='+avg+', n='+out.length+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

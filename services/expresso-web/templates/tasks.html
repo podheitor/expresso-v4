@@ -5598,5 +5598,23 @@ window.copyTasksWatcherCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksTimeSpentByTag=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const sums={};
+  rows.forEach(r=>{
+    const tags=(r.dataset.tags||r.dataset.labels||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+    const t=parseFloat(r.dataset.actualHours||r.dataset.timeSpent||'0');
+    if(!tags.length) tags.push('(no-tag)');
+    tags.forEach(g=>sums[g]=(sums[g]||0)+t);
+  });
+  const out=Object.entries(sums).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v.toFixed(1)+'h').join('\n');
+  const txt='tag\thours\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tag '+Object.keys(sums).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

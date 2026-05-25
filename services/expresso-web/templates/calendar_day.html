@@ -4834,5 +4834,20 @@ window.copyDayDescriptionLengths=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayConflicts=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start).getTime(),e:new Date(e.dataset.end||e.dataset.start).getTime(),t:e.dataset.title||''})).filter(x=>!isNaN(x.s)&&!isNaN(x.e)).sort((a,b)=>a.s-b.s);
+  const out=[];
+  for(let i=0;i<evs.length;i++)for(let j=i+1;j<evs.length;j++){
+    if(evs[j].s>=evs[i].e)break;
+    out.push(evs[i].t+'\toverlaps\t'+evs[j].t);
+  }
+  const txt='event1\trel\tevent2\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cf '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
