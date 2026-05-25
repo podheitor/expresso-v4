@@ -2622,5 +2622,27 @@ window.copyUsersRoleCounts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedThisYear=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const year=new Date().getFullYear();
+  const out=[];
+  rows.forEach(r=>{
+    const c=Date.parse(r.dataset.created||'');
+    if(!isNaN(c)&&new Date(c).getFullYear()===year){
+      out.push((r.dataset.email||'')+'\t'+(r.dataset.created||''));
+    }
+  });
+  const ta=document.createElement('textarea');
+  ta.value=out.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ty '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -2677,5 +2677,25 @@ window.previewWrapped=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyComposeRecipients=function(){
+  const to=document.getElementById('to');
+  const cc=document.getElementById('cc');
+  const bcc=document.getElementById('bcc');
+  const split=v=>(v||'').split(/[,;]\s*/).map(s=>s.trim()).filter(Boolean);
+  const toL=split(to&&to.value);
+  const ccL=split(cc&&cc.value);
+  const bccL=split(bcc&&bcc.value);
+  const ta=document.createElement('textarea');
+  ta.value='to '+toL.length+'\tcc '+ccL.length+'\tbcc '+bccL.length;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcp '+(toL.length+ccL.length+bccL.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -3287,5 +3287,30 @@ window.copyPlatformInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMediaDevices=function(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.enumerateDevices){
+    const t0=document.createElement('div');
+    t0.style.cssText='position:fixed;top:10px;right:10px;background:#c00;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t0.textContent='no md';
+    document.body.appendChild(t0);
+    setTimeout(()=>t0.remove(),1500);
+    return;
+  }
+  navigator.mediaDevices.enumerateDevices().then(devs=>{
+    const cnt={audioinput:0,videoinput:0,audiooutput:0};
+    devs.forEach(d=>{cnt[d.kind]=(cnt[d.kind]||0)+1;});
+    const ta=document.createElement('textarea');
+    ta.value='mic '+cnt.audioinput+'\tcam '+cnt.videoinput+'\tspk '+cnt.audiooutput;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    const t=document.createElement('div');
+    t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+    t.textContent='md '+devs.length;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),1500);
+  });
+};
 </script>
 {% endblock %}
