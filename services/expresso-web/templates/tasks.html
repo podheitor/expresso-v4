@@ -5531,5 +5531,22 @@ window.copyTasksOverdueByDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAttachmentCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  let tot=0,withAtt=0;
+  const out=[];
+  rows.forEach(r=>{
+    const n=parseInt(r.dataset.attachmentCount||r.dataset.attachments||'0',10);
+    if(n>0){withAtt++;tot+=n;out.push((r.dataset.taskId||'')+'\t'+(r.dataset.title||'')+'\t'+n);}
+  });
+  out.sort((a,b)=>parseInt(b.split('\t')[2])-parseInt(a.split('\t')[2]));
+  const txt='id\ttitle\tattachments\n'+out.join('\n')+'\n---\ntotalAttachments='+tot+'\ntasksWithAtt='+withAtt;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='atc '+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

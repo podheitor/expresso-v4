@@ -4320,5 +4320,18 @@ window.composeReplaceTabs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeMailtoSyntaxCheck=function(){
+  const get=n=>(document.querySelector('input[name='+n+'],textarea[name='+n+']')||{}).value||'';
+  const re=/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+  const check=s=>s.split(/[,;\n]/).map(x=>x.trim()).filter(Boolean).map(a=>a+'\t'+(re.test(a)?'ok':'bad'));
+  const out=['to:',...check(get('to')),'cc:',...check(get('cc')),'bcc:',...check(get('bcc'))].join('\n');
+  const bad=out.split('\n').filter(l=>l.endsWith('\tbad')).length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(bad?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='vld bad='+bad;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

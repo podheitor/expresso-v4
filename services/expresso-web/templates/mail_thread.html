@@ -4549,5 +4549,21 @@ window.copyThreadSubjectChangesOverTime=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInlineImagesCount=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  let tot=0;
+  const out=[];
+  msgs.forEach(m=>{
+    const imgs=m.querySelectorAll('img[src^="cid:"],img[data-inline],img[data-cid]');
+    if(imgs.length){tot+=imgs.length;out.push((m.dataset.timestamp||'')+'\t'+(m.dataset.sender||'')+'\t'+imgs.length);}
+  });
+  const txt='ts\tsender\tinlineImgCount\n'+out.join('\n')+'\n---\ntotal='+tot;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='img '+tot;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

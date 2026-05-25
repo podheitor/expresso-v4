@@ -4763,5 +4763,27 @@ window.copyDayAlarmReminders=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayConferencingProviders=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  evs.forEach(e=>{
+    const url=(e.dataset.conferenceUrl||e.dataset.meetingUrl||'').toLowerCase();
+    let p='(none)';
+    if(/zoom/.test(url))p='zoom';
+    else if(/teams\.microsoft|teams\.live/.test(url))p='teams';
+    else if(/meet\.google|meet\.jit\.si/.test(url))p=/google/.test(url)?'google-meet':'jitsi';
+    else if(/webex/.test(url))p='webex';
+    else if(url)p='other';
+    counts[p]=(counts[p]||0)+1;
+  });
+  const out=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='provider\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='prv '+Object.keys(counts).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

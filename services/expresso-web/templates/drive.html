@@ -5258,5 +5258,23 @@ window.copyDriveVersionedFiles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveDuplicateHashes=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const byHash={};
+  items.forEach(i=>{
+    const h=i.dataset.sha256||i.dataset.checksum||i.dataset.hash;
+    if(!h)return;
+    byHash[h]=byHash[h]||[];
+    byHash[h].push(i.dataset.name||'');
+  });
+  const dups=Object.entries(byHash).filter(([,v])=>v.length>1).map(([h,v])=>h.slice(0,12)+'\t'+v.length+'\t'+v.join('|'));
+  const txt='hash\tcount\tnames\n'+dups.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dups.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dups.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

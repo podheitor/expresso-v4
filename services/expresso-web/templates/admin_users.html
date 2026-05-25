@@ -4589,5 +4589,20 @@ window.copyUsersPasswordAgeSummary=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersForwardingEnabled=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const out=[];
+  rows.forEach(r=>{
+    const fwd=r.dataset.mailForward||r.dataset.forwardTo||r.dataset.forwarding;
+    if(fwd&&fwd!=='0'&&fwd!=='false') out.push((r.dataset.username||r.dataset.email||'')+'\t'+fwd);
+  });
+  const txt='user\tforwardTo\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fwd '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

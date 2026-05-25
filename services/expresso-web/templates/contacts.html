@@ -5153,5 +5153,23 @@ window.copyContactsByGroup=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsMissingEssentials=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const out=[];
+  cs.forEach(c=>{
+    const missing=[];
+    if(!c.dataset.email&&!c.dataset.emails)missing.push('email');
+    if(!c.dataset.phone&&!c.dataset.phones)missing.push('phone');
+    if(!c.dataset.displayName&&!c.dataset.name)missing.push('name');
+    if(missing.length) out.push((c.dataset.displayName||c.dataset.name||c.dataset.email||'?')+'\t'+missing.join(','));
+  });
+  const txt='contact\tmissing\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='miss '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4611,5 +4611,21 @@ window.copyAuditActorIpPairs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditByResult=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const counts={success:0,failure:0,error:0,denied:0,other:0};
+  rows.forEach(r=>{
+    const res=(r.dataset.result||r.dataset.status||'other').toLowerCase();
+    if(counts[res]!=null)counts[res]++;else counts.other++;
+  });
+  const out=Object.entries(counts).map(([k,v])=>k+'\t'+v).join('\n');
+  const txt='result\tcount\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='res '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
