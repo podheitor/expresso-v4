@@ -5593,5 +5593,18 @@ window.copyWeekMeetingFreeDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekTotalAttendees=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let total=0;const per={};
+  evs.forEach(e=>{const n=parseInt(e.getAttribute('data-attendee-count')||'0',10)||0;total+=n;const d=e.getAttribute('data-day')||(e.getAttribute('data-start')||'').slice(0,10);per[d]=(per[d]||0)+n;});
+  const lines=Object.keys(per).sort().map(d=>d+': '+per[d]);
+  const out='week total attendees: '+total+'\nby day:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='att '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

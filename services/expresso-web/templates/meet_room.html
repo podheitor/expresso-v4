@@ -5037,5 +5037,17 @@ window.copyMeetChatTranscript=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetScreenShareCount=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  let n=0;const names=[];
+  parts.forEach(p=>{const s=p.getAttribute('data-sharing')||p.getAttribute('data-screen-share')||'';if(s==='true'||s==='1'||s==='yes'){n++;names.push((p.getAttribute('data-name')||'').trim());}});
+  const out='screen sharing now ('+n+'):\n'+names.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ss '+n;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

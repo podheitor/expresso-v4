@@ -5073,5 +5073,17 @@ window.copyHomeResourceCountByType=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeDocumentTitleHistory=function(){
+  const cur=document.title;
+  const lang=document.documentElement.lang||'?';
+  const ref=document.referrer||'(none)';
+  const out='title='+cur+'\nreferrer='+ref+'\nlang='+lang+'\nhistory.length='+history.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hist '+history.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

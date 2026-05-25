@@ -5045,5 +5045,17 @@ window.composeTrackingPixelDetect=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuestionCount=function(){
+  const ta=document.querySelector('textarea[name="body"]')||document.querySelector('#body')||document.querySelector('textarea');
+  const body=ta?(ta.value||''):'';
+  const qs=body.match(/[^.!?\n]*\?/g)||[];
+  const out='questions ('+qs.length+'):\n'+qs.map(q=>q.trim()).join('\n');
+  const tx=document.createElement('textarea');tx.value=out;document.body.appendChild(tx);tx.select();document.execCommand('copy');tx.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qst '+qs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

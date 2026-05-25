@@ -5667,5 +5667,18 @@ window.copyMonthOverbookedDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsByHour=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const buckets={};
+  evs.forEach(e=>{const s=e.getAttribute('data-start')||'';const m=s.match(/T(\d{2})/);const h=m?m[1]:'??';buckets[h]=(buckets[h]||0)+1;});
+  const lines=Object.keys(buckets).sort().map(h=>h+'h: '+buckets[h]);
+  const out='month events by hour:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='hr '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
