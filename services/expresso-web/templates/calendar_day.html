@@ -5324,5 +5324,23 @@ window.copyDayPrivateEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayLinkedUrls=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const urls=[];
+  evs.forEach(e=>{
+    const u=e.getAttribute('data-url')||e.getAttribute('data-conference-url')||e.getAttribute('data-meeting-link');
+    if(u)urls.push((e.getAttribute('data-title')||'(no title)')+'\t'+u);
+    const desc=e.getAttribute('data-description')||'';
+    const m=desc.match(/https?:\/\/[^\s]+/g)||[];
+    m.forEach(x=>urls.push((e.getAttribute('data-title')||'?')+'\t'+x));
+  });
+  const out=urls.join('\n')||'no urls';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='url '+urls.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

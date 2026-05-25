@@ -5687,5 +5687,21 @@ window.copyMailListListIdValues=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSpamScore=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const scored=[];
+  rows.forEach(r=>{
+    const sc=r.getAttribute('data-spam-score');
+    if(sc!==null&&sc!==''){const n=parseFloat(sc);if(!isNaN(n))scored.push({n,s:(r.getAttribute('data-subject')||'?')});}
+  });
+  scored.sort((a,b)=>b.n-a.n);
+  const out=scored.map(x=>x.n.toFixed(2)+'\t'+x.s).join('\n')||'no spam scores';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spm '+scored.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

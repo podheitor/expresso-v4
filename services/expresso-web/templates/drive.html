@@ -5809,5 +5809,22 @@ window.copyDriveCreatedThisMonth=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveModifiedToday=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const today=new Date().toISOString().slice(0,10);
+  const hits=[];
+  items.forEach(i=>{
+    const m=i.getAttribute('data-modified')||i.getAttribute('data-mtime');
+    if(m&&m.startsWith(today))hits.push(m+'\t'+(i.getAttribute('data-name')||'?'));
+  });
+  hits.sort();
+  const out=hits.join('\n')||'nothing modified today';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='mod '+hits.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

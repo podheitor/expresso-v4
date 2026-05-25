@@ -4870,5 +4870,16 @@ window.copyHomeStorageQuota=function(){
     setTimeout(()=>t.remove(),1500);
   }).catch(()=>{});
 };
+window.copyHomeCspViolations=function(){
+  const reports=window.__cspReports||[];
+  const lines=reports.map(r=>(r.violatedDirective||r['violated-directive']||'?')+'\t'+(r.blockedURI||r['blocked-uri']||''));
+  const out=lines.join('\n')||'no csp violations recorded';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(lines.length?'#c00':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='csp '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
