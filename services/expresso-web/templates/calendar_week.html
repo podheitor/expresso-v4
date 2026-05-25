@@ -4896,5 +4896,22 @@ window.copyWeekEarlyMornings=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekLateEvenings=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const out=[];
+  evs.forEach(e=>{
+    const end=new Date(e.dataset.end||e.dataset.start);if(isNaN(end))return;
+    const h=end.getHours();
+    if(h>=18||(h===17&&end.getMinutes()>0)) out.push(end.toISOString()+'\t'+h+':'+String(end.getMinutes()).padStart(2,'0')+'\t'+(e.dataset.title||''));
+  });
+  out.sort();
+  const txt='end\ttime\ttitle ('+out.length+' after 18:00)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='late '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5632,5 +5632,21 @@ window.copyTasksUnassigned=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksDueToday=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const today=new Date().toISOString().slice(0,10);
+  const out=[];
+  rows.forEach(r=>{
+    const d=(r.dataset.dueDate||'').slice(0,10);
+    if(d===today) out.push((r.dataset.title||'')+'\t'+(r.dataset.assignee||r.dataset.assignedTo||'')+'\t'+(r.dataset.priority||'')+'\t'+(r.dataset.status||''));
+  });
+  const txt='title\tassignee\tpriority\tstatus ('+out.length+' due '+today+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='today '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

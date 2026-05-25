@@ -5361,5 +5361,23 @@ window.copyDriveSharedExternally=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveFolderTree=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const depths={};
+  items.forEach(i=>{
+    const path=i.dataset.path||i.dataset.parentPath||'';
+    const depth=path?(path.match(/\//g)||[]).length:0;
+    depths[depth]=(depths[depth]||0)+1;
+  });
+  const out=Object.entries(depths).sort((a,b)=>+a[0]-+b[0]).map(([k,v])=>'depth='+k+'\t'+v).join('\n');
+  const maxd=Math.max(...Object.keys(depths).map(Number));
+  const txt='depth distribution (maxDepth='+maxd+')\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tree maxd='+maxd;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

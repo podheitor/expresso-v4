@@ -4707,5 +4707,27 @@ window.copyAuditPasswordChanges=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditLoginAttempts=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const ok={},fail={};
+  rows.forEach(r=>{
+    const action=(r.dataset.action||r.dataset.event||'').toLowerCase();
+    if(!/login|signin|auth/.test(action))return;
+    const actor=r.dataset.actor||r.dataset.userId||'(unknown)';
+    const res=(r.dataset.result||r.dataset.status||'').toLowerCase();
+    if(res==='success'||res==='ok'||res==='200') ok[actor]=(ok[actor]||0)+1;
+    else fail[actor]=(fail[actor]||0)+1;
+  });
+  const users=[...new Set([...Object.keys(ok),...Object.keys(fail)])].sort((a,b)=>(fail[b]||0)-(fail[a]||0));
+  const out=users.map(u=>u+'\t'+(ok[u]||0)+'\t'+(fail[u]||0)).join('\n');
+  const txt='actor\tsuccess\tfailed\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  const totFail=Object.values(fail).reduce((s,v)=>s+v,0);
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(totFail>0?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='lgn fail='+totFail;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

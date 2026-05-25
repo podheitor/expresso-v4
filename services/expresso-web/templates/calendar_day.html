@@ -4864,5 +4864,24 @@ window.copyDayBackToBackPairs=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayFocusBlocks=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:new Date(e.dataset.start).getTime(),e:new Date(e.dataset.end).getTime()})).filter(x=>!isNaN(x.s)&&!isNaN(x.e)).sort((a,b)=>a.s-b.s);
+  const day=evs.length?new Date(evs[0].s):new Date();
+  const dayStart=new Date(day.getFullYear(),day.getMonth(),day.getDate(),9).getTime();
+  const dayEnd=dayStart+9*3600000;
+  const free=[];
+  let cur=dayStart;
+  evs.forEach(ev=>{if(ev.s>cur)free.push({s:cur,e:Math.min(ev.s,dayEnd)});cur=Math.max(cur,ev.e);});
+  if(cur<dayEnd)free.push({s:cur,e:dayEnd});
+  const big=free.filter(b=>(b.e-b.s)>=45*60000);
+  const out=big.map(b=>new Date(b.s).toTimeString().slice(0,5)+'-'+new Date(b.e).toTimeString().slice(0,5)+'\t'+Math.round((b.e-b.s)/60000)+'m').join('\n');
+  const txt='block\tduration ('+big.length+' focus blocks ≥45m)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(big.length?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='foc '+big.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

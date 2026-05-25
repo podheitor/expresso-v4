@@ -4406,5 +4406,22 @@ window.composeDuplicateRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeAttachmentTotal=function(){
+  const items=document.querySelectorAll('[data-attachment-name],[data-att-name]');
+  let total=0;
+  const out=[];
+  items.forEach(a=>{
+    const s=parseInt(a.dataset.attachmentSize||a.dataset.attSize||'0',10);
+    total+=s;
+    out.push((a.dataset.attachmentName||a.dataset.attName||'')+'\t'+s+'\t'+(a.dataset.attachmentMime||a.dataset.attMime||''));
+  });
+  const txt='name\tbytes\tmime (n='+items.length+', total='+(total/1048576).toFixed(2)+'MB)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(total>25*1048576?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='atot '+(total/1048576).toFixed(1)+'MB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

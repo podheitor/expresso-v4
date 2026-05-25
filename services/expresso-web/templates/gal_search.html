@@ -4456,5 +4456,18 @@ window.copyGalReportingChain=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalDirectReports=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const reports={};
+  rows.forEach(r=>{const m=(r.dataset.manager||r.dataset.managerEmail||'').toLowerCase();if(m){reports[m]=reports[m]||[];reports[m].push(r.dataset.email||r.dataset.username||'');}});
+  const out=Object.entries(reports).sort((a,b)=>b[1].length-a[1].length).map(([mgr,arr])=>mgr+'\t'+arr.length+'\t'+arr.join('|')).join('\n');
+  const txt='manager\tcount\treports ('+Object.keys(reports).length+' managers)\n'+out;
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rep '+Object.keys(reports).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

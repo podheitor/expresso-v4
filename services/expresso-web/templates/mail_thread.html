@@ -4648,5 +4648,22 @@ window.copyThreadUrlsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadEmailAddresses=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const set=new Set();
+  msgs.forEach(m=>{
+    [m.dataset.from,m.dataset.to,m.dataset.cc,m.dataset.bcc,m.dataset.replyTo].filter(Boolean).forEach(field=>{
+      field.split(/[,;]/).map(s=>s.trim()).filter(s=>/@/.test(s)).forEach(a=>set.add(a.toLowerCase()));
+    });
+  });
+  const out=[...set].sort();
+  const txt='emails ('+out.length+' unique across '+msgs.length+' messages)\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='em '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

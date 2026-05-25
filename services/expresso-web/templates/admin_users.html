@@ -4699,5 +4699,23 @@ window.copyUsersOverQuota=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersCreatedThisMonth=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=new Date();
+  const ym=now.toISOString().slice(0,7);
+  const out=[];
+  rows.forEach(r=>{
+    const cr=(r.dataset.createdAt||r.dataset.createdOn||'').slice(0,7);
+    if(cr===ym) out.push((r.dataset.username||r.dataset.email||'')+'\t'+(r.dataset.createdAt||'')+'\t'+(r.dataset.role||r.dataset.department||''));
+  });
+  out.sort();
+  const txt='user\tcreatedAt\trole ('+out.length+' created in '+ym+')\n'+out.join('\n');
+  const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='new '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
