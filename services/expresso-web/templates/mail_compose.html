@@ -3459,5 +3459,16 @@ window.composeUniqueRecipients=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeStripHtmlTags=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const before=ta.value.length;
+  ta.value=ta.value.replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#0a0;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='strip -'+(before-ta.value.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

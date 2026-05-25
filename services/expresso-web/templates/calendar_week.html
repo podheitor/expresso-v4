@@ -3802,5 +3802,28 @@ window.copyWeekByCalendar=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEmptyDays=function(){
+  const days={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'');
+    if(isNaN(s))return;
+    days[new Date(s).toISOString().slice(0,10)]=true;
+  });
+  const start=new Date();start.setHours(0,0,0,0);
+  const dow=start.getDay();
+  start.setDate(start.getDate()-dow);
+  const empty=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(start);d.setDate(start.getDate()+i);
+    const k=d.toISOString().slice(0,10);
+    if(!days[k])empty.push(k);
+  }
+  const ta=document.createElement('textarea');ta.value=empty.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='emp '+empty.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

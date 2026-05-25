@@ -3586,5 +3586,18 @@ window.copyThreadLongestMessage=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadDateSpan=function(){
+  const ts=[...document.querySelectorAll('[data-msg-id]')].map(m=>Date.parse(m.getAttribute('data-ts')||'')).filter(n=>!isNaN(n));
+  if(!ts.length){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='-';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const min=Math.min(...ts),max=Math.max(...ts);
+  const days=Math.round((max-min)/86400000);
+  const out='from '+new Date(min).toISOString()+' to '+new Date(max).toISOString()+' = '+days+'d';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='spn '+days+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
