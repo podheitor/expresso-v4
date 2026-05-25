@@ -4950,5 +4950,24 @@ window.copyDriveExpiringSoon=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveByMimeGroup=function(){
+  const groups={image:0,video:0,audio:0,document:0,archive:0,other:0};
+  document.querySelectorAll('[data-drive-item]').forEach(it=>{
+    const m=(it.getAttribute('data-mime')||'').toLowerCase();
+    if(m.startsWith('image/'))groups.image++;
+    else if(m.startsWith('video/'))groups.video++;
+    else if(m.startsWith('audio/'))groups.audio++;
+    else if(/pdf|word|excel|powerpoint|spreadsheet|presentation|document|text\//.test(m))groups.document++;
+    else if(/zip|tar|gzip|rar|7z|compress/.test(m))groups.archive++;
+    else groups.other++;
+  });
+  const out=Object.keys(groups).map(k=>k+'\t'+groups[k]);
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='grp '+Object.values(groups).reduce((a,b)=>a+b,0);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5528,5 +5528,17 @@ window.copyChatPinnedMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatPollMessages=function(){
+  const out=[];
+  document.querySelectorAll('[data-msg-id][data-poll]').forEach(p=>{
+    out.push((p.getAttribute('data-ts')||'?')+'\t'+(p.getAttribute('data-sender')||'?')+'\t'+(p.getAttribute('data-poll-question')||'')+'\t'+(p.getAttribute('data-poll-votes')||'0'));
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='poll '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
