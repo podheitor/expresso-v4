@@ -7238,5 +7238,17 @@ window.copyTasksPriorityDist=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksWithSubtasks=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const arr=[];
+  rows.forEach(r=>{const n=parseInt(r.getAttribute('data-subtasks')||'0',10)||0;if(n>0)arr.push(n+'\t'+(r.getAttribute('data-title')||'').trim());});
+  const out='with subtasks ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='st '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -6277,5 +6277,18 @@ window.copyUsersGroupsList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersPasswordExpired=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=Date.now();
+  const arr=[];
+  rows.forEach(r=>{const pe=Date.parse(r.getAttribute('data-password-expires')||r.getAttribute('data-pw-expires')||'')||0;if(pe&&pe<now)arr.push(r.getAttribute('data-email')||r.getAttribute('data-user-row'));});
+  const out='password expired ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(arr.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pwx '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

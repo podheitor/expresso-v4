@@ -5837,5 +5837,18 @@ window.composeSignaturePresent=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeQuotedDepth=function(){
+  const ta0=document.querySelector('textarea[name="body"]')||document.querySelector('[contenteditable="true"]');
+  const body=ta0?(ta0.value||ta0.textContent||''):'';
+  let maxD=0;
+  body.split('\n').forEach(l=>{const m=l.match(/^(>\s?)+/);if(m){const d=(m[0].match(/>/g)||[]).length;if(d>maxD)maxD=d;}});
+  const out='max quote depth: '+maxD;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qd '+maxD;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
