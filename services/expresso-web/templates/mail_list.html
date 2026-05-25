@@ -6267,5 +6267,23 @@ window.copyMailListImportantRows=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListSizeBuckets=function(){
+  const rows=document.querySelectorAll('[data-mail-row]');
+  const buckets={'<10KB':0,'10-100KB':0,'100KB-1MB':0,'>1MB':0};
+  rows.forEach(r=>{
+    const s=parseInt(r.getAttribute('data-size')||'0',10);
+    if(s<10240)buckets['<10KB']++;
+    else if(s<102400)buckets['10-100KB']++;
+    else if(s<1048576)buckets['100KB-1MB']++;
+    else buckets['>1MB']++;
+  });
+  const out='size buckets:\n'+Object.entries(buckets).map(([k,v])=>k+': '+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sz '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
