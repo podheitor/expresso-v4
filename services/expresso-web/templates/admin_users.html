@@ -2865,5 +2865,30 @@ window.copyUsersNeverLoggedIn=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersByQuotaUsage=function(){
+  const rows=document.querySelectorAll('[data-user-id]');
+  const items=[];
+  rows.forEach(r=>{
+    const u=parseInt((r.dataset.quotaUsed||'0'),10);
+    const q=parseInt((r.dataset.quotaTotal||'0'),10);
+    if(q>0){
+      const pct=Math.round(u*100/q);
+      items.push({e:(r.dataset.email||'').trim(),pct,u,q});
+    }
+  });
+  items.sort((a,b)=>b.pct-a.pct);
+  const out=items.map(i=>i.pct+'%\t'+i.e+'\t'+i.u+'/'+i.q).join('\n');
+  const ta=document.createElement('textarea');
+  ta.value=out;
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='qu '+items.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

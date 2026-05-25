@@ -3029,5 +3029,27 @@ window.copyWeekDailyCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeBlocks=function(){
+  const evs=Array.from(document.querySelectorAll('[data-event-start][data-event-end]'))
+    .map(e=>({s:new Date(e.dataset.eventStart).getTime(),en:new Date(e.dataset.eventEnd).getTime()}))
+    .filter(x=>!isNaN(x.s)&&!isNaN(x.en))
+    .sort((a,b)=>a.s-b.s);
+  const gaps=[];
+  for(let i=1;i<evs.length;i++){
+    const gap=evs[i].s-evs[i-1].en;
+    if(gap>0){gaps.push(Math.round(gap/60000)+' min');}
+  }
+  const ta=document.createElement('textarea');
+  ta.value='free blocks '+gaps.length+'\n'+gaps.join('\n');
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fb '+gaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
