@@ -3815,5 +3815,19 @@ window.copyUsers2faEnabled=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersOverQuota=function(){
+  const out=[];
+  document.querySelectorAll('[data-user-row]').forEach(r=>{
+    const used=parseFloat(r.getAttribute('data-quota-used')||'0');
+    const lim=parseFloat(r.getAttribute('data-quota-limit')||'0');
+    if(lim>0&&used>lim)out.push((r.getAttribute('data-email')||r.getAttribute('data-user')||'?')+'\t'+used+'/'+lim);
+  });
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(out.length?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='over '+out.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

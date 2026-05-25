@@ -3644,5 +3644,17 @@ window.composeWrapAt72=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeInsertSignatureBlock=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const sig='\n\n-- \n'+(document.querySelector('[data-user-name]')?.getAttribute('data-user-name')||'')+'\n'+(document.querySelector('[data-user-email]')?.getAttribute('data-user-email')||'');
+  if(ta.value.includes('-- \n')){const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='sig já presente';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  ta.value=ta.value+sig;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig +';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

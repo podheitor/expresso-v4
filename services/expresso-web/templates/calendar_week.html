@@ -4011,5 +4011,16 @@ window.copyWeekConflicts=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFreeSlots=function(){
+  const evs=[...document.querySelectorAll('[data-event]')].map(e=>({s:Date.parse(e.getAttribute('data-start')||''),en:Date.parse(e.getAttribute('data-end')||'')})).filter(e=>!isNaN(e.s)&&!isNaN(e.en)).sort((a,b)=>a.s-b.s);
+  const gaps=[];
+  for(let i=1;i<evs.length;i++){const g=Math.round((evs[i].s-evs[i-1].en)/60000);if(g>0)gaps.push(new Date(evs[i-1].en).toISOString()+' +'+g+'m');}
+  const ta=document.createElement('textarea');ta.value=gaps.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='free '+gaps.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

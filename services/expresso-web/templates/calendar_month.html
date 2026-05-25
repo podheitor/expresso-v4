@@ -4026,5 +4026,16 @@ window.copyMonthAllDay=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthEventsPerWeek=function(){
+  const buckets={};
+  document.querySelectorAll('[data-event]').forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'');if(isNaN(s))return;const d=new Date(s);const wk=Math.ceil((d.getDate()+(new Date(d.getFullYear(),d.getMonth(),1).getDay()))/7);buckets[wk]=(buckets[wk]||0)+1;});
+  const out=Object.entries(buckets).map(([k,v])=>'wk'+k+'='+v).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='wk '+Object.keys(buckets).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
