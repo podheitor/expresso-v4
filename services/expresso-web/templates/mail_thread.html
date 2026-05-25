@@ -4121,5 +4121,22 @@ window.copyThreadAttachmentTypes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyThreadInternalVsExternal=function(){
+  const ownDomain=(document.body.getAttribute('data-org-domain')||location.hostname||'').toLowerCase();
+  let intC=0,extC=0;
+  document.querySelectorAll('[data-msg-id]').forEach(m=>{
+    const f=(m.getAttribute('data-from')||'').toLowerCase();
+    const i=f.indexOf('@');
+    const d=i>=0?f.slice(i+1):'';
+    if(d===ownDomain)intC++;else if(d)extC++;
+  });
+  const out='Internal: '+intC+'\nExternal: '+extC+'\nDomain: '+ownDomain;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='int '+intC+'/ext '+extC;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

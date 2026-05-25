@@ -4375,5 +4375,27 @@ window.copyMonthBusiestWeek=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMonthFreeFridays=function(){
+  const fridays={};
+  document.querySelectorAll('[data-event]').forEach(e=>{
+    const s=e.getAttribute('data-start')||'';
+    const d=new Date(s);
+    if(isNaN(d.getTime())||d.getDay()!==5)return;
+    const k=d.toISOString().slice(0,10);
+    fridays[k]=(fridays[k]||0)+1;
+  });
+  const allFridays=[];
+  const now=new Date();
+  const y=now.getFullYear(),m=now.getMonth();
+  for(let day=1;day<=31;day++){const d=new Date(y,m,day);if(d.getMonth()!==m)break;if(d.getDay()===5)allFridays.push(d.toISOString().slice(0,10));}
+  const out=allFridays.map(d=>d+'\t'+(fridays[d]||0)+' events'+((fridays[d]||0)===0?' FREE':''));
+  const ta=document.createElement('textarea');ta.value=out.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const free=allFridays.filter(d=>!fridays[d]).length;
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(free?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='freeFri '+free+'/'+allFridays.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

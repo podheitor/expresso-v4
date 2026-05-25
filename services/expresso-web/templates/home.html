@@ -4053,5 +4053,17 @@ window.copyHomeFontFaceList=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyHomeStorageUsage=function(){
+  let ls=0,ss=0;
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);ls+=k.length+(localStorage.getItem(k)||'').length;}}catch(e){}
+  try{for(let i=0;i<sessionStorage.length;i++){const k=sessionStorage.key(i);ss+=k.length+(sessionStorage.getItem(k)||'').length;}}catch(e){}
+  const out='localStorage\t'+localStorage.length+' keys\t'+(ls/1024).toFixed(2)+'KB\nsessionStorage\t'+sessionStorage.length+' keys\t'+(ss/1024).toFixed(2)+'KB';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='storage '+((ls+ss)/1024).toFixed(1)+'KB';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

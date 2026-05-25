@@ -3958,5 +3958,16 @@ window.composeSubjectWordCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCount=function(){
+  const g=sel=>{const e=document.querySelector(sel);return e?(e.value||e.textContent||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean):[];};
+  const to=g('[name=to]'),cc=g('[name=cc]'),bcc=g('[name=bcc]');
+  const out='To: '+to.length+'\nCc: '+cc.length+'\nBcc: '+bcc.length+'\nTotal: '+(to.length+cc.length+bcc.length);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcpt '+(to.length+cc.length+bcc.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
