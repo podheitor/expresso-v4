@@ -6011,5 +6011,19 @@ window.copyDriveSharedLinkExpiry=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveNestedFolderDepth=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  let mx=0;
+  items.forEach(i=>{const p=(i.getAttribute('data-path')||'').split('/').filter(Boolean).length;if(p>mx)mx=p;});
+  const dist={};
+  items.forEach(i=>{const p=(i.getAttribute('data-path')||'').split('/').filter(Boolean).length;dist[p]=(dist[p]||0)+1;});
+  const out='max-depth='+mx+'\n'+Object.entries(dist).sort((a,b)=>a[0]-b[0]).map(e=>'depth='+e[0]+'\t'+e[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='nd '+mx;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

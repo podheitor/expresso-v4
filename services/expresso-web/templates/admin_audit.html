@@ -5386,5 +5386,19 @@ window.copyAuditCountryCodes=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditPrivilegedActorList=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const m={};
+  rows.forEach(r=>{const a=r.getAttribute('data-actor')||'';
+    const role=(r.getAttribute('data-actor-role')||'').toLowerCase();
+    if(role.includes('admin')||role.includes('root')||role.includes('superuser')){m[a]=(m[a]||0)+1;}});
+  const out=Object.entries(m).sort((a,b)=>b[1]-a[1]).map(e=>e[0]+'\t'+e[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='pa '+Object.keys(m).length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

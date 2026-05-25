@@ -6310,5 +6310,18 @@ window.copyTasksAvgCompletionDays=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksSubtaskCounts=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const lines=[];
+  rows.forEach(r=>{const sub=parseInt(r.getAttribute('data-subtask-count')||'0',10);
+    if(sub>0)lines.push((r.getAttribute('data-title')||'?')+'\t'+sub);});
+  const out=lines.sort((a,b)=>parseInt(b.split('\t')[1],10)-parseInt(a.split('\t')[1],10)).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sc '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

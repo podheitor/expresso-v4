@@ -5368,5 +5368,20 @@ window.copyUsersOverQuota=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyUsersAccountAgeDistribution=function(){
+  const rows=document.querySelectorAll('[data-user-row]');
+  const now=Date.now();
+  const b={'<30d':0,'<90d':0,'<1y':0,'<3y':0,'>=3y':0};
+  rows.forEach(r=>{const c=new Date(r.getAttribute('data-created')||0);
+    if(isNaN(c))return;const d=(now-c)/86400000;
+    if(d<30)b['<30d']++;else if(d<90)b['<90d']++;else if(d<365)b['<1y']++;else if(d<1095)b['<3y']++;else b['>=3y']++;});
+  const out=Object.entries(b).map(e=>e[0]+'\t'+e[1]).join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='aad '+rows.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

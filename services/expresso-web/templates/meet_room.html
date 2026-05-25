@@ -5011,5 +5011,19 @@ window.copyMeetLocaleAndTimezone=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMeetSpeakingTimeRanking=function(){
+  const parts=document.querySelectorAll('[data-participant]');
+  const m=[];
+  parts.forEach(p=>{const sec=parseInt(p.getAttribute('data-speaking-seconds')||'0',10);
+    if(sec>0)m.push({n:p.getAttribute('data-name')||'?',s:sec});});
+  m.sort((a,b)=>b.s-a.s);
+  const out=m.map(x=>x.n+'\t'+x.s+'s').join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sp '+m.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
