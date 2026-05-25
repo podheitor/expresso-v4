@@ -6486,5 +6486,17 @@ window.copySettingsRadioGroups=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copySettingsRequiredFields=function(){
+  const reqs=document.querySelectorAll('[required]');
+  const empty=[];
+  reqs.forEach(r=>{const v=(r.value||r.textContent||'').trim();if(!v)empty.push(r.tagName.toLowerCase()+' '+(r.name||r.id||'?'));});
+  const out='required fields: '+reqs.length+'\nempty ('+empty.length+'):\n'+empty.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(empty.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='req '+empty.length+'/'+reqs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

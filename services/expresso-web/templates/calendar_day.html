@@ -6469,5 +6469,24 @@ window.copyDayTotalEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayHourGantt=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const grid=new Array(24).fill('.');
+  evs.forEach(e=>{
+    const s=Date.parse(e.getAttribute('data-start')||'')||0;
+    const en=Date.parse(e.getAttribute('data-end')||'')||0;
+    if(!s||!en)return;
+    const sh=new Date(s).getHours();const eh=new Date(en).getHours();
+    for(let i=sh;i<=eh&&i<24;i++)grid[i]='#';
+  });
+  const ruler='0    5    10   15   20  ';
+  const out='day gantt (24h):\n'+ruler+'\n'+grid.join('');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='gnt '+evs.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

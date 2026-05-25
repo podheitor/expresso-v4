@@ -5823,5 +5823,19 @@ window.composeAttachmentTotalSize=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeSignaturePresent=function(){
+  const ta0=document.querySelector('textarea[name="body"]')||document.querySelector('[contenteditable="true"]');
+  const body=ta0?(ta0.value||ta0.textContent||''):'';
+  const sigIdx=body.lastIndexOf('\n-- \n');
+  const has=sigIdx>=0;
+  const sig=has?body.slice(sigIdx+5).trim():'';
+  const out='signature: '+(has?'present':'missing')+(has?'\n---\n'+sig:'');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(has?'#0a0':'#c60')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='sig '+(has?'ok':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
