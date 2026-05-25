@@ -4349,5 +4349,21 @@ window.copyContactsNoEmail=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsDuplicates=function(){
+  const seen={};
+  const dups=[];
+  document.querySelectorAll('[data-contact]').forEach(c=>{
+    const em=(c.getAttribute('data-email')||'').toLowerCase().trim();
+    if(!em)return;
+    if(seen[em])dups.push(em+'\t'+(c.getAttribute('data-name')||''));
+    else seen[em]=true;
+  });
+  const ta=document.createElement('textarea');ta.value=dups.join('\n');document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(dups.length?'#c60':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dup '+dups.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -4697,5 +4697,21 @@ window.copyTasksByTag=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOldestPending=function(){
+  let oldest=null;
+  document.querySelectorAll('[data-task-row]').forEach(r=>{
+    const st=(r.getAttribute('data-status')||'').toLowerCase();
+    if(st==='done'||st==='completed')return;
+    const c=r.getAttribute('data-created')||'';
+    if(c&&(!oldest||c<oldest.c))oldest={c,id:r.getAttribute('data-id')||'',title:r.getAttribute('data-title')||''};
+  });
+  const out=oldest?oldest.c+'\t'+oldest.id+'\t'+oldest.title:'(none)';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent=oldest?'old '+oldest.c.slice(0,10):'(none)';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

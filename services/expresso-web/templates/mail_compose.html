@@ -3605,5 +3605,24 @@ window.composeUppercaseSelection=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeStripQuotedReply=function(){
+  const ta=document.querySelector('textarea[name=body],textarea#body');
+  if(!ta)return;
+  const lines=ta.value.split('\n');
+  const kept=[];
+  let inQuote=false;
+  for(const l of lines){
+    if(/^>+\s/.test(l)||/^On .*wrote:$/i.test(l)||/^---+\s*Original Message\s*---+/i.test(l)){inQuote=true;continue;}
+    if(inQuote&&l.trim()==='')continue;
+    inQuote=false;
+    kept.push(l);
+  }
+  ta.value=kept.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='stripped '+(lines.length-kept.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
