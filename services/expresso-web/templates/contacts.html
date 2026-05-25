@@ -6762,5 +6762,23 @@ window.copyContactsByCompany=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyContactsInitials=function(){
+  const cs=document.querySelectorAll('[data-contact]');
+  const lines=[];
+  cs.forEach(c=>{
+    const name=(c.getAttribute('data-name')||'').trim();
+    if(!name)return;
+    const parts=name.split(/\s+/);
+    const init=parts.map(p=>p[0]||'').join('').toUpperCase();
+    lines.push(init+'\t'+name);
+  });
+  const out='contacts initials:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ini '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

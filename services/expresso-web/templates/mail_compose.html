@@ -5756,5 +5756,20 @@ window.composeSubjectInfo=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCount=function(){
+  const to=(document.querySelector('input[name="to"]')||{}).value||'';
+  const cc=(document.querySelector('input[name="cc"]')||{}).value||'';
+  const bcc=(document.querySelector('input[name="bcc"]')||{}).value||'';
+  const tn=to.split(/[,;]/).filter(s=>s.trim()).length;
+  const cn=cc.split(/[,;]/).filter(s=>s.trim()).length;
+  const bn=bcc.split(/[,;]/).filter(s=>s.trim()).length;
+  const out='recipients:\nto: '+tn+'\ncc: '+cn+'\nbcc: '+bn+'\ntotal: '+(tn+cn+bn);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rc '+(tn+cn+bn);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

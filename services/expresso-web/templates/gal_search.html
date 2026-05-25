@@ -5924,5 +5924,18 @@ window.copyGalByDept=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyGalLocationsList=function(){
+  const rows=document.querySelectorAll('[data-gal-row]');
+  const set=new Set();
+  rows.forEach(r=>{const l=(r.getAttribute('data-location')||r.getAttribute('data-office')||'').trim();if(l)set.add(l);});
+  const arr=Array.from(set).sort();
+  const out='gal locations ('+arr.length+'):\n'+arr.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='loc '+arr.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -7154,5 +7154,22 @@ window.copyTasksByStatus=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksOverdueCount=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const now=Date.now();
+  let overdue=0;
+  rows.forEach(r=>{
+    const due=Date.parse(r.getAttribute('data-due')||'')||0;
+    const done=r.getAttribute('data-status')==='done'||r.getAttribute('data-done')==='true';
+    if(due&&due<now&&!done)overdue++;
+  });
+  const out='overdue tasks: '+overdue+' / '+rows.length;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(overdue?'#c00':'#0a0')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ov '+overdue;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
