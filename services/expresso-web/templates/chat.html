@@ -6961,5 +6961,23 @@ window.copyChatReactions=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatMessagesByDay=function(){
+  const msgs=document.querySelectorAll('[data-msg-id]');
+  const days={};
+  msgs.forEach(m=>{
+    const t=Date.parse(m.getAttribute('data-timestamp')||'')||0;
+    if(!t)return;
+    const d=new Date(t).toISOString().slice(0,10);
+    days[d]=(days[d]||0)+1;
+  });
+  const lines=Object.entries(days).sort().map(([k,v])=>k+': '+v);
+  const out='messages by day:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='dy '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

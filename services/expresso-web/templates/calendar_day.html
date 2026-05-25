@@ -5949,5 +5949,21 @@ window.copyDayShortEvents=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDayOrganizerSummary=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const counts={};
+  evs.forEach(e=>{
+    const o=(e.getAttribute('data-organizer')||'').trim();
+    if(o)counts[o]=(counts[o]||0)+1;
+  });
+  const lines=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>k+': '+v);
+  const out='organizers today ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='org '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

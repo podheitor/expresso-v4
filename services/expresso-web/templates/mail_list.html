@@ -6305,5 +6305,20 @@ window.copyMailListReceivedToday=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyMailListFlaggedRows=function(){
+  const rows=document.querySelectorAll('[data-mail-row][data-flagged="true"]');
+  const lines=Array.from(rows).map(r=>{
+    const s=r.getAttribute('data-subject')||'';
+    const f=r.getAttribute('data-from')||'';
+    return f+'\t'+s;
+  });
+  const out='flagged rows ('+lines.length+'):\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='flg '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
