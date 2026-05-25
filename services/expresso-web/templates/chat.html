@@ -6399,5 +6399,18 @@ window.copyChatBotMessages=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyChatChannelSettings=function(){
+  const chan=document.querySelector('[data-channel-id]');
+  if(!chan){const ta=document.createElement('textarea');ta.value='no channel context';document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();const t=document.createElement('div');t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';t.textContent='cfg n/a';document.body.appendChild(t);setTimeout(()=>t.remove(),1500);return;}
+  const attrs=['data-channel-id','data-channel-name','data-channel-type','data-channel-topic','data-channel-private','data-channel-archived','data-member-count','data-message-retention'];
+  const lines=attrs.map(a=>a.replace('data-','')+'='+(chan.getAttribute(a)||''));
+  const out=lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='cfg '+(chan.getAttribute('data-channel-name')||'?');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

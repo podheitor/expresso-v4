@@ -6128,5 +6128,23 @@ window.copyTasksReopenedCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyTasksAvgLifetimeDays=function(){
+  const rows=document.querySelectorAll('[data-task-row]');
+  const spans=[];
+  rows.forEach(r=>{
+    const c=r.getAttribute('data-created');
+    const d=r.getAttribute('data-completed-at')||r.getAttribute('data-closed-at');
+    if(c&&d){const ms=new Date(d).getTime()-new Date(c).getTime();if(!isNaN(ms)&&ms>=0)spans.push(ms);}
+  });
+  const avg=spans.length?spans.reduce((s,v)=>s+v,0)/spans.length/86400000:0;
+  const max=spans.length?Math.max(...spans)/86400000:0;
+  const out='completed='+spans.length+'\navg='+avg.toFixed(2)+'d\nmax='+max.toFixed(1)+'d';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='life '+avg.toFixed(1)+'d';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

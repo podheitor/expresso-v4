@@ -4869,5 +4869,19 @@ window.composeQuoteDepthMax=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeWhitespaceAudit=function(){
+  const body=document.querySelector('[data-compose-body],textarea[name=body],#compose-body')?.value||document.querySelector('[data-compose-body]')?.textContent||'';
+  const trailing=body.split('\n').filter(l=>/[ \t]+$/.test(l)).length;
+  const tabs=(body.match(/\t/g)||[]).length;
+  const blankRuns=(body.match(/\n\n\n+/g)||[]).length;
+  const leadingNL=(body.match(/^\n+/)||[''])[0].length;
+  const out='trailing-ws-lines='+trailing+'\ntabs='+tabs+'\nblank-runs(3+)='+blankRuns+'\nleading-newlines='+leadingNL;
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+((trailing+blankRuns)?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ws '+(trailing+blankRuns);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5200,5 +5200,25 @@ window.copyAuditRowsByMinute=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyAuditAccessReviewSummary=function(){
+  const rows=document.querySelectorAll('[data-audit-row]');
+  const tally={};
+  rows.forEach(r=>{
+    const action=(r.getAttribute('data-action')||'').toLowerCase();
+    if(action.includes('grant')||action.includes('revoke')||action.includes('role-change')||action.includes('permission')){
+      const k=action;
+      tally[k]=(tally[k]||0)+1;
+    }
+  });
+  const lines=Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([k,n])=>n+'\t'+k);
+  const total=lines.reduce((s,l)=>s+parseInt(l),0);
+  const out='total-access-events='+total+'\n\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='ar '+total;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

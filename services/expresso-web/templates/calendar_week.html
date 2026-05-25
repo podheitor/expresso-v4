@@ -5383,5 +5383,20 @@ window.copyWeekDeclinedRsvps=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekFocusBlocks=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  const blocks=[];
+  evs.forEach(e=>{
+    const tt=(e.getAttribute('data-title')||'').toLowerCase();
+    if(tt.includes('focus')||tt.includes('deep work')||tt.includes('no meetings')||e.hasAttribute('data-focus'))blocks.push((e.getAttribute('data-start')||'?')+'\t'+(e.getAttribute('data-title')||'(no title)'));
+  });
+  const out=blocks.join('\n')||'no focus blocks';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='fk '+blocks.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

@@ -5842,5 +5842,21 @@ window.copyDrivePermissionRoles=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveZeroByteFiles=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const zeros=[];
+  items.forEach(i=>{
+    const sz=parseInt(i.getAttribute('data-size')||i.getAttribute('data-bytes')||'-1',10);
+    const isFile=(i.getAttribute('data-type')||'').toLowerCase()!=='folder';
+    if(isFile&&sz===0)zeros.push((i.getAttribute('data-path')||i.getAttribute('data-name')||'?'));
+  });
+  const out=zeros.join('\n')||'no zero-byte files';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:'+(zeros.length?'#c60':'#069')+';color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='0b '+zeros.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
