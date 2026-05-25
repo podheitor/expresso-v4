@@ -6643,5 +6643,17 @@ window.copyWeekTitlesSorted=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyWeekEarliestEvent=function(){
+  const evs=document.querySelectorAll('[data-event]');
+  let earliest=null;
+  evs.forEach(e=>{const s=Date.parse(e.getAttribute('data-start')||'');if(!isNaN(s)&&(earliest===null||s<earliest.t))earliest={t:s,title:e.getAttribute('data-title')||''};});
+  const out=earliest?(new Date(earliest.t).toISOString()+'\t'+earliest.title):'-';
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='erl '+(earliest?'ok':'-');
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
