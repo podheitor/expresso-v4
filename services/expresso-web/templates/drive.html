@@ -6691,5 +6691,19 @@ window.copyDriveStarred=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.copyDriveTrashed=function(){
+  const items=document.querySelectorAll('[data-drive-item]');
+  const lines=[];
+  items.forEach(i=>{
+    if((i.getAttribute('data-trashed')||'')==='1')lines.push(i.getAttribute('data-name')||'');
+  });
+  const out='trashed:\n'+lines.join('\n');
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#c60;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='tr '+lines.length;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}

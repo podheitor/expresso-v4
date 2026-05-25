@@ -5649,5 +5649,17 @@ window.composeLineCount=function(){
   document.body.appendChild(t);
   setTimeout(()=>t.remove(),1500);
 };
+window.composeRecipientCount=function(){
+  const to=(document.querySelector('[name="to"]')?.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const cc=(document.querySelector('[name="cc"]')?.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const bcc=(document.querySelector('[name="bcc"]')?.value||'').split(/[,;]/).map(s=>s.trim()).filter(Boolean);
+  const out='to: '+to.length+'\ncc: '+cc.length+'\nbcc: '+bcc.length+'\ntotal: '+(to.length+cc.length+bcc.length);
+  const ta=document.createElement('textarea');ta.value=out;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;top:10px;right:10px;background:#069;color:#fff;padding:8px 12px;border-radius:4px;z-index:9999';
+  t.textContent='rcp '+(to.length+cc.length+bcc.length);
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),1500);
+};
 </script>
 {% endblock %}
